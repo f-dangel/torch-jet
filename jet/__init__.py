@@ -108,7 +108,7 @@ def rev_jet(
             )
             return f(x_t)
 
-        t = tensor(0.0, requires_grad=True)
+        t = tensor(0.0, requires_grad=True, dtype=x.dtype, device=x.device)
         f_x = path(t)
 
         vs_out = [zeros_like(f_x).flatten() for _ in vs]

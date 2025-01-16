@@ -8,7 +8,7 @@ from torch.nn import Linear, Sequential, Tanh
 from torch.nn.functional import linear
 
 from jet import jet, rev_jet
-from jet.operations import Primal, PrimalAndCoefficients, Value, ValueAndCoefficients
+from jet.utils import Primal, PrimalAndCoefficients, Value, ValueAndCoefficients
 
 
 def compare_jet_results(out1: ValueAndCoefficients, out2: ValueAndCoefficients):

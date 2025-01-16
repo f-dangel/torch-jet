@@ -1,12 +1,19 @@
 """Utility functions for computing jets."""
 
 from math import factorial, prod
-from typing import Tuple
+from typing import Callable, Tuple
 
 from torch import Tensor, einsum
+from torch.nn import Module
+
+# type annotation for arguments and Taylor coefficients in input and output space
+Primal = Tensor
+PrimalAndCoefficients = Tuple[Primal, Tuple[Primal, ...]]
+Value = Tensor
+ValueAndCoefficients = Tuple[Value, Tuple[Value, ...]]
 
 
-def integer_partitions(n: int, I: int = 1):
+def integer_partitions(n: int, I: int = 1):  # noqa: E741
     """Compute the integer partitions of a positive integer.
 
     Taken from: https://stackoverflow.com/a/44209393.
@@ -59,3 +66,27 @@ def multiplicity(sigma: Tuple[int, ...]) -> float:
     if not multiplicity.is_integer():
         raise ValueError(f"Multiplicity should be an integer, but got {multiplicity}.")
     return multiplicity
+
+
+class WrapperModule(Module):
+    """Wraps a function in a module."""
+
+    def __init__(self, f: Callable[[Primal], Value]):
+        """Initialize the module.
+
+        Args:
+            f: Function to wrap.
+        """
+        super().__init__()
+        self.f = f
+
+    def forward(self, x: Primal) -> Value:
+        """Forward pass of the module.
+
+        Args:
+            x: Input tensor.
+
+        Returns:
+            Output tensor.
+        """
+        return self.f(x)

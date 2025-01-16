@@ -1,17 +1,17 @@
 """Implementation of AD primitives in Taylor-mode arithmetic."""
 
-from typing import Optional, Tuple
+from typing import Optional
 
 from torch import Tensor, cos, sin, tanh, zeros_like
 from torch.nn.functional import linear
 
-from jet.utils import integer_partitions, multiplicity, tensor_prod
-
-# type annotation for arguments and Taylor coefficients in input and output space
-Primal = Tensor
-PrimalAndCoefficients = Tuple[Primal, Tuple[Primal, ...]]
-Value = Tensor
-ValueAndCoefficients = Tuple[Value, Tuple[Value, ...]]
+from jet.utils import (
+    PrimalAndCoefficients,
+    ValueAndCoefficients,
+    integer_partitions,
+    multiplicity,
+    tensor_prod,
+)
 
 
 def jet_sin(arg: PrimalAndCoefficients) -> ValueAndCoefficients:
@@ -55,7 +55,8 @@ def jet_tanh(arg: PrimalAndCoefficients) -> ValueAndCoefficients:
         arg: Input tensor and its Taylor coefficients.
 
     Returns:
-        Tuple containing the value of the hyperbolic tangent function and its Taylor coefficients.
+        Tuple containing the value of the hyperbolic tangent function and its
+        Taylor coefficients.
     """
     (x, vs) = arg
 

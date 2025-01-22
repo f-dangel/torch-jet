@@ -6,7 +6,7 @@ from typing import Callable, Optional, Tuple
 from torch import Tensor, split, stack, tensor, zeros_like
 from torch.autograd import grad
 from torch.fx import GraphModule, Tracer
-from torch.nn import Linear, Module, Tanh
+from torch.nn import Linear, Module, Sigmoid, Tanh
 
 from jet.operations import MAPPING
 from jet.utils import (
@@ -35,13 +35,13 @@ class JetTracer(Tracer):
         # that execute modules who simply wrap `torch.nn.functional`s. Therefore, we
         # explicitly trace through them, which will result in `call_function` nodes for
         # which we maintain the logic to replace them with Taylor-mode arithmetic.
-        if isinstance(m, (Linear, Tanh)):
+        if isinstance(m, (Linear, Tanh, Sigmoid)):
             return False
         return super().is_leaf_module(m, module_qualified_name)
 
 
 def jet(
-    f: Callable[[Primal], Value], k: int, verbose: bool = False
+    f: Callable[[Primal], Value], k: int, vmap: bool = False, verbose: bool = False
 ) -> Callable[[Tuple[Primal, ...]], Tuple[Value, ...]]:
     """Overload a function with its Taylor-mode equivalent.
 
@@ -65,7 +65,7 @@ def jet(
     if verbose:
         print(f"Traced graph before jet overloading:\n{mod.graph}")
 
-    jet_mod = _replace_operations_with_taylor(mod, k)
+    jet_mod = _replace_operations_with_taylor(mod, k, vmap=vmap)
 
     if verbose:
         print(f"Traced graph after jet overloading:\n{jet_mod.graph}")
@@ -73,7 +73,9 @@ def jet(
     return jet_mod
 
 
-def _replace_operations_with_taylor(mod: GraphModule, k) -> GraphModule:
+def _replace_operations_with_taylor(
+    mod: GraphModule, k: int, vmap: bool
+) -> GraphModule:
     """Replace operations in the graph with Taylor-mode equivalents.
 
     Args:
@@ -93,7 +95,11 @@ def _replace_operations_with_taylor(mod: GraphModule, k) -> GraphModule:
     with graph.inserting_after(input_node):
         vs = [graph.placeholder(name=f"v{i}") for i in reversed(range(1, k + 1))][::-1]
     with graph.inserting_after(vs[-1]):
-        stacked = graph.call_function(stack, args=((next(iter(graph.nodes)), *vs),))
+        stacked = graph.call_function(
+            stack,
+            args=((next(iter(graph.nodes)), *vs),),
+            kwargs={"dim": 1 if vmap else 0},
+        )
 
     for node in tuple(graph.nodes):
         if node.op == "call_function" and input_node in node.args and node != stacked:
@@ -120,7 +126,7 @@ def _replace_operations_with_taylor(mod: GraphModule, k) -> GraphModule:
                 new_node = graph.call_function(
                     MAPPING[f],
                     args=((*node.args, tuple(vs)),) if idx == 1 else node.args,
-                    kwargs=node.kwargs,
+                    kwargs={**node.kwargs, "K": k, "vmap": vmap},
                 )
             node.replace_all_uses_with(new_node)
             graph.erase_node(node)
@@ -136,7 +142,9 @@ def _replace_operations_with_taylor(mod: GraphModule, k) -> GraphModule:
     # instead of the output, we want to use the split tensor
     (output_node,) = [node for node in graph.nodes if node.op == "output"]
     with graph.inserting_after(output_node):
-        split_node = graph.call_function(split, args=(output_node.args[0], 1))
+        split_node = graph.call_function(
+            split, args=(output_node.args[0], 1), kwargs={"dim": 1 if vmap else 0}
+        )
     output_node.replace_all_uses_with(split_node)
     graph.erase_node(output_node)
 

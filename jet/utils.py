@@ -37,9 +37,7 @@ def tensor_prod(*tensors: Tensor) -> Tensor:
     Returns:
         Element-wise product of the tensors.
     """
-    (ndim,) = {t.ndim for t in tensors}
-    idxs = "".join(chr(ord("a") + i) for i in range(ndim))
-    equation = ",".join(len(tensors) * [idxs]) + f"->{idxs}"
+    equation = ",".join(len(tensors) * ["..."]) + "->..."
     return einsum(equation, *tensors)
 
 

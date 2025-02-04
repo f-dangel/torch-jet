@@ -1,0 +1,63 @@
+\documentclass{article}
+
+% use numbers for citations to save space
+\PassOptionsToPackage{numbers, compress}{natbib}
+
+% either empty (for submission), 'preprint', or 'final'
+\def\status{}
+\usepackage[\status]{neurips_2024}
+
+\input{preamble/custom_early.tex}
+\input{preamble/neurips_2024.tex}
+% follow DL notation from the Goodfellow book
+\input{preamble/goodfellow.tex}
+\input{preamble/custom.tex}
+\input{preamble/metadata.tex}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+  We explore automating the acceleration of differential operators through compute graph simplifications based on the concept of linearity.
+  These occur in common differential operators like the Laplacian, that computes then sums diagonal elements of the Hessian using Taylor mode automatic differentiation (\texttt{jet}s).
+  Instead, we show that the Taylor coefficients can first be summed, then propagated, which reduces computational cost.
+  Due to the simplicity of this simplification (propagating a sum up a computation graph), we argue it could (or should) be performed by the just-in-time (\texttt{jit}) compiler in machine learning frameworks.
+  Our preliminary experiments achieve promising, fully automated, speed-ups, which we believe can easily be integrated into automatic differentiation libraries.
+\end{abstract}
+
+\section{Introduction}\label{sec:introduction}
+\input{sections/introduction.tex}
+
+\section{Background}\label{sec:background}
+\input{sections/background.tex}
+
+% \section{Kronecker-Factored Approximate Curvature for
+% PINNs}\label{sec:kfac_pinns}
+% \input{sections/contribution.tex}
+
+% \section{Experiments}\label{sec:experiments}
+% \input{sections/experiments.tex}
+
+% \section{Discussion and Conclusion}\label{sec:conclusion}
+% \input{sections/conclusion.tex}
+% \input{sections/acknowledgements.tex}
+
+\bibliography{bibliography-file/references}
+\bibliographystyle{icml2024.bst}
+
+\clearpage
+\appendix
+
+% \input{sections/appendix.tex}
+% \input{sections/checklist.tex}
+
+\end{document}
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: t
+%%% End:
+%%% Local Variables:
+%%% mode: LaTeX
+%%% TeX-master: t
+%%% End:

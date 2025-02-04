@@ -1,0 +1,90 @@
+% ===================================================================
+% MATH
+% ===================================================================
+\usepackage{nicefrac} % fractions that fit into inline text
+\usepackage{dsfont} % for \mathds command
+\usepackage[%
+exponent-product=\ensuremath{\cdot},%
+group-minimum-digits={3}%
+]{siunitx} % \num command for pretty-formatting large numbers
+
+% ===================================================================
+% REFERENCES
+% ===================================================================
+\usepackage{cleveref} % automatically adds type of reference, MUST BE LOADED AFTER AMSMATH
+\crefname{section}{\S\!\!}{\S\!\!} % use paragraph symbol for Section
+\crefname{appendix}{\S\!\!}{\S\!\!} % use paragraph symbol for Appendix
+
+% ===================================================================
+% TODOS & COMMENTS
+% ===================================================================
+\usepackage{todonotes} % for TODOs, loads xcolor with []
+\usepackage{comment} % for comment environment
+
+% ===================================================================
+% FIGURES & COLORS
+% ===================================================================
+\usepackage{wrapfig} % side-wrap text next to a figure
+\usepackage{subcaption} % \subfigure environment
+\usepackage{tabularx} % tables with automatic line break
+\usepackage{ragged2e} % \Centering command to vertically center table cells
+\captionsetup[subfigure]{% subfigure captions are left-aligned
+  justification=justified,%
+  singlelinecheck=false,%
+}%
+\usepackage{tikz} % for drawings in LaTeX
+\usetikzlibrary{arrows.meta} % for prettier arrows
+
+% VECTOR INSTITUTE PRIMARY COLORS
+\definecolor{VectorBlack}{RGB}{34, 34, 34}
+\definecolor{VectorGray}{RGB}{239, 238, 237}
+% VECTOR INSTITUTE SECONDARY COLORS
+\definecolor{VectorBlue}{RGB}{59, 69, 227}
+\definecolor{VectorPink}{RGB}{253, 8, 238}
+\definecolor{VectorOrange}{RGB}{250, 173, 26}
+\definecolor{VectorTeal}{RGB}{82, 199, 222}
+
+% PAPER COLOR THEME
+\colorlet{maincolor}{VectorBlue}
+\colorlet{secondcolor}{VectorPink}
+\colorlet{thirdcolor}{VectorOrange}
+\colorlet{fourthcolor}{VectorTeal}
+\colorlet{fifthcolor}{VectorGray}
+
+% COLOR FOR KFAC BOXES
+\definecolor{kfac}{rgb}{0.55294118, 0.17647059, 0.22352941}
+
+\usepackage[most]{tcolorbox} % coloured boxes
+
+% ===================================================================
+% LINKS & REFERENCES
+% ===================================================================
+\hypersetup{%
+  colorlinks,
+  citecolor = maincolor,%
+  linkcolor = maincolor,%
+  urlcolor = secondcolor,%
+}%
+
+% ===================================================================
+% SPECIAL SYMBOLS
+% ===================================================================
+\usepackage{pifont} % for check and cross marks
+% commands from https://tex.stackexchange.com/a/42620
+\newcommand{\cmark}{\ding{51}}
+\newcommand{\xmark}{\ding{55}}
+
+% ===================================================================
+% ALGORITHMS
+% ===================================================================
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+% ===================================================================
+% TABLES
+% ===================================================================
+\usepackage{multirow}
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: "../main"
+%%% End:

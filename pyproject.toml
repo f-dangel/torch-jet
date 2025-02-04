@@ -79,3 +79,6 @@ match = '.*\.py'
 # exclude directories, see
 # https://github.com/PyCQA/pydocstyle/issues/363#issuecomment-625563088
 match_dir = '^(?!(test|.git)).*'
+
+[tool.setuptools]
+packages = ["jet"]

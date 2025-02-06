@@ -269,7 +269,7 @@ However, we recovered it from a different starting point: by using Taylor mode i
 
 \paragraph{Weighted sums of second-order derivatives.}
 We can generalize the scheme in \cref{eq:laplacian-efficient} to computing differential operators of the form $\sum_{i,j} C_{i,j} \nicefrac{\partial^2f}{\partial \evx_i \evx_j}$ with a symmetric coefficient matrix $\mC \in \sR^{D\times D}$. For simplicity, let's first assume that $\mC$ is positive semi-definite, which means we can express it as $\mC = \sum_{d=1}^{\rank(\mC)} \vv_d \vv_d^\top$ with real-valued $\vv_d \in \sR^D$, and therefore
-\begin{align}
+\begin{align}\label{eq:weighted-laplacian}
   \sum_{i,j} C_{i,j} \frac{\partial^2f}{\partial x_i \partial x_j}
   =
   \sum_{d=1}^{\rank(\mC)} \partial^2f[\vv_d, \vv_d]\,.
@@ -280,7 +280,36 @@ If $\mC$ is in-definite, then some $\vv_d$ will be purely complex, \ie have non-
 We can either compute the differential operator in complex-valued arithmetic, or split the positive and negative parts of the spectrum into two separate collapsed jets.
 
 \subsection{Using Linearity in Randomization Taylor Mode}
-\cite{shi2024stochastic}
+\citep{shi2024stochastic} introduce randomization into Taylor mode, similar to stochastic backpropagation~\cite{oktay2021randomized}.
+This lowers the computational cost when $D$ is prohibitively large for exact evaluation of differential operators.
+Take the weighted Laplacian from \Cref{eq:weighted-laplacian} and assume we have access to random vectors $\rvv$ with and $\E[\vv \vv^{\top}] = \mC$.
+Then we can draw $S \ll D$ random vectors $\vv_1, \vv_2, \dots, \vv_S \overset{\text{i.i.d.}}{\sim} \rvv$ and compute
+\begin{align}
+  \begin{split}
+    \E[\partial^2f[\rvv, \rvv]]
+    &=
+      \E \left[
+      \rvv^{\top} \frac{\partial^2 f}{\partial \vx \partial \vx} \rvv
+      \right]
+      =
+      % \E \left[
+      %   \sum_{i,j} \ervv_i \frac{\partial^2 f}{\partial x_i \partial x_j} \ervv_j
+      % \right]
+      % =
+      \sum_{i,j} \frac{\partial^2 f}{\partial x_i \partial x_j}
+      \E \left[
+      \ervv_i  \ervv_j
+      \right]
+      =
+      \sum_{i,j} \frac{\partial^2 f}{\partial x_i \partial x_j} C_{i,j}
+    \\
+    &\approx
+      \frac{1}{S}
+      \sum_{s=1}^S
+      \partial^2 f[\vv_s, \vv_s]\,.
+  \end{split}
+\end{align}
+Again, we see that the second-order coefficients can be collapsed when setting $\vx_{1,d} = \vv_d, \vx_{2,d} = \vzero$ in \cref{eq:laplacian-naive,eq:laplacian-efficient}.
 
 \subsection{Using Linearity in Higher-Order Operators}
 %%% Local Variables:

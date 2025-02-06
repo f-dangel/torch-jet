@@ -7,6 +7,7 @@
 exponent-product=\ensuremath{\cdot},%
 group-minimum-digits={3}%
 ]{siunitx} % \num command for pretty-formatting large numbers
+\newcommand{\mathemph}[1]{{\color{maincolor} #1}}
 
 % ===================================================================
 % REFERENCES
@@ -16,10 +17,17 @@ group-minimum-digits={3}%
 \crefname{appendix}{\S\!\!}{\S\!\!} % use paragraph symbol for Appendix
 
 % ===================================================================
-% TODOS & COMMENTS
+% TODOS, COMMENTS & WRITING
 % ===================================================================
 \usepackage{todonotes} % for TODOs, loads xcolor with []
 \usepackage{comment} % for comment environment
+\usepackage{xspace}
+\newcommand*{\ie}{i.e.\@\xspace}
+\newcommand*{\iid}{i.i.d.\@\xspace}
+\newcommand*{\wrt}{w.r.t.\@\xspace}
+\newcommand*{\eg}{e.g.\@\xspace}
+\newcommand*{\Ie}{I.e.\@\xspace}
+\newcommand*{\Eg}{E.g.\@\xspace}
 
 % ===================================================================
 % FIGURES & COLORS

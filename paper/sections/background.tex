@@ -36,7 +36,7 @@ In notation, we want to compute $f_k \coloneqq \left.\nicefrac{\partial f(x(t))}
 \end{center}
 
 Let's start by writing out the first two derivatives, for which we need the chain and product rules (for notational convenience, we omit the derivative evaluations at $t=0$):
-\begin{subequations}
+\begin{subequations}\label{eq:taylor-mode-scalar}
   \begin{align}
     f_0
     &=
@@ -81,41 +81,208 @@ Let's start by writing out the first two derivatives, for which we need the chai
       }
       \label{eq:faa-di-bruno}
       f_k
-      &=
+    &=
       \sum_{\sigma \in \partitioning(k)}
       \nu(\sigma) \frac{\partial^{|\sigma|} f}{\partial x^{|\sigma|}}
-        \prod_{s \in \sigma} x_s
-        \quad
-        \text{with multiplicity}
-        \quad
-        \nu(\sigma)
-        =
-        \frac{k!}{
-        \left(\prod_{s \in \sigma} n_s!\right)
-        \left(\prod_{s \in \sigma} s!\right)
-        }
+      \prod_{s \in \sigma} x_s
+      \quad
+      \text{with multiplicity}
+      \quad
+      \nu(\sigma)
+      =
+      \frac{k!}{
+      \left(\prod_{s \in \sigma} n_s!\right)
+      \left(\prod_{s \in \sigma} s!\right)
+      }
   \end{align}
 \end{subequations}
 where $n_s$ counts the occurrences of $s$ in an integer partitioning $\sigma$, for instance $n_1(\{1,1,3\}) = 2$.
 
 \paragraph{The vector/matrix/tensor-valued case.}
 So far, we assumed a scalar-to-scalar function.
-The generalization of \cref{eq:faa-di-bruno}
+To generalize of \cref{eq:faa-di-bruno} to higher dimensions, we will introduce the notation $\partial^kf[x_{i_1}, \dots, x_{i_k}]$ to indicate the contraction of the tensor containing the $k$-th order partial derivatives with the vectors $x_{i_1}, \dots x_{i_k}$.
+With this notation, we can seamlessly write (with $\vx$ and $f(\vx)$ being vectors now)
+\begin{align}
+  \vf_k
+  &=
+    \sum_{\sigma \in \partitioning(k)} \nu(\sigma) \partial^{|\sigma|} f[\tensorprod{s \in \sigma} \vx_s]
+\end{align}
 
-\paragraph{Function composition.}
-
-
+\paragraph{Function composition.} Assume now that $f = g \circ h$. Then, Taylor mode proceeds as follows
+\begin{align}\label{eq:taylor-mode-composition}
+  \begin{pmatrix*}
+    \vx_0
+    \\
+    \vx_1
+    \\
+    \vx_2
+    \\
+    \vdots
+    \\
+    \vx_K
+  \end{pmatrix*}
+  &\overset{\text{(\ref{eq:taylor-mode-scalar})}}{\to}
+    \begin{pmatrix*}[l]
+      \vh_0 =  h(\vx_0)
+      \\
+      \vh_1 = \partial h[\vx_1]
+      \\
+      \vh_2 = \partial^2 h[\vx_1, \vx_1] + \partial h[\vx_2]
+      \\
+      \vdots
+      \\
+      \vh_K =
+      \displaystyle\sum_{\mathclap{\sigma \in \partitioning(K)}} \nu(\sigma) \partial^{|\sigma|} h[\tensorprod{s \in \sigma} \vx_s]
+    \end{pmatrix*}
+    \overset{\text{(\ref{eq:taylor-mode-scalar})}}{\to}
+    \begin{pmatrix*}[l]
+      \vg_0 =  g(\vh_0)
+      \\
+      \vg_1 = \partial g[\vh_1]
+      \\
+      \vg_2 = \partial^2 g[\vh_1, \vh_1] + \partial g[\vh_2]
+      \\
+      \vdots
+      \\
+      \vg_K =
+      \displaystyle\sum_{\mathclap{\sigma \in \partitioning(K)}} \nu(\sigma) \partial^{|\sigma|} g[\otimes_{s \in \sigma} \vh_s]
+    \end{pmatrix*}
+    \overset{\text{(\ref{eq:taylor-mode-scalar})}}{=}
+    \begin{pmatrix*}[l]
+      \vf_0 =  f(\vx_0)
+      \\
+      \vf_1 = \partial f[\vx_1]
+      \\
+      \vf_2 = \partial^2 f[\vx_1, \vx_1] + \partial f[\vx_2]
+      \\
+      \vdots
+      \\
+      \vf_K =
+      \displaystyle\sum_{\mathclap{\sigma \in \partitioning(K)}} \nu(\sigma) \partial^{|\sigma|} f[\tensorprod{s \in \sigma} \vx_s]
+    \end{pmatrix*}
+\end{align}
+This equation tells us how to (i) propagate forward Taylor coefficients through a directed acyclic compute graph (DAG) that represents a chain of function compositions, and (ii) how the results relate to the composition's derivative \wrt the input space.
 
 \subsection{Computing Laplacians}
 Taylor mode from the previous sub-section serves as backbone for computing many differential operators like the Laplacian.
-The fundamental problem is to figure out how to set the jet degrees $K$, $x_k$ and $K$
+The fundamental problem is to figure out how to set the jet degrees $K$ and the Taylor coefficients $x_k$.
+
+As an example, let's consider computing the Laplacian of a function $f: \sR^D \to \sR$,
+\begin{align}
+  \Delta f(\vx)
+  =
+  \sum_{d=1}^D \frac{\partial^2f(\vx)}{\partial x_d^2}
+  =
+  \sum_{d=1}^D \partial^2f[\ve_d, \ve_d]
+\end{align}
+Pattern matching with \cref{eq:taylor-mode-composition}, we see that one way to compute the Laplacian is to set $K=2$, $\vx_0 = \vx$, and then compute the forward-propagated coefficients of $\{(\vx_{1,d} = \ve_d, \vx_{2,d} = \vzero)\}_d$.
+\begin{align}\label{eq:laplacian-naive}
+  \begin{split}
+    \begin{pmatrix*}
+      \vx_0
+      \\
+      \{\vx_{1,d} \}
+      \\
+      \{\vx_{2,d} \}
+    \end{pmatrix*}
+    &\overset{\text{(\ref{eq:taylor-mode-scalar})}}{\to}
+      \begin{pmatrix*}[l]
+        \vh_0 =  h(\vx_0)
+        \\
+        \{\vh_{1,d}\} = \{\partial h[\vx_{1,d}]\}
+        \\
+        \{\vh_{2,d}\} = \{\partial^2 h[\vx_{1,d}, \vx_{1,d}] + \partial h[\vx_{2,d}]\}
+      \end{pmatrix*}
+    \\
+    &\overset{\text{(\ref{eq:taylor-mode-scalar})}}{\to}
+      \begin{pmatrix*}[l]
+        \vg_0 =  g(\vh_0)
+        \\
+        \{\vg_{1,d}\} = \{\partial g[\vh_{1,d}]\}
+        \\
+        \{\vg_{2,d}\} = \{ \partial^2 g[\vh_{1,d}, \vh_{1,d}] + \partial g[\vh_{2,d}] \}
+      \end{pmatrix*}
+      \overset{\text{(\ref{eq:taylor-mode-scalar})}}{=}
+      \begin{pmatrix*}[l]
+        \vf_0 =  f(\vx_0)
+        \\
+        \{\vf_{1,d} \} = \{ \partial f[\vx_{1,d}] \}
+        \\
+        \{ \vf_{2,d} \} = \{ \partial^2 f[\vx_{1,d}, \vx_{1,d}] + \partial f[\vx_{2,d}] \}
+      \end{pmatrix*}
+    \\
+    &\overset{\text{slice}}{\to} \{ \vg_{2,d} \}
+    \\
+    &\overset{\text{sum}}{\to} \sum_{d=1}^D \{ \vg_{2,d} \}
+      \overset{\{(\vx_{1,d} = \ve_d, \vx_{2,d} = \vzero)\}_d}{=} \Delta f(\vx_0)
+  \end{split}
+\end{align}
+In this scheme, we push forward $1 + D + D$ coefficients.
+Can we do better?
 
 \subsection{Using Linearity---Recovering the Forward Laplacian}
+Looking at the scheme in \cref{eq:laplacian-naive}, we can realize that we can propagate the summation up the computation graph. To do that, we can use the linearity of $\partial g[\bullet]$.
+Propagating the summation up the computation graph, we obtain (changes highlighted in \textcolor{maincolor}{color}):
+\begin{align}\label{eq:laplacian-efficient}
+  \begin{split}
+    \begin{pmatrix*}
+      \vx_0
+      \\
+      \{\vx_{1,d} \}
+      \\
+      \mathemph{\displaystyle\sum_{d=1}^D \vx_{2,d}}
+    \end{pmatrix*}
+    &\overset{\text{(\ref{eq:taylor-mode-scalar})}}{\to}
+      \begin{pmatrix*}[l]
+        \vh_0 =  h(\vx_0)
+        \\
+        \{\vh_{1,d}\} = \{\partial h[\vx_{1,d}]\}
+        \\
+        \mathemph{\displaystyle\sum_{d=1}^D \vh_{2,d}} = \displaystyle\sum_{d=1}^D \partial^2 h[\vx_{1,d}, \vx_{1,d}] + \partial h[\mathemph{\displaystyle\sum_{d=1}^D\vx_{2,d}}]
+      \end{pmatrix*}
+    \\
+    &\overset{\text{(\ref{eq:taylor-mode-scalar})}}{\to}
+      \begin{pmatrix*}[l]
+        \vg_0 =  g(\vh_0)
+        \\
+        \{\vg_{1,d}\} = \{\partial g[\vh_{1,d}]\}
+        \\
+        \mathemph{\displaystyle\sum_{d=1}^D\{\vg_{2,d}\}} = \displaystyle\sum_{d=1}^D \partial^2 g[\vh_{1,d}, \vh_{1,d}] + \partial g[\mathemph{\displaystyle\sum_{d=1}^D\vh_{2,d}}]
+      \end{pmatrix*}
+      \overset{\text{(\ref{eq:taylor-mode-scalar})}}{=}
+      \begin{pmatrix*}[l]
+        \vf_0 =  f(\vx_0)
+        \\
+        \{\vf_{1,d} \} = \{ \partial f[\vx_{1,d}] \}
+        \\
+        \displaystyle\sum_{d=1}^D \vf_{2,d} = \displaystyle\sum_{d=1}^D \partial^2 f[\vx_{1,d}, \vx_{1,d}] + \partial f[\vx_{2,d}]
+      \end{pmatrix*}
+    \\
+    &\overset{\text{slice}}{\to} \mathemph{\sum_{d=1}^D \{ \vg_{2,d} \}}
+      \overset{\{(\vx_{1,d} = \ve_d, \vx_{2,d} = \vzero)\}_d}{=}
+      \Delta f(\vx_0)
+  \end{split}
+\end{align}
+In this scheme, the second-order coefficients are \emph{first summed, then propagated}, \ie we push forward $1 + D + 1$ vectors instead of $1 + D + D$.
+In fact, this scheme in \cref{eq:laplacian-efficient} corresponds to the \emph{forward Laplacian} framework from \citet{li2023forward}.
+However, we recovered it from a different starting point: by using Taylor mode in combination with sum propagations.
 
-\paragraph{Handling $\sum_{i,j} c_{i,j} \nicefrac{\partial^2f}{\partial \evx_i \evx_j}$.} TODO
+\paragraph{Weighted sums of second-order derivatives.}
+We can generalize the scheme in \cref{eq:laplacian-efficient} to computing differential operators of the form $\sum_{i,j} C_{i,j} \nicefrac{\partial^2f}{\partial \evx_i \evx_j}$ with a symmetric coefficient matrix $\mC \in \sR^{D\times D}$. For simplicity, let's first assume that $\mC$ is positive semi-definite, which means we can express it as $\mC = \sum_{d=1}^{\rank(\mC)} \vv_d \vv_d^\top$ with real-valued $\vv_d \in \sR^D$, and therefore
+\begin{align}
+  \sum_{i,j} C_{i,j} \frac{\partial^2f}{\partial x_i \partial x_j}
+  =
+  \sum_{d=1}^{\rank(\mC)} \partial^2f[\vv_d, \vv_d]\,.
+\end{align}
+This can be computed using \cref{eq:laplacian-naive}, and the simplified version in \cref{eq:laplacian-efficient}, by setting $\vx_{1,d} = \vv_d, \vx_{2,d} = \vzero$.
+Also here, the second-order coefficients can be collapsed, and instead of pushing forward $1 + 2 \rank(\mC)$ vectors, we are left with $2 + \rank(\mC)$ vectors.
+If $\mC$ is in-definite, then some $\vv_d$ will be purely complex, \ie have non-zero imaginary but zero real part, and some will be purely real.
+We can either compute the differential operator in complex-valued arithmetic, or split the positive and negative parts of the spectrum into two separate collapsed jets.
 
 \subsection{Using Linearity in Randomization Taylor Mode}
 \cite{shi2024stochastic}
+
+\subsection{Using Linearity in Higher-Order Operators}
 %%% Local Variables:
 %%% mode: LaTeX
 %%% TeX-master: "../main"

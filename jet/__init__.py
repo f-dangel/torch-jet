@@ -41,12 +41,19 @@ class JetTracer(Tracer):
 
 
 def jet(
-    f: Callable[[Primal], Value], k: int, vmap: bool = False, verbose: bool = False
+    f: Callable[[Primal], Value],
+    k: int,
+    vmap: bool = False,
+    collapse: bool = False,
+    verbose: bool = False,
 ) -> Callable[[Tuple[Primal, ...]], Tuple[Value, ...]]:
     """Overload a function with its Taylor-mode equivalent.
 
     Args:
         f: Function to overload. Maps a tensor to another tensor.
+        k: The order of the Taylor expansion.
+        collapse: Whether to `vmap` and collapse the highest coefficient.
+            Default: `False`.
         verbose: Whether to print the traced graphs before and after overloading.
             Default: `False`.
 
@@ -54,6 +61,7 @@ def jet(
         The overloaded function that computes the function and its Taylor coefficients
         from the input tensor and its Taylor coefficients.
     """
+    assert not collapse
     # Wrap the function in a module if it is not already a module.
     # We want to always produce an executable `torch.fx.GraphModule`.
     if not isinstance(f, Module):
@@ -65,7 +73,7 @@ def jet(
     if verbose:
         print(f"Traced graph before jet overloading:\n{mod.graph}")
 
-    jet_mod = _replace_operations_with_taylor(mod, k, vmap=vmap)
+    jet_mod = _replace_operations_with_taylor(mod, k, vmap=vmap, collapse=collapse)
 
     if verbose:
         print(f"Traced graph after jet overloading:\n{jet_mod.graph}")
@@ -74,12 +82,14 @@ def jet(
 
 
 def _replace_operations_with_taylor(
-    mod: GraphModule, k: int, vmap: bool
+    mod: GraphModule, k: int, vmap: bool, collapse: bool
 ) -> GraphModule:
     """Replace operations in the graph with Taylor-mode equivalents.
 
     Args:
         mod: Traced PyTorch computation graph module.
+        k: The order of the Taylor expansion.
+        collapse: Whether to `vmap` and collapse the highest coefficient.
 
     Returns:
         The overloaded computation graph module with Taylor arithmetic.
@@ -88,44 +98,37 @@ def _replace_operations_with_taylor(
         NotImplementedError: If an unsupported operation or node is encountered while
             carrying out the overloading.
     """
+    assert not collapse
     graph = mod.graph
 
-    (input_node,) = [node for node in graph.nodes if node.op == "placeholder"]
-
-    with graph.inserting_after(input_node):
+    # find the input node and insert nodes for the Taylor coefficients
+    (x,) = [node for node in graph.nodes if node.op == "placeholder"]
+    with graph.inserting_after(x):
         vs = [graph.placeholder(name=f"v{i}") for i in reversed(range(1, k + 1))][::-1]
-    with graph.inserting_after(vs[-1]):
-        stacked = graph.call_function(
-            stack,
-            args=((next(iter(graph.nodes)), *vs),),
-            kwargs={"dim": 1 if vmap else 0},
+
+    # find the node that consumes the original input, replace it with a new node whose
+    # argument argument is the tuple of original input and Taylor coefficients
+    (child_x,) = [node for node in graph.nodes if x in node.args]
+    with graph.inserting_after(child_x):
+        where = child_x.args.index(x)
+        new_args = list(child_x.args)
+        new_args[where] = (x, *vs)
+        new_node = graph.call_function(
+            child_x.target, args=tuple(new_args), kwargs=child_x.kwargs
         )
+    child_x.replace_all_uses_with(new_node)
+    graph.erase_node(child_x)
 
+    # replace all operations (including that of new_node) their Taylor mode equivalents
     for node in tuple(graph.nodes):
-        if node.op == "call_function" and input_node in node.args and node != stacked:
-            # change the node to use the stacked input instead of the input node
-            with graph.inserting_after(node):
-                where = node.args.index(input_node)
-                new_args = list(node.args)
-                new_args[where] = stacked
-                new_node = graph.call_function(
-                    node.target, args=tuple(new_args), kwargs=node.kwargs
-                )
-            node.replace_all_uses_with(new_node)
-            graph.erase_node(node)
-
-    for idx, node in enumerate(tuple(graph.nodes)):
         if node.op == "call_function":
-            if node == stacked:
-                continue
-
             f = node.target
             if f not in MAPPING.keys():
                 raise NotImplementedError(f"Unsupported node target: {node.target}")
             with graph.inserting_after(node):
                 new_node = graph.call_function(
                     MAPPING[f],
-                    args=((*node.args, tuple(vs)),) if idx == 1 else node.args,
+                    args=node.args,
                     kwargs={**node.kwargs, "K": k, "vmap": vmap},
                 )
             node.replace_all_uses_with(new_node)
@@ -138,18 +141,6 @@ def _replace_operations_with_taylor(
             )
         elif node.op not in ["output", "placeholder", "get_attr"]:
             raise NotImplementedError(f"Unsupported node operation: {node.op}")
-
-    # instead of the output, we want to use the split tensor
-    (output_node,) = [node for node in graph.nodes if node.op == "output"]
-    with graph.inserting_after(output_node):
-        split_node = graph.call_function(
-            split, args=(output_node.args[0], 1), kwargs={"dim": 1 if vmap else 0}
-        )
-    output_node.replace_all_uses_with(split_node)
-    graph.erase_node(output_node)
-
-    with graph.inserting_after(split_node):
-        graph.output(split_node)
 
     mod.graph.lint()
     mod.recompile()
@@ -204,6 +195,6 @@ def rev_jet(
         f_x = f_x.detach()
         vs_out = tuple(v.detach().reshape_as(f_x) for v in vs_out)
 
-        return f_x, vs_out
+        return (f_x, *vs_out)
 
     return jet_f

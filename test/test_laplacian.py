@@ -2,10 +2,10 @@ from test.utils import VMAP_IDS, VMAPS, Sin
 from typing import Callable
 
 from pytest import mark
-from torch import Tensor, eye, manual_seed, rand, vmap, zeros_like
+from torch import Size, Tensor, eye, manual_seed, rand, zeros_like
 from torch.autograd.functional import hessian
 from torch.fx import symbolic_trace
-from torch.nn import Linear, Sequential, Sigmoid, Tanh
+from torch.nn import Linear, Module, Sequential, Sigmoid, Tanh
 
 from jet import jet
 
@@ -26,30 +26,18 @@ def laplacian_jet_loop(f, x):
     return lap
 
 
-def laplacian_jet_torch_vmap(f, x):
-    jet_f = jet(f, 2, verbose=True)
-    v2 = zeros_like(x)
+class Laplacian(Module):
+    def __init__(self, f, x_shape):
+        super().__init__()
+        self.jet_f = jet(f, 2, vmap=True)
+        self.dim = x_shape.numel()
+        self.shape = x_shape
 
-    def d2_f(v1):
-        return jet_f(x, v1, v2)[2]
-
-    dim_x = x.numel()
-    v1s = eye(dim_x, dtype=x.dtype, device=x.device).reshape(dim_x, *x.shape)
-
-    vmap_d2_f = vmap(d2_f)
-    lap = vmap_d2_f(v1s).sum()
-
-    return lap
-
-
-def laplacian_jet_manual_vmap(f, x):
-    dim = x.numel()
-    jet_f = jet(f, k=2, vmap=True, verbose=True)
-    X = x.unsqueeze(0).expand(dim, *x.shape)
-    V1 = eye(x.numel(), dtype=x.dtype, device=x.device).reshape(dim, *x.shape)
-    V2 = zeros_like(X)
-
-    return jet_f(X, V1, V2)[2].sum()
+    def forward(self, x):
+        X = x.unsqueeze(0).expand(self.dim, *[-1 * len(self.shape)])
+        V1 = eye(self.dim).reshape(self.dim, *self.shape)
+        V2 = zeros_like(X)
+        return self.jet_f(X, V1, V2)[2].sum(0)
 
 
 def laplacian(f: Callable[[Tensor], Tensor], x: Tensor) -> Tensor:
@@ -65,7 +53,7 @@ def laplacian(f: Callable[[Tensor], Tensor], x: Tensor) -> Tensor:
     return hessian(f, x).trace()
 
 
-def test_laplacian_vmap():
+def test_laplacian():
     """Compare Laplacian implementations."""
     manual_seed(0)
     mlp = Sequential(
@@ -86,19 +74,11 @@ def test_laplacian_vmap():
     assert lap_rev.allclose(lap_jet_loop)
     print("Functorch and jet (loop) Laplacians match.")
 
-    # Using a torch.vmap-ed jet to compute all diagonal elements
-    # NOTE: This function is not trace-able, therefore we cannot
-    # symbolically simplify it.
-    lap_jet_torch_vmap = laplacian_jet_torch_vmap(mlp, x)
-    assert lap_rev.allclose(lap_jet_torch_vmap)
-    print("Functorch and jet (vmap) Laplacians match.")
-
-    # Using a manually vmap-ed jet to compute all diagonal elements.
-    # NOTE: This function is trace-able, therefore we can symbolically
-    # simplify it.
-    lap_jet_manual_vmap = laplacian_jet_manual_vmap(mlp, x)
-    assert lap_rev.allclose(lap_jet_manual_vmap)
-    print("Functorch and manually-jetted Laplacians match.")
+    # Using a manually-vmapped jet that is traceable
+    # NOTE: This module is trace-able, therefore we can symbolically simplify it.
+    lap_mod = Laplacian(mlp, x.shape)(x)
+    assert lap_rev.allclose(lap_mod)
+    print("Functorch and module-vmapped traceable Laplacian module match.")
 
 
 @mark.parametrize("vmap", VMAPS, ids=VMAP_IDS)
@@ -109,7 +89,7 @@ def test_symbolic_trace_jet(vmap: bool):
         vmap: Whether to use vmap.
     """
     mlp = Sequential(
-        Linear(5, 4, bias=False),
+        Linear(5, 1, bias=False),
         Tanh(),
         Linear(4, 3, bias=True),
         Sin(),
@@ -122,4 +102,22 @@ def test_symbolic_trace_jet(vmap: bool):
     # try tracing it
     print("Compute graph of jet function:")
     mod = symbolic_trace(jet_f)
+    print(mod.graph)
+
+
+def test_symbolic_trace_Laplacian():
+    """Test whether the Laplacian module is trace-able."""
+    mlp = Sequential(
+        Linear(5, 1, bias=False),
+        Tanh(),
+        Linear(4, 3, bias=True),
+        Sin(),
+        Linear(3, 1, bias=True),
+        Sigmoid(),
+    )
+    lap = Laplacian(mlp, Size([5]))
+
+    # try tracing the Laplacian module
+    print("Compute graph of manually Laplacian module:")
+    mod = symbolic_trace(lap)
     print(mod.graph)

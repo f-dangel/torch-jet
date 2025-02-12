@@ -12,8 +12,8 @@ from jet.utils import Primal, PrimalAndCoefficients, Value, ValueAndCoefficients
 
 
 def compare_jet_results(out1: ValueAndCoefficients, out2: ValueAndCoefficients):
-    value1, series1 = out1
-    value2, series2 = out2
+    value1, series1 = out1[0], out1[1:]
+    value2, series2 = out2[0], out2[1:]
 
     report_nonclose(value1, value2, name="Values")
     assert len(series1) == len(series2)
@@ -41,7 +41,6 @@ def check_jet(f: Callable[[Primal], Value], arg: PrimalAndCoefficients):
 
     jet_f = jet(f, k=len(vs), verbose=True)
     jet_out = jet_f(x, *vs)
-    jet_out = (jet_out[0], jet_out[1:])
 
     compare_jet_results(jet_out, rev_jet_out)
 

@@ -2,8 +2,7 @@
 
 from typing import Optional
 
-from torch import Tensor, cat, cos, sigmoid, sin, stack, tanh, zeros, zeros_like
-from torch.nn import Module
+from torch import Tensor, cos, sigmoid, sin, tanh, zeros_like
 from torch.nn.functional import linear
 
 from jet.utils import (
@@ -14,37 +13,8 @@ from jet.utils import (
     tensor_prod,
 )
 
-# class JetSin(Module):
 
-#     def forward(self, arg):
-#         (x, vs) = arg
-
-#         # pre-compute derivatives
-#         sin_x = sin(x)
-#         dsin = {0: sin_x, 1: cos(x)}
-
-#         def dn(*vs) -> Tensor:
-#             """Contract the derivative tensor along the vectors."""
-#             n = len(vs)
-#             sign = 1 if n % 4 in [0, 1] else -1
-#             func = dsin[0] if n % 2 == 0 else dsin[1]
-#             return tensor_prod(sign * func, *vs)
-
-#         vs_out = [zeros_like(sin_x) for _ in vs]
-#         order = len(vs)
-
-#         for k in range(order):
-#             for sigma in integer_partitions(k + 1):
-#                 vs_contract = [vs[i - 1] for i in sigma]
-#                 nu = multiplicity(sigma)
-#                 vs_out[k].add_(dn(*vs_contract), alpha=nu)
-
-#         return sin_x, tuple(vs_out)
-
-
-def jet_sin(
-    s: PrimalAndCoefficients, K=None, vmap: bool = False
-) -> ValueAndCoefficients:
+def jet_sin(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the sine function.
 
     Args:
@@ -53,9 +23,7 @@ def jet_sin(
     Returns:
         The stacked output and Taylor coefficients
     """
-    dim = 1 if vmap else 0
-    x, vs = s.split([1, K], dim=dim)
-    x = x.squeeze(dim)
+    x, vs = s[0], s[1:]
 
     # pre-compute derivatives
     sin_x = sin(x)
@@ -68,20 +36,18 @@ def jet_sin(
         func = dsin[0] if n % 2 == 0 else dsin[1]
         return tensor_prod(sign * func, *vs)
 
-    vs_out = stack([zeros_like(sin_x) for _ in range(K)], dim=dim)
+    vs_out = [zeros_like(sin_x) for _ in range(K)]
 
     for k in range(K):
         for sigma in integer_partitions(k + 1):
-            vs_contract = [vs.select(dim, i - 1) for i in sigma]
+            vs_contract = [vs[i - 1] for i in sigma]
             nu = multiplicity(sigma)
-            vs_out.select(dim, k).add_(dn(*vs_contract), alpha=nu)
+            vs_out[k].add_(dn(*vs_contract), alpha=nu)
 
-    return cat([sin_x.unsqueeze(dim), vs_out], dim=dim)
+    return (sin_x, *vs_out)
 
 
-def jet_tanh(
-    s: PrimalAndCoefficients, K=None, vmap: bool = False
-) -> ValueAndCoefficients:
+def jet_tanh(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the hyperbolic tangent function.
 
     Args:
@@ -90,9 +56,7 @@ def jet_tanh(
     Returns:
         The stacked output and Taylor coefficients.
     """
-    dim = 1 if vmap else 0
-    x, vs = s.split([1, K], dim=dim)
-    x = x.squeeze(dim)
+    x, vs = s[0], s[1:]
 
     # pre-compute derivatives
     tanh_x = x.tanh()
@@ -113,20 +77,18 @@ def jet_tanh(
         """Contract the derivative tensor along the vectors."""
         return tensor_prod(dtanh[len(vs)], *vs)
 
-    vs_out = stack([zeros_like(tanh_x) for _ in range(K)], dim=dim)
+    vs_out = [zeros_like(tanh_x) for _ in range(K)]
 
     for k in range(K):
         for sigma in integer_partitions(k + 1):
-            vs_contract = [vs.select(dim, i - 1) for i in sigma]
+            vs_contract = [vs[i - 1] for i in sigma]
             nu = multiplicity(sigma)
-            vs_out.select(dim, k).add_(dn(*vs_contract), alpha=nu)
+            vs_out[k].add_(dn(*vs_contract), alpha=nu)
 
-    return cat([tanh_x.unsqueeze(dim), vs_out], dim=dim)
+    return (tanh_x, *vs_out)
 
 
-def jet_sigmoid(
-    s: PrimalAndCoefficients, K=None, vmap: bool = False
-) -> ValueAndCoefficients:
+def jet_sigmoid(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the sigmoid function.
 
     Args:
@@ -135,9 +97,7 @@ def jet_sigmoid(
     Returns:
         The stacked output and Taylor coefficients.
     """
-    dim = 1 if vmap else 0
-    x, vs = s.split([1, K], dim=dim)
-    x = x.squeeze(dim)
+    x, vs = s[0], s[1:]
 
     # pre-compute derivatives
     sigmoid_x = sigmoid(x)
@@ -155,15 +115,15 @@ def jet_sigmoid(
         """Contract the derivative tensor along the vectors."""
         return tensor_prod(dsigmoid[len(vs)], *vs)
 
-    vs_out = stack([zeros_like(sigmoid_x) for _ in range(K)], dim=dim)
+    vs_out = [zeros_like(sigmoid_x) for _ in range(K)]
 
     for k in range(K):
         for sigma in integer_partitions(k + 1):
-            vs_contract = [vs.select(dim, i - 1) for i in sigma]
+            vs_contract = [vs[i - 1] for i in sigma]
             nu = multiplicity(sigma)
-            vs_out.select(dim, k).add_(dn(*vs_contract), alpha=nu)
+            vs_out[k].add_(dn(*vs_contract), alpha=nu)
 
-    return cat([sigmoid_x.unsqueeze(dim), vs_out], dim=dim)
+    return (sigmoid_x, *vs_out)
 
 
 def jet_linear(
@@ -181,13 +141,12 @@ def jet_linear(
     Returns:
         The stacked output and Taylor coefficients.
     """
-    dim = 1 if vmap else 0
-    x, vs = s.split([1, K], dim=dim)
+    x, vs = s[0], s[1:]
 
     linear_x = linear(x, weight, bias=bias)
-    vs_out = linear(vs, weight)
+    vs_out = [linear(vs[k], weight) for k in range(K)]
 
-    return cat([linear_x, vs_out], dim=dim)
+    return (linear_x, *vs_out)
 
 
 MAPPING = {

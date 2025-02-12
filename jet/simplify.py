@@ -76,7 +76,7 @@ def simplify(mod: GraphModule, verbose: bool = False) -> GraphModule:
     graph = mod.graph
     # Propagate replicate nodes down the graph as much as possible: It is always better
     # to compute then replicate, rather than compute on a replicated object
-    while swappable := swappable_replicate_nodes(mod):
+    while swappable := swappable_replicate_nodes(mod, verbose=verbose):
         for rep in swappable:
             children = [n for n in graph.nodes if rep in n.args]
             # do the swap:

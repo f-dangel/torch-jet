@@ -10,6 +10,7 @@ from torch.nn import Linear, Module, Sequential, Sigmoid, Tanh
 from jet import jet
 from jet.utils import replicate
 
+# tell `torch.fx` to trace `replicate` as one node
 wrap(replicate)
 
 

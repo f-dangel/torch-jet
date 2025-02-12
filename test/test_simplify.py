@@ -11,7 +11,7 @@ from jet.simplify import simplify
 from jet.utils import replicate
 
 # tell `torch.fx` to trace `replicate` as one node
-wrap("replicate")
+wrap(replicate)
 
 
 class Replicate(Module):

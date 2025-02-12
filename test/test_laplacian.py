@@ -4,10 +4,14 @@ from typing import Callable
 from pytest import mark
 from torch import Size, Tensor, eye, manual_seed, rand, zeros_like
 from torch.autograd.functional import hessian
-from torch.fx import symbolic_trace
+from torch.fx import symbolic_trace, wrap
 from torch.nn import Linear, Module, Sequential, Sigmoid, Tanh
 
 from jet import jet
+from jet.utils import replicate
+
+# tell `torch.fx` to trace `replicate` as one node
+wrap(replicate)
 
 
 def laplacian_jet_loop(f, x):
@@ -34,7 +38,7 @@ class Laplacian(Module):
         self.shape = x_shape
 
     def forward(self, x):
-        X = x.unsqueeze(0).expand(self.dim, *[-1 * len(self.shape)])
+        X = replicate(x, self.dim, len(self.shape))
         V1 = eye(self.dim).reshape(self.dim, *self.shape)
         V2 = zeros_like(X)
         return self.jet_f(X, V1, V2)[2].sum(0)
@@ -89,7 +93,7 @@ def test_symbolic_trace_jet(vmap: bool):
         vmap: Whether to use vmap.
     """
     mlp = Sequential(
-        Linear(5, 1, bias=False),
+        Linear(5, 4, bias=False),
         Tanh(),
         Linear(4, 3, bias=True),
         Sin(),
@@ -108,7 +112,7 @@ def test_symbolic_trace_jet(vmap: bool):
 def test_symbolic_trace_Laplacian():
     """Test whether the Laplacian module is trace-able."""
     mlp = Sequential(
-        Linear(5, 1, bias=False),
+        Linear(5, 4, bias=False),
         Tanh(),
         Linear(4, 3, bias=True),
         Sin(),

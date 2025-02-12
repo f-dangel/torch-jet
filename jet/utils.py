@@ -93,3 +93,19 @@ class WrapperModule(Module):
             Output tensor.
         """
         return self.f(x)
+
+
+def replicate(x: Tensor, times: int, x_ndim: int) -> Tensor:
+    """Repeat a tensor along a new leading axis.
+
+    Args:
+        x: Tensor to repeat.
+        times: Number of times to repeat the tensor.
+        x_ndim: Number of dimensions of the tensor. Must be passed to make the function
+            trace-able with `torch.fx` (it cannot infer it otherwise).
+
+    Returns:
+        Tensor with a new leading axis repeated `times` times.
+    """
+    repeat = [times] + x_ndim * [-1]
+    return x.unsqueeze(0).expand(*repeat)

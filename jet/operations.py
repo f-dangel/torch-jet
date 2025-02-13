@@ -2,7 +2,11 @@
 
 from typing import Optional
 
-from torch import Tensor, cos, sigmoid, sin, tanh, zeros_like
+from torch import Tensor
+from torch import add as torch_add
+from torch import cos, cosh, mul
+from torch import pow as torch_pow
+from torch import sigmoid, sin, tanh, zeros_like
 from torch.nn.functional import linear
 
 from jet.utils import (
@@ -42,18 +46,21 @@ def jet_sin(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficient
         Returns:
             The contracted derivative tensor.
         """
-        n = len(vs)
-        sign = 1 if n % 4 in [0, 1] else -1
-        func = dsin[0] if n % 2 == 0 else dsin[1]
-        return tensor_prod(sign * func, *vs)
+        func = dsin[0] if len(vs) % 2 == 0 else dsin[1]
+        return tensor_prod(func, *vs)
 
-    vs_out = [zeros_like(sin_x) for _ in range(K)]
+    vs_out = []
 
     for k in range(K):
-        for sigma in integer_partitions(k + 1):
+        for idx, sigma in enumerate(integer_partitions(k + 1)):
             vs_contract = [vs[i - 1] for i in sigma]
+            sign = 1 if len(sigma) % 4 in [0, 1] else -1
             nu = multiplicity(sigma)
-            vs_out[k].add_(dn(*vs_contract), alpha=nu)
+            term = mul(dn(*vs_contract), sign * nu)
+            if idx == 0:
+                vs_out.append(term)
+            else:
+                vs_out.append(torch_add(vs_out.pop(-1), term))
 
     return (sin_x, *vs_out)
 
@@ -75,15 +82,17 @@ def jet_tanh(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficien
     x, vs = s[0], s[1:]
 
     # pre-compute derivatives
-    tanh_x = x.tanh()
-    sech_x = 1 / x.cosh()
+    tanh_x = tanh(x)
+    sech_x = torch_pow(cosh(x), -1)
     dtanh = {0: tanh_x}
     if K >= 1:
-        dtanh[1] = sech_x**2
+        dtanh[1] = torch_pow(sech_x, 2)
     if K >= 2:
-        dtanh[2] = -2 * dtanh[0] * dtanh[1]
+        dtanh[2] = mul(tensor_prod(dtanh[0], dtanh[1]), -2)
     if K >= 3:
-        dtanh[3] = -2 * dtanh[1] ** 2 + 4 * dtanh[0] ** 2 * dtanh[1]
+        dtanh[3] = mul(torch_pow(dtanh[1], 2), -2) + mul(
+            tensor_prod(torch_pow(dtanh[0], 2), dtanh[1]), 4
+        )
     if K > 3:
         raise NotImplementedError(
             f"Tanh only supports derivatives up to third order. Got {K}."
@@ -100,13 +109,18 @@ def jet_tanh(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficien
         """
         return tensor_prod(dtanh[len(vs)], *vs)
 
-    vs_out = [zeros_like(tanh_x) for _ in range(K)]
+    # vs_out = [zeros_like(tanh_x) for _ in range(K)]
+    vs_out = [None for _ in range(K)]
 
     for k in range(K):
-        for sigma in integer_partitions(k + 1):
+        for idx, sigma in enumerate(integer_partitions(k + 1)):
             vs_contract = [vs[i - 1] for i in sigma]
             nu = multiplicity(sigma)
-            vs_out[k].add_(dn(*vs_contract), alpha=nu)
+            if idx == 0:
+                vs_out.append(dn(*vs_contract).mul_(nu))
+            else:
+                vs_out.append(torch_add(vs_out.pop(-1)))
+                vs_out[k].add_(dn(*vs_contract), alpha=nu)
 
     return (tanh_x, *vs_out)
 

@@ -2,7 +2,7 @@ from test.utils import VMAP_IDS, VMAPS, Sin
 from typing import Callable
 
 from pytest import mark
-from torch import Size, Tensor, eye, manual_seed, rand, zeros_like
+from torch import Tensor, eye, manual_seed, rand, zeros, zeros_like
 from torch.autograd.functional import hessian
 from torch.fx import symbolic_trace, wrap
 from torch.nn import Linear, Module, Sequential, Sigmoid, Tanh
@@ -31,17 +31,26 @@ def laplacian_jet_loop(f, x):
 
 
 class Laplacian(Module):
-    def __init__(self, f, x_shape):
+    def __init__(self, f, dummy_x):
         super().__init__()
         self.jet_f = jet(f, 2, vmap=True)
-        self.dim = x_shape.numel()
-        self.shape = x_shape
+        # data that needs to be inferred explicitly from a dummy input
+        # because `torch.fx` cannot do this.
+        self.x_numel = dummy_x.numel()
+        self.x_shape = dummy_x.shape
+        self.x_dtype = dummy_x.dtype
+        self.x_device = dummy_x.device
 
     def forward(self, x):
-        X = replicate(x, self.dim, len(self.shape))
-        V1 = eye(self.dim).reshape(self.dim, *self.shape)
-        V2 = zeros_like(X)
-        return self.jet_f(X, V1, V2)[2].sum(0)
+        X = replicate(x, self.x_numel)
+        V1 = eye(self.x_numel, dtype=self.x_dtype, device=self.x_device).reshape(
+            self.x_numel, *self.x_shape
+        )
+        V2 = zeros(
+            self.x_numel, *self.x_shape, dtype=self.x_dtype, device=self.x_device
+        )
+        result = self.jet_f(X, V1, V2)
+        return result[0], result[1], result[2].sum(0)
 
 
 def laplacian(f: Callable[[Tensor], Tensor], x: Tensor) -> Tensor:
@@ -80,7 +89,7 @@ def test_laplacian():
 
     # Using a manually-vmapped jet that is traceable
     # NOTE: This module is trace-able, therefore we can symbolically simplify it.
-    lap_mod = Laplacian(mlp, x.shape)(x)
+    _, _, lap_mod = Laplacian(mlp, x)(x)
     assert lap_rev.allclose(lap_mod)
     print("Functorch and module-vmapped traceable Laplacian module match.")
 
@@ -119,7 +128,8 @@ def test_symbolic_trace_Laplacian():
         Linear(3, 1, bias=True),
         Sigmoid(),
     )
-    lap = Laplacian(mlp, Size([5]))
+    x_dummy = zeros(5)
+    lap = Laplacian(mlp, x_dummy)
 
     # try tracing the Laplacian module
     print("Compute graph of manually Laplacian module:")

@@ -1,58 +1,201 @@
 """Functions to simplify a compute graph captured with `torch.fx`."""
 
-from typing import List
+import operator
+from typing import Any, List, Optional, Tuple
 
-from torch import cos, sigmoid, sin, tanh, zeros_like
-from torch.fx import GraphModule, Node
+from torch import add, cos, cosh, div, einsum, mul
+from torch import pow as torch_pow
+from torch import sigmoid, sin, sub, tanh
+from torch.fx import Graph, GraphModule, Node
 from torch.nn.functional import linear
 
 from jet.utils import replicate
 
-# operations that act repeatedly along the leading dimension of a tensor
-# and can therefore be swapped with a `replicate` operation
-ACTS_REPEATED = {zeros_like, linear, sin, cos, tanh, sigmoid}
 
+class RewriteReplicate:
+    """Class for propagating `replicate` nodes down a compute graph.
 
-def swaps_with_replicate(node: Node) -> bool:
-    """Check if a node can be swapped with a `replicate` node.
-
-    Args:
-        node: The node to check that processes the output of a `replicate` node.
-
-    Returns:
-        Whether the node can be swapped with the `replicate` node it processes.
+    Allows to simplify the compute graph by avoiding redundant computations on
+    replicated tensors.
     """
-    return node.op == "call_function" and node.target in ACTS_REPEATED
 
+    def __init__(self, graph: Graph, verbose: bool = False):
+        """Store the graph.
 
-def swappable_replicate_nodes(mod: GraphModule, verbose: bool = False) -> List[Node]:
-    """Find `replicate` nodes that can be swapped with their children.
+        Args:
+            graph: The compute graph to simplify.
+            verbose: Whether to print debug information. Default: `False`.
+        """
+        self.graph = graph
+        self.verbose = verbose
 
-    Args:
-        mod: A computation graph.
-        verbose: Whether to print debug information. Default: `False`.
+    @staticmethod
+    def is_replicate(arg: Any) -> bool:
+        """Check if an argument of a node is a `replicate` node.
 
-    Returns:
-        A list of `replicate` nodes that can be swapped with their children.
-    """
-    rep_nodes = [
-        n for n in mod.graph.nodes if n.op == "call_function" and n.target == replicate
-    ]
-    swappable = []
-    for rep in rep_nodes:
-        children = [n for n in mod.graph.nodes if rep in n.args]
-        if not children:
-            if verbose:
-                print(f"Replicate node {rep} has no children.")
-            continue
-        elif all(swaps_with_replicate(child) for child in children):
-            if verbose:
-                print(f"Can swap {rep} with {children}.")
-            swappable.append(rep)
-        elif verbose:
-            print(f"Cannot swap {rep} with {children}.")
+        Args:
+            arg: An entry from a `Node.arg` tuple.
 
-    return swappable
+        Returns:
+            Whether the argument is a `replicate` node.
+        """
+        return (
+            isinstance(arg, Node)
+            and arg.op == "call_function"
+            and arg.target == replicate
+        )
+
+    def parents(self, node: Node) -> List[Node]:
+        """Get the parent nodes of a given node.
+
+        Args:
+            node: The node whose parents to find.
+
+        Returns:
+            The parent nodes of the given node.
+        """
+        return [n for n in self.graph.nodes if n in node.all_input_nodes]
+
+    def children(self, node: Node) -> List[Node]:
+        """Get the children nodes of a given node.
+
+        Args:
+            node: The node whose children to find.
+
+        Returns:
+            The children nodes of the given node.
+        """
+        return [n for n in self.graph.nodes if node in n.all_input_nodes]
+
+    def find_pattern(self) -> Optional[Tuple[List[Node], Node]]:
+        """Find a pattern that can be simplified.
+
+        Returns:
+            A pattern that can be simplified, or `None` if no such pattern is found.
+            A pattern consists of two parts: a list of nodes that can be swapped with
+            the node returned as second part.
+        """
+        for node in self.graph.nodes:
+            if node.op != "call_function":
+                continue
+
+            pattern = None
+            parents = self.parents(node)
+
+            # operations that consume a single replicate tensor `x_rep = replicate(x)`
+            if (
+                node.target
+                in {
+                    cos,  # torch.cos(x_rep) -> replicate(torch.cos(x))
+                    tanh,  # torch.tanh(x_rep) -> replicate(torch.tanh(x))
+                    sigmoid,  # torch.sigmoid(x_rep) -> replicate(torch.sigmoid(x))
+                    cosh,  # torch.cosh(x_rep) -> replicate(torch.cosh(x))
+                    torch_pow,  # torch.pow(x_rep, 2) -> replicate(torch.pow(x, 2))
+                    sin,  # torch.sin(x_rep) -> replicate(torch.sin(x))
+                    operator.pow,  # x_rep ** 2 -> replicate(x ** 2)
+                    mul,  # torch.mul(x_rep, 2) -> replicate(torch.mul(x, 2))
+                    operator.mul,  # x_rep * 2 -> replicate(x * 2)
+                    div,  # torch.div(x_rep, 2) -> replicate(torch.div(x, 2))
+                    operator.truediv,  # x_rep / 2 -> replicate(x / 2)
+                    operator.add,  # x_rep + 2 -> replicate(x + 2)
+                    add,  # torch.add(x_rep, 2) -> replicate(torch.add(x, 2))
+                    operator.sub,  # x_rep - 2 -> replicate(x - 2)
+                    sub,  # torch.sub(x_rep, 2) -> replicate(torch.sub(x, 2))
+                }
+                and len(parents) == 1
+                and all(self.is_replicate(p) for p in parents)
+            ):
+                pattern = [parents, node]
+
+            # a linear layer that processes a replicated input tensor
+            # `x_rep = replicate(x)`:
+            # `linear(x_rep, W, bias=b)` -> `replicate(linear(x), W, bias=b)`
+            elif node.target == linear and self.is_replicate(node.args[0]):
+                pattern = [[node.args[0]], node]
+
+            # operations that consume two replicate tensors `x_rep1 = replicate(x1)`,
+            # `x_rep2 = replicate(x2)`
+            elif (
+                node.target
+                in {
+                    add,  # torch.add(x_rep1, x_rep2) -> replicate(torch.add(x1, x2))
+                    operator.add,  # x_rep1 + x_rep2 -> replicate(x1 + x2)
+                    mul,  # torch.mul(x_rep1, x_rep2) -> replicate(torch.mul(x1, x2))
+                    operator.mul,  # x_rep1 * x_rep2 -> replicate(x1 * x2)
+                    sub,  # torch.sub(x_rep1, x_rep2) -> replicate(torch.sub(x1, x2))
+                    operator.sub,  # x_rep1 - x_rep2 -> replicate(x1 - x2)
+                }
+                and len(parents) == 2
+                and all(self.is_replicate(arg) for arg in node.args)
+            ):
+                pattern = [parents, node]
+
+            # operations that consume multiple replicate tensors, e.g.
+            # `x_rep1 = replicate(x1)`, `x_rep2 = replicate(x2)` and
+            # `x_rep3 = replicate(x3)`. Then
+            # `einsum("...,...,...->...", x_rep1, x_rep2, x_rep3)`
+            # -> `replicate(einsum("...,...,...->...", x1, x2, x3))`
+            elif (
+                node.target == einsum
+                and node.args[0] == ",".join(len(node.args[1:]) * ["..."]) + "->..."
+                and all(self.is_replicate(arg) for arg in node.args[1:])
+            ):
+                # remove duplicates if the same node feeds multiple times into einsum
+                pattern = [list(set(node.args[1:])), node]
+
+            if pattern is not None:
+                self.maybe_print(f"Can swap {pattern[0]} and {pattern[1]}")
+                return pattern
+
+    def maybe_erase(self, rep: Node):
+        """Remove a replicate node if it has no children.
+
+        Args:
+            rep: The replicate node.
+        """
+        children = self.children(rep)
+        if len(children) == 0:
+            self.maybe_print(f"Erasing {rep}.")
+            self.graph.erase_node(rep)
+        else:
+            self.maybe_print(f"Not removing {rep} because it has children {children}.")
+
+    def replace_pattern(self, pattern: Tuple[List[Node], Node]):
+        """Replace a pattern in the graph.
+
+        Args:
+            pattern: A pattern returned by `find_pattern`.
+        """
+        replicates, op = pattern
+        # figure out the parent of each replicate node because we want to skip
+        # the replicate nodes
+        replicate_parents = {}
+        for rep in replicates:
+            (rep_parent,) = self.parents(rep)
+            replicate_parents[rep] = rep_parent
+
+        # create a new replicate node that replaces the old one and is located after
+        # the operation node
+        with self.graph.inserting_after(op):
+            new_rep = self.graph.call_function(replicate, kwargs=replicates[0].kwargs)
+        op.replace_all_uses_with(new_rep)
+
+        # rewire the arguments
+        op.args = tuple(replicate_parents.get(arg, arg) for arg in op.args)
+        new_rep.args = (op,) + replicates[0].args[1:]
+
+        # remove the old replicate nodes if possible
+        for rep in replicates:
+            self.maybe_erase(rep)
+
+    def maybe_print(self, message: str):
+        """Print a message if verbose mode is enabled.
+
+        Args:
+            message: The message to print.
+        """
+        if self.verbose:
+            print(message)
 
 
 def simplify(mod: GraphModule, verbose: bool = False) -> GraphModule:
@@ -64,41 +207,18 @@ def simplify(mod: GraphModule, verbose: bool = False) -> GraphModule:
       This avoids redundant computations on replicated tensors.
 
     Args:
-        mod: A computation graph that will be simplified.
+        mod: A graph module whose computation graph will be simplified.
         verbose: Whether to print debug information. Default: `False`.
 
     Returns:
-        The simplified computation graph.
+        The simplified graph module.
     """
     if verbose:
         print(f"Traced graph before simplification:\n{mod.graph}")
 
-    graph = mod.graph
-    # Propagate replicate nodes down the graph as much as possible: It is always better
-    # to compute then replicate, rather than compute on a replicated object
-    while swappable := swappable_replicate_nodes(mod, verbose=verbose):
-        for rep in swappable:
-            children = [n for n in graph.nodes if rep in n.args]
-            # do the swap:
-            # 1. Insert a new replicate node right after the child
-            # 2. replace all the child's uses with the new replicate node
-            # 3. Set the child's output as the input to the new replicate node
-            # 4. Set the child's input to the old replicate node's input
-            for child in children:
-                with graph.inserting_after(child):
-                    new_rep = graph.call_function(
-                        replicate, args=rep.args, kwargs=rep.kwargs
-                    )
-                child.replace_all_uses_with(new_rep)
-                new_rep.args = (child, *rep.args[1:])
-
-                new_args = list(child.args)
-                where = child.args.index(rep)
-                new_args[where] = rep.args[0]
-                child.args = tuple(new_args)
-
-            # remove the replicate node
-            graph.erase_node(rep)
+    rewriter = RewriteReplicate(mod.graph, verbose=verbose)
+    while pattern := rewriter.find_pattern():
+        rewriter.replace_pattern(pattern)
 
     mod.graph.lint()
     mod.recompile()

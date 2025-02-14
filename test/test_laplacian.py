@@ -2,7 +2,7 @@ from test.utils import VMAP_IDS, VMAPS, Sin
 from typing import Callable
 
 from pytest import mark
-from torch import Size, Tensor, eye, manual_seed, rand, zeros, zeros_like
+from torch import Tensor, eye, manual_seed, rand, zeros, zeros_like
 from torch.autograd.functional import hessian
 from torch.fx import symbolic_trace, wrap
 from torch.nn import Linear, Module, Sequential, Sigmoid, Tanh
@@ -42,7 +42,7 @@ class Laplacian(Module):
         self.x_device = dummy_x.device
 
     def forward(self, x):
-        X = replicate(x, self.x_numel, len(self.x_shape))
+        X = replicate(x, self.x_numel)
         V1 = eye(self.x_numel, dtype=self.x_dtype, device=self.x_device).reshape(
             self.x_numel, *self.x_shape
         )

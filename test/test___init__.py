@@ -135,13 +135,13 @@ for compact in CASES_COMPACT:
 
 
 def setup_case(
-    config: Dict[str, Any], vmap: int = 0
+    config: Dict[str, Any], vmapsize: int = 0
 ) -> Tuple[Callable[[Primal], Value], Primal, Tuple[Primal]]:
     """Instantiate the function, its input, and Taylor coefficients.
 
     Args:
         config: Configuration dictionary of the test case.
-        vmap: Whether to generate inputs and Taylor coefficients for a vmap-ed
+        vmapsize: Whether to generate inputs and Taylor coefficients for a vmap-ed
             operation. `0` means no vmap is applied. Default: `0`.
 
     Returns:
@@ -156,26 +156,25 @@ def setup_case(
     if isinstance(f, Module):
         f = f.double()
 
-    vmap_shape = shape if vmap == 0 else (vmap,) + shape
+    vmap_shape = shape if vmapsize == 0 else (vmapsize, *shape)
     x = rand(*vmap_shape).double()
     vs = tuple(rand(*vmap_shape).double() for _ in range(k))
 
     return f, x, vs
 
 
-VMAPS = [0, 4]
-VMAP_IDS = ["novmap" if v == 0 else f"vmap={v}" for v in VMAPS]
+VMAPSIZES = [0, 4]
+VMAPSIZE_IDS = ["novmap" if v == 0 else f"vmapsize={v}" for v in VMAPSIZES]
 
 
 @pytest.mark.parametrize("config", CASES, ids=CASE_IDS)
-@pytest.mark.parametrize("vmap", VMAPS, ids=VMAP_IDS)
-def test_jet(config: Dict[str, Any], vmap: int):
+@pytest.mark.parametrize("vmapsize", VMAPSIZES, ids=VMAPSIZE_IDS)
+def test_jet(config: Dict[str, Any], vmapsize: int):
     """Compare forward jet with reverse-mode reference implementation.
 
     Args:
         config: Configuration dictionary of the test case.
-        vmap: Whether to use vmap. `0` means no vmap is applied. Any positive integer
-            means the size of the vmapped dimension.
+        vmapsize: The size of the vmaped dimension. `0` means no vmap.
     """
-    f, x, vs = setup_case(config, vmap=vmap)
-    check_jet(f, (x, vs), vmap != 0)
+    f, x, vs = setup_case(config, vmapsize=vmapsize)
+    check_jet(f, (x, vs), vmapsize != 0)

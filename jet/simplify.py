@@ -197,6 +197,41 @@ class RewriteReplicate:
         if self.verbose:
             print(message)
 
+    def fuse_replicates_with_einsum(self):
+        """Attempt to fuse replicate nodes that act as inputs to einsum.
+
+        E.g. consider einsum('...,...->...', replicate(x), y). This can be simplified
+        into einsum('...,a...->a...', x, y)).
+        """
+        for node in self.graph.nodes:
+            if (
+                node.op == "call_function"
+                and node.target == einsum
+                and node.args[0] == ",".join(len(node.args[1:]) * ["..."]) + "->..."
+                and any(self.is_replicate(arg) for arg in node.args[1:])
+            ):
+                replicates = [arg for arg in node.args[1:] if self.is_replicate(arg)]
+                replicate_parents = {}
+                for rep in replicates:
+                    (rep_parent,) = self.parents(rep)
+                    replicate_parents[rep] = rep_parent
+
+                # modify the einsum equation and operands
+                lhs = [
+                    "..." if self.is_replicate(arg) else "a..." for arg in node.args[1:]
+                ]
+                equation = ",".join(lhs) + "->a..."
+                new_args = (
+                    equation,
+                    *(replicate_parents.get(arg, arg) for arg in node.args[1:]),
+                )
+                self.maybe_print(f"Fusing {node}: {node.args} into {new_args}")
+                node.args = new_args
+
+                # try removing the old replicate nodes
+                for rep in replicates:
+                    self.maybe_erase(rep)
+
 
 def simplify(mod: GraphModule, verbose: bool = False) -> GraphModule:
     """Simplify a compute graph.
@@ -219,6 +254,8 @@ def simplify(mod: GraphModule, verbose: bool = False) -> GraphModule:
     rewriter = RewriteReplicate(mod.graph, verbose=verbose)
     while pattern := rewriter.find_pattern():
         rewriter.replace_pattern(pattern)
+
+    rewriter.fuse_replicates_with_einsum()
 
     mod.graph.lint()
     mod.recompile()

@@ -16,6 +16,7 @@ There are two kinds of tests:
 """
 
 from test.test___init__ import CASE_IDS, CASES, compare_jet_results, setup_case
+from test.test_laplacian import Laplacian, laplacian
 from typing import Any, Callable, Dict
 
 import pytest
@@ -30,10 +31,13 @@ from jet.utils import (
     ValueAndCoefficients,
     WrapperModule,
     replicate,
+    sum_vmapped,
 )
 
 # tell `torch.fx` to trace `replicate` as one node
 wrap(replicate)
+# tell `torch.fx` to trace `sum_vmapped` as one node
+wrap(sum_vmapped)
 
 
 class Replicate(Module):
@@ -75,16 +79,19 @@ class Replicate(Module):
         return self.traced_f(X)
 
 
-def ensure_outputs_only_replicate(graph: Graph):
+def ensure_outputs_replicates(graph: Graph, num_outputs: int, num_replicates: int):
     """Make sure the compute graph outputs only `replicate` nodes.
 
     Args:
         graph: The compute graph to check.
+        num_outputs: The number of nodes that should be returned.
+        num_replicates: The number of `replicate` nodes that should be returned.
     """
     output = list(graph.nodes)[-1]  # -1 is the output node
     parents = [n for n in graph.nodes if n in output.all_input_nodes]
-    for parent in parents:
-        assert RewriteReplicate.is_replicate(parent)
+    assert len(parents) == num_outputs
+    replicates = [n for n in parents if RewriteReplicate.is_replicate(n)]
+    assert len(replicates) == num_replicates
 
 
 def ensure_num_replicates(graph: Graph, num_replicates: int):
@@ -124,7 +131,7 @@ def test_propagate_replication(config: Dict[str, Any], num_replicas: int = 3):
     print("After simplifying, Replicate module still behaves the same.")
 
     # make sure the `replicate` node made it to the end
-    ensure_outputs_only_replicate(fast.graph)
+    ensure_outputs_replicates(fast.graph, 1, 1)
     # make sure there are no other `replicate` nodes in the graph
     ensure_num_replicates(fast.graph, 1)
 
@@ -202,5 +209,37 @@ def test_propagate_replication_jet(config: Dict[str, Any], num_replicas: int = 3
     compare_jet_results(jet_f_result, fast_result)
 
     # make sure the `replicate` nodes made it to the end
-    ensure_outputs_only_replicate(fast.graph)
+    ensure_outputs_replicates(fast.graph, k + 1, k + 1)
     ensure_num_replicates(fast.graph, k + 1)
+
+
+@pytest.mark.parametrize("config", CASES, ids=CASE_IDS)
+def test_simplify_laplacian(config: Dict[str, Any]):
+    """Test the simplification of a Laplacian's compute graph.
+
+    Replicate nodes should be propagated down the graph.
+    Sum nodes should be propagated up.
+
+    Args:
+        config: The configuration of the test case.
+    """
+    f, x, _ = setup_case(config)
+    mod = Laplacian(f, x)
+
+    mod_out = mod(x)
+    lap = laplacian(f, x)
+    assert lap.allclose(mod_out[2])
+    print("Laplacian via jet matches Laplacian via functorch.")
+
+    # simplify the traced module
+    fast = symbolic_trace(mod)
+    fast = simplify(fast, verbose=True)
+    fast_out = fast(x)
+
+    compare_jet_results(mod_out, fast_out)
+    print("Laplacian via jet matches Laplacian via simplified module.")
+
+    # make sure the `replicate` node from the 0th component made it to the end
+    # and all other `replicate`s were successfully fused
+    ensure_outputs_replicates(fast.graph, 3, 1)
+    ensure_num_replicates(fast.graph, 1)

@@ -107,3 +107,15 @@ def replicate(x: Tensor, times: int) -> Tensor:
     """
     repeat = [times] + x.ndim * [-1]
     return x.unsqueeze(0).expand(*repeat)
+
+
+def sum_vmapped(x: Tensor) -> Tensor:
+    """Sum out a vmap-ed axis.
+
+    Args:
+        x: Vmap-ed tensor.
+
+    Returns:
+        Sum of the vmap-ed tensor.
+    """
+    return x.sum(0)

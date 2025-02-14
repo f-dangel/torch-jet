@@ -174,6 +174,8 @@ def test_jet(config: Dict[str, Any], vmap: int):
 
     Args:
         config: Configuration dictionary of the test case.
+        vmap: Whether to use vmap. `0` means no vmap is applied. Any positive integer
+            means the size of the vmapped dimension.
     """
     f, x, vs = setup_case(config, vmap=vmap)
     check_jet(f, (x, vs), vmap != 0)

@@ -151,7 +151,7 @@ class ReplicateJet(Module):
         return self.jet_f(X, *VS)
 
 
-@pytest.mark.parametrize("config", CASES[:5], ids=lambda c: c["id"])
+@pytest.mark.parametrize("config", CASES, ids=lambda c: c["id"])
 def test_propagate_replication_jet(
     config: Dict[str, Callable], num_replicas: int = 128
 ):

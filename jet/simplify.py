@@ -1,12 +1,13 @@
 """Functions to simplify a compute graph captured with `torch.fx`."""
 
-from typing import List
+import operator
 
-from torch import Tensor
 from torch import add as torch_add
-from torch import cos, cosh, einsum, mul
+from torch import cos, cosh, div, einsum, mul
 from torch import pow as torch_pow
-from torch import sigmoid, sin, tanh
+from torch import sigmoid, sin
+from torch import sub as torch_sub
+from torch import tanh
 from torch.fx import GraphModule, Node
 from torch.nn.functional import linear
 
@@ -41,19 +42,38 @@ class RewriteReplicate:
 
             # operations that consume a single tensor and no other arguments
             if (
-                node.target in {cos, tanh, sigmoid, cosh, torch_pow, sin}
+                node.target
+                in {
+                    cos,
+                    tanh,
+                    sigmoid,
+                    cosh,
+                    torch_pow,
+                    sin,
+                    operator.pow,
+                }
                 and len(self.parents(node)) == 1
                 and all(self.is_replicate(p) for p in self.parents(node))
             ):
                 pattern = [self.parents(node), node]
 
+            # a linear layer that processes a replicated input tensor
             elif node.target == linear and self.is_replicate(node.args[0]):
                 pattern = [[node.args[0]], node]
 
             # operations that consume a single tensor and a scalar
             elif (
-                node.target == mul
-                and isinstance(node.args[1], (float, int))
+                node.target
+                in {
+                    mul,
+                    operator.mul,
+                    div,
+                    operator.truediv,
+                    operator.add,
+                    torch_add,
+                    operator.sub,
+                    torch_sub,
+                }
                 and len(self.parents(node)) == 1
                 and all(self.is_replicate(p) for p in self.parents(node))
             ):
@@ -61,7 +81,15 @@ class RewriteReplicate:
 
             # operations that consume two tensors tensor and nothing else
             elif (
-                node.target == torch_add
+                node.target
+                in {
+                    torch_add,
+                    operator.add,
+                    mul,
+                    operator.mul,
+                    torch_sub,
+                    operator.sub,
+                }
                 and len(node.args) == 2
                 and all(self.is_replicate(arg) for arg in node.args)
             ):

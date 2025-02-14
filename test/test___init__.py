@@ -3,7 +3,7 @@
 from typing import Callable, Dict
 
 import pytest
-from torch import Tensor, isclose, manual_seed, rand, sin, tanh, tensor
+from torch import Tensor, isclose, manual_seed, rand, sigmoid, sin, tanh, tensor
 from torch.nn import Linear, Sequential, Tanh
 from torch.nn.functional import linear
 
@@ -153,6 +153,16 @@ CASES = [
         "primal": lambda: rand(5),
         "coefficients": lambda: tuple(rand(5).double() for _ in range(3)),
         "id": "3-jet-two-layer-tanh-mlp-5d",
+    },
+    # 2-jet of a 3d sigmoid(sigmoid) function
+    {
+        "f": lambda x: sigmoid(sigmoid(x)),
+        "primal": lambda: tensor([-0.1, -0.05, 0.3]),
+        "coefficients": lambda: (
+            tensor([0.4, 0.01, -0.2]),
+            tensor([-0.32, -0.04, 0.5]),
+        ),
+        "id": "2-jet-sigmoid-sigmoid-3d",
     },
 ]
 

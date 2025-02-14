@@ -1,3 +1,4 @@
+from functools import partial
 from test.utils import VMAP_IDS, VMAPS, Sin
 from typing import Callable
 
@@ -68,9 +69,12 @@ def laplacian(f: Callable[[Tensor], Tensor], x: Tensor) -> Tensor:
     """
     out = f(x)
 
+    def f_flat(x_flat, i):
+        return f(x_flat.reshape_as(x)).flatten()[i]
+
     lap = zeros_like(out).flatten()
     for i in range(out.numel()):
-        f_i = lambda x_flat: f(x_flat.reshape_as(x)).flatten()[i]
+        f_i = partial(f_flat, i=i)
         lap[i] = hessian(f_i, x.flatten()).trace()
 
     return lap.reshape_as(out)

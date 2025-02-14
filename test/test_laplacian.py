@@ -1,3 +1,4 @@
+from functools import partial
 from test.utils import VMAP_IDS, VMAPS, Sin
 from typing import Callable
 
@@ -8,10 +9,12 @@ from torch.fx import symbolic_trace, wrap
 from torch.nn import Linear, Module, Sequential, Sigmoid, Tanh
 
 from jet import jet
-from jet.utils import replicate
+from jet.utils import replicate, sum_vmapped
 
 # tell `torch.fx` to trace `replicate` as one node
 wrap(replicate)
+# tell `torch.fx` to trace `sum_vmapped` as one node
+wrap(sum_vmapped)
 
 
 def laplacian_jet_loop(f, x):
@@ -50,20 +53,31 @@ class Laplacian(Module):
             self.x_numel, *self.x_shape, dtype=self.x_dtype, device=self.x_device
         )
         result = self.jet_f(X, V1, V2)
-        return result[0], result[1], result[2].sum(0)
+        return result[0], result[1], sum_vmapped(result[2])
 
 
 def laplacian(f: Callable[[Tensor], Tensor], x: Tensor) -> Tensor:
     """Compute the Laplacian of a scalar function.
 
     Args:
-        f: The scalar function to compute the Hessian of.
-        x: The point at which to compute the Hessian.
+        f: The function to compute the Laplacian of.
+        x: The point at which to compute the Laplacian.
 
     Returns:
-        The Hessian of the function f at the point x.
+        The Laplacian of the function f at the point x, evaluated
+        for each element f[i](x). Has same shape as f(x)
     """
-    return hessian(f, x).trace()
+    out = f(x)
+
+    def f_flat(x_flat, i):
+        return f(x_flat.reshape_as(x)).flatten()[i]
+
+    lap = zeros_like(out).flatten()
+    for i in range(out.numel()):
+        f_i = partial(f_flat, i=i)
+        lap[i] = hessian(f_i, x.flatten()).trace()
+
+    return lap.reshape_as(out)
 
 
 def test_laplacian():

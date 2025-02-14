@@ -2,7 +2,7 @@ from test.utils import VMAP_IDS, VMAPS, Sin
 from typing import Callable
 
 from pytest import mark
-from torch import Size, Tensor, eye, manual_seed, rand, zeros
+from torch import Size, Tensor, eye, manual_seed, rand, zeros, zeros_like
 from torch.autograd.functional import hessian
 from torch.fx import symbolic_trace, wrap
 from torch.nn import Linear, Module, Sequential, Sigmoid, Tanh
@@ -89,7 +89,7 @@ def test_laplacian():
 
     # Using a manually-vmapped jet that is traceable
     # NOTE: This module is trace-able, therefore we can symbolically simplify it.
-    lap_mod = Laplacian(mlp, x.shape)(x)
+    _, _, lap_mod = Laplacian(mlp, x)(x)
     assert lap_rev.allclose(lap_mod)
     print("Functorch and module-vmapped traceable Laplacian module match.")
 
@@ -128,7 +128,8 @@ def test_symbolic_trace_Laplacian():
         Linear(3, 1, bias=True),
         Sigmoid(),
     )
-    lap = Laplacian(mlp, Size([5]))
+    x_dummy = zeros(5)
+    lap = Laplacian(mlp, x_dummy)
 
     # try tracing the Laplacian module
     print("Compute graph of manually Laplacian module:")

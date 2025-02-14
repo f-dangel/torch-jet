@@ -92,6 +92,7 @@ def ensure_num_replicates(graph: Graph, num_replicates: int):
 
     Args:
         graph: The compute graph to check.
+        num_replicates: The number of `replicate` nodes to check for.
     """
     replicates = [n for n in graph.nodes if RewriteReplicate.is_replicate(n)]
     assert len(replicates) == num_replicates

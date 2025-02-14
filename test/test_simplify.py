@@ -15,11 +15,11 @@ There are two kinds of tests:
         x, v1, v2, ... -> replicate(jet_f(x, v1, v2, ...)).
 """
 
-from test.test___init__ import CASES, compare_jet_results
-from typing import Callable, Dict
+from test.test___init__ import CASE_IDS, CASES, compare_jet_results, setup_case
+from typing import Any, Callable, Dict
 
 import pytest
-from torch import Tensor, manual_seed
+from torch import Tensor
 from torch.fx import Graph, GraphModule, symbolic_trace, wrap
 from torch.nn import Module
 
@@ -98,8 +98,8 @@ def ensure_num_replicates(graph: Graph, num_replicates: int):
     assert len(replicates) == num_replicates
 
 
-@pytest.mark.parametrize("config", CASES, ids=lambda c: c["id"])
-def test_propagate_replication(config: Dict[str, Callable], num_replicas: int = 3):
+@pytest.mark.parametrize("config", CASES, ids=CASE_IDS)
+def test_propagate_replication(config: Dict[str, Any], num_replicas: int = 3):
     """Test the propagation of replication node through a compute graph.
 
     It is always better to compute then replicate, rather than carry out
@@ -109,9 +109,7 @@ def test_propagate_replication(config: Dict[str, Callable], num_replicas: int = 
         config: The configuration of the test case.
         num_replicas: The number of replicas to create. Default: `3`.
     """
-    manual_seed(0)
-    f = config["f"]
-    x = config["primal"]().double()
+    f, x, _ = setup_case(config)
     f_rep = Replicate(f, num_replicas)
 
     # check that the `Replicate` module works as expected
@@ -171,8 +169,8 @@ class ReplicateJet(Module):
         return self.jet_f(X, *VS)
 
 
-@pytest.mark.parametrize("config", CASES, ids=lambda c: c["id"])
-def test_propagate_replication_jet(config: Dict[str, Callable], num_replicas: int = 3):
+@pytest.mark.parametrize("config", CASES, ids=CASE_IDS)
+def test_propagate_replication_jet(config: Dict[str, Any], num_replicas: int = 3):
     """Test the propagation of replication nodes through a compute graph of a jet.
 
     It is always better to compute then replicate, rather than carry out
@@ -182,10 +180,7 @@ def test_propagate_replication_jet(config: Dict[str, Callable], num_replicas: in
         config: The configuration of the test case.
         num_replicas: The number of replicas to create. Default: `3`.
     """
-    manual_seed(0)
-    f = config["f"]
-    x = config["primal"]().double()
-    vs = [v.double() for v in config["coefficients"]()]
+    f, x, vs = setup_case(config)
     k = len(vs)
 
     # use a single jet, then replicate

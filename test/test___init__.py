@@ -1,10 +1,10 @@
 """Tests for jet/__init__.py."""
 
-from typing import Callable, Dict
+from typing import Any, Callable, Dict, Tuple
 
 import pytest
-from torch import Tensor, isclose, manual_seed, rand, sigmoid, sin, tanh, tensor
-from torch.nn import Linear, Sequential, Tanh
+from torch import Tensor, isclose, manual_seed, rand, sigmoid, sin, stack, tanh, tensor
+from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
 
 from jet import jet, rev_jet
@@ -44,143 +44,136 @@ def report_nonclose(
     assert close
 
 
-def check_jet(f: Callable[[Primal], Value], arg: PrimalAndCoefficients):
-    rev_jet_f = rev_jet(f)
+def check_jet(f: Callable[[Primal], Value], arg: PrimalAndCoefficients, vmap: bool):
     x, vs = arg
+
+    # create a function that manually vmaps `rev_jet` (calling `torch.vmap` fails)
+    if not vmap:
+        rev_jet_f = rev_jet(f)
+    else:
+        _rev_jet_f = rev_jet(f)
+
+        def rev_jet_f(x, *vs):
+            (num,) = set([x.shape[0]] + [v.shape[0] for v in vs])
+            out, vs_out = [], [[] for _ in range(len(vs))]
+
+            # loop over vmap dimension
+            for n in range(num):
+                print("Hello", x[n].shape, [v[n].shape for v in vs])
+                result_n = _rev_jet_f(x[n], *[v[n] for v in vs])
+                out.append(result_n[0])
+                for i, v_out_n in enumerate(result_n[1:]):
+                    vs_out[i].append(v_out_n)
+
+            # stack results
+            out = stack(out)
+            vs_out = tuple(stack(v) for v in vs_out)
+
+            return (out, *vs_out)
+
     rev_jet_out = rev_jet_f(x, *vs)
 
-    jet_f = jet(f, k=len(vs), verbose=True)
+    jet_f = jet(f, k=len(vs), vmap=vmap, verbose=True)
     jet_out = jet_f(x, *vs)
 
     compare_jet_results(jet_out, rev_jet_out)
 
 
-CASES = [
+CASES_COMPACT = [
     # 2-jet of the 1d sine function
-    {
-        "f": lambda x: sin(x),
-        "primal": lambda: tensor([0.1]),
-        "coefficients": lambda: (tensor([0.2]), tensor([0.3])),
-        "id": "2-jet-sin-1d",
-    },
+    {"f": lambda x: sin(x), "shape": (1,), "k": 2, "id": "sin"},
     # 2-jet of the 2d sin(sin) function
-    {
-        "f": lambda x: sin(sin(x)),
-        "primal": lambda: tensor([0.1, 0.15]),
-        "coefficients": lambda: (tensor([0.2, 0.25]), tensor([0.3, 0.35])),
-        "id": "2-jet-sin-sin-2d",
-    },
+    {"f": lambda x: sin(sin(x)), "shape": (2,), "k": 2, "id": "sin-sin"},
     # 3-jet of the 2d sine function
-    {
-        "f": lambda x: sin(x),
-        "primal": lambda: tensor([0.1, 0.12]),
-        "coefficients": lambda: (
-            tensor([0.2, 0.22]),
-            tensor([0.3, 0.32]),
-            tensor([0.4, 0.42]),
-        ),
-        "id": "3-jet-sin-2d",
-    },
+    {"f": lambda x: sin(x), "shape": (2,), "k": 3, "id": "sin"},
     # 4-jet of the 2d sine function
-    {
-        "f": lambda x: sin(x),
-        "primal": lambda: tensor([0.1, 0.12]),
-        "coefficients": lambda: (
-            tensor([0.2, 0.22]),
-            tensor([0.3, 0.32]),
-            tensor([0.4, 0.42]),
-            tensor([0.5, 0.52]),
-        ),
-        "id": "4-jet-sin-2d",
-    },
+    {"f": lambda x: sin(x), "shape": (2,), "k": 4, "id": "sin"},
     # 5-jet of the 2d sine function
-    {
-        "f": lambda x: sin(x),
-        "primal": lambda: tensor([0.1, 0.12]),
-        "coefficients": lambda: (
-            tensor([0.2, 0.22]),
-            tensor([0.3, 0.32]),
-            tensor([0.4, 0.42]),
-            tensor([0.5, 0.52]),
-            tensor([0.6, 0.62]),
-        ),
-        "id": "5-jet-sin-2d",
-    },
+    {"f": lambda x: sin(x), "shape": (2,), "k": 5, "id": "sin"},
     # 5-jet of the 2d sin(sin) function
-    {
-        "f": lambda x: sin(sin(x)),
-        "primal": lambda: tensor([0.1, 0.12]),
-        "coefficients": lambda: (
-            tensor([0.2, 0.22]),
-            tensor([0.3, 0.32]),
-            tensor([0.4, 0.42]),
-            tensor([0.5, 0.52]),
-            tensor([0.6, 0.62]),
-        ),
-        "id": "5-jet-sin-sin-2d",
-    },
+    {"f": lambda x: sin(sin(x)), "shape": (2,), "k": 5, "id": "sin-sin"},
     # 3-jet of the 2d tanh(tanh) function
-    {
-        "f": lambda x: tanh(tanh(x)),
-        "primal": lambda: tensor([-0.1, 0.3]),
-        "coefficients": lambda: (
-            tensor([0.4, 0.01]),
-            tensor([-0.32, -0.04]),
-            tensor([-0.097, 0.73]),
-        ),
-        "id": "3-jet-tanh-tanh-2d",
-    },
+    {"f": lambda x: tanh(tanh(x)), "shape": (2,), "k": 3, "id": "tanh-tanh"},
     # 3-jet of the 2d linear(tanh) function
     {
         "f": lambda x: linear(
             tanh(x),
             tensor([[0.1, -0.2, 0.3], [0.4, 0.5, -0.6]]).double(),
-            tensor([0.12, -0.34]).double(),
+            bias=tensor([0.12, -0.34]).double(),
         ),
-        "primal": lambda: tensor([-0.1, -0.02, 0.3]),
-        "coefficients": lambda: (
-            tensor([0.4, -0.25, 0.01]),
-            tensor([-0.32, -0.04, 0.55]),
-            tensor([-0.097, 0.73, 0.12]),
-        ),
-        "id": "3-jet-linear-tanh-3d",
+        "shape": (3,),
+        "k": 3,
+        "id": "tanh-linear",
     },
     # 3-jet of a tanh-activated two-layer MLP
     {
         "f": Sequential(
             Linear(5, 4, bias=False), Tanh(), Linear(4, 3, bias=True), Tanh()
-        ).double(),
-        "primal": lambda: rand(5),
-        "coefficients": lambda: tuple(rand(5).double() for _ in range(3)),
-        "id": "3-jet-two-layer-tanh-mlp-5d",
+        ),
+        "shape": (5,),
+        "k": 3,
+        "id": "two-layer-tanh-mlp",
     },
     # 2-jet of a 3d sigmoid(sigmoid) function
     {
         "f": lambda x: sigmoid(sigmoid(x)),
-        "primal": lambda: tensor([-0.1, -0.05, 0.3]),
-        "coefficients": lambda: (
-            tensor([0.4, 0.01, -0.2]),
-            tensor([-0.32, -0.04, 0.5]),
-        ),
-        "id": "2-jet-sigmoid-sigmoid-3d",
+        "shape": (3,),
+        "k": 2,
+        "id": "sigmoid-sigmoid",
     },
 ]
+# expand compact definition of cases
+CASES = []
+CASE_IDS = []
+for compact in CASES_COMPACT:
+    k = compact["k"]
+    shape = compact["shape"]
+    ID = f"{k}-jet-{compact['id']}-{'_'.join([str(s) for s in shape])}d"
+    expanded = {"f": compact["f"], "k": compact["k"], "shape": shape}
+    CASES.append(expanded)
+    CASE_IDS.append(ID)
 
 
-@pytest.mark.parametrize("config", CASES, ids=lambda c: c["id"])
-def test_jet(config: Dict[str, Callable]):
-    """Compare forward jet with reverse-mode reference implementation.
+def setup_case(
+    config: Dict[str, Any], vmap: int = 0
+) -> Tuple[Callable[[Primal], Value], Primal, Tuple[Primal]]:
+    """Instantiate the function, its input, and Taylor coefficients.
 
     Args:
-        config: Configuration dictionary containing the function, input, and Taylor
-            coefficients.
+        config: Configuration dictionary of the test case.
+        vmap: Whether to generate inputs and Taylor coefficients for a vmap-ed
+            operation. `0` means no vmap is applied. Default: `0`.
+
+    Returns:
+        Tuple containing the function, the input tensor, and the Taylor coefficients.
+        All are in double precision to avoid numerical issues.
     """
     manual_seed(0)
     f = config["f"]
-    x = config["primal"]()
-    vs = config["coefficients"]()
+    k = config["k"]
+    shape = config["shape"]
 
-    # run everything in double precision to avoid round-off errors
-    x = x.double()
-    vs = tuple(v.double() for v in vs)
-    check_jet(f, (x, vs))
+    if isinstance(f, Module):
+        f = f.double()
+
+    vmap_shape = shape if vmap == 0 else (vmap,) + shape
+    x = rand(*vmap_shape).double()
+    vs = tuple(rand(*vmap_shape).double() for _ in range(k))
+
+    return f, x, vs
+
+
+VMAPS = [0, 4]
+VMAP_IDS = ["novmap" if v == 0 else f"vmap={v}" for v in VMAPS]
+
+
+@pytest.mark.parametrize("config", CASES, ids=CASE_IDS)
+@pytest.mark.parametrize("vmap", VMAPS, ids=VMAP_IDS)
+def test_jet(config: Dict[str, Any], vmap: int):
+    """Compare forward jet with reverse-mode reference implementation.
+
+    Args:
+        config: Configuration dictionary of the test case.
+    """
+    f, x, vs = setup_case(config, vmap=vmap)
+    check_jet(f, (x, vs), vmap != 0)

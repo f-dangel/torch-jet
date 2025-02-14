@@ -12,60 +12,102 @@ from torch.nn.functional import linear
 
 from jet.utils import replicate
 
-# operations that act repeatedly along the leading dimension of a tensor
-# and can therefore be swapped with a `replicate` operation
-ACTS_REPEATED = {linear, sin, cos, tanh, sigmoid, cosh, torch_pow}
 
+class RewriteReplicate:
+    def __init__(self, graph, verbose: bool = False):
+        self.graph = graph
+        self.verbose = verbose
 
-def swappable_children(mod: GraphModule, verbose: bool = False) -> List[Node]:
-    """Find children that can be swapped with their parent.
+    @staticmethod
+    def is_replicate(arg):
+        return (
+            isinstance(arg, Node)
+            and arg.op == "call_function"
+            and arg.target == replicate
+        )
 
-    Args:
-        mod: A computation graph.
-        verbose: Whether to print debug information. Default: `False`.
+    def parents(self, node):
+        return [n for n in self.graph.nodes if n in node.all_input_nodes]
 
-    Returns:
-        A list of children nodes that can be swapped with their parent.
-    """
-    for child in mod.graph.nodes:
-        if child.op != "call_function":
-            continue
-        parents = [
-            n for n in mod.graph.nodes if n in child.args and n.op == "call_function"
-        ]
-        if len(parents) == 1:
-            (parent,) = parents
-            if parent.target != replicate:
+    def children(self, node):
+        return [n for n in self.graph.nodes if node in n.all_input_nodes]
+
+    def find_pattern(self):
+        for node in self.graph.nodes:
+            if node.op != "call_function":
                 continue
 
-            if child.target in ACTS_REPEATED:
-                if verbose:
-                    print(f"Can swap {parent} and {child}.")
-                return [child]
-            elif child.target == mul and isinstance(child.args[1], (float, int)):
-                if verbose:
-                    print(f"Can swap {parent} and {child}.")
-                return [child]
-            elif verbose:
-                print(f"Cannot swap {parent} and {child}.")
-        elif len(parents) == 2 and child.target == torch_add:
-            if all(p.op == "call_function" and p.target == replicate for p in parents):
-                if verbose:
-                    print(f"Can swap {parents} and {child}.")
-                return [child]
-        elif len(parents) > 1:
-            if (
-                all(p.op == "call_function" and p.target == replicate for p in parents)
-                and child.target == einsum
-            ):
-                num_tensors = len(child.args[1:])
-                equation = ",".join(num_tensors * ["..."]) + "->..."
-                if equation == child.args[0]:
-                    if verbose:
-                        print(f"Can swap {parents} and {child}.")
-                    return [child]
+            pattern = None
 
-    return []
+            # operations that consume a single tensor and no other arguments
+            if (
+                node.target in {cos, tanh, sigmoid, cosh, torch_pow, sin}
+                and len(self.parents(node)) == 1
+                and all(self.is_replicate(p) for p in self.parents(node))
+            ):
+                pattern = [self.parents(node), node]
+
+            elif node.target == linear and self.is_replicate(node.args[0]):
+                pattern = [[node.args[0]], node]
+
+            # operations that consume a single tensor and a scalar
+            elif (
+                node.target == mul
+                and isinstance(node.args[1], (float, int))
+                and len(self.parents(node)) == 1
+                and all(self.is_replicate(p) for p in self.parents(node))
+            ):
+                pattern = [self.parents(node), node]
+
+            # operations that consume two tensors tensor and nothing else
+            elif (
+                node.target == torch_add
+                and len(node.args) == 2
+                and all(self.is_replicate(arg) for arg in node.args)
+            ):
+                pattern = [list(node.args), node]
+
+            # operations that consume multiple tensors and nothing else
+            elif (
+                node.target == einsum
+                and node.args[0] == ",".join(len(node.args[1:]) * ["..."]) + "->..."
+                and all(self.is_replicate(arg) for arg in node.args[1:])
+            ):
+                pattern = [list(node.args[1:]), node]
+
+            if pattern is not None:
+                print(f"Can swap {pattern[0]} and {pattern[1]}")
+                return pattern
+
+    def maybe_erase(self, rep):
+        children = self.children(rep)
+        if len(children) == 0:
+            print(f"Erasing {rep}.")
+            self.graph.erase_node(rep)
+        else:
+            print(f"Not removing {rep} because it has children {children}.")
+
+    def replace_pattern(self, pattern):
+        replicates, op = pattern
+        replicate_parents = {}
+        for rep in replicates:
+            (rep_parent,) = self.parents(rep)
+            replicate_parents[rep] = rep_parent
+
+        with self.graph.inserting_after(op):
+            new_rep = self.graph.call_function(replicate, kwargs=replicates[0].kwargs)
+        op.replace_all_uses_with(new_rep)
+
+        op.args = tuple(replicate_parents.get(arg, arg) for arg in op.args)
+
+        new_rep.args = (op,) + replicates[0].args[1:]
+
+        for rep in replicates:
+            self.maybe_erase(rep)
+
+    def maybe_print(self, message: str):
+        if self.verbose:
+            print(message)
 
 
 def simplify(mod: GraphModule, verbose: bool = False) -> GraphModule:
@@ -86,104 +128,9 @@ def simplify(mod: GraphModule, verbose: bool = False) -> GraphModule:
     if verbose:
         print(f"Traced graph before simplification:\n{mod.graph}")
 
-    graph = mod.graph
-    # Propagate replicate nodes down the graph as much as possible: It is always better
-    # to compute then replicate, rather than compute on a replicated object
-    while swappable := swappable_children(mod, verbose=verbose):
-        (child,) = swappable
-        parents = [
-            n for n in graph.nodes if n in child.args and n.op == "call_function"
-        ]
-
-        if len(parents) == 1:
-            (parent,) = parents
-            # do the swap:
-            # 1. Insert a new replicate node right after the child
-            # 2. replace all the child's uses with the new replicate node
-            # 3. Set the child's output as the input to the new replicate node
-            # 4. Set the child's input to the old replicate node's input
-            with graph.inserting_after(child):
-                new_parent = graph.call_function(
-                    replicate, args=parent.args, kwargs=parent.kwargs
-                )
-            child.replace_all_uses_with(new_parent)
-            new_parent.args = (child, *parent.args[1:])
-
-            new_args = list(child.args)
-            where = child.args.index(parent)
-            new_args[where] = parent.args[0]
-            child.args = tuple(new_args)
-
-            # if parent has no more children, remove it
-            if not any(n for n in graph.nodes if parent in n.args):
-                if verbose:
-                    print(f"Erasing node {parent}.")
-                graph.erase_node(parent)
-        elif (
-            len(parents) == 2
-            and child.op == "call_function"
-            and child.target == torch_add
-        ):
-
-            with graph.inserting_after(child):
-                new_parent = graph.call_function(replicate)
-            child.replace_all_uses_with(new_parent)
-
-            def find_parent(node):
-                for parent in graph.nodes:
-                    if parent in node.args:
-                        return parent
-                raise RuntimeError
-
-            parent_inputs = tuple(find_parent(n) for n in child.args)
-            child.args = parent_inputs
-            new_parent.args = (child,) + parents[0].args[1:]
-
-            # if parent has no more children, remove it
-            for parent in parents:
-                if (
-                    not any(n for n in graph.nodes if parent in n.args)
-                    and parent not in list(graph.nodes)[-1].args[0]
-                ):
-                    if verbose:
-                        print(f"Erasing node {parent}.")
-                        # print(graph)
-                    graph.erase_node(parent)
-
-        else:
-            # raise Exception(f"{child} has parents {parents}")
-            with graph.inserting_after(child):
-                new_parent = graph.call_function(replicate)
-            print(f"Einsum arguments: {child.args[1:]}")
-            child.replace_all_uses_with(new_parent)
-
-            def find_parent(node):
-                for parent in graph.nodes:
-                    if parent in node.args:
-                        return parent
-                raise RuntimeError
-
-            parent_inputs = tuple(find_parent(n) for n in child.args[1:])
-            child.args = (child.args[0],) + parent_inputs
-
-            new_parent.args = (child,) + parents[0].args[1:]
-
-            print(f"New einsum arguments: {child.args[1:]}")
-
-            # if parent has no more children, remove it
-            for parent in parents:
-                if (
-                    not any(n for n in graph.nodes if parent in n.args)
-                    and parent not in list(graph.nodes)[-1].args[0]
-                ):
-                    if verbose:
-                        print(f"Erasing node {parent}.")
-                        # print(graph)
-                    graph.erase_node(parent)
-
-        print("\n\n")
-        print(graph)
-        print("\n\n")
+    rewriter = RewriteReplicate(mod.graph, verbose=verbose)
+    while pattern := rewriter.find_pattern():
+        rewriter.replace_pattern(pattern)
 
     mod.graph.lint()
     mod.recompile()

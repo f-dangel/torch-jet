@@ -127,7 +127,7 @@ class RewriteReplicate:
                     operator.sub,  # x_rep1 - x_rep2 -> replicate(x1 - x2)
                 }
                 and len(parents) == 2
-                and all(self.is_replicate(arg) for arg in node.args)
+                and all(self.is_replicate(arg) for arg in node.all_input_nodes)
             ):
                 pattern = [parents, node]
 
@@ -138,11 +138,11 @@ class RewriteReplicate:
             # -> `replicate(einsum("...,...,...->...", x1, x2, x3))`
             elif (
                 node.target == einsum
-                and node.args[0] == ",".join(len(node.args[1:]) * ["..."]) + "->..."
-                and all(self.is_replicate(arg) for arg in node.args[1:])
+                and node.args[0]
+                == f"{','.join((node.args[0].count(',') + 1) * ['...'])}->..."
+                and all(self.is_replicate(arg) for arg in node.all_input_nodes)
             ):
-                # remove duplicates if the same node feeds multiple times into einsum
-                pattern = [list(set(node.args[1:])), node]
+                pattern = [list(node.all_input_nodes), node]
 
             if pattern is not None:
                 self.maybe_print(f"Can swap {pattern[0]} and {pattern[1]}")
@@ -168,22 +168,18 @@ class RewriteReplicate:
             pattern: A pattern returned by `find_pattern`.
         """
         replicates, op = pattern
-        # figure out the parent of each replicate node because we want to skip
-        # the replicate nodes
-        replicate_parents = {}
-        for rep in replicates:
-            (rep_parent,) = self.parents(rep)
-            replicate_parents[rep] = rep_parent
 
         # create a new replicate node that replaces the old one and is located after
         # the operation node
         with self.graph.inserting_after(op):
             new_rep = self.graph.call_function(replicate, kwargs=replicates[0].kwargs)
         op.replace_all_uses_with(new_rep)
+        new_rep.args = (op,) + replicates[0].args[1:]
 
         # rewire the arguments
-        op.args = tuple(replicate_parents.get(arg, arg) for arg in op.args)
-        new_rep.args = (op,) + replicates[0].args[1:]
+        for rep in replicates:
+            (parent,) = self.parents(rep)
+            op.replace_input_with(rep, parent)
 
         # remove the old replicate nodes if possible
         for rep in replicates:
@@ -208,30 +204,30 @@ class RewriteReplicate:
             if (
                 node.op == "call_function"
                 and node.target == einsum
-                and node.args[0] == ",".join(len(node.args[1:]) * ["..."]) + "->..."
-                and any(self.is_replicate(arg) for arg in node.args[1:])
+                and node.args[0]
+                == f"{','.join((node.args[0].count(',') + 1) * ['...'])}->..."
+                and any(self.is_replicate(arg) for arg in node.all_input_nodes)
             ):
-                replicates = [arg for arg in node.args[1:] if self.is_replicate(arg)]
-                replicate_parents = {}
-                for rep in replicates:
-                    (rep_parent,) = self.parents(rep)
-                    replicate_parents[rep] = rep_parent
-
-                # modify the einsum equation and operands
-                lhs = [
-                    "..." if self.is_replicate(arg) else "a..." for arg in node.args[1:]
+                old_args = node.args
+                # modify the operands
+                positions = [
+                    i for i, arg in enumerate(node.args[1:]) if self.is_replicate(arg)
                 ]
-                equation = ",".join(lhs) + "->a..."
-                new_args = (
-                    equation,
-                    *(replicate_parents.get(arg, arg) for arg in node.args[1:]),
-                )
-                self.maybe_print(f"Fusing {node}: {node.args} into {new_args}")
-                node.args = new_args
+                for rep in list(node.all_input_nodes):
+                    if self.is_replicate(rep):
+                        (parent,) = self.parents(rep)
+                        node.replace_input_with(rep, parent)
+                        # try removing the old replicate nodes
+                        self.maybe_erase(rep)
 
-                # try removing the old replicate nodes
-                for rep in replicates:
-                    self.maybe_erase(rep)
+                # modify the einsum equation
+                new_lhs = [
+                    "..." if i in positions else "a..."
+                    for i in range(len(node.args[1:]))
+                ]
+                new_equation = f"{','.join(new_lhs)}->a..."
+                node.args = (new_equation, *node.args[1:])
+                self.maybe_print(f"Fusing {node}: {old_args} into {node.args}")
 
 
 class RewriteSumVmapped(RewriteReplicate):
@@ -375,23 +371,26 @@ class RewriteSumVmapped(RewriteReplicate):
 
 
 def remove_duplicate_get_attrs(graph: Graph, verbose: bool = False):
+    """Remove duplicate `get_attr` nodes.
+
+    Args:
+        graph: The compute graph.
+        verbose: Whether to print debug information. Default: `False`.
+    """
     # find all nodes that getattr the same constant
     mapping = {}
     for node in graph.nodes:
-        if node.op != "get_attr":
-            continue
-
-        if node.target not in mapping:
-            mapping[node.target] = [node]
-        else:
-            mapping[node.target].append(node)
+        if node.op == "get_attr":
+            mapping[node.target] = mapping.get(node.target, []) + [node]
 
     for nodes in mapping.values():
-        n1 = nodes[0]
+        first, tail = nodes[0], nodes[1:]
         if verbose:
-            print(f"Replacing {n1} with {nodes[1:]}")
-        for n in nodes[1:]:
-            n.replace_all_uses_with(n1)
+            print(f"Replacing {tail} with {first}")
+        for n in tail:
+            n.replace_all_uses_with(first)
+            if verbose:
+                print(f"Erasing {n}.")
             graph.erase_node(n)
 
 

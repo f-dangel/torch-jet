@@ -277,9 +277,7 @@ class RewriteSumVmapped(RewriteReplicate):
             pattern = None
             parents = self.parents(op)
 
-            if op.op == "get_attr" and not parents and len(self.children(op)) == 1:
-                pattern = [node, op]
-            elif (
+            if (
                 op.op == "call_function"
                 and op.target in {operator.mul}
                 and len(parents) == 1
@@ -310,16 +308,6 @@ class RewriteSumVmapped(RewriteReplicate):
 
         sum_node.replace_all_uses_with(op)
         self.maybe_erase(sum_node)
-
-        if op.op == "get_attr":
-            # sum the tensor constant
-            old = getattr(self.mod, op.target)
-            new = sum_vmapped(old)
-            setattr(self.mod, op.target, new)
-            self.maybe_print(
-                f"Collapsing {op}: {tuple(old.shape)} -> {tuple(new.shape)}."
-            )
-            return
 
         if op.target == einsum and op.args[0].split("->")[1] == "a...":
             # change the equation
@@ -368,6 +356,32 @@ class RewriteSumVmapped(RewriteReplicate):
 
         for parent in parents:
             self.maybe_erase(parent)
+
+    def fuse_vmapped_sum_with_tensor_constants(self):
+        """Fuse tensor constants with `vmapped_sum` nodes.
+
+        For instance, vmapped_sum(mod._tensor_constant0) can be simplified into
+        mod._tensor_constant0 = vmapped_sum(mod._tensor_constant0)
+        """
+        sum_nodes = [n for n in self.graph.nodes if self.is_sum_vmapped(n)]
+        for sum_node in sum_nodes:
+            # identify all tensor constant nodes that feed into a sum_vmapped
+            (attr,) = self.parents(sum_node)
+            if (
+                attr.op == "get_attr"
+                and not self.parents(attr)
+                and len(self.children(attr)) == 1
+            ):
+                sum_node.replace_all_uses_with(attr)
+                self.maybe_erase(sum_node)
+
+                # sum the tensor constant
+                old = getattr(self.mod, attr.target)
+                new = sum_vmapped(old)
+                setattr(self.mod, attr.target, new)
+                self.maybe_print(
+                    f"Collapsing {attr}: {tuple(old.shape)} -> {tuple(new.shape)}."
+                )
 
 
 def remove_duplicate_get_attrs(graph: Graph, verbose: bool = False):
@@ -425,6 +439,8 @@ def simplify(mod: GraphModule, verbose: bool = False) -> GraphModule:
     rewriter = RewriteSumVmapped(mod, verbose=verbose)
     while pattern := rewriter.find_pattern():
         rewriter.replace_pattern(pattern)
+
+    rewriter.fuse_vmapped_sum_with_tensor_constants()
 
     mod.graph.lint()
     mod.recompile()

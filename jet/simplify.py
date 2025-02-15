@@ -9,7 +9,7 @@ from torch import sigmoid, sin, sub, tanh
 from torch.fx import Graph, GraphModule, Node
 from torch.nn.functional import linear
 
-from jet.utils import replicate
+from jet.utils import replicate, sum_vmapped
 
 
 class RewriteReplicate:
@@ -19,14 +19,15 @@ class RewriteReplicate:
     replicated tensors.
     """
 
-    def __init__(self, graph: Graph, verbose: bool = False):
-        """Store the graph.
+    def __init__(self, mod: GraphModule, verbose: bool = False):
+        """Store the module .
 
         Args:
-            graph: The compute graph to simplify.
+            mod: The compute graph module.
             verbose: Whether to print debug information. Default: `False`.
         """
-        self.graph = graph
+        self.mod = mod
+        self.graph = mod.graph
         self.verbose = verbose
 
     @staticmethod
@@ -233,6 +234,139 @@ class RewriteReplicate:
                     self.maybe_erase(rep)
 
 
+class RewriteSumVmapped(RewriteReplicate):
+    """Propagates summations over a vmaped axis up a computation graph."""
+
+    @staticmethod
+    def is_sum_vmapped(arg: Any) -> bool:
+        """Check if an argument of a node is a `sum_vmapped` node.
+
+        Args:
+            arg: An entry from a `Node.arg` tuple.
+
+        Returns:
+            Whether the argument is a `sum_vmapped` node.
+        """
+        return (
+            isinstance(arg, Node)
+            and arg.op == "call_function"
+            and arg.target == sum_vmapped
+        )
+
+    def find_pattern(self) -> Optional[Tuple[Node, Node]]:
+        for node in self.graph.nodes:
+            if not self.is_sum_vmapped(node):
+                continue
+            (op,) = self.parents(node)
+
+            pattern = None
+            parents = self.parents(op)
+
+            if op.op == "get_attr" and not parents and len(self.children(op)) == 1:
+                pattern = [node, op]
+            elif (
+                op.op == "call_function"
+                and op.target in {operator.mul}
+                and len(parents) == 1
+            ):
+                pattern = [node, op]
+            elif (
+                op.op == "call_function"
+                and op.target in {operator.add}
+                and len(parents) == 2
+            ):
+                pattern = [node, op]
+            elif (
+                op.op == "call_function"
+                and op.target == einsum
+                and op.args[0].split("->")[1] == "a..."
+            ):
+                pattern = [node, op]
+
+            if pattern is not None:
+                self.maybe_print(f"Can propagate {pattern[0]} up {pattern[1]}.")
+                return pattern
+
+    def replace_pattern(self, pattern: Tuple[Node, Node]):
+        sum_node, op = pattern
+        parents = self.parents(op)
+
+        sum_node.replace_all_uses_with(op)
+        self.maybe_erase(sum_node)
+
+        if op.op == "get_attr":
+            # sum the tensor constant
+            old = getattr(self.mod, op.target)
+            new = sum_vmapped(old)
+            setattr(self.mod, op.target, new)
+            self.maybe_print(
+                f"Collapsing {op}: {tuple(old.shape)} -> {tuple(new.shape)}."
+            )
+            return
+
+        if op.target == einsum and op.args[0].split("->")[1] == "a...":
+            # change the equation
+            lhs, _ = op.args[0].split("->")
+            new_equation = f"{lhs}->..."
+            op.args = (new_equation, *op.args[1:])
+
+            # check for nodes that can be fused
+            lhs_args = lhs.split(",")
+            num_usages = {node: op.args[1:].count(node) for node in op.args[1:]}
+            for lhs, arg in zip(lhs_args, op.args[1:]):
+                # print("\t", lhs, arg, num_usages[arg])
+                if num_usages[arg] != 1:
+                    continue
+                parents = self.parents(arg)
+
+                if not parents:
+                    children = self.children(arg)
+                    # print("\t\t", f"{arg} has children {children}")
+                    if len(children) == 1:
+                        # insert a sum_vmaped node
+                        with self.graph.inserting_before(op):
+                            new_sum = self.graph.call_function(sum_vmapped, args=(arg,))
+                        op.replace_input_with(arg, new_sum)
+                        where = op.args[1:].index(new_sum)
+                        lhs_args[where] = "..."
+                        new_equation = f"{','.join(lhs_args)}->..."
+                        op.args = (new_equation, *op.args[1:])
+
+            return
+
+        parents_to_sum = {}
+        for parent in parents:
+            with self.graph.inserting_before(op):
+                new_sum = self.graph.call_function(sum_vmapped, args=(parent,))
+            parents_to_sum[parent] = new_sum
+
+        op.args = tuple(parents_to_sum.get(arg, arg) for arg in op.args)
+
+        for parent in parents:
+            self.maybe_erase(parent)
+
+
+def remove_duplicate_get_attrs(graph: Graph, verbose: bool = False):
+    # find all nodes that getattr the same constant
+    mapping = {}
+    for node in graph.nodes:
+        if node.op != "get_attr":
+            continue
+
+        if node.target not in mapping:
+            mapping[node.target] = [node]
+        else:
+            mapping[node.target].append(node)
+
+    for nodes in mapping.values():
+        n1 = nodes[0]
+        if verbose:
+            print(f"Replacing {n1} with {nodes[1:]}")
+        for n in nodes[1:]:
+            n.replace_all_uses_with(n1)
+            graph.erase_node(n)
+
+
 def simplify(mod: GraphModule, verbose: bool = False) -> GraphModule:
     """Simplify a compute graph.
 
@@ -251,11 +385,19 @@ def simplify(mod: GraphModule, verbose: bool = False) -> GraphModule:
     if verbose:
         print(f"Traced graph before simplification:\n{mod.graph}")
 
-    rewriter = RewriteReplicate(mod.graph, verbose=verbose)
+    # this assumes no side effects in the graph, so that it does not matter
+    # when we call get_attr on a module's tensor constant
+    remove_duplicate_get_attrs(mod.graph, verbose=verbose)
+
+    rewriter = RewriteReplicate(mod, verbose=verbose)
     while pattern := rewriter.find_pattern():
         rewriter.replace_pattern(pattern)
 
     rewriter.fuse_replicates_with_einsum()
+
+    rewriter = RewriteSumVmapped(mod, verbose=verbose)
+    while pattern := rewriter.find_pattern():
+        rewriter.replace_pattern(pattern)
 
     mod.graph.lint()
     mod.recompile()

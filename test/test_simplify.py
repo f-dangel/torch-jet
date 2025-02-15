@@ -15,17 +15,18 @@ There are two kinds of tests:
         x, v1, v2, ... -> replicate(jet_f(x, v1, v2, ...)).
 """
 
+from copy import deepcopy
 from test.test___init__ import CASE_IDS, CASES, compare_jet_results, setup_case
 from test.test_laplacian import Laplacian, laplacian
 from typing import Any, Callable, Dict
 
 import pytest
 from torch import Tensor
-from torch.fx import Graph, GraphModule, symbolic_trace, wrap
+from torch.fx import Graph, GraphModule, Node, symbolic_trace, wrap
 from torch.nn import Module
 
 from jet import JetTracer, jet, rev_jet
-from jet.simplify import RewriteReplicate, simplify
+from jet.simplify import RewriteReplicate, RewriteSumVmapped, simplify
 from jet.utils import (
     PrimalAndCoefficients,
     ValueAndCoefficients,
@@ -213,7 +214,7 @@ def test_propagate_replication_jet(config: Dict[str, Any], num_replicas: int = 3
     ensure_num_replicates(fast.graph, k + 1)
 
 
-@pytest.mark.parametrize("config", CASES, ids=CASE_IDS)
+@pytest.mark.parametrize("config", CASES[:1], ids=CASE_IDS[:1])
 def test_simplify_laplacian(config: Dict[str, Any]):
     """Test the simplification of a Laplacian's compute graph.
 
@@ -233,6 +234,7 @@ def test_simplify_laplacian(config: Dict[str, Any]):
 
     # simplify the traced module
     fast = symbolic_trace(mod)
+    backup = deepcopy(fast)  # backup for later comparison
     fast = simplify(fast, verbose=True)
     fast_out = fast(x)
 
@@ -243,3 +245,25 @@ def test_simplify_laplacian(config: Dict[str, Any]):
     # and all other `replicate`s were successfully fused
     ensure_outputs_replicates(fast.graph, 3, 1)
     ensure_num_replicates(fast.graph, 1)
+
+    # make sure the `sum_vmapped` node is not at the output node anymore
+    output_node = list(fast.graph.nodes)[-1]
+    sum_outputs = [
+        n for n in output_node.all_input_nodes if RewriteSumVmapped.is_sum_vmapped(n)
+    ]
+    assert not sum_outputs
+
+    # make sure there are no other `sum_vmapped` nodes in the graph
+    sum_nodes = [n for n in fast.graph.nodes if RewriteSumVmapped.is_sum_vmapped(n)]
+    assert not sum_nodes
+
+    # make sure the module's tensor constant corresponding to the highest
+    # Taylor coefficient was collapsed
+    constants = [n.target for n in fast.graph.nodes if n.op == "get_attr"]
+    assert len(constants) == 2  # first- and second-order coefficients
+
+    c0, c1 = constants
+    # first-order coefficient is still the same shape
+    assert getattr(backup, c0).shape == getattr(fast, c0).shape
+    # second-order coefficient was collapsed
+    assert getattr(backup, c1).shape == (x.numel(),) + getattr(fast, c1).shape

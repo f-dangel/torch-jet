@@ -255,6 +255,25 @@ class RewriteSumVmapped(RewriteReplicate):
 
     def find_pattern(self) -> Optional[Tuple[Node, Node]]:
         for node in self.graph.nodes:
+
+            if (
+                node.op == "call_function"
+                and node.target == einsum
+                and node.args[0].split("->")[1] == "..."
+            ):
+                # hoist out tensors with 'a...'
+                lhs = node.args[0].split("->")[0].split(",")
+                # print(lhs)
+                num_usages = {n: node.args[1:].count(n) for n in node.args[1:]}
+                for idx, (l, arg) in enumerate(zip(lhs, node.args[1:])):
+                    if l == "a..." and num_usages[arg] == 1:
+                        with self.graph.inserting_before(node):
+                            new_sum = self.graph.call_function(sum_vmapped, args=(arg,))
+                        node.replace_input_with(arg, new_sum)
+                        lhs[idx] = "..."
+                        new_equation = f"{','.join(lhs)}->..."
+                        node.args = (new_equation, *node.args[1:])
+
             if not self.is_sum_vmapped(node):
                 continue
             (op,) = self.parents(node)
@@ -275,6 +294,8 @@ class RewriteSumVmapped(RewriteReplicate):
                 and op.target in {operator.add}
                 and len(parents) == 2
             ):
+                pattern = [node, op]
+            elif op.op == "call_function" and op.target == linear:
                 pattern = [node, op]
             elif (
                 op.op == "call_function"
@@ -332,6 +353,13 @@ class RewriteSumVmapped(RewriteReplicate):
                         new_equation = f"{','.join(lhs_args)}->..."
                         op.args = (new_equation, *op.args[1:])
 
+            return
+
+        if op.target == linear:
+            input_node = op.args[0]
+            with self.graph.inserting_before(op):
+                new_sum = self.graph.call_function(sum_vmapped, args=(input_node,))
+            op.replace_input_with(input_node, new_sum)
             return
 
         parents_to_sum = {}

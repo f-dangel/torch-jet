@@ -22,7 +22,7 @@ from typing import Any, Callable, Dict
 
 import pytest
 from torch import Tensor
-from torch.fx import Graph, GraphModule, Node, symbolic_trace, wrap
+from torch.fx import Graph, GraphModule, symbolic_trace, wrap
 from torch.nn import Module
 
 from jet import JetTracer, jet, rev_jet
@@ -214,7 +214,7 @@ def test_propagate_replication_jet(config: Dict[str, Any], num_replicas: int = 3
     ensure_num_replicates(fast.graph, k + 1)
 
 
-@pytest.mark.parametrize("config", CASES[:1], ids=CASE_IDS[:1])
+@pytest.mark.parametrize("config", CASES, ids=CASE_IDS)
 def test_simplify_laplacian(config: Dict[str, Any]):
     """Test the simplification of a Laplacian's compute graph.
 
@@ -260,9 +260,8 @@ def test_simplify_laplacian(config: Dict[str, Any]):
     # make sure the module's tensor constant corresponding to the highest
     # Taylor coefficient was collapsed
     constants = [n.target for n in fast.graph.nodes if n.op == "get_attr"]
-    assert len(constants) == 2  # first- and second-order coefficients
 
-    c0, c1 = constants
+    c0, c1 = [c for c in constants if c.startswith("_tensor_constant")]
     # first-order coefficient is still the same shape
     assert getattr(backup, c0).shape == getattr(fast, c0).shape
     # second-order coefficient was collapsed

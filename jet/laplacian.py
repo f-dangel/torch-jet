@@ -16,6 +16,8 @@ wrap(sum_vmapped)
 
 
 class Laplacian(Module):
+    """Module that computes the Laplacian of a function using jets."""
+
     def __init__(
         self, f: Callable[[Tensor], Tensor], dummy_x: Tensor, is_batched: bool
     ):
@@ -50,6 +52,10 @@ class Laplacian(Module):
         Args:
             x: Input tensor. Must have same shape as the dummy input tensor that was
                passed in the constructor.
+
+        Returns:
+            Tuple containing the replicated function value, the Jacobian, and the
+            Laplacian.
         """
         X = replicate(x, self.unbatched_dim)
 

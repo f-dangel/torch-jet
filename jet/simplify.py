@@ -138,6 +138,7 @@ class RewriteReplicate:
             # -> `replicate(einsum("...,...,...->...", x1, x2, x3))`
             elif (
                 node.target == einsum
+                # NOTE This assumption is overly simplistic but sufficient for now
                 and node.args[0]
                 == f"{','.join((node.args[0].count(',') + 1) * ['...'])}->..."
                 and all(self.is_replicate(arg) for arg in node.all_input_nodes)
@@ -204,6 +205,7 @@ class RewriteReplicate:
             if (
                 node.op == "call_function"
                 and node.target == einsum
+                # NOTE This assumption is overly simplistic but sufficient for now
                 and node.args[0]
                 == f"{','.join((node.args[0].count(',') + 1) * ['...'])}->..."
                 and any(self.is_replicate(arg) for arg in node.all_input_nodes)
@@ -302,18 +304,24 @@ class RewriteSumVmapped(RewriteReplicate):
                 return pattern
 
     def replace_pattern(self, pattern: Tuple[Node, Node]):
-        sum_node, op = pattern
-        parents = self.parents(op)
+        """Replace a pattern in the graph.
 
+        Args:
+            pattern: A pattern returned by `find_pattern`. First item is the
+                `sum_vmapped` node, second item is the operation node through which
+                it can be propagated up.
+        """
+        sum_node, op = pattern
         sum_node.replace_all_uses_with(op)
         self.maybe_erase(sum_node)
 
+        # for einsum, we only have to modify the equation
         if op.target == einsum and not op.args[0].split("->")[1].startswith("..."):
-            # change the equation
             lhs, rhs = op.args[0].split("->")
             new_equation = f"{lhs}->{rhs[1:]}"
             op.args = (new_equation, *op.args[1:])
 
+        # generate new `sum_vmapped` nodes above `op` and rewire the arguments
         else:
             parents = [op.args[0]] if op.target == linear else self.parents(op)
             for parent in parents:
@@ -322,29 +330,35 @@ class RewriteSumVmapped(RewriteReplicate):
                 op.replace_input_with(parent, new_sum)
                 self.maybe_erase(parent)
 
-    def hoist_vmapped_sum_outside_einsum(self):
-        einsum_nodes = [
+    def raise_sum_vmapped_outside_einsum(self):
+        """Hoist out `sum_vmapped` nodes from a einsum operations.
+
+        For instance einsum('a...,a...->...', x, y) can be simplified into
+        einsum('...,...->...', sum_vmapped(x), sum_vmapped(y)).
+        """
+        ein_nodes = [
             n
             for n in self.graph.nodes
-            if n.op == "call_function"
-            and n.target == einsum
+            if n.op == "call_function" and n.target == einsum
+            # NOTE This assumption is overly simplistic but sufficient for now
             and n.args[0].split("->")[1] == "..."
         ]
 
-        for einsum_node in einsum_nodes:
+        for ein_node in ein_nodes:
             # hoist out tensors with 'a...'
-            lhs = einsum_node.args[0].split("->")[0].split(",")
-            usages = {
-                n: einsum_node.args[1:].count(n) for n in einsum_node.all_input_nodes
-            }
-            for idx, (l, arg) in enumerate(zip(lhs, einsum_node.args[1:])):
-                if l == "a..." and usages[arg] == 1:
-                    with self.graph.inserting_before(einsum_node):
-                        new_sum = self.graph.call_function(sum_vmapped, args=(arg,))
-                    einsum_node.replace_input_with(arg, new_sum)
+            lhs = ein_node.args[0].split("->")[0].split(",")
+            usages = {n: ein_node.args[1:].count(n) for n in ein_node.all_input_nodes}
+            for idx, (eq, arg) in enumerate(zip(lhs, ein_node.args[1:])):
+                # NOTE This assumption is overly simplistic but sufficient for now
+                if eq == "a..." and usages[arg] == 1:
                     lhs[idx] = "..."
-                    new_equation = f"{','.join(lhs)}->..."
-                    einsum_node.args = (new_equation, *einsum_node.args[1:])
+                    with self.graph.inserting_before(ein_node):
+                        new_sum = self.graph.call_function(sum_vmapped, args=(arg,))
+                    ein_node.replace_input_with(arg, new_sum)
+
+            # update the equation
+            new_equation = f"{','.join(lhs)}->..."
+            ein_node.args = (new_equation, *ein_node.args[1:])
 
     def fuse_vmapped_sum_with_tensor_constants(self):
         """Fuse tensor constants with `vmapped_sum` nodes.
@@ -428,7 +442,7 @@ def simplify(mod: GraphModule, verbose: bool = False) -> GraphModule:
     rewriter = RewriteSumVmapped(mod, verbose=verbose)
     while pattern := rewriter.find_pattern():
         rewriter.replace_pattern(pattern)
-        rewriter.hoist_vmapped_sum_outside_einsum()
+        rewriter.raise_sum_vmapped_outside_einsum()
 
     rewriter.fuse_vmapped_sum_with_tensor_constants()
 

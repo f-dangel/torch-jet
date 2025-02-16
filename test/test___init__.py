@@ -80,21 +80,15 @@ def check_jet(f: Callable[[Primal], Value], arg: PrimalAndCoefficients, vmap: bo
 
 
 CASES_COMPACT = [
-    # 2-jet of the 1d sine function
-    {"f": lambda x: sin(x), "shape": (1,), "k": 2, "id": "sin"},
-    # 2-jet of the 2d sin(sin) function
-    {"f": lambda x: sin(sin(x)), "shape": (2,), "k": 2, "id": "sin-sin"},
-    # 3-jet of the 2d sine function
-    {"f": lambda x: sin(x), "shape": (2,), "k": 3, "id": "sin"},
-    # 4-jet of the 2d sine function
-    {"f": lambda x: sin(x), "shape": (2,), "k": 4, "id": "sin"},
-    # 5-jet of the 2d sine function
-    {"f": lambda x: sin(x), "shape": (2,), "k": 5, "id": "sin"},
-    # 5-jet of the 2d sin(sin) function
-    {"f": lambda x: sin(sin(x)), "shape": (2,), "k": 5, "id": "sin-sin"},
-    # 3-jet of the 2d tanh(tanh) function
-    {"f": lambda x: tanh(tanh(x)), "shape": (2,), "k": 3, "id": "tanh-tanh"},
-    # 3-jet of the 2d linear(tanh) function
+    # 1d sine function
+    {"f": lambda x: sin(x), "shape": (1,), "k_max": float("inf"), "id": "sin"},
+    # 2d sin(sin) function
+    {"f": lambda x: sin(sin(x)), "shape": (2,), "k_max": float("inf"), "id": "sin-sin"},
+    # 2d sine function
+    {"f": lambda x: sin(x), "shape": (2,), "k_max": float("inf"), "id": "sin"},
+    # 2d tanh(tanh) function
+    {"f": lambda x: tanh(tanh(x)), "shape": (2,), "k_max": 3, "id": "tanh-tanh"},
+    # 2d linear(tanh) function
     {
         "f": lambda x: linear(
             tanh(x),
@@ -102,40 +96,50 @@ CASES_COMPACT = [
             bias=tensor([0.12, -0.34]).double(),
         ),
         "shape": (3,),
-        "k": 3,
+        "k_max": 3,
         "id": "tanh-linear",
     },
-    # 3-jet of a tanh-activated two-layer MLP
+    # 5d tanh-activated two-layer MLP
     {
         "f": Sequential(
             Linear(5, 4, bias=False), Tanh(), Linear(4, 3, bias=True), Tanh()
         ),
         "shape": (5,),
-        "k": 3,
+        "k_max": 3,
         "id": "two-layer-tanh-mlp",
     },
-    # 2-jet of a 3d sigmoid(sigmoid) function
+    # 3d sigmoid(sigmoid) function
     {
         "f": lambda x: sigmoid(sigmoid(x)),
         "shape": (3,),
-        "k": 2,
+        "k_max": 2,
         "id": "sigmoid-sigmoid",
     },
 ]
-# expand compact definition of cases
+CASES_COMPACT_IDS = []
+for compact in CASES_COMPACT:
+    shape = compact["shape"]
+    ID = f"{compact['id']}-{'_'.join([str(s) for s in shape])}d"
+    CASES_COMPACT_IDS.append(ID)
+
+# expand compact definition of cases for k=0, ... min(k_max, K_MAX)
+K_MAX = 5
 CASES = []
 CASE_IDS = []
 for compact in CASES_COMPACT:
-    k = compact["k"]
-    shape = compact["shape"]
-    ID = f"{k}-jet-{compact['id']}-{'_'.join([str(s) for s in shape])}d"
-    expanded = {"f": compact["f"], "k": compact["k"], "shape": shape}
-    CASES.append(expanded)
-    CASE_IDS.append(ID)
+    k_expand = min(compact["k_max"], K_MAX)
+    for k in range(k_expand + 1):
+        shape = compact["shape"]
+        ID = f"{k}-jet-{compact['id']}-{'_'.join([str(s) for s in shape])}d"
+        expanded = {"f": compact["f"], "k": k, "shape": shape}
+        CASES.append(expanded)
+        CASE_IDS.append(ID)
 
 
 def setup_case(
-    config: Dict[str, Any], vmapsize: int = 0
+    config: Dict[str, Any],
+    vmapsize: int = 0,
+    taylor_coefficients: bool = True,
 ) -> Tuple[Callable[[Primal], Value], Primal, Tuple[Primal]]:
     """Instantiate the function, its input, and Taylor coefficients.
 
@@ -143,6 +147,8 @@ def setup_case(
         config: Configuration dictionary of the test case.
         vmapsize: Whether to generate inputs and Taylor coefficients for a vmap-ed
             operation. `0` means no vmap is applied. Default: `0`.
+        taylor_coefficients: Whether to instantiate the Taylor coefficients.
+            This not necessary for some tests.
 
     Returns:
         Tuple containing the function, the input tensor, and the Taylor coefficients.
@@ -150,7 +156,6 @@ def setup_case(
     """
     manual_seed(0)
     f = config["f"]
-    k = config["k"]
     shape = config["shape"]
 
     if isinstance(f, Module):
@@ -158,7 +163,11 @@ def setup_case(
 
     vmap_shape = shape if vmapsize == 0 else (vmapsize, *shape)
     x = rand(*vmap_shape).double()
-    vs = tuple(rand(*vmap_shape).double() for _ in range(k))
+    vs = (
+        tuple(rand(*vmap_shape).double() for _ in range(config["k"]))
+        if taylor_coefficients
+        else ()
+    )
 
     return f, x, vs
 

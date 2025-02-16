@@ -31,7 +31,9 @@ def jet_sin(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficient
 
     # pre-compute derivatives
     sin_x = sin(x)
-    dsin = {0: sin_x, 1: cos(x)}
+    dsin = {0: sin_x}
+    if K > 0:
+        dsin[1] = cos(x)
 
     def dn(*vs: Primal) -> Value:
         """Contract the derivative tensor along the vectors.
@@ -76,9 +78,9 @@ def jet_tanh(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficien
 
     # pre-compute derivatives
     tanh_x = tanh(x)
-    sech_x = 1 / cosh(x)
     dtanh = {0: tanh_x}
     if K >= 1:
+        sech_x = 1 / cosh(x)
         dtanh[1] = sech_x**2
     if K >= 2:
         dtanh[2] = -2 * tensor_prod(dtanh[0], dtanh[1])

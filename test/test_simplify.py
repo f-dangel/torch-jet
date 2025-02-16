@@ -16,7 +16,14 @@ There are two kinds of tests:
 """
 
 from copy import deepcopy
-from test.test___init__ import CASE_IDS, CASES, compare_jet_results, setup_case
+from test.test___init__ import (
+    CASE_IDS,
+    CASES,
+    CASES_COMPACT,
+    CASES_COMPACT_IDS,
+    compare_jet_results,
+    setup_case,
+)
 from test.test_laplacian import Laplacian, laplacian
 from typing import Any, Callable, Dict
 
@@ -106,7 +113,7 @@ def ensure_num_replicates(graph: Graph, num_replicates: int):
     assert len(replicates) == num_replicates
 
 
-@pytest.mark.parametrize("config", CASES, ids=CASE_IDS)
+@pytest.mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
 def test_propagate_replication(config: Dict[str, Any], num_replicas: int = 3):
     """Test the propagation of replication node through a compute graph.
 
@@ -117,7 +124,7 @@ def test_propagate_replication(config: Dict[str, Any], num_replicas: int = 3):
         config: The configuration of the test case.
         num_replicas: The number of replicas to create. Default: `3`.
     """
-    f, x, _ = setup_case(config)
+    f, x, _ = setup_case(config, taylor_coefficients=False)
     f_rep = Replicate(f, num_replicas)
 
     # check that the `Replicate` module works as expected
@@ -214,7 +221,7 @@ def test_propagate_replication_jet(config: Dict[str, Any], num_replicas: int = 3
     ensure_num_replicates(fast.graph, k + 1)
 
 
-@pytest.mark.parametrize("config", CASES, ids=CASE_IDS)
+@pytest.mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
 def test_simplify_laplacian(config: Dict[str, Any]):
     """Test the simplification of a Laplacian's compute graph.
 
@@ -224,7 +231,7 @@ def test_simplify_laplacian(config: Dict[str, Any]):
     Args:
         config: The configuration of the test case.
     """
-    f, x, _ = setup_case(config)
+    f, x, _ = setup_case(config, taylor_coefficients=False)
     mod = Laplacian(f, x)
 
     mod_out = mod(x)

@@ -148,7 +148,7 @@ def setup_case(
         vmapsize: Whether to generate inputs and Taylor coefficients for a vmap-ed
             operation. `0` means no vmap is applied. Default: `0`.
         taylor_coefficients: Whether to instantiate the Taylor coefficients.
-            This not necessary for some tests.
+            This is not necessary for some tests.
 
     Returns:
         Tuple containing the function, the input tensor, and the Taylor coefficients.

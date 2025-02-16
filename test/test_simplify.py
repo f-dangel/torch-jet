@@ -1,6 +1,6 @@
 """Test simplification mechanism of compute graphs captured with `torch.fx`.
 
-There are two kinds of tests:
+There are three kinds of tests:
 
 1. [Replicating functions] Take a function f: x -> f(x).
    i. Construct the replicated function f_rep: x -> f(replicate(x))
@@ -13,6 +13,14 @@ There are two kinds of tests:
         x, v1, v2, ... -> jet_f(replicate(x), replicate(v1), replicate(v2), ...)
     iii. Simplify the compute graph of jet_f_rep. This should yield the compute graph of
         x, v1, v2, ... -> replicate(jet_f(x, v1, v2, ...)).
+
+3. [Forward Laplacians] Take a function f: x -> f(x).
+    i. Construct the vmapped 2-jet of f: X, V1, V2 -> jet_f(X, V1, V2)
+    ii. Construct the Laplacian of f on x via the vmapped 2-jet.
+    iii. Simplify the compute graph of the Laplacian. This should yield the compute
+        graph of the forward Laplacian (https://arxiv.org/abs/2307.08214), i.e. the
+        second Taylor component can be propagated in collapsed form, and the forward
+        pass is only carried out for one x, and not their replicated version X.
 """
 
 from copy import deepcopy

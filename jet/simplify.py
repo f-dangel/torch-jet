@@ -285,7 +285,8 @@ class RewriteSumVmapped(RewriteReplicate):
                 op.target
                 in {
                     # NOTE This assumes there is no broadcasting (x.shape == y.shape)!
-                    operator.add,  # sum_vmapped(x + y) -> sum_vmapped(x) + sum_vmapped(y)
+                    # sum_vmapped(x + y) -> sum_vmapped(x) + sum_vmapped(y)
+                    operator.add,
                 }
                 and len(parents) == 2
             ):

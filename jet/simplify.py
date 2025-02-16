@@ -250,51 +250,50 @@ class RewriteSumVmapped(RewriteReplicate):
         )
 
     def find_pattern(self) -> Optional[Tuple[Node, Node]]:
+        """Find a pattern that can be simplified.
+
+        Returns:
+            A pattern that can be simplified, or `None` if no such pattern is found.
+            A pattern consists of two parts: them `sum_vmapped` node that can be
+            propagated up through the node returned as second part.
+        """
         for node in self.graph.nodes:
-
-            if (
-                node.op == "call_function"
-                and node.target == einsum
-                and node.args[0].split("->")[1] == "..."
-            ):
-                # hoist out tensors with 'a...'
-                lhs = node.args[0].split("->")[0].split(",")
-                # print(lhs)
-                num_usages = {n: node.args[1:].count(n) for n in node.args[1:]}
-                for idx, (l, arg) in enumerate(zip(lhs, node.args[1:])):
-                    if l == "a..." and num_usages[arg] == 1:
-                        with self.graph.inserting_before(node):
-                            new_sum = self.graph.call_function(sum_vmapped, args=(arg,))
-                        node.replace_input_with(arg, new_sum)
-                        lhs[idx] = "..."
-                        new_equation = f"{','.join(lhs)}->..."
-                        node.args = (new_equation, *node.args[1:])
-
             if not self.is_sum_vmapped(node):
                 continue
             (op,) = self.parents(node)
+            if op.op != "call_function":
+                continue
 
             pattern = None
             parents = self.parents(op)
 
+            # operations that produce a tensor from a single tensor `x`, which is then
+            # `sum_vmapped`
             if (
-                op.op == "call_function"
-                and op.target in {operator.mul}
+                op.target
+                in {
+                    operator.mul,  # sum_vmapped(x * 2) -> 2 * sum_vmapped(x)
+                }
                 and len(parents) == 1
             ):
                 pattern = [node, op]
+            # operations that produce a tensor from two tensors `x`, `y`, which is then
+            # `sum_vmapped`
             elif (
-                op.op == "call_function"
-                and op.target in {operator.add}
+                op.target
+                in {
+                    # NOTE This assumes there is no broadcasting (x.shape == y.shape)!
+                    operator.add,  # sum_vmapped(x + y) -> sum_vmapped(x) + sum_vmapped(y)
+                }
                 and len(parents) == 2
             ):
                 pattern = [node, op]
-            elif op.op == "call_function" and op.target == linear:
+            # sum_vmapped(linear(x, W, b)) -> linear(sum_vmapped(x), W, b)
+            elif op.target == linear:
                 pattern = [node, op]
-            elif (
-                op.op == "call_function"
-                and op.target == einsum
-                and op.args[0].split("->")[1] == "a..."
+            # sum_vmapped(einsum('xyz->a...')) -> einsum('xyz->...')
+            elif op.target == einsum and not op.args[0].split("->")[1].startswith(
+                "..."
             ):
                 pattern = [node, op]
 
@@ -309,53 +308,43 @@ class RewriteSumVmapped(RewriteReplicate):
         sum_node.replace_all_uses_with(op)
         self.maybe_erase(sum_node)
 
-        if op.target == einsum and op.args[0].split("->")[1] == "a...":
+        if op.target == einsum and not op.args[0].split("->")[1].startswith("..."):
             # change the equation
-            lhs, _ = op.args[0].split("->")
-            new_equation = f"{lhs}->..."
+            lhs, rhs = op.args[0].split("->")
+            new_equation = f"{lhs}->{rhs[1:]}"
             op.args = (new_equation, *op.args[1:])
 
-            # check for nodes that can be fused
-            lhs_args = lhs.split(",")
-            num_usages = {node: op.args[1:].count(node) for node in op.args[1:]}
-            for lhs, arg in zip(lhs_args, op.args[1:]):
-                # print("\t", lhs, arg, num_usages[arg])
-                if num_usages[arg] != 1:
-                    continue
-                parents = self.parents(arg)
+        else:
+            parents = [op.args[0]] if op.target == linear else self.parents(op)
+            for parent in parents:
+                with self.graph.inserting_before(op):
+                    new_sum = self.graph.call_function(sum_vmapped, args=(parent,))
+                op.replace_input_with(parent, new_sum)
+                self.maybe_erase(parent)
 
-                if not parents:
-                    children = self.children(arg)
-                    # print("\t\t", f"{arg} has children {children}")
-                    if len(children) == 1:
-                        # insert a sum_vmaped node
-                        with self.graph.inserting_before(op):
-                            new_sum = self.graph.call_function(sum_vmapped, args=(arg,))
-                        op.replace_input_with(arg, new_sum)
-                        where = op.args[1:].index(new_sum)
-                        lhs_args[where] = "..."
-                        new_equation = f"{','.join(lhs_args)}->..."
-                        op.args = (new_equation, *op.args[1:])
+    def hoist_vmapped_sum_outside_einsum(self):
+        einsum_nodes = [
+            n
+            for n in self.graph.nodes
+            if n.op == "call_function"
+            and n.target == einsum
+            and n.args[0].split("->")[1] == "..."
+        ]
 
-            return
-
-        if op.target == linear:
-            input_node = op.args[0]
-            with self.graph.inserting_before(op):
-                new_sum = self.graph.call_function(sum_vmapped, args=(input_node,))
-            op.replace_input_with(input_node, new_sum)
-            return
-
-        parents_to_sum = {}
-        for parent in parents:
-            with self.graph.inserting_before(op):
-                new_sum = self.graph.call_function(sum_vmapped, args=(parent,))
-            parents_to_sum[parent] = new_sum
-
-        op.args = tuple(parents_to_sum.get(arg, arg) for arg in op.args)
-
-        for parent in parents:
-            self.maybe_erase(parent)
+        for einsum_node in einsum_nodes:
+            # hoist out tensors with 'a...'
+            lhs = einsum_node.args[0].split("->")[0].split(",")
+            usages = {
+                n: einsum_node.args[1:].count(n) for n in einsum_node.all_input_nodes
+            }
+            for idx, (l, arg) in enumerate(zip(lhs, einsum_node.args[1:])):
+                if l == "a..." and usages[arg] == 1:
+                    with self.graph.inserting_before(einsum_node):
+                        new_sum = self.graph.call_function(sum_vmapped, args=(arg,))
+                    einsum_node.replace_input_with(arg, new_sum)
+                    lhs[idx] = "..."
+                    new_equation = f"{','.join(lhs)}->..."
+                    einsum_node.args = (new_equation, *einsum_node.args[1:])
 
     def fuse_vmapped_sum_with_tensor_constants(self):
         """Fuse tensor constants with `vmapped_sum` nodes.
@@ -439,6 +428,7 @@ def simplify(mod: GraphModule, verbose: bool = False) -> GraphModule:
     rewriter = RewriteSumVmapped(mod, verbose=verbose)
     while pattern := rewriter.find_pattern():
         rewriter.replace_pattern(pattern)
+        rewriter.hoist_vmapped_sum_outside_einsum()
 
     rewriter.fuse_vmapped_sum_with_tensor_constants()
 

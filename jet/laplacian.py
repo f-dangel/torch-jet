@@ -51,7 +51,7 @@ class Laplacian(Module):
 
         Args:
             x: Input tensor. Must have same shape as the dummy input tensor that was
-               passed in the constructor.
+                passed in the constructor.
 
         Returns:
             Tuple containing the replicated function value, the Jacobian, and the

@@ -32,7 +32,7 @@ from test.test___init__ import (
     compare_jet_results,
     setup_case,
 )
-from test.test_laplacian import Laplacian, laplacian
+from test.test_laplacian import laplacian
 from typing import Any, Callable, Dict
 
 import pytest
@@ -41,6 +41,7 @@ from torch.fx import Graph, GraphModule, symbolic_trace, wrap
 from torch.nn import Module
 
 from jet import JetTracer, jet, rev_jet
+from jet.laplacian import Laplacian
 from jet.simplify import RewriteReplicate, RewriteSumVmapped, simplify
 from jet.utils import (
     PrimalAndCoefficients,
@@ -132,7 +133,7 @@ def test_propagate_replication(config: Dict[str, Any], num_replicas: int = 3):
         config: The configuration of the test case.
         num_replicas: The number of replicas to create. Default: `3`.
     """
-    f, x, _ = setup_case(config, taylor_coefficients=False)
+    f, x, _, _ = setup_case(config, taylor_coefficients=False)
     f_rep = Replicate(f, num_replicas)
 
     # check that the `Replicate` module works as expected
@@ -203,7 +204,7 @@ def test_propagate_replication_jet(config: Dict[str, Any], num_replicas: int = 3
         config: The configuration of the test case.
         num_replicas: The number of replicas to create. Default: `3`.
     """
-    f, x, vs = setup_case(config)
+    f, x, vs, _ = setup_case(config)
     k = len(vs)
 
     # use a single jet, then replicate
@@ -239,8 +240,8 @@ def test_simplify_laplacian(config: Dict[str, Any]):
     Args:
         config: The configuration of the test case.
     """
-    f, x, _ = setup_case(config, taylor_coefficients=False)
-    mod = Laplacian(f, x)
+    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    mod = Laplacian(f, x, is_batched)
 
     mod_out = mod(x)
     lap = laplacian(f, x)
@@ -277,7 +278,13 @@ def test_simplify_laplacian(config: Dict[str, Any]):
     constants = [n.target for n in fast.graph.nodes if n.op == "get_attr"]
 
     c0, c1 = [c for c in constants if c.startswith("_tensor_constant")]
+
     # first-order coefficient is still the same shape
-    assert getattr(backup, c0).shape == getattr(fast, c0).shape
+    V_shape = (x.shape[1:].numel() if is_batched else x.numel(),) + x.shape
+    assert getattr(backup, c0).shape == getattr(fast, c0).shape == V_shape
     # second-order coefficient was collapsed
-    assert getattr(backup, c1).shape == (x.numel(),) + getattr(fast, c1).shape
+    assert (
+        getattr(backup, c1).shape
+        == (x.shape[1:].numel() if is_batched else x.numel(),) + getattr(fast, c1).shape
+        == V_shape
+    )

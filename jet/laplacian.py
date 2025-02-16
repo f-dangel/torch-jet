@@ -61,8 +61,11 @@ class Laplacian(Module):
 
         V1 = eye(self.unbatched_dim, **self.x_kwargs)
         if self.is_batched:
-            V1 = V1.unsqueeze(1).repeat(1, self.batched_dim, 1)
-        V1 = V1.reshape(self.unbatched_dim, *self.x_shape)
+            V1 = V1.reshape(self.unbatched_dim, 1, *self.x_shape[1:])
+            # copy without using more memory
+            V1 = V1.expand(-1, self.batched_dim, *(-1 for _ in self.x_shape[1:]))
+        else:
+            V1 = V1.reshape(self.unbatched_dim, *self.x_shape)
 
         V2 = zeros(self.unbatched_dim, *self.x_shape, **self.x_kwargs)
 

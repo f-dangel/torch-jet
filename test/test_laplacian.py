@@ -3,18 +3,13 @@ from test.utils import VMAP_IDS, VMAPS, Sin
 from typing import Callable
 
 from pytest import mark
-from torch import Tensor, eye, manual_seed, rand, zeros, zeros_like
+from torch import Tensor, manual_seed, rand, zeros, zeros_like
 from torch.autograd.functional import hessian
-from torch.fx import symbolic_trace, wrap
-from torch.nn import Linear, Module, Sequential, Sigmoid, Tanh
+from torch.fx import symbolic_trace
+from torch.nn import Linear, Sequential, Sigmoid, Tanh
 
 from jet import jet
-from jet.utils import replicate, sum_vmapped
-
-# tell `torch.fx` to trace `replicate` as one node
-wrap(replicate)
-# tell `torch.fx` to trace `sum_vmapped` as one node
-wrap(sum_vmapped)
+from jet.laplacian import Laplacian
 
 
 def laplacian_jet_loop(f, x):
@@ -33,31 +28,8 @@ def laplacian_jet_loop(f, x):
     return lap
 
 
-class Laplacian(Module):
-    def __init__(self, f, dummy_x):
-        super().__init__()
-        self.jet_f = jet(f, 2, vmap=True)
-        # data that needs to be inferred explicitly from a dummy input
-        # because `torch.fx` cannot do this.
-        self.x_numel = dummy_x.numel()
-        self.x_shape = dummy_x.shape
-        self.x_dtype = dummy_x.dtype
-        self.x_device = dummy_x.device
-
-    def forward(self, x):
-        X = replicate(x, self.x_numel)
-        V1 = eye(self.x_numel, dtype=self.x_dtype, device=self.x_device).reshape(
-            self.x_numel, *self.x_shape
-        )
-        V2 = zeros(
-            self.x_numel, *self.x_shape, dtype=self.x_dtype, device=self.x_device
-        )
-        result = self.jet_f(X, V1, V2)
-        return result[0], result[1], sum_vmapped(result[2])
-
-
 def laplacian(f: Callable[[Tensor], Tensor], x: Tensor) -> Tensor:
-    """Compute the Laplacian of a scalar function.
+    """Compute the Laplacian of a tensor-to-tensor function.
 
     Args:
         f: The function to compute the Laplacian of.
@@ -103,7 +75,7 @@ def test_laplacian():
 
     # Using a manually-vmapped jet that is traceable
     # NOTE: This module is trace-able, therefore we can symbolically simplify it.
-    _, _, lap_mod = Laplacian(mlp, x)(x)
+    _, _, lap_mod = Laplacian(mlp, x, is_batched=False)(x)
     assert lap_rev.allclose(lap_mod)
     print("Functorch and module-vmapped traceable Laplacian module match.")
 
@@ -143,7 +115,7 @@ def test_symbolic_trace_Laplacian():
         Sigmoid(),
     )
     x_dummy = zeros(5)
-    lap = Laplacian(mlp, x_dummy)
+    lap = Laplacian(mlp, x_dummy, is_batched=False)
 
     # try tracing the Laplacian module
     print("Compute graph of manually Laplacian module:")

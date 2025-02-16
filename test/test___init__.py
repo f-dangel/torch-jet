@@ -108,6 +108,16 @@ CASES_COMPACT = [
         "k_max": 3,
         "id": "two-layer-tanh-mlp",
     },
+    # 5d tanh-activated two-layer MLP with batched input
+    {
+        "f": Sequential(
+            Linear(5, 4, bias=False), Tanh(), Linear(4, 3, bias=True), Tanh()
+        ),
+        "shape": (10, 5),
+        "k_max": 3,
+        "is_batched": True,
+        "id": "batched-two-layer-tanh-mlp",
+    },
     # 3d sigmoid(sigmoid) function
     {
         "f": lambda x: sigmoid(sigmoid(x)),
@@ -120,6 +130,7 @@ CASES_COMPACT_IDS = []
 for compact in CASES_COMPACT:
     shape = compact["shape"]
     ID = f"{compact['id']}-{'_'.join([str(s) for s in shape])}d"
+    compact["is_batched"] = compact.get("is_batched", False)
     CASES_COMPACT_IDS.append(ID)
 
 # expand compact definition of cases for k=0, ... min(k_max, K_MAX)
@@ -131,7 +142,12 @@ for compact in CASES_COMPACT:
     for k in range(k_expand + 1):
         shape = compact["shape"]
         ID = f"{k}-jet-{compact['id']}-{'_'.join([str(s) for s in shape])}d"
-        expanded = {"f": compact["f"], "k": k, "shape": shape}
+        expanded = {
+            "f": compact["f"],
+            "k": k,
+            "shape": shape,
+            "is_batched": compact["is_batched"],
+        }
         CASES.append(expanded)
         CASE_IDS.append(ID)
 
@@ -140,7 +156,7 @@ def setup_case(
     config: Dict[str, Any],
     vmapsize: int = 0,
     taylor_coefficients: bool = True,
-) -> Tuple[Callable[[Primal], Value], Primal, Tuple[Primal]]:
+) -> Tuple[Callable[[Primal], Value], Primal, Tuple[Primal], bool]:
     """Instantiate the function, its input, and Taylor coefficients.
 
     Args:
@@ -151,8 +167,9 @@ def setup_case(
             This is not necessary for some tests.
 
     Returns:
-        Tuple containing the function, the input tensor, and the Taylor coefficients.
-        All are in double precision to avoid numerical issues.
+        Tuple containing the function, the input tensor, and the Taylor coefficients,
+        and whether the case represents a batched setting. All are in double precision
+        to avoid numerical issues.
     """
     manual_seed(0)
     f = config["f"]
@@ -169,7 +186,7 @@ def setup_case(
         else ()
     )
 
-    return f, x, vs
+    return f, x, vs, config["is_batched"]
 
 
 VMAPSIZES = [0, 4]
@@ -185,5 +202,5 @@ def test_jet(config: Dict[str, Any], vmapsize: int):
         config: Configuration dictionary of the test case.
         vmapsize: The size of the vmaped dimension. `0` means no vmap.
     """
-    f, x, vs = setup_case(config, vmapsize=vmapsize)
+    f, x, vs, _ = setup_case(config, vmapsize=vmapsize)
     check_jet(f, (x, vs), vmapsize != 0)

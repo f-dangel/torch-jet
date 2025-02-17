@@ -39,8 +39,14 @@ dependencies = [
 requires-python = ">=3.9"
 
 [project.optional-dependencies]
-# Dependencies needed to run the tests (semicolon/line-separated)
-# Dependencies needed to run the tests.
+# Dependencies needed to run the experiments (semicolon/line-separated)
+exp = [
+    "memory_profiler",
+    "pandas",
+    "matplotlib",
+    "tueplots",
+]
+# Dependencies needed to run the tests (semicolon/line-separated).
 test = [
     "coveralls",
     "pytest",

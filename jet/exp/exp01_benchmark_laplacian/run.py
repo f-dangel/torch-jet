@@ -29,7 +29,9 @@ def measure(
     batch_sizes: List[int],
     strategies: List[str],
     devices: List[str],
+    name: str,
     skip_existing: bool = False,
+    gather_every: int = 10,
 ):
     """Run benchmark measurements for all combinations of input parameters.
 
@@ -59,6 +61,19 @@ def measure(
         if skip_existing:
             cmd.append("--skip_existing")
         run_verbose(cmd)
+
+        if idx % gather_every == 0 or idx == len(combinations) - 1:
+            df = gather_data(
+                architectures,
+                dims,
+                batch_sizes,
+                strategies,
+                devices,
+                allow_missing=True,
+            )
+            filename = savepath(name)
+            print(f"Saving gathered data for experiment {name} to {filename}.")
+            df.to_csv(filename, index=False)
 
 
 def gather_data(
@@ -147,8 +162,4 @@ EXPERIMENTS = [
 
 if __name__ == "__main__":
     for name, experiment in EXPERIMENTS:
-        measure(**experiment, skip_existing=True)
-        df = gather_data(**experiment, allow_missing=True)
-        filename = savepath(name)
-        print(f"Saving gathered data for experiment {name} to {filename}.")
-        df.to_csv(filename, index=False)
+        measure(**experiment, name=name, skip_existing=True, gather_every=10)

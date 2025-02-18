@@ -41,8 +41,10 @@ def measure(
         batch_sizes: List of batch sizes to use in the experiments.
         strategies: List of strategies for computing the Laplacian.
         devices: List of devices to run the experiments on (e.g., `'cpu'`, `'cuda'`).
+        name: The name of the experiment. Must be unique.
         skip_existing: Whether to skip experiments if results already exist.
             Default is `False`.
+        gather_every: How often to gather the data into a single table. Default is `10`.
     """
     combinations = list(product(architectures, dims, batch_sizes, strategies, devices))
     for idx, (architecture, dim, batch_size, strategy, device) in enumerate(
@@ -59,17 +61,21 @@ def measure(
 
         # maybe skip the computation
         raw = savepath_raw(**kwargs)
+        skip = False
         if path.exists(raw) and skip_existing:
             print(f"Skipping because file already exists: {raw}.")
-            continue
+            skip = True
 
         # if the device is cuda and CUDA is not available, skip the experiment
         if device == "cuda" and not cuda.is_available():
             print("Skipping GPU measurement because CUDA is not available.")
-            continue
+            skip = True
 
-        cmd = ["python", SCRIPT] + [f"--{key}={value}" for key, value in kwargs.items()]
-        run_verbose(cmd)
+        if not skip:
+            cmd = ["python", SCRIPT] + [
+                f"--{key}={value}" for key, value in kwargs.items()
+            ]
+            run_verbose(cmd)
 
         # gather data every few measurements so we can plot even before all are done
         if idx % gather_every == 0 or idx == len(combinations) - 1:
@@ -168,7 +174,7 @@ EXPERIMENTS = [
             "dims": [10, 50],
             "batch_sizes": linspace(1, 2048, 25).int().unique().tolist(),
             "strategies": SUPPORTED_STRATEGIES,
-            "devices": ["cpu", "cuda"],
+            "devices": ["cuda"],
         },
     )
 ]

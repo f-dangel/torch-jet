@@ -1,4 +1,18 @@
 TODO
+\newpage
+
+\begin{figure}[t]
+  \centering
+\includegraphics*{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_dangel2024kroneckerfactored_vary_batch_size.pdf}
+\caption{ \textbf{Computing the Laplacian with collapsed Taylor mode is faster \emph{and} uses less memory than nested first-order AD; naive Taylor mode is competitive in time but uses more memory.}
+  We compare different strategies for computing Laplacians for a $50\to 768 \to 768 \to 512 \to 512 \to 1$ MLP with tanh activations for varying batch sizes on an NVIDIA A40 GPU.
+  Solid markers correspond to computing differentiable Laplacians (\eg used in PINNs), opaque markers compute a non-differentiable Laplacian (\eg used in VMC).
+  Averaged over all batch sizes, \emph{our collapsed Taylor mode uses only 80\% memory of nested first-order AD (70\% in the non-differentiable setting), and 50\% of time}.
+  In contrast, naive Taylor mode uses 120\% memory of nested first-order AD (70\% in the non-differentiable setting) and 95\% of time.
+}
+  \label{fig:benchmark-laplacians}
+\end{figure}
+
 %%% Local Variables:
 %%% mode: LaTeX
 %%% TeX-master: "../main"

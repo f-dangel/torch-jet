@@ -11,7 +11,7 @@ from os import makedirs, path
 from typing import List
 
 from pandas import DataFrame, concat
-from torch import linspace
+from torch import cuda, linspace
 
 from jet.exp.exp01_benchmark_laplacian.execute import HERE as SCRIPT
 from jet.exp.exp01_benchmark_laplacian.execute import SUPPORTED_STRATEGIES
@@ -29,6 +29,7 @@ def measure(
     batch_sizes: List[int],
     strategies: List[str],
     devices: List[str],
+    differentiables: List[str],
     name: str,
     skip_existing: bool = False,
     gather_every: int = 10,
@@ -44,24 +45,42 @@ def measure(
         skip_existing: Whether to skip experiments if results already exist.
             Default is `False`.
     """
-    combinations = list(product(architectures, dims, batch_sizes, strategies, devices))
-    for idx, (architecture, dim, batch_size, strategy, device) in enumerate(
-        combinations
-    ):
+    combinations = list(
+        product(architectures, dims, batch_sizes, strategies, devices, differentiables)
+    )
+    for idx, (
+        architecture,
+        dim,
+        batch_size,
+        strategy,
+        device,
+        differentiable,
+    ) in enumerate(combinations):
         print(f"\n{idx + 1}/{len(combinations)}")
-        cmd = [
-            "python",
-            SCRIPT,
-            f"--architecture={architecture}",
-            f"--dim={dim}",
-            f"--batch_size={batch_size}",
-            f"--strategy={strategy}",
-            f"--device={device}",
-        ]
-        if skip_existing:
-            cmd.append("--skip_existing")
+        kwargs = {
+            "architecture": architecture,
+            "dim": dim,
+            "batch_size": batch_size,
+            "strategy": strategy,
+            "device": device,
+            "differentiable": differentiable,
+        }
+
+        # maybe skip the computation
+        raw = savepath_raw(**kwargs)
+        if path.exists(raw) and skip_existing:
+            print(f"Skipping because file already exists: {raw}.")
+            continue
+
+        # if the device is cuda and CUDA is not available, skip the experiment
+        if device == "cuda" and not cuda.is_available():
+            print("Skipping GPU measurement because CUDA is not available.")
+            continue
+
+        cmd = ["python", SCRIPT] + [f"--{key}={value}" for key, value in kwargs.items()]
         run_verbose(cmd)
 
+        # gather data every few measurements so we can plot even before all are done
         if idx % gather_every == 0 or idx == len(combinations) - 1:
             df = gather_data(
                 architectures,
@@ -69,6 +88,7 @@ def measure(
                 batch_sizes,
                 strategies,
                 devices,
+                differentiables,
                 allow_missing=True,
             )
             filename = savepath(name)
@@ -82,6 +102,7 @@ def gather_data(
     batch_sizes: List[int],
     strategies: List[str],
     devices: List[str],
+    differentiables: List[str],
     allow_missing: bool = False,
 ) -> DataFrame:
     """Create a data frame that collects all the results into a single table.
@@ -92,6 +113,7 @@ def gather_data(
         batch_sizes: List of batch sizes used in the experiments.
         strategies: List of strategies for computing the Laplacian.
         devices: List of devices the experiments were run on.
+        differentiables: List of truth values for the result's differentiability.
         allow_missing: Whether to allow missing result files. Default is False.
 
     Returns:
@@ -100,8 +122,8 @@ def gather_data(
     df = None
 
     # Iterate over all possible combinations of the input parameters
-    for architecture, dim, batch_size, strategy, device in product(
-        architectures, dims, batch_sizes, strategies, devices
+    for architecture, dim, batch_size, strategy, device, differentiable in product(
+        architectures, dims, batch_sizes, strategies, devices, differentiables
     ):
         # Create a dictionary for each combination
         result = {
@@ -110,6 +132,7 @@ def gather_data(
             "batch_size": [batch_size],
             "strategy": [strategy],
             "device": [device],
+            "differentiable": [differentiable],
         }
         filename = savepath_raw(**{key: value[0] for key, value in result.items()})
 
@@ -152,10 +175,11 @@ EXPERIMENTS = [
         # Experiment parameters
         {
             "architectures": ["tanh_mlp_768_768_512_512_1"],
-            "dims": [10],
+            "dims": [10, 50],
             "batch_sizes": linspace(1, 2048, 25).int().unique().tolist(),
             "strategies": SUPPORTED_STRATEGIES,
             "devices": ["cpu", "cuda"],
+            "differentiables": ["yes", "no"],
         },
     )
 ]

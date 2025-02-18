@@ -1,11 +1,11 @@
 """Script that carries out a measurement of peak memory and run time."""
 
 from argparse import ArgumentParser
+from contextlib import nullcontext
 from os import makedirs, path
-from sys import exit
 from typing import Callable, Union
 
-from torch import Tensor, cuda, device, manual_seed, rand
+from torch import Tensor, device, manual_seed, no_grad, rand
 from torch.func import hessian, vmap
 from torch.fx import symbolic_trace
 from torch.nn import Linear, Sequential, Tanh
@@ -140,35 +140,30 @@ if __name__ == "__main__":
         "--strategy", type=str, required=True, choices=set(SUPPORTED_STRATEGIES)
     )
     parser.add_argument("--device", type=str, choices={"cpu", "cuda"}, required=True)
-    parser.add_argument("--skip_existing", action="store_true")
+    parser.add_argument(
+        "--differentiable", type=str, choices={"yes", "no"}, required=True
+    )
     args = parser.parse_args()
 
-    # maybe skip the computation
-    skip_existing = args.__dict__.pop("skip_existing")
-    filename = savepath(**vars(args))
-    if path.exists(filename) and skip_existing:
-        print(f"Skipping computation due to existing file {filename}.")
-        exit()
+    context = {"yes": nullcontext, "no": no_grad}[args.differentiable]
 
-    if args.device == "cuda" and not cuda.is_available():
-        print("GPU Measurement aborted. CUDA is not available.")
-        exit()
+    with context():
+        # set up the function that will be measured
+        dev = device(args.device)
+        manual_seed(0)
+        net = setup_architecture(args.architecture, args.dim).double().to(dev)
+        X = rand(args.batch_size, args.dim).double().to(dev)
+        is_batched = True
 
-    # set up the function that will be measured
-    dev = device(args.device)
-    manual_seed(0)
-    net = setup_architecture(args.architecture, args.dim).double().to(dev)
-    X = rand(args.batch_size, args.dim).double().to(dev)
-    is_batched = True
+        # carry out the measurements
+        func = laplacian_function(net, X, is_batched, args.strategy)
+        is_cuda = args.device == "cuda"
+        mem = measure_peak_memory(func, f"Laplacian ({args.strategy})", is_cuda)
+        mu, sigma, best = measure_time(func, f"Laplacian ({args.strategy})", is_cuda)
 
-    # carry out the measurements
-    func = laplacian_function(net, X, is_batched, args.strategy)
-    is_cuda = args.device == "cuda"
-    mem = measure_peak_memory(func, f"Laplacian ({args.strategy})", is_cuda)
-    mu, sigma, best = measure_time(func, f"Laplacian ({args.strategy})", is_cuda)
-
-    # write them to a file
-    data = ", ".join([str(val) for val in [mem, mu, sigma, best]])
-    with open(filename, "w") as f:
-        print(f"Writing to {filename}.")
-        f.write(data)
+        # write them to a file
+        data = ", ".join([str(val) for val in [mem, mu, sigma, best]])
+        filename = savepath(**vars(args))
+        with open(filename, "w") as f:
+            print(f"Writing to {filename}.")
+            f.write(data)

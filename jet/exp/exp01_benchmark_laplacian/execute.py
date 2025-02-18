@@ -1,7 +1,6 @@
 """Script that carries out a measurement of peak memory and run time."""
 
 from argparse import ArgumentParser
-from contextlib import nullcontext
 from os import makedirs, path
 from typing import Callable, Union
 

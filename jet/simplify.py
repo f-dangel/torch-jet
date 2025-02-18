@@ -412,16 +412,28 @@ def remove_duplicate_get_attrs(graph: Graph, verbose: bool = False):
             graph.erase_node(n)
 
 
-def simplify(mod: GraphModule, verbose: bool = False) -> GraphModule:
+def simplify(
+    mod: GraphModule,
+    push_replicate: bool = True,
+    pull_sum_vmapped: bool = True,
+    verbose: bool = False,
+) -> GraphModule:
     """Simplify a compute graph.
 
     At the moment, the following simplifications are implemented:
 
-    - Propagation of `replicate` nodes down the graph as much as possible.
+    - Pushing of `replicate` nodes down the graph as much as possible.
       This avoids redundant computations on replicated tensors.
+
+    - Pulling of `sum_vmapped` nodes up the graph as much as possible.
+      This avoids redundant computations on summed tensors.
 
     Args:
         mod: A graph module whose computation graph will be simplified.
+        push_replicate: Whether to push `replicate` nodes down the graph.
+            Default: `True`.
+        pull_sum_vmapped: Whether to pull `sum_vmapped` nodes up the graph.
+            Default: `True`.
         verbose: Whether to print debug information. Default: `False`.
 
     Returns:
@@ -434,18 +446,18 @@ def simplify(mod: GraphModule, verbose: bool = False) -> GraphModule:
     # when we call get_attr on a module's tensor constant
     remove_duplicate_get_attrs(mod.graph, verbose=verbose)
 
-    rewriter = RewriteReplicate(mod, verbose=verbose)
-    while pattern := rewriter.find_pattern():
-        rewriter.replace_pattern(pattern)
+    if push_replicate:
+        rewriter = RewriteReplicate(mod, verbose=verbose)
+        while pattern := rewriter.find_pattern():
+            rewriter.replace_pattern(pattern)
+        rewriter.fuse_replicates_with_einsum()
 
-    rewriter.fuse_replicates_with_einsum()
-
-    rewriter = RewriteSumVmapped(mod, verbose=verbose)
-    while pattern := rewriter.find_pattern():
-        rewriter.replace_pattern(pattern)
-        rewriter.raise_sum_vmapped_outside_einsum()
-
-    rewriter.fuse_vmapped_sum_with_tensor_constants()
+    if pull_sum_vmapped:
+        rewriter = RewriteSumVmapped(mod, verbose=verbose)
+        while pattern := rewriter.find_pattern():
+            rewriter.replace_pattern(pattern)
+            rewriter.raise_sum_vmapped_outside_einsum()
+        rewriter.fuse_vmapped_sum_with_tensor_constants()
 
     mod.graph.lint()
     mod.recompile()

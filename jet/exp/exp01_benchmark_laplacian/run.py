@@ -29,7 +29,6 @@ def measure(
     batch_sizes: List[int],
     strategies: List[str],
     devices: List[str],
-    differentiables: List[str],
     name: str,
     skip_existing: bool = False,
     gather_every: int = 10,
@@ -45,17 +44,10 @@ def measure(
         skip_existing: Whether to skip experiments if results already exist.
             Default is `False`.
     """
-    combinations = list(
-        product(architectures, dims, batch_sizes, strategies, devices, differentiables)
-    )
-    for idx, (
-        architecture,
-        dim,
-        batch_size,
-        strategy,
-        device,
-        differentiable,
-    ) in enumerate(combinations):
+    combinations = list(product(architectures, dims, batch_sizes, strategies, devices))
+    for idx, (architecture, dim, batch_size, strategy, device) in enumerate(
+        combinations
+    ):
         print(f"\n{idx + 1}/{len(combinations)}")
         kwargs = {
             "architecture": architecture,
@@ -63,7 +55,6 @@ def measure(
             "batch_size": batch_size,
             "strategy": strategy,
             "device": device,
-            "differentiable": differentiable,
         }
 
         # maybe skip the computation
@@ -88,7 +79,6 @@ def measure(
                 batch_sizes,
                 strategies,
                 devices,
-                differentiables,
                 allow_missing=True,
             )
             filename = savepath(name)
@@ -102,7 +92,6 @@ def gather_data(
     batch_sizes: List[int],
     strategies: List[str],
     devices: List[str],
-    differentiables: List[str],
     allow_missing: bool = False,
 ) -> DataFrame:
     """Create a data frame that collects all the results into a single table.
@@ -113,7 +102,6 @@ def gather_data(
         batch_sizes: List of batch sizes used in the experiments.
         strategies: List of strategies for computing the Laplacian.
         devices: List of devices the experiments were run on.
-        differentiables: List of truth values for the result's differentiability.
         allow_missing: Whether to allow missing result files. Default is False.
 
     Returns:
@@ -122,8 +110,8 @@ def gather_data(
     df = None
 
     # Iterate over all possible combinations of the input parameters
-    for architecture, dim, batch_size, strategy, device, differentiable in product(
-        architectures, dims, batch_sizes, strategies, devices, differentiables
+    for architecture, dim, batch_size, strategy, device in product(
+        architectures, dims, batch_sizes, strategies, devices
     ):
         # Create a dictionary for each combination
         result = {
@@ -132,7 +120,6 @@ def gather_data(
             "batch_size": [batch_size],
             "strategy": [strategy],
             "device": [device],
-            "differentiable": [differentiable],
         }
         filename = savepath_raw(**{key: value[0] for key, value in result.items()})
 
@@ -142,7 +129,10 @@ def gather_data(
 
         with open(filename, "r") as f:
             content = "\n".join(f.readlines())
-            peakmem, best, mu, sigma = [float(n) for n in content.split(", ")]
+            peakmem_no, peakmem, best, mu, sigma = [
+                float(n) for n in content.split(", ")
+            ]
+            result["peakmem non-differentiable [GiB]"] = peakmem_no
             result["peakmem [GiB]"] = peakmem
             result["mean [s]"] = mu
             result["std [s]"] = sigma
@@ -179,7 +169,6 @@ EXPERIMENTS = [
             "batch_sizes": linspace(1, 2048, 25).int().unique().tolist(),
             "strategies": SUPPORTED_STRATEGIES,
             "devices": ["cpu", "cuda"],
-            "differentiables": ["yes", "no"],
         },
     )
 ]

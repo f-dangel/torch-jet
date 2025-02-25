@@ -47,13 +47,12 @@ uninstall:
 .PHONY: install-dev
 
 install-dev:
-	@pip install -e ."[test]"
-	@pip install -e ."[lint]"
+	@pip install -e ."[test,lint,exp]"
 
 .PHONY: install-test
 
 install-test:
-	@pip install -e ."[test]"
+	@pip install -e ."[test,exp]"
 
 .PHONY: test test-light
 

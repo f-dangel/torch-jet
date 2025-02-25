@@ -15,7 +15,7 @@ conda activate jet
 If you don't use `conda`, set up your preferred environment and run
 
 ```bash
-pip install -e ."[lint,test]"
+pip install -e ."[lint,test,exp]"
 ```
 to install the package in editable mode, along with all required development dependencies
 (the quotes are for OS compatibility, see

@@ -45,6 +45,7 @@ exp = [
     "pandas",
     "matplotlib",
     "tueplots",
+    "pydot", # visualizing torch.fx compute graphs
 ]
 # Dependencies needed to run the tests (semicolon/line-separated).
 test = [

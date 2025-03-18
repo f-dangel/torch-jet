@@ -2,6 +2,7 @@
 
 from typing import Optional
 
+from scipy.special import factorial, stirling2
 from torch import Tensor, cos, cosh, sigmoid, sin, tanh
 from torch.nn.functional import linear
 
@@ -70,28 +71,40 @@ def jet_tanh(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficien
 
     Returns:
         The value and its Taylor coefficients.
-
-    Raises:
-        NotImplementedError: If the order of the Taylor expansion is greater than 4.
     """
     x, vs = s[0], s[1:]
 
     # pre-compute derivatives
     tanh_x = tanh(x)
     dtanh = {0: tanh_x}
+
+    # Use the explicit form of the derivative polynomials for tanh from "Derivative
+    # polynomials for tanh, tan, sech and sec in explicit form" by Boyadzhiev (2006)
+    # (https://www.fq.math.ca/Papers1/45-4/quartboyadzhiev04_2007.pdf);
+    # see also this answer: https://math.stackexchange.com/a/4226178
     if K >= 1:
-        sech_x = 1 / cosh(x)
-        dtanh[1] = sech_x**2
-    if K >= 2:
-        dtanh[2] = -2 * dtanh[0] * dtanh[1]
-    if K >= 3:
-        dtanh[3] = 2 * dtanh[1] * (2 * dtanh[0] ** 2 - dtanh[1])
-    if K >= 4:
-        dtanh[4] = -4 * dtanh[2] * (2 * dtanh[1] - dtanh[0] ** 2)
-    if K > 4:
-        raise NotImplementedError(
-            f"Tanh only supports derivatives up to fourth order. Got {K}."
-        )
+        tanh_inc = tanh_x + 1
+        tanh_dec = tanh_x - 1
+
+        # required powers of tanh_dec
+        tanh_dec_powers = {1: tanh_dec}
+        if K >= 2:
+            for k in range(2, K + 1):
+                tanh_dec_powers[k] = tanh_dec**k
+
+        # Equations (3.3) and (3.4) from the above paper
+        for m in range(1, K + 1):
+            # Use that the Stirling number S(m>0, 0) = 0 to start the summation at 1
+            term = None
+            for k in range(1, m + 1):
+                term_k = (
+                    factorial(k, exact=True)
+                    / 2**k
+                    * stirling2(m, k, exact=True)
+                    * tanh_dec_powers[k]
+                )
+                term = term_k if term is None else term + term_k
+            dtanh[m] = (-2) ** m * tanh_inc * term
 
     def dn(*vs: Primal) -> Value:
         """Contract the derivative tensor along the vectors.

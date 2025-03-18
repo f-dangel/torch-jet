@@ -33,6 +33,7 @@ dynamic = ["version"]
 dependencies = [
     "torch",
     "numpy",
+    "scipy",
 ]
 
 # Require a specific Python version, e.g. Python 2.7 or >= 3.4

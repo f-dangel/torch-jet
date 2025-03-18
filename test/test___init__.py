@@ -79,15 +79,16 @@ def check_jet(f: Callable[[Primal], Value], arg: PrimalAndCoefficients, vmap: bo
     compare_jet_results(jet_out, rev_jet_out)
 
 
+INF = float("inf")
 CASES_COMPACT = [
     # 1d sine function
-    {"f": lambda x: sin(x), "shape": (1,), "k_max": float("inf"), "id": "sin"},
+    {"f": lambda x: sin(x), "shape": (1,), "k_max": INF, "id": "sin"},
     # 2d sin(sin) function
-    {"f": lambda x: sin(sin(x)), "shape": (2,), "k_max": float("inf"), "id": "sin-sin"},
+    {"f": lambda x: sin(sin(x)), "shape": (2,), "k_max": INF, "id": "sin-sin"},
     # 2d sine function
-    {"f": lambda x: sin(x), "shape": (2,), "k_max": float("inf"), "id": "sin"},
+    {"f": lambda x: sin(x), "shape": (2,), "k_max": INF, "id": "sin"},
     # 2d tanh(tanh) function
-    {"f": lambda x: tanh(tanh(x)), "shape": (2,), "k_max": 4, "id": "tanh-tanh"},
+    {"f": lambda x: tanh(tanh(x)), "shape": (2,), "k_max": INF, "id": "tanh-tanh"},
     # 2d linear(tanh) function
     {
         "f": lambda x: linear(
@@ -96,7 +97,7 @@ CASES_COMPACT = [
             bias=tensor([0.12, -0.34]).double(),
         ),
         "shape": (3,),
-        "k_max": 4,
+        "k_max": INF,
         "id": "tanh-linear",
     },
     # 5d tanh-activated two-layer MLP
@@ -105,7 +106,7 @@ CASES_COMPACT = [
             Linear(5, 4, bias=False), Tanh(), Linear(4, 3, bias=True), Tanh()
         ),
         "shape": (5,),
-        "k_max": 4,
+        "k_max": INF,
         "id": "two-layer-tanh-mlp",
     },
     # 5d tanh-activated two-layer MLP with batched input
@@ -114,7 +115,7 @@ CASES_COMPACT = [
             Linear(5, 4, bias=False), Tanh(), Linear(4, 3, bias=True), Tanh()
         ),
         "shape": (10, 5),
-        "k_max": 4,
+        "k_max": INF,
         "is_batched": True,
         "id": "batched-two-layer-tanh-mlp",
     },

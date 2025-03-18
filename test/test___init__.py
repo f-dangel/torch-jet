@@ -123,7 +123,7 @@ CASES_COMPACT = [
     {
         "f": lambda x: sigmoid(sigmoid(x)),
         "shape": (3,),
-        "k_max": 2,
+        "k_max": INF,
         "id": "sigmoid-sigmoid",
     },
 ]

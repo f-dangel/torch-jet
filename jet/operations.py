@@ -139,23 +139,33 @@ def jet_sigmoid(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoeffic
 
     Returns:
         The value and its Taylor coefficients.
-
-    Raises:
-        NotImplementedError: If the order of the Taylor expansion is greater than 2.
     """
     x, vs = s[0], s[1:]
 
     # pre-compute derivatives
     sigmoid_x = sigmoid(x)
     dsigmoid = {0: sigmoid_x}
+
+    # Use the Stirling form of the sigmoid derivatives, see Equation 20
+    # of "On the Derivatives of the Sigmoid" by Minai and Williams (1993)
+    # (https://eecs.ceas.uc.edu/~minaiaa/papers/minai_sigmoids_NN93.pdf)
     if K >= 1:
-        dsigmoid[1] = sigmoid_x * (1 - sigmoid_x)
-    if K >= 2:
-        dsigmoid[2] = dsigmoid[1] * (1 - 2 * sigmoid_x)
-    if K >= 3:
-        raise NotImplementedError(
-            f"Sigmoid only supports derivatives up to second order. Got {K}."
-        )
+        # The Stirling form requires sigmoid powers
+        sigmoid_powers = {1: sigmoid_x}
+        for n in range(2, K + 2):
+            sigmoid_powers[n] = sigmoid_x**n
+
+        for n in range(1, K + 1):
+            term = None
+            for k in range(1, n + 2):
+                scale = (
+                    (-1) ** (k - 1)
+                    * factorial(k - 1, exact=True)
+                    * stirling2(n + 1, k, exact=True)
+                )
+                term_k = scale * sigmoid_powers[k]
+                term = term_k if term is None else term + term_k
+            dsigmoid[n] = term
 
     def dn(*vs: Primal) -> Value:
         """Contract the derivative tensor along the vectors.

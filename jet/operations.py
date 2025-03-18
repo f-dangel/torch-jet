@@ -1,6 +1,6 @@
 """Implementation of AD primitives in Taylor-mode arithmetic."""
 
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 
 from scipy.special import factorial, stirling2
 from torch import Tensor, cos, sigmoid, sin, tanh
@@ -15,6 +15,27 @@ from jet.utils import (
     multiplicity,
     tensor_prod,
 )
+
+
+def _faa_di_bruno(vs: Tuple[Primal, ...], K: int, dn: Dict[int, Primal]) -> List[Value]:
+    """Apply Faà di Bruno's formula for elementwise functions.
+
+    Args:
+        vs: The incoming Taylor coefficients.
+        K: The order of the Taylor expansion.
+        dn: A dictionary mapping the degree to the function's derivative.
+
+    Returns:
+        The outgoing Taylor coefficients.
+    """
+    vs_out = []
+    for k in range(K):
+        for idx, sigma in enumerate(integer_partitions(k + 1)):
+            vs_contract = [vs[i - 1] for i in sigma]
+            nu = multiplicity(sigma)
+            term = nu * tensor_prod(dn[len(vs_contract)], *vs_contract)
+            vs_out.append(term if idx == 0 else vs_out.pop(-1) + term)
+    return vs_out
 
 
 def jet_sin(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficients:
@@ -33,30 +54,15 @@ def jet_sin(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficient
     # pre-compute derivatives
     sin_x = sin(x)
     dsin = {0: sin_x}
-    if K > 0:
-        dsin[1] = cos(x)
+    for k in range(1, K + 1):
+        if k == 1:
+            dsin[k] = cos(x)
+        elif k in {2, 3}:
+            dsin[k] = -1 * dsin[k - 2]
+        else:
+            dsin[k] = dsin[k - 4]
 
-    def dn(*vs: Primal) -> Value:
-        """Contract the derivative tensor along the vectors.
-
-        Args:
-            vs: The vectors to contract the derivative tensor along.
-
-        Returns:
-            The contracted derivative tensor.
-        """
-        func = dsin[0] if len(vs) % 2 == 0 else dsin[1]
-        return tensor_prod(func, *vs)
-
-    vs_out = []
-
-    for k in range(K):
-        for idx, sigma in enumerate(integer_partitions(k + 1)):
-            vs_contract = [vs[i - 1] for i in sigma]
-            sign = 1 if len(sigma) % 4 in [0, 1] else -1
-            nu = multiplicity(sigma)
-            term = (sign * nu) * dn(*vs_contract)
-            vs_out.append(term if idx == 0 else vs_out.pop(-1) + term)
+    vs_out = _faa_di_bruno(vs, K, dsin)
 
     return (sin_x, *vs_out)
 
@@ -106,25 +112,7 @@ def jet_tanh(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficien
                 term = term_k if term is None else term + term_k
             dtanh[m] = (-2) ** m * tanh_inc * term
 
-    def dn(*vs: Primal) -> Value:
-        """Contract the derivative tensor along the vectors.
-
-        Args:
-            vs: The vectors to contract the derivative tensor along.
-
-        Returns:
-            The contracted derivative tensor.
-        """
-        return tensor_prod(dtanh[len(vs)], *vs)
-
-    vs_out = []
-
-    for k in range(K):
-        for idx, sigma in enumerate(integer_partitions(k + 1)):
-            vs_contract = [vs[i - 1] for i in sigma]
-            nu = multiplicity(sigma)
-            term = nu * dn(*vs_contract)
-            vs_out.append(term if idx == 0 else vs_out.pop(-1) + term)
+    vs_out = _faa_di_bruno(vs, K, dtanh)
 
     return (tanh_x, *vs_out)
 
@@ -167,25 +155,7 @@ def jet_sigmoid(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoeffic
                 term = term_k if term is None else term + term_k
             dsigmoid[n] = term
 
-    def dn(*vs: Primal) -> Value:
-        """Contract the derivative tensor along the vectors.
-
-        Args:
-            vs: The vectors to contract the derivative tensor along.
-
-        Returns:
-            The contracted derivative tensor.
-        """
-        return tensor_prod(dsigmoid[len(vs)], *vs)
-
-    vs_out = []
-
-    for k in range(K):
-        for idx, sigma in enumerate(integer_partitions(k + 1)):
-            vs_contract = [vs[i - 1] for i in sigma]
-            nu = multiplicity(sigma)
-            term = nu * dn(*vs_contract)
-            vs_out.append(term if idx == 0 else vs_out.pop(-1) + term)
+    vs_out = _faa_di_bruno(vs, K, dsigmoid)
 
     return (sigmoid_x, *vs_out)
 

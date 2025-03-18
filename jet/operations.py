@@ -3,7 +3,7 @@
 from typing import Optional
 
 from scipy.special import factorial, stirling2
-from torch import Tensor, cos, cosh, sigmoid, sin, tanh
+from torch import Tensor, cos, sigmoid, sin, tanh
 from torch.nn.functional import linear
 
 from jet.utils import (

@@ -72,7 +72,7 @@ def jet_tanh(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficien
         The value and its Taylor coefficients.
 
     Raises:
-        NotImplementedError: If the order of the Taylor expansion is greater than 3.
+        NotImplementedError: If the order of the Taylor expansion is greater than 4.
     """
     x, vs = s[0], s[1:]
 
@@ -83,12 +83,14 @@ def jet_tanh(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficien
         sech_x = 1 / cosh(x)
         dtanh[1] = sech_x**2
     if K >= 2:
-        dtanh[2] = -2 * tensor_prod(dtanh[0], dtanh[1])
+        dtanh[2] = -2 * dtanh[0] * dtanh[1]
     if K >= 3:
-        dtanh[3] = -2 * dtanh[1] ** 2 + 4 * dtanh[0] ** 2 * dtanh[1]
-    if K > 3:
+        dtanh[3] = 2 * dtanh[1] * (2 * dtanh[0] ** 2 - dtanh[1])
+    if K >= 4:
+        dtanh[4] = -4 * dtanh[2] * (2 * dtanh[1] - dtanh[0] ** 2)
+    if K > 4:
         raise NotImplementedError(
-            f"Tanh only supports derivatives up to third order. Got {K}."
+            f"Tanh only supports derivatives up to fourth order. Got {K}."
         )
 
     def dn(*vs: Primal) -> Value:

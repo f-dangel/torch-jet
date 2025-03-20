@@ -25,26 +25,27 @@ int main() {
     int i,j,m,n,d,p,dim;
 
     /*--------------------------------------------------------------------------*/
-    cout << "Weighted Laplacian for nonlinear function\n\n";                      /* inputs */
+    cout << "Biharmonic operatore for nonlinear function\n\n";                      /* inputs */
     n = 3;
     m = 1;
-    d = 2;
-    p = 6; // propagate p unit vectors
+    d = 4;
+    p = 0.5*n*(n+1); // propagate p unit vectors
+
+    cout << "n = "<< n << " p = " << p << "\n";
 
     /*--------------------------------------------------------------------------*/
     double* xp = new double[n];                        /* allocations and inits */
     double* yp = new double[m];
-    double** S = new double*[n];
-    double** tensoren;
 
 
 
     adouble* x = new adouble[n];
     adouble* y = new adouble[m];
-
-    for (i=0; i<n; i++) {
-        xp[i] = 1.0;
-  }
+    adouble v1,v2,v3, v4;
+    
+    xp[0] = 1.0;
+    xp[1] = 2.0;
+    xp[2] = 0.5;
     
 
     /*--------------------------------------------------------------------------*/
@@ -53,27 +54,19 @@ int main() {
 
       for (i=0; i<n; i++) {
         x[i] <<= xp[i];
-	y[0] = y[0]*x[i]*x[i];
-      }
-      y[0] = 0.5*y[0];
+      } 
+
+      v1 = x[0]*x[0]*x[0]*x[0];
+      //      v2 = x[1]*x[1]*x[1]*x[1];
+      //v3 = x[2]*x[2]*x[2]*x[2];
+      //v4 = v1*v2;
+      //y[0] = v4*v3;
+      y[0] = v1;
       y[0] >>= yp[0];
     trace_off();
 
     /*--------------------------------------------------------------------------*/
 
-    double **H;
-    H = myalloc2(n, n);
-
-    hessian(1, n, xp, H);
-
-    printmat(" H", n, n, H);
-    printf("\n");
-    
-    /*--------------------------------------------------------------------------*/
-
-    dim = binomi(n-1+2,2);
-
-    cout << "dim " << dim << "\n";
     cout <<"Propagate p directions \n";
 
     double ***XPPP;
@@ -90,15 +83,15 @@ int main() {
     }
     // pure second order derivatives
     for (i = 0; i < n; i++) 
-      XPPP[i][i][0] = 2;
+      XPPP[i][i][0] = 4;
 
     // mixed second order derivatives
-      XPPP[0][3][0] = 1;
-      XPPP[1][3][0] = 1;
-      XPPP[0][4][0] = 1;
-      XPPP[2][4][0] = 1;
-      XPPP[1][5][0] = 1;
-      XPPP[2][5][0] = 1;
+      XPPP[0][3][0] = 2;
+      XPPP[1][3][0] = 2;
+      XPPP[0][4][0] = 2;
+      XPPP[2][4][0] = 2;
+      XPPP[1][5][0] = 2;
+      XPPP[2][5][0] = 2;
 
     
     YPPP = new double **[1];
@@ -106,15 +99,77 @@ int main() {
     for (j = 0; j < p; j++)
         YPPP[0][j] = new double[d];
 
-    hov_forward(1,1,n,2,p,xp,XPPP,yp,YPPP);
+    hov_forward(1,1,n,4,p,xp,XPPP,yp,YPPP);
    
     for(i=0;i<p;i++)
       {
-	cout << i << " " <<YPPP[0][i][0] << " " <<YPPP[0][i][1] << "\n";    
+	cout << i << " " <<YPPP[0][i][0] << " " <<YPPP[0][i][1] <<  " " <<YPPP[0][i][2] <<  " " <<YPPP[0][i][3] << "\n";    
       }
     
 
     /*--------------------------------------------------------------------------*/
+
+     cout <<"hand coded, propagate p directions in standard Taylor arithmetic \n";
+
+     // taylor polynomials of inputs 
+     double** x0ts; double** x1ts; double** x2ts;
+     // variables
+     double v1ps, v2ps, v3ps, v4ps;
+     // taylor polynomials attached to them
+     double** v1ts; double** v2ts; double** v3ts; double** v4ts;
+     // store common results
+     double temps, temps1;
+      // taylor polynomials of output
+     double** yts;
+
+     double Laplaciants;
+     
+     // allocate memory
+     x0ts = new double *[p];
+     x1ts = new double *[p];
+     x2ts = new double *[p];
+     v1ts = new double *[p];
+     v2ts = new double *[p];
+     v3ts = new double *[p];
+     v4ts = new double *[p];
+     yts = new double *[p];
+     
+     for (i = 0; i < p; i++) {
+       x0ts[i] = new double[4];
+       x1ts[i] = new double[4];
+       x2ts[i] = new double[4];
+       v1ts[i] = new double[4];
+       v2ts[i] = new double[4];
+       v3ts[i] = new double[4];
+       v4ts[i] = new double[4];
+       yts[i] = new double[4];
+       for (j = 0; j < 4; j++)
+	 {
+	   x0ts[i][j] = 0; x1ts[i][j] = 0; x2ts[i][j] = 0; v1ts[i][j] = 0; v2ts[i][j] = 0; v3ts[i][j] = 0; v4ts[i][j] = 0;
+	 }
+     }
+     
+     // init direction fourth order derivatives
+     x0ts[0][0] = 4.0;
+     x1ts[1][0] = 4.0; 
+     x2ts[3][0] = 4.0;
+
+     // v_1 =  x[0]*x[0]*x[0]*x[0];
+     v1ps =  xp[0]*xp[0]*xp[0]*xp[0];
+     temps = 1.0/xp[0]; 
+     for  (i = 0; i < 3; i++) {
+       //v_1
+       v1ts[i][0] = temps*(4*v1ps*x0ts[i][0]);
+       v1ts[i][1] = temps*(4*(v1ts[i][0]*x0ts[i][0]+v1ps*2*x0ts[i][1])-x0ts[i][0]*v1ts[i][0])/2.0;
+       v1ts[i][2] = temps*(4*(v1ts[i][1]*x0ts[i][0]+v1ts[i][0]*x0ts[i][1]+v1ps*2*x0ts[i][2])-x0ts[i][1]*v1ts[i][0]-2*x0ts[i][0]*v1ts[i][1])/3.0;
+     }
+
+     for  (i = 0; i < 3; i++) {
+       cout << i << " " << v1ts[i][0] << " " << v1ts[i][1] << " " << v1ts[i][2] <<"\n";
+     }  
+     cout << "\n";
+	 
+     /*--------------------------------------------------------------------------*/
   
     return 1;
     

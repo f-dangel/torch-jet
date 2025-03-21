@@ -77,7 +77,7 @@ Let's start by writing out the first two derivatives, for which we need the chai
       And the coefficient $f_k$ use only incoming derivatives up to that order, $\{x_{k'<k}\}$.
       The number of terms grows with $k$, and we can see that the incoming Taylor coefficients are chosen from the \emph{integer partitioning of $k$}, for instance $\partitioning(3) = \{ \{1,1,1\}, \{1, 2\}, \{3\} \}$.
       Finally, there is a also a multiplicity term that depends on the set of from the integer partitioning.
-      In total, this gives the well-known Fa\`a die Bruno formula~\cite{arbogast1800calcul,hardy2006combinatorics,faa1857note}
+      In total, this gives the well-known Fa\`a di Bruno formula~\cite{arbogast1800calcul,hardy2006combinatorics,faa1857note}
       }
       \label{eq:faa-di-bruno}
       f_k
@@ -162,6 +162,7 @@ With this notation, we can seamlessly write (with $\vx$ and $f(\vx)$ being vecto
     \end{pmatrix*}
 \end{align}
 This equation tells us how to (i) propagate forward Taylor coefficients through a directed acyclic compute graph (DAG) that represents a chain of function compositions, and (ii) how the results relate to the composition's derivative \wrt the input space.
+
 
 \subsection{Computing Laplacians}
 Taylor mode from the previous sub-section serves as backbone for computing many differential operators like the Laplacian.
@@ -286,6 +287,7 @@ However, we recovered it from a different starting point: by using Taylor mode i
     \label{tab:arithmetics}
 \end{table}
 
+
 \paragraph{Weighted sums of second-order derivatives.}
 We can generalize the scheme in \cref{eq:laplacian-efficient} to computing differential operators of the form $\sum_{i,j} C_{i,j} \nicefrac{\partial^2f}{\partial \evx_i \evx_j}$ with a symmetric coefficient matrix $\mC \in \sR^{D\times D}$. For simplicity, let's first assume that $\mC$ is positive semi-definite, which means we can express it as $\mC = \sum_{d=1}^{\rank(\mC)} \vv_d \vv_d^\top$ with real-valued $\vv_d \in \sR^D$, and therefore
 \begin{align}\label{eq:weighted-laplacian}
@@ -298,6 +300,8 @@ Also here, the second-order coefficients can be collapsed, and instead of pushin
 
 If $\mC$ is in-definite, then some $\vv_d$ will be purely complex, \ie have non-zero imaginary but zero real part, and some will be purely real (alternatively, we can stick to real-valued arithmetic, but incorporate a minus sign for the vectors associated with negative eigenvalues of $\mC$; it is currently unclear if we even need this: there might not be relevant use cases for $\mC$ indefinite).
 We can either compute the differential operator in complex-valued arithmetic, or split the positive and negative parts of the spectrum into two separate collapsed jets.
+
+\todo{We can make the connection to \cite{hu2023hutchinson} equation (5) clear and discuss the case of $\mC$ being a function of the input}
 
 \paragraph{Partially collapsed Taylor mode.}
 A use case for such partially collapsed jets is in \cite{hu2023hutchinson}, which uses randomized Taylor mode (see \cref{subsec:randomized-taylor-mode}) to estimate the Laplacian.
@@ -367,6 +371,7 @@ It is defined as
     \sum_{i=1}^D \sum_{j=1}^D
     \frac{\partial^4 f(\vx)}{\partial \evx_i^2 \partial \evx_j^2}
     =
+    \sum_{i=1}^D \sum_{j=1}^D
     \partial^4 f(\vx) [\ve_i, \ve_i, \ve_j, \ve_j]
 \end{align}
 \citet{hu2023hutchinson} propose to approximate it in an unbiased fashion via
@@ -381,6 +386,42 @@ It is defined as
 \end{align}
 If we want to estimate this quantity using multiple samples, we can again pull the summation (from averaging over examples) into the Taylor mode propagation, resulting in collapsed Taylor mode.
 I think we can improve their results from Table 3 in terms of memory and run time.
+
+\paragraph{Using Linearity --- General Differential Operators}
+
+Let a general differential operator be given as 
+\begin{equation}
+    D = \sum_{i = 1}^N D_i
+\end{equation}
+where every $D_i$ is itself
+\begin{equation}
+    D_i = \sum_{j=1}^{N_i} \frac{\partial^{k^j}}{\partial x_1^{k_1^j} \dots \partial x_d^{k_d^j}}
+\end{equation}
+and $k^j = \sum_{l = 1}^{d} k_l^j$.
+Consider $D_i$ applied to $g \circ h$ 
+\begin{equation}
+    D_i(g \circ h) =  \sum_{j=1}^{N_i} \frac{\partial^{k^j}}{\partial x_1^{k_1^j} \dots \partial x_d^{k_d^j}} (g \circ h).
+\end{equation}
+Following the explanations of \cite{hardy2006combinatorics}, and using the set $K^j := \{\underbrace{1, \dots 1}_{k_1^j}, \dots, \underbrace{d, \dots, d}_{k_d^j}\}$ we get
+\begin{equation}
+    \sum_{j=1}^{N_i} \frac{\partial^{k^j}}{\partial x_1^{k_1^j} \dots \partial x_d^{k_d^j}} (g \circ h) =
+    \sum_{j=1}^{N_i}  \sum_{\sigma \in \partitioning(K^j)} \nu(\sigma) \partial^{|\sigma|} g(h) \prod_{s \in \sigma} \frac{\partial^{|s|} h}{\prod_{l \in s} \partial x_l} 
+\end{equation}
+Among $K^j$s partitions there are the trivial partition $\sigma_{trivial} = \{\{\underbrace{1, \dots 1}_{k_1^j}, \dots, \underbrace{d, \dots, d}_{k_d^j}\}\}$ and the atomic partition $\sigma_{atomic} = \{\underbrace{\{1\}, \dots, \{1\}}_{k_1^j}, \dots, \underbrace{\{d\}, \dots, \{d\}}_{k_d^j}\}$. The corresponding terms are
+\begin{align}
+    &\nu(\sigma_{atomic}) \partial^{k^j} g(h) \prod_{l \in K^j} \frac{\partial h}{\partial x_l}\\
+    &\nu(\sigma_{trivial}) \partial g(h)\frac{\partial^{k^j} h}{\partial x_1^{k_1^j} \dots \partial x_d^{k_d^j}}.
+\end{align}
+The first term is $(D_i g) \circ h$. The latter is the term that corresponds to $D_i h$, which is the result of the previous propagation step in the setting forward mode. The other mixed terms include derivatives of lower degrees that are required to compute the derivatives of higher degree. These lower degree derivatives do not directly contribute to the differential operators. Therefore we can leverage the linearity trick here too: 
+\begin{align}
+    D_i(g \circ h) &= \nu(\sigma_{atomic}) (D_i g)(h) \prod_{l \in K^j} \frac{\partial h}{\partial x_l} + 
+    \nu(\sigma_{trivial}) \partial g(h)D_i(h) \\
+    &+ \sum_{i=1}^{N_i} \sum_{\underset{\sigma \neq \sigma_{atomic}}{\underset{\sigma \neq \sigma_{trivial}}{\sigma \in \partitioning(K^j)}}} \nu(\sigma) \partial^{|\sigma|} g(h) \prod_{s \in \sigma} \frac{\partial^{|s|} h}{\prod_{l \in s} \partial x_l}  .
+\end{align}
+
+
+
+
 %%% Local Variables:
 %%% mode: LaTeX
 %%% TeX-master: "../main"

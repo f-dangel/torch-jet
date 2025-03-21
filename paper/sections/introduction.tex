@@ -1,4 +1,17 @@
-TODO
+Our contributions are the following:
+\begin{enumerate}
+    \item We describe `collapsed' Taylor mode which allows to collapse the highest Taylor coefficients during the forward propagation whenever we compute a weighted sum of said derivatives.
+    This trick has first been used in the `forward Laplacian' framework, which however does not rely on Taylor mode.
+    Our collapsed Taylor mode improves over it in two ways.
+    First, it separates the trick into using standard Taylor mode, combined with simple graph rewrites based on linearity.
+    Second, it generalizes to other differential operators, and can also be applied to recently proposed randomization techniques for Taylor mode.
+    
+    \item This leads to a conceptually clean separation of concepts, allowing for a simple implementation that can handle all scenarios and does not require manual implementations for each differential operator.
+    To demonstrate this, we build a Taylor mode library for PyTorch and equip it with the necessary graph simplifications using the \texttt{torch.fx} library, and show how collapsed Taylor mode accelerates the computation of various differential operators.
+
+    \item Ideally, we find specially structured differential operators for which our trick is especially suited, and classify them.
+    One example is the trace of derivative tensors of arbitrary order, although this seems to be an operator that is not practically relevant.
+\end{enumerate}
 \newpage
 
 \begin{figure}[t]

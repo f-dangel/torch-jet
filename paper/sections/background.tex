@@ -387,6 +387,202 @@ It is defined as
 If we want to estimate this quantity using multiple samples, we can again pull the summation (from averaging over examples) into the Taylor mode propagation, resulting in collapsed Taylor mode.
 I think we can improve their results from Table 3 in terms of memory and run time.
 
+\paragraph{Using Linearity --- Biharmonic Operator}
+
+When writing out the Biharmonic operator, applied to $g \circ h$
+\begin{align}
+\sum_{i=1}^d \sum_{j=1}^d
+\frac{\partial^4}{\partial x_i^2 \partial x_j^2}
+(g\circ h)(x) 
+&= 
+\sum_{i=1}^d \sum_{j=1}^d \Big[
+\partial^4 g(h(x))[h_i^2(x) h_j(x)^2 \\
+&+ 
+\partial^3 g(h(x)) \left[h_i(x)^2 h_{jj}(x)
++ 
+4 h_i(x) h_j(x) h_{ij}(x) 
++ 
+h_{ii}(x) h_j(x)^2
+\right] \\
+&+ 
+\partial^2 g(h(x)) \left[
+2 h_{ij}(x)^2 
++ 
+2 h_i(x) h_{ijj}(x) 
++ 
+2 h_{iij}(x) h_j(x) 
++ 
+h_{ii}(x) h_{jj}(x)
+\right] \\
+&+
+\partial g(h(x)) h_{iijj}(x)\Big] \\
+\end{align}
+ we see several terms which occur only as sums:
+ \begin{align}
+&\sum_{i=1}^d \sum_{j=1}^d 
+\partial^4 g(h(x))
+[h_i^2(x) h_j(x)^2] \\
+&+ 
+\partial^3 g(h(x))\left[
+\sum_{i=1}^d\left(
+h_i(x)^2 
+\mathemph{\sum_{j=1}^d  h_{jj}(x)}
+\right) 
++
+4 \sum_{i=1}^d \sum_{j=1}^d \left(
+h_i(x) h_j(x) h_{ij}(x)
+\right)
++
+\sum_{j=1}^d \left(
+\mathemph{\sum_{i=1}^d  h_{ii}(x)} h_j(x)^2
+\right) 
+\right] \\
+&+
+\partial^2 g(h(x)) \left[
+\sum_{i=1}^d \sum_{j=1}^d \left(
+2 h_{ij}(x)^2 
+\right) 
++
+2 \sum_{i=1}^d \left(
+h_i(x) \mathemph{\sum_{j=1}^d  h_{ijj}(x)}
+\right) 
++
+2 \sum_{j=1}^d \left(
+\mathemph{\sum_{i=1}^d  h_{iij}(x)} h_j(x) 
+\right) 
++
+\mathemph{\sum_{i=1}^d h_{ii}(x) \sum_{j=1}^d  h_{jj}(x)}
+\right] \\
+&+ 
+\partial g(h(x)) \mathemph{\sum_{i=1}^d \sum_{j=1}^d h_{iijj}(x)}
+\Big].
+\end{align}
+\todo{Do we assume continuity of all derivatives? Required for equivalence of third order sum} Leveraging the fact that there are equivalent sums $\sum_j h_{jj} = \sum_i h_{ii}$ and $\sum_j h_{ijj} = \sum_i h_{iij}$ as well as sums like $\displaystyle \sum_{i=1}^d  \sum_{j=1}^d \partial^3 \vh [
+        \vx_i, \vx_i, \vx_{jj}]$ are the same as $\displaystyle \sum_{i=1}^d  \sum_{j=1}^d \partial^3 \vh [\vx_{ii},
+        \vx_j, \vx_j]$
+        everything is combined in the following efficient propagation scheme
+
+\begin{align}\label{eq:biharm-efficient}
+  \begin{split}
+    \begin{pmatrix*}
+      \vx_0
+      \\
+      \{\vx_{i} \}
+      \\
+      \{\vx_{ij} \}
+      \\
+      \mathemph{\displaystyle\sum_{i=1}^D \vx_{ii}}  
+      \\
+      \mathemph{\displaystyle\sum_{i=1}^D \vx_{iij}}
+      \\
+      \mathemph{\displaystyle\sum_{i=1}^D \sum_{j=1}^D  \vx_{iijj}}
+    \end{pmatrix*}
+    &\overset{\text{(\ref{eq:taylor-mode-scalar})}}{\to}
+      \begin{pmatrix*}[l]
+        \vh_0 =  \vh(\vx_0)
+        \\
+        \{\vh_{i}\} = \{\partial \vh[\vx_{i}]\}
+        \\
+        \mathemph{\displaystyle \sum_{i=1}^D \vh_{ii}} = \displaystyle\sum_{i=1}^D \partial^2 \vh[
+        \vx_{i}, \vx_{i}]
+        + \partial \vh[\mathemph{\displaystyle\sum_{i=1}^D\vx_{ii}}]
+        \\
+        \mathemph{\displaystyle \sum_{i=1}^D \vh_{iij}} = 
+        \displaystyle\sum_{i=1}^D \left(
+        \partial^3 \vh[
+        \vx_{i}, \vx_{i}, \vx_{j}] 
+        + 
+        2 \partial^2 \vh[
+        \vx_{i, j}, \vx_{i}] \right)
+        + 
+        \partial^2 \vh[
+        \vx_{j}, \mathemph{\displaystyle\sum_{i = 1}^d\vx_{ii}}]
+        + 
+        \partial \vh[
+        \mathemph{\displaystyle\sum_{i=1}^D\vx_{iij}}]
+        \\
+        \mathemph{\displaystyle\sum_{i=1}^d \sum_{j=1}^d \vh_{iijj}} = 
+        \displaystyle\sum_{i=1}^d \sum_{j=1}^d
+        \partial^4 \vh
+        [\vx_i, \vx_i, \vx_j, \vx_j] 
+        + 
+        2 \displaystyle \sum_{j=1}^d \partial^3 \vh [
+        \vx_j, \vx_j, \mathemph{\displaystyle \sum_{i=1}^d \vx_{ii}} ]
+        \\
+        +
+        4 \displaystyle \sum_{i=1}^d \sum_{j=1}^d \partial^3 \vh [
+        \vx_i, \vx_j, \vx_{ij}]
+        +
+        \displaystyle 2\sum_{i=1}^d \sum_{j=1}^d \partial^2 \vh [
+         \vx_{ij}, \vx_{ij}]
+        +
+        \displaystyle 4\sum_{j=1}^d \partial^2 \vh [
+        \vx_j, \mathemph{\sum_{i=1}^d  \vx_{iij}}]
+        \\
+        +
+        \displaystyle \partial^2 \vh [
+        \mathemph{\sum_{i=1}^d \vx_{ii}, \sum_{i=1}^d \vx_{ii}}]
+        + 
+        \partial \vh [\mathemph{\sum_{i=1}^d \sum_{j=1}^d \vx_{iijj}}]
+        \Big]
+      \end{pmatrix*}
+    \\
+    &\overset{\text{(\ref{eq:taylor-mode-scalar})}}{\to}
+\begin{pmatrix*}[l]
+        \vg_0 =  \vg(\vh_0)
+        \\
+        \{\vg_{i}\} = \{\partial \vg[\vh_{i}]\}
+        \\
+        \mathemph{\displaystyle \sum_{i=1}^D \vg_{ii}} = \displaystyle\sum_{i=1}^D \partial^2 \vg[
+        \vh_{i}, \vh_{i}]
+        + \partial \vg[\mathemph{\displaystyle\sum_{i=1}^D\vh_{ii}}]
+        \\
+        \mathemph{\displaystyle \sum_{i=1}^D \vg_{iij}} = 
+        \displaystyle\sum_{i=1}^D \left(
+        \partial^3 \vg[
+        \vh_{i}, \vh_{i}, \vh_{j}] 
+        + 
+        2 \partial^2 \vg[
+        \vh_{ij}, \vh_{i}] \right)
+        + 
+        \partial^2 \vg[
+        \vh_{j}, \mathemph{\displaystyle\sum_{i=1}^d\vh_{ii}}]
+        + 
+        \partial \vg[
+        \mathemph{\displaystyle\sum_{i=1}^D\vh_{iij}}]
+        \\
+        \mathemph{\displaystyle\sum_{i=1}^d \sum_{j=1}^d \vg_{iijj}} = 
+        \displaystyle\sum_{i=1}^d \sum_{j=1}^d
+        \partial^4 \vg
+        [\vh_i, \vh_i, \vh_j, \vh_j] 
+        + 
+        2 \displaystyle \sum_{j=1}^d \partial^3 \vg [
+        \vh_j, \vh_j, \mathemph{\displaystyle \sum_{i=1}^d \vh_{ii}} ]
+        \\
+        +
+        4 \displaystyle \sum_{i=1}^d \sum_{j=1}^d \partial^3 \vg [
+        \vh_i, \vh_j, \vh_{ij}]
+        +
+        \displaystyle 2\sum_{i=1}^d \sum_{j=1}^d \partial^2 \vg [
+         \vh_{ij}, \vh_{ij}]
+        +
+        \displaystyle 4\sum_{j=1}^d \partial^2 \vg [
+        \vh_j, \mathemph{\sum_{i=1}^d  \vh_{iij}}]
+        \\
+        +
+        \displaystyle \partial^2 \vg [
+        \mathemph{\sum_{i=1}^d \vh_{ii}, \sum_{i=1}^d \vh_{ii}}]
+        + 
+        \partial \vg [\mathemph{\sum_{i=1}^d \sum_{j=1}^d \vh_{iijj}}]
+        \Big]
+      \end{pmatrix*}
+    \\
+    \\
+    &\overset{\text{slice}}{\to} \mathemph{\sum_{i=1}^D \sum_{i=1}^D \{ \vg_{iijj} \}}
+      \overset{\{\frac{d}{d t} \vx = I_D, \frac{d^2}{d t^2} \vx = 0, \frac{d^3}{d t^3} \vx = 0, \frac{d^4}{d t^4} \vx = 0\}}{=}
+      \Delta^ 2f(\vx_0)
+  \end{split}
+\end{align}
 \paragraph{Using Linearity --- General Differential Operators}
 
 Let a general differential operator be given as 

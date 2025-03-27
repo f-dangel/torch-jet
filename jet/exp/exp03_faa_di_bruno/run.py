@@ -23,7 +23,7 @@ def _superscript(arg: str, sup: Any) -> str:
 
     Args:
         arg: The argument.
-        sub: The superscript.
+        sup: The superscript.
 
     Returns:
         The argument with the subscript.

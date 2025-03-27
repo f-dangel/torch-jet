@@ -389,35 +389,7 @@ I think we can improve their results from Table 3 in terms of memory and run tim
 
 \paragraph{Using Linearity --- Biharmonic Operator}
 
-When writing out the Biharmonic operator, applied to $g \circ h$
-\begin{align}
-\sum_{i=1}^d \sum_{j=1}^d
-\frac{\partial^4}{\partial x_i^2 \partial x_j^2}
-(g\circ h)(x) 
-&= 
-\sum_{i=1}^d \sum_{j=1}^d \Big[
-\partial^4 g(h(x))[h_i^2(x) h_j(x)^2 \\
-&+ 
-\partial^3 g(h(x)) \left[h_i(x)^2 h_{jj}(x)
-+ 
-4 h_i(x) h_j(x) h_{ij}(x) 
-+ 
-h_{ii}(x) h_j(x)^2
-\right] \\
-&+ 
-\partial^2 g(h(x)) \left[
-2 h_{ij}(x)^2 
-+ 
-2 h_i(x) h_{ijj}(x) 
-+ 
-2 h_{iij}(x) h_j(x) 
-+ 
-h_{ii}(x) h_{jj}(x)
-\right] \\
-&+
-\partial g(h(x)) h_{iijj}(x)\Big] \\
-\end{align}
- we see several terms which occur only as sums:
+When writing out the Biharmonic operator, applied to $g \circ h$ we see several terms which occur only as sums:
  \begin{align}
 &\sum_{i=1}^d \sum_{j=1}^d 
 \partial^4 g(h(x))

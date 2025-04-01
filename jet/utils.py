@@ -3,7 +3,7 @@
 from math import factorial, prod
 from typing import Callable, Optional, Tuple
 
-from torch import Tensor, device, dtype, einsum, empty, rand
+from torch import Tensor, device, dtype, einsum, empty
 from torch.nn import Module
 
 # type annotation for arguments and Taylor coefficients in input and output space

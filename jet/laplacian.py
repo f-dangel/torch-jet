@@ -1,6 +1,6 @@
 """Implements a module that computes the Laplacian via jets and can be simplified."""
 
-from typing import Callable, Optional, Tuple
+from typing import Callable, Tuple
 
 from torch import Tensor, eye, randn, zeros
 from torch.fx import wrap
@@ -19,13 +19,7 @@ class Laplacian(Module):
     """Module that computes the Laplacian of a function using jets."""
 
     def __init__(
-        self,
-        f: Callable[[Tensor], Tensor],
-        dummy_x: Tensor,
-        is_batched: bool,
-        randomize: Optional[
-            Tuple[str, int]
-        ] = None,  # ('normal', 10), ('rademacher', 5)
+        self, f: Callable[[Tensor], Tensor], dummy_x: Tensor, is_batched: bool
     ):
         """Initialize the Laplacian module.
 
@@ -37,11 +31,6 @@ class Laplacian(Module):
             is_batched: Whether the function and its input are batched. In this case,
                 we can use that computations can be carried out independently along
                 the leading dimension of tensors.
-            randomize: Whether the Laplacian should be approximated via randomization.
-                If `None`, the exact Laplacian is computed. If specified, the string
-                describes which distribution to use, and the integer how many samples
-                should be used. Possible distribution values are `'normal'` or
-                `'rademacher'`.
         """
         super().__init__()
         self.jet_f = jet(f, 2, vmap=True)
@@ -53,14 +42,6 @@ class Laplacian(Module):
         self.unbatched_dim = (self.x_shape[1:] if is_batched else self.x_shape).numel()
         self.batched_dim = self.x_shape[0] if is_batched else 1
         self.is_batched = is_batched
-
-        # maybe store information to randomize the computation
-        self.is_randomized = randomize is not None
-        if self.is_randomized:
-            distribution, num_samples = randomize
-            assert distribution in {"normal", "rademacher"}
-            self.distribution = distribution
-            self.num_samples = num_samples
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """Compute the Laplacian of the function at the input tensor.
@@ -76,33 +57,118 @@ class Laplacian(Module):
             Tuple containing the replicated function value, the Jacobian, and the
             Laplacian.
         """
-        num_replicas = self.num_samples if self.is_randomized else self.unbatched_dim
-
-        X = replicate(x, num_replicas)
-
-        if self.is_randomized:
-            shape = (
-                (num_replicas, self.batched_dim, *self.x_shape[1:])
-                if self.is_batched
-                else (num_replicas, *self.x_shape)
-            )
-            sample_func = {"normal": randn, "rademacher": rademacher}[self.distribution]
-            V1 = sample_func(*shape, **self.x_kwargs)
-
-        else:
-            V1 = eye(num_replicas, **self.x_kwargs)
-            if self.is_batched:
-                V1 = V1.reshape(num_replicas, 1, *self.x_shape[1:])
-                # copy without using more memory
-                V1 = V1.expand(-1, self.batched_dim, *(-1 for _ in self.x_shape[1:]))
-            else:
-                V1 = V1.reshape(num_replicas, *self.x_shape)
-
-        V2 = zeros(num_replicas, *self.x_shape, **self.x_kwargs)
-
+        X, V1, V2 = self.set_up_taylor_coefficients(x)
         result = self.jet_f(X, V1, V2)
-        lap = sum_vmapped(result[2])
-        if self.is_randomized:
-            lap /= self.num_samples
 
-        return result[0], result[1], lap
+        return result[0], result[1], sum_vmapped(result[2])
+
+    def set_up_taylor_coefficients(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+        """Create the Taylor coefficients for the Laplacian computation.
+
+        Args:
+            x: Input tensor. Must have same shape as the dummy input tensor that was
+                passed in the constructor.
+
+        Returns:
+            The three input tensors to the 2-jet that computes the Laplacian.
+        """
+        X = replicate(x, self.unbatched_dim)
+        V2 = zeros(self.unbatched_dim, *self.x_shape, **self.x_kwargs)
+
+        V1 = eye(self.unbatched_dim, **self.x_kwargs)
+        if self.is_batched:
+            V1 = V1.reshape(self.unbatched_dim, 1, *self.x_shape[1:])
+            # copy without using more memory
+            V1 = V1.expand(-1, self.batched_dim, *(-1 for _ in self.x_shape[1:]))
+        else:
+            V1 = V1.reshape(self.unbatched_dim, *self.x_shape)
+
+        return X, V1, V2
+
+
+class RandomizedLaplacian(Laplacian):
+    """Computes a Monte-Carlo estimate of the Laplacian using jets.
+
+    Attributes:
+        SUPPORTED_DISTRIBUTIONS: Set of supported distributions for the random vectors.
+    """
+
+    SUPPORTED_DISTRIBUTIONS = {"normal", "rademacher"}
+
+    def __init__(
+        self,
+        f: Callable[[Tensor], Tensor],
+        dummy_x: Tensor,
+        is_batched: bool,
+        num_samples: int,
+        distribution: str,
+    ):
+        """Initialize the Monte-Carlo Laplacian module.
+
+        Args:
+            f: The function whose Laplacian is computed.
+            dummy_x: The input on which the Laplacian is computed. It is only used to
+                infer meta-data of the function input that `torch.fx` is not capable
+                of determining at the moment.
+            is_batched: Whether the function and its input are batched. In this case,
+                we can use that computations can be carried out independently along
+                the leading dimension of tensors.
+            num_samples: How many Monte-Carlo samples should be used by the estimation.
+                Must be a positive integer.
+            distribution: From which distribution to draw the random vectors.
+                Possible values are `'normal'` or `'rademacher'`.
+
+        Raises:
+            ValueError: If the distribution is not supported.
+        """
+        super().__init__(f, dummy_x, is_batched)
+        if distribution not in self.SUPPORTED_DISTRIBUTIONS:
+            raise ValueError(
+                f"Unsupported distribution '{distribution}'. "
+                f"Supported distributions are {self.SUPPORTED_DISTRIBUTIONS}."
+            )
+        self.distribution = distribution
+        self.sample_func = {"normal": randn, "rademacher": rademacher}[distribution]
+        self.num_samples = num_samples
+
+    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+        """Compute the MC-Laplacian of the function at the input tensor.
+
+        Replicates the input tensor, then evaluates the 2-jet of f using
+        canonical basis vectors for v1 and zero vectors for v2.
+
+        Args:
+            x: Input tensor. Must have same shape as the dummy input tensor that was
+                passed in the constructor.
+
+        Returns:
+            Tuple containing the replicated function value, the randomized Jacobian,
+            and the randomized Laplacian.
+        """
+        f0, f1, f2 = super().forward(x)
+
+        # need to divide the Laplacian by number of MC samples
+        return f0, f1, f2 / self.num_samples
+
+    def set_up_taylor_coefficients(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+        """Create the Taylor coefficients for the MC-Laplacian computation.
+
+        Args:
+            x: Input tensor. Must have same shape as the dummy input tensor that was
+                passed in the constructor.
+
+        Returns:
+            The three input tensors to the 2-jet that computes the MC-Laplacian.
+        """
+        X = replicate(x, self.num_samples)
+        V2 = zeros(self.num_samples, *self.x_shape, **self.x_kwargs)
+
+        # sample the random vectors
+        shape = (
+            (self.num_samples, self.batched_dim, *self.x_shape[1:])
+            if self.is_batched
+            else (self.num_samples, *self.x_shape)
+        )
+        V1 = self.sample_func(*shape, **self.x_kwargs)
+
+        return X, V1, V2

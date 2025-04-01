@@ -1,8 +1,8 @@
 """Implements a module that computes the Laplacian via jets and can be simplified."""
 
-from typing import Callable, Tuple
+from typing import Callable, Optional, Tuple
 
-from torch import Tensor, eye, zeros
+from torch import Tensor, eye, rand, randn, zeros
 from torch.fx import wrap
 from torch.nn import Module
 
@@ -15,11 +15,23 @@ wrap(replicate)
 wrap(sum_vmapped)
 
 
+def rademacher(*shape: int, dtype=None, device=None):
+    """Sample from Rademacher distribution."""
+    r = ((rand(shape) < 0.5)) * 2 - 1
+    return r.to(dtype).to(device)
+
+
 class Laplacian(Module):
     """Module that computes the Laplacian of a function using jets."""
 
     def __init__(
-        self, f: Callable[[Tensor], Tensor], dummy_x: Tensor, is_batched: bool
+        self,
+        f: Callable[[Tensor], Tensor],
+        dummy_x: Tensor,
+        is_batched: bool,
+        randomize: Optional[
+            Tuple[str, int]
+        ] = None,  # ('normal', 10), ('rademacher', 5)
     ):
         """Initialize the Laplacian module.
 
@@ -31,6 +43,11 @@ class Laplacian(Module):
             is_batched: Whether the function and its input are batched. In this case,
                 we can use that computations can be carried out independently along
                 the leading dimension of tensors.
+            randomize: Whether the Laplacian should be approximated via randomization.
+                If `None`, the exact Laplacian is computed. If specified, the string
+                describes which distribution to use, and the integer how many samples
+                should be used. Possible distribution values are `'normal'` or
+                `'rademacher'`.
         """
         super().__init__()
         self.jet_f = jet(f, 2, vmap=True)
@@ -42,6 +59,14 @@ class Laplacian(Module):
         self.unbatched_dim = (self.x_shape[1:] if is_batched else self.x_shape).numel()
         self.batched_dim = self.x_shape[0] if is_batched else 1
         self.is_batched = is_batched
+
+        # maybe store information to randomize the computation
+        self.is_randomized = randomize is not None
+        if self.is_randomized:
+            distribution, num_samples = randomize
+            assert distribution in {"normal", "rademacher"}
+            self.distribution = distribution
+            self.num_samples = num_samples
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """Compute the Laplacian of the function at the input tensor.
@@ -57,17 +82,33 @@ class Laplacian(Module):
             Tuple containing the replicated function value, the Jacobian, and the
             Laplacian.
         """
-        X = replicate(x, self.unbatched_dim)
+        num_replicas = self.num_samples if self.is_randomized else self.unbatched_dim
 
-        V1 = eye(self.unbatched_dim, **self.x_kwargs)
-        if self.is_batched:
-            V1 = V1.reshape(self.unbatched_dim, 1, *self.x_shape[1:])
-            # copy without using more memory
-            V1 = V1.expand(-1, self.batched_dim, *(-1 for _ in self.x_shape[1:]))
+        X = replicate(x, num_replicas)
+
+        if self.is_randomized:
+            shape = (
+                (num_replicas, self.batched_dim, *self.x_shape[1:])
+                if self.is_batched
+                else (num_replicas, *self.x_shape)
+            )
+            sample_func = {"normal": randn, "rademacher": rademacher}[self.distribution]
+            V1 = sample_func(*shape, **self.x_kwargs)
+
         else:
-            V1 = V1.reshape(self.unbatched_dim, *self.x_shape)
+            V1 = eye(num_replicas, **self.x_kwargs)
+            if self.is_batched:
+                V1 = V1.reshape(num_replicas, 1, *self.x_shape[1:])
+                # copy without using more memory
+                V1 = V1.expand(-1, self.batched_dim, *(-1 for _ in self.x_shape[1:]))
+            else:
+                V1 = V1.reshape(num_replicas, *self.x_shape)
 
-        V2 = zeros(self.unbatched_dim, *self.x_shape, **self.x_kwargs)
+        V2 = zeros(num_replicas, *self.x_shape, **self.x_kwargs)
 
         result = self.jet_f(X, V1, V2)
-        return result[0], result[1], sum_vmapped(result[2])
+        lap = sum_vmapped(result[2])
+        if self.is_randomized:
+            lap /= self.num_samples
+
+        return result[0], result[1], lap

@@ -118,14 +118,19 @@ class RandomizedLaplacian(Laplacian):
                 Possible values are `'normal'` or `'rademacher'`.
 
         Raises:
-            ValueError: If the distribution is not supported.
+            ValueError: If the distribution is not supported or the number of samples
+                is not positive.
         """
         super().__init__(f, dummy_x, is_batched)
+
         if distribution not in self.SUPPORTED_DISTRIBUTIONS:
             raise ValueError(
                 f"Unsupported distribution {distribution!r}. "
                 f"Supported distributions are {self.SUPPORTED_DISTRIBUTIONS}."
             )
+        if num_samples <= 0:
+            raise ValueError(f"Number of samples must be positive, got {num_samples}.")
+
         self.distribution = distribution
         self.sample_func = {"normal": randn, "rademacher": rademacher}[distribution]
         self.num_samples = num_samples

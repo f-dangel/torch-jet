@@ -1,9 +1,9 @@
 """Utility functions for computing jets."""
 
 from math import factorial, prod
-from typing import Callable, Tuple
+from typing import Callable, Optional, Tuple
 
-from torch import Tensor, einsum
+from torch import Tensor, device, dtype, einsum, empty, rand
 from torch.nn import Module
 
 # type annotation for arguments and Taylor coefficients in input and output space
@@ -119,3 +119,25 @@ def sum_vmapped(x: Tensor) -> Tensor:
         Sum of the vmap-ed tensor.
     """
     return x.sum(0)
+
+
+def rademacher(
+    *shape: int, dtype: Optional[dtype] = None, device: Optional[device] = None
+):
+    """Sample from Rademacher distribution.
+
+    Args:
+        shape: Shape of the output tensor.
+        dtype: Data type of the output tensor. Default: `None`.
+        device: Device of the output tensor. Default: `None`.
+
+    Returns:
+        Tensor sampled from Rademacher distribution (+1 and -1 entries).
+    """
+    return (
+        empty(*shape, dtype=dtype, device=device)
+        .fill_(0.5)
+        .bernoulli_()
+        .mul_(2)
+        .sub_(1)
+    )

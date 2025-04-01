@@ -1,9 +1,11 @@
 """Tests for jet/__init__.py."""
 
+from test.utils import VMAP_IDS, VMAPS
 from typing import Any, Callable, Dict, Tuple
 
-import pytest
+from pytest import mark
 from torch import Tensor, isclose, manual_seed, rand, sigmoid, sin, stack, tanh, tensor
+from torch.fx import symbolic_trace
 from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
 
@@ -194,8 +196,8 @@ VMAPSIZES = [0, 4]
 VMAPSIZE_IDS = ["novmap" if v == 0 else f"vmapsize={v}" for v in VMAPSIZES]
 
 
-@pytest.mark.parametrize("config", CASES, ids=CASE_IDS)
-@pytest.mark.parametrize("vmapsize", VMAPSIZES, ids=VMAPSIZE_IDS)
+@mark.parametrize("config", CASES, ids=CASE_IDS)
+@mark.parametrize("vmapsize", VMAPSIZES, ids=VMAPSIZE_IDS)
 def test_jet(config: Dict[str, Any], vmapsize: int):
     """Compare forward jet with reverse-mode reference implementation.
 
@@ -205,3 +207,23 @@ def test_jet(config: Dict[str, Any], vmapsize: int):
     """
     f, x, vs, _ = setup_case(config, vmapsize=vmapsize)
     check_jet(f, (x, vs), vmapsize != 0)
+
+
+@mark.parametrize("config", CASES, ids=CASE_IDS)
+@mark.parametrize("vmap", VMAPS, ids=VMAP_IDS)
+def test_symbolic_trace_jet(config: Dict[str, Any], vmap: bool):
+    """Test whether the function produced by jet can be traced.
+
+    Args:
+        config: Configuration dictionary of the test case.
+        vmap: Whether to use vmap.
+    """
+    f, _, _, _ = setup_case(config, taylor_coefficients=False)
+    k = config["k"]
+    # generate the jet's compute graph
+    jet_f = jet(f, k, vmap=vmap)
+
+    # try tracing it
+    print("Compute graph of jet function:")
+    mod = symbolic_trace(jet_f)
+    print(mod.graph)

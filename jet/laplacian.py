@@ -2,23 +2,17 @@
 
 from typing import Callable, Optional, Tuple
 
-from torch import Tensor, eye, rand, randn, zeros
+from torch import Tensor, eye, randn, zeros
 from torch.fx import wrap
 from torch.nn import Module
 
 from jet import jet
-from jet.utils import replicate, sum_vmapped
+from jet.utils import rademacher, replicate, sum_vmapped
 
 # tell `torch.fx` to trace `replicate` as one node (required for simplification)
 wrap(replicate)
 # tell `torch.fx` to trace `sum_vmapped` as one node (required for simplification)
 wrap(sum_vmapped)
-
-
-def rademacher(*shape: int, dtype=None, device=None):
-    """Sample from Rademacher distribution."""
-    r = ((rand(shape) < 0.5)) * 2 - 1
-    return r.to(dtype).to(device)
 
 
 class Laplacian(Module):

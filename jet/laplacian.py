@@ -123,7 +123,7 @@ class RandomizedLaplacian(Laplacian):
         super().__init__(f, dummy_x, is_batched)
         if distribution not in self.SUPPORTED_DISTRIBUTIONS:
             raise ValueError(
-                f"Unsupported distribution '{distribution}'. "
+                f"Unsupported distribution {distribution!r}. "
                 f"Supported distributions are {self.SUPPORTED_DISTRIBUTIONS}."
             )
         self.distribution = distribution

@@ -57,10 +57,9 @@ class Laplacian(Module):
             Tuple containing the replicated function value, the Jacobian, and the
             Laplacian.
         """
-        X, V1, V2 = self.set_up_taylor_coefficients(x)
-        result = self.jet_f(X, V1, V2)
-
-        return result[0], result[1], sum_vmapped(result[2])
+        X0, X1, X2 = self.set_up_taylor_coefficients(x)
+        F0, F1, F2 = self.jet_f(X0, X1, X2)
+        return F0, F1, sum_vmapped(F2)
 
     def set_up_taylor_coefficients(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """Create the Taylor coefficients for the Laplacian computation.
@@ -72,18 +71,18 @@ class Laplacian(Module):
         Returns:
             The three input tensors to the 2-jet that computes the Laplacian.
         """
-        X = replicate(x, self.unbatched_dim)
-        V2 = zeros(self.unbatched_dim, *self.x_shape, **self.x_kwargs)
+        X0 = replicate(x, self.unbatched_dim)
+        X2 = zeros(self.unbatched_dim, *self.x_shape, **self.x_kwargs)
 
-        V1 = eye(self.unbatched_dim, **self.x_kwargs)
+        X1 = eye(self.unbatched_dim, **self.x_kwargs)
         if self.is_batched:
-            V1 = V1.reshape(self.unbatched_dim, 1, *self.x_shape[1:])
+            X1 = X1.reshape(self.unbatched_dim, 1, *self.x_shape[1:])
             # copy without using more memory
-            V1 = V1.expand(-1, self.batched_dim, *(-1 for _ in self.x_shape[1:]))
+            X1 = X1.expand(-1, self.batched_dim, *(-1 for _ in self.x_shape[1:]))
         else:
-            V1 = V1.reshape(self.unbatched_dim, *self.x_shape)
+            X1 = X1.reshape(self.unbatched_dim, *self.x_shape)
 
-        return X, V1, V2
+        return X0, X1, X2
 
 
 class RandomizedLaplacian(Laplacian):
@@ -145,10 +144,10 @@ class RandomizedLaplacian(Laplacian):
             Tuple containing the replicated function value, the randomized Jacobian,
             and the randomized Laplacian.
         """
-        f0, f1, f2 = super().forward(x)
+        F0, F1, F2 = super().forward(x)
 
         # need to divide the Laplacian by number of MC samples
-        return f0, f1, f2 / self.num_samples
+        return F0, F1, F2 / self.num_samples
 
     def set_up_taylor_coefficients(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """Create the Taylor coefficients for the MC-Laplacian computation.
@@ -160,8 +159,8 @@ class RandomizedLaplacian(Laplacian):
         Returns:
             The three input tensors to the 2-jet that computes the MC-Laplacian.
         """
-        X = replicate(x, self.num_samples)
-        V2 = zeros(self.num_samples, *self.x_shape, **self.x_kwargs)
+        X0 = replicate(x, self.num_samples)
+        X2 = zeros(self.num_samples, *self.x_shape, **self.x_kwargs)
 
         # sample the random vectors
         shape = (
@@ -169,6 +168,6 @@ class RandomizedLaplacian(Laplacian):
             if self.is_batched
             else (self.num_samples, *self.x_shape)
         )
-        V1 = self.sample_func(*shape, **self.x_kwargs)
+        X1 = self.sample_func(*shape, **self.x_kwargs)
 
-        return X, V1, V2
+        return X0, X1, X2

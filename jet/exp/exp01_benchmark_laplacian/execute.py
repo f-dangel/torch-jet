@@ -1,17 +1,18 @@
 """Script that carries out a measurement of peak memory and run time."""
 
-from argparse import ArgumentParser
+from argparse import ArgumentParser, Namespace
 from os import makedirs, path
 from typing import Callable, Union
 
-from torch import Tensor, device, manual_seed, no_grad, rand
-from torch.func import hessian, vmap
+from torch import Tensor, device, manual_seed, no_grad, ones_like, rand, randn
+from torch.func import hessian, jvp, vjp, vmap
 from torch.fx import symbolic_trace
 from torch.nn import Linear, Sequential, Tanh
 
 from jet.exp.utils import measure_peak_memory, measure_time, to_string
-from jet.laplacian import Laplacian
+from jet.laplacian import Laplacian, RandomizedLaplacian
 from jet.simplify import simplify
+from jet.utils import rademacher
 
 HERE = path.abspath(__file__)
 HEREDIR = path.dirname(HERE)
@@ -99,6 +100,89 @@ def laplacian_function(
         )
 
 
+def randomized_laplacian_function(
+    f: Callable[[Tensor], Tensor],
+    X: Tensor,
+    is_batched: bool,
+    strategy: str,
+    distribution: str,
+    num_samples: int,
+) -> Callable[[], Tensor]:
+    """Construct a function to compute the MC-Laplacian using different strategies.
+
+    Args:
+        f: The function to compute the Laplacian of. Processes an un-batched tensor.
+        X: The input tensor at which to compute the Laplacian.
+        is_batched: Whether the input is a batched tensor.
+        strategy: Which strategy will be used by the returned function to compute
+            the Laplacian. The following strategies are supported:
+            - `'hessian_trace'`: The Laplacian is computed by tracing the Hessian.
+              The Hessian is computed via forward-over-reverse mode autodiff.
+            - `'jet_naive'`: The Laplacian is computed using jets. The computation graph
+                is simplified by propagating replication nodes.
+            - `'jet_simplified'`: The Laplacian is computed using Taylor mode. The
+              computation graph is simplified by propagating replications down, and
+              summations up, the computation graph.
+        distribution: From which distribution to draw the random vectors. Supported
+            values are `'normal'` and `'rademacher'`.
+        num_samples: How many Monte-Carlo samples should be used by the estimation.
+
+    Returns:
+        A function that computes the randomized Laplacian of the function f at the input
+        tensor X. The function is expected to be called with no arguments.
+
+    Raises:
+        ValueError: If the strategy or distribution are not supported.
+    """
+    if distribution not in {"normal", "rademacher"}:
+        raise ValueError(f"Unsupported distribution: {distribution!r}.")
+
+    if strategy == "hessian_trace":
+
+        def vhv(v: Tensor) -> Tensor:
+            """Compute vector-Hessian-vector products of f evaluated at X.
+
+            Args:
+                v: The vector to compute the vector-Hessian-vector product with.
+                    Has same shape as `X`.
+
+            Returns:
+                The vector-Hessian-vector product. Has shape `(N, 1)` if `is_batched`
+                is `True` (where `N` is the batch size), otherwise `(1,)`.
+            """
+
+            def grad_func(X: Tensor) -> Tensor:
+                f_X, vjp_func = vjp(f, X)
+                return vjp_func(ones_like(f_X))
+
+            _, (hvp,) = jvp(grad_func, (X,), (v,))
+
+            if is_batched:
+                return (v * hvp).flatten(start_dim=1).sum(dim=1, keepdim=True)
+            else:
+                return (v * hvp).sum().unsqueeze(0)
+
+        vhv_vmap = vmap(vhv)
+
+        sample_func = {"normal": randn, "rademacher": rademacher}[distribution]
+        V = sample_func(num_samples, *X.shape, device=X.device, dtype=X.dtype)
+
+        return lambda: vhv_vmap(V).mean(0)
+
+    if strategy in {"jet_naive", "jet_simplified"}:
+        laplacian = RandomizedLaplacian(f, X, is_batched, num_samples, distribution)
+        pull_sum_vmapped = strategy == "jet_simplified"
+        laplacian = simplify(
+            symbolic_trace(laplacian), pull_sum_vmapped=pull_sum_vmapped
+        )
+        return lambda: laplacian(X)[2]
+
+    else:
+        raise ValueError(
+            f"Unsupported strategy: {strategy}. Supported: {SUPPORTED_STRATEGIES}."
+        )
+
+
 def setup_architecture(architecture: str, dim: int) -> Callable[[Tensor], Tensor]:
     """Set up a neural network architecture based on the specified configuration.
 
@@ -125,6 +209,28 @@ def savepath(**kwargs: Union[str, int]) -> str:
     return path.join(RAWDIR, f"{filename}.csv")
 
 
+def check_mutually_required(args: Namespace):
+    """Check if mutually required arguments are specified or unspecified.
+
+    Args:
+        args: The parsed arguments.
+
+    Raises:
+        ValueError: If the arguments are not mutually specified or unspecified.
+    """
+    distribution, num_samples = args.distribution, args.num_samples
+    if (
+        distribution is None
+        and num_samples is not None
+        or distribution is not None
+        and num_samples is None
+    ):
+        raise ValueError(
+            f"Arguments 'distribution' ({distribution}) and 'num_samples'"
+            f" ({num_samples}) are mutually required."
+        )
+
+
 if __name__ == "__main__":
     parser = ArgumentParser("Parse arguments of measurement.")
     parser.add_argument(
@@ -138,8 +244,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--strategy", type=str, required=True, choices=set(SUPPORTED_STRATEGIES)
     )
+    parser.add_argument(
+        "--distribution", required=False, choices={"normal", "rademacher"}
+    )
+    parser.add_argument("--num_samples", required=False, type=int)
     parser.add_argument("--device", type=str, choices={"cpu", "cuda"}, required=True)
     args = parser.parse_args()
+
+    check_mutually_required(args)
 
     # set up the function that will be measured
     dev = device(args.device)
@@ -148,16 +260,26 @@ if __name__ == "__main__":
     X = rand(args.batch_size, args.dim).double().to(dev)
     is_batched = True
 
-    # carry out the measurements
-    func = laplacian_function(net, X, is_batched, args.strategy)
+    if args.distribution is None and args.num_samples is None:
+        func = laplacian_function(net, X, is_batched, args.strategy)
+        description = f"{args.strategy}"
+    else:
+        func = randomized_laplacian_function(
+            net, X, is_batched, args.strategy, args.distribution, args.num_samples
+        )
+        description = (
+            f"{args.strategy}, distribution={args.distribution}, "
+            + f"num_samples={args.num_samples}"
+        )
     is_cuda = args.device == "cuda"
 
+    # carry out the measurements
     with no_grad():
         mem_no = measure_peak_memory(
-            func, f"Laplacian non-differentiable ({args.strategy})", is_cuda
+            func, f"Laplacian non-differentiable ({description})", is_cuda
         )
-    mem = measure_peak_memory(func, f"Laplacian ({args.strategy})", is_cuda)
-    mu, sigma, best = measure_time(func, f"Laplacian ({args.strategy})", is_cuda)
+    mem = measure_peak_memory(func, f"Laplacian ({description})", is_cuda)
+    mu, sigma, best = measure_time(func, f"Laplacian ({description})", is_cuda)
 
     # write them to a file
     data = ", ".join([str(val) for val in [mem_no, mem, mu, sigma, best]])

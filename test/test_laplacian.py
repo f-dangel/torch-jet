@@ -75,19 +75,50 @@ def test_RandomizedLaplacian(
     f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
 
     # reference: Using PyTorch
-    lap_rev = laplacian(f, x)
+    lap = laplacian(f, x)
 
-    # accumulate the MC-Laplacian over multiple chunks
-    lap_mod = 0.0
+    # check convergence of MC estimator
+    def sample(idx: int) -> Tensor:
+        manual_seed(idx)
+        lap = RandomizedLaplacian(f, x, is_batched, chunk_size, distribution)(x)
+        return lap
+
+    converged = _check_mc_convergence(
+        lap, sample, chunk_size, max_num_chunks, target_rel_error
+    )
+    assert converged, f"Monte-Carlo Laplacian ({distribution}) did not converge."
+
+
+def _check_mc_convergence(
+    truth: Tensor,
+    sample: Callable[[int], Tensor],
+    chunk_size: int,
+    max_num_chunks: int,
+    target_rel_error: float,
+) -> bool:
+    """Check convergence of a Monte-Carlo estimator.
+
+    Args:
+        truth: Ground-truth value to compare the estimator to.
+        sample: Function that draws a sample from the estimator and takes an
+            integer seed as input.
+        chunk_size: Number of samples used by one draw from `sample`.
+        max_num_chunks: Maximum number of chunks to accumulate.
+        target_rel_error: Target relative error for convergence.
+
+    Returns:
+        Whether the Monte-Carlo estimator has converged.
+    """
+    # accumulate the MC-estimator over multiple chunks
+    estimate = 0.0
     converged = False
 
     for i in range(max_num_chunks):
-        manual_seed(i)
-        _, _, lap_i = RandomizedLaplacian(f, x, is_batched, chunk_size, distribution)(x)
+        estimate_i = sample(i)
         # update the Monte-Carlo estimator with the current chunk
-        lap_mod = (lap_mod * i + lap_i.detach()) / (i + 1.0)
+        estimate = (estimate * i + estimate_i.detach()) / (i + 1.0)
 
-        rel_error = (norm(lap_mod - lap_rev) / norm(lap_rev)).item()
+        rel_error = (norm(estimate - truth) / norm(truth)).item()
         print(f"Relative error at {(i+1) * chunk_size} samples: {rel_error:.3e}.")
 
         # check for convergence
@@ -95,4 +126,4 @@ def test_RandomizedLaplacian(
             converged = True
             break
 
-    assert converged, f"Monte-Carlo Laplacian ({distribution}) did not converge."
+    return converged

@@ -97,13 +97,17 @@ def run_verbose(cmd: List[str]) -> CompletedProcess:
         raise e
 
 
-def to_string(**kwargs: Union[str, int]) -> str:
+def to_string(drop_none_values: bool = True, **kwargs: Union[str, int]) -> str:
     """Convert a dictionary to a string representation.
 
     Args:
         **kwargs: The arguments and their values.
+        drop_none_values: Whether to drop arguments with value `None`. Default: `True`.
 
     Returns:
         A string representation of the sorted arguments and their values.
     """
-    return "_".join(f"{key}_{kwargs[key]}" for key in sorted(kwargs.keys()))
+    sorted_keys = sorted(kwargs.keys())
+    if drop_none_values:
+        sorted_keys = [key for key in sorted_keys if kwargs[key] is not None]
+    return "_".join(f"{key}_{kwargs[key]}" for key in sorted_keys)

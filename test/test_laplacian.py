@@ -80,7 +80,7 @@ def test_RandomizedLaplacian(
     # check convergence of MC estimator
     def sample(idx: int) -> Tensor:
         manual_seed(idx)
-        lap = RandomizedLaplacian(f, x, is_batched, chunk_size, distribution)(x)
+        _, _, lap = RandomizedLaplacian(f, x, is_batched, chunk_size, distribution)(x)
         return lap
 
     converged = _check_mc_convergence(

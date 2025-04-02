@@ -32,16 +32,16 @@ from test.test___init__ import (
     compare_jet_results,
     setup_case,
 )
-from test.test_laplacian import laplacian
-from typing import Any, Callable, Dict
+from test.test_laplacian import DISTRIBUTION_IDS, DISTRIBUTIONS, laplacian
+from typing import Any, Callable, Dict, Optional
 
-import pytest
-from torch import Tensor
+from pytest import mark
+from torch import Tensor, manual_seed
 from torch.fx import Graph, GraphModule, symbolic_trace, wrap
 from torch.nn import Module
 
 from jet import JetTracer, jet, rev_jet
-from jet.laplacian import Laplacian
+from jet.laplacian import Laplacian, RandomizedLaplacian
 from jet.simplify import RewriteReplicate, RewriteSumVmapped, simplify
 from jet.utils import (
     PrimalAndCoefficients,
@@ -122,7 +122,7 @@ def ensure_num_replicates(graph: Graph, num_replicates: int):
     assert len(replicates) == num_replicates
 
 
-@pytest.mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
+@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
 def test_propagate_replication(config: Dict[str, Any], num_replicas: int = 3):
     """Test the propagation of replication node through a compute graph.
 
@@ -193,7 +193,7 @@ class ReplicateJet(Module):
         return self.jet_f(X, *VS)
 
 
-@pytest.mark.parametrize("config", CASES, ids=CASE_IDS)
+@mark.parametrize("config", CASES, ids=CASE_IDS)
 def test_propagate_replication_jet(config: Dict[str, Any], num_replicas: int = 3):
     """Test the propagation of replication nodes through a compute graph of a jet.
 
@@ -230,8 +230,11 @@ def test_propagate_replication_jet(config: Dict[str, Any], num_replicas: int = 3
     ensure_num_replicates(fast.graph, k + 1)
 
 
-@pytest.mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
-def test_simplify_laplacian(config: Dict[str, Any]):
+@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
+@mark.parametrize(
+    "distribution", [None] + DISTRIBUTIONS, ids=["exact"] + DISTRIBUTION_IDS
+)
+def test_simplify_laplacian(config: Dict[str, Any], distribution: Optional[str]):
     """Test the simplification of a Laplacian's compute graph.
 
     Replicate nodes should be propagated down the graph.
@@ -239,28 +242,48 @@ def test_simplify_laplacian(config: Dict[str, Any]):
 
     Args:
         config: The configuration of the test case.
+        distribution: The distribution from which to draw random vectors.
+            If `None`, the exact Laplacian is computed. Default: `None`.
     """
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
-    mod = Laplacian(f, x, is_batched)
+    randomized = distribution is not None
+    num_samples, seed = 42, 1  # only relevant with randomization
 
+    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    mod = (
+        RandomizedLaplacian(f, x, is_batched, num_samples, distribution)
+        if randomized
+        else Laplacian(f, x, is_batched)
+    )
+
+    # we have to set the random seed to make sure the same random vectors are used
+    if randomized:
+        manual_seed(seed)
     mod_out = mod(x)
-    lap = laplacian(f, x)
-    assert lap.allclose(mod_out[2])
-    print("Laplacian via jet matches Laplacian via functorch.")
+
+    if not randomized:
+        lap = laplacian(f, x)
+        assert lap.allclose(mod_out[2])
+        print("Exact Laplacian in functorch and jet match.")
 
     # simplify the traced module
+
+    # we have to set the random seed because tracing executes the functions that
+    # draw random vectors and stores them as tensor constants
+    if randomized:
+        manual_seed(seed)
     fast = symbolic_trace(mod)
     backup = deepcopy(fast)  # backup for later comparison
     fast = simplify(fast, verbose=True)
-    fast_out = fast(x)
 
+    # make sure the simplified module still behaves the same
+    fast_out = fast(x)
     compare_jet_results(mod_out, fast_out)
     print("Laplacian via jet matches Laplacian via simplified module.")
 
     # make sure the `replicate` node from the 0th component made it to the end
     # and all other `replicate`s were successfully fused
-    ensure_outputs_replicates(fast.graph, 3, 1)
-    ensure_num_replicates(fast.graph, 1)
+    ensure_outputs_replicates(fast.graph, num_outputs=3, num_replicates=1)
+    ensure_num_replicates(fast.graph, num_replicates=1)
 
     # make sure the `sum_vmapped` node is not at the output node anymore
     output_node = list(fast.graph.nodes)[-1]
@@ -279,12 +302,14 @@ def test_simplify_laplacian(config: Dict[str, Any]):
 
     c0, c1 = [c for c in constants if c.startswith("_tensor_constant")]
 
-    # first-order coefficient is still the same shape
-    V_shape = (x.shape[1:].numel() if is_batched else x.numel(),) + x.shape
+    # make sure first-order coefficient is still the same shape
+    if randomized:
+        num_vectors = num_samples
+    else:
+        num_vectors = x.shape[1:].numel() if is_batched else x.numel()
+    V_shape = (num_vectors, *x.shape)
     assert getattr(backup, c0).shape == getattr(fast, c0).shape == V_shape
-    # second-order coefficient was collapsed
+    # make sure second-order coefficient was collapsed
     assert (
-        getattr(backup, c1).shape
-        == (x.shape[1:].numel() if is_batched else x.numel(),) + getattr(fast, c1).shape
-        == V_shape
+        getattr(backup, c1).shape == (num_vectors, *getattr(fast, c1).shape) == V_shape
     )

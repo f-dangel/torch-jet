@@ -219,12 +219,7 @@ def check_mutually_required(args: Namespace):
         ValueError: If the arguments are not mutually specified or unspecified.
     """
     distribution, num_samples = args.distribution, args.num_samples
-    if (
-        distribution is None
-        and num_samples is not None
-        or distribution is not None
-        and num_samples is None
-    ):
+    if (distribution is None) != (num_samples is None):
         raise ValueError(
             f"Arguments 'distribution' ({distribution}) and 'num_samples'"
             f" ({num_samples}) are mutually required."

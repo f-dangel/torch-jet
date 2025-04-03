@@ -9,7 +9,6 @@ from typing import Any, Callable, Dict
 
 from pytest import mark
 from torch import Tensor, arange, einsum, manual_seed, rand, zeros, zeros_like
-from torch.autograd.functional import hessian
 from torch.func import hessian, vmap
 from torch.linalg import norm
 from torch.nn import Linear, Sequential, Tanh
@@ -39,7 +38,7 @@ def laplacian(f: Callable[[Tensor], Tensor], x: Tensor) -> Tensor:
     lap = zeros_like(out).flatten()
     for i in range(out.numel()):
         f_i = partial(f_flat, i=i)
-        lap[i] = hessian(f_i, x.flatten()).trace()
+        lap[i] = hessian(f_i)(x.flatten()).trace()
 
     return lap.reshape_as(out)
 

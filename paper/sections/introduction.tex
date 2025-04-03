@@ -19,8 +19,6 @@ Our contributions are the following:
 
 Next tasks:
 \begin{enumerate}
-    \item @Felix: Run experiments with randomized Laplacian to demonstrate compatibility with randomization.
-    
     \item @Felix: Run experiments with the weighted  sum of second-order derivatives with $\mC$ PSD to demonstrate we can go beyond the `classical' forward Laplacian
     
     \item @Felix: Extend the graph simplifications to work with weighted sum of second-order derivatives where $\mC$ is indefinite.
@@ -42,6 +40,17 @@ Next tasks:
 }
   \label{fig:benchmark-laplacians}
 \end{figure}
+
+\begin{figure}
+  \centering
+\includegraphics*{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_2048_device_cuda_dim_50_distribution_normal_name_dangel2024kroneckerfactored_vary_num_samples.pdf}
+\caption{\textbf{Collapsed Taylor mode is compatible with randomization.}
+  We show the performance evaluation of the randomized Laplacian with identical setup \Cref{fig:benchmark-laplacians}, but we fix the batch size to be $2048$ and vary the number of samples $S$ used by the Monte-Carlo estimator.
+  We find the same relative speedups and memory reductions of collapsing Taylor mode than for the exact Laplacian (as expected since all expressions for the computational demands look the same, but with $S$ replacing $D$).
+  Also compare to \Cref{fig:benchmark-laplacians} and note how for $N=2048$ we can obtain a noisy estimate of the Laplacian at much lower cost when $S < D$.
+}\label{fig:benchmark-randomized-laplacians}
+\end{figure}
+
 
 %%% Local Variables:
 %%% mode: LaTeX

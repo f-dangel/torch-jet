@@ -309,6 +309,23 @@ We can either compute the differential operator in complex-valued arithmetic, or
 
 \todo{We can make the connection to \cite{hu2023hutchinson} equation (5) clear and discuss the case of $\mC$ being a function of the input}
 
+\paragraph{Example for weighted sum of second-order derivatives.}
+Let's consider the Fokker-Planck equation for the evolution of a probability density $p(\vx, t)$ with $\vx \in \sR^D$ and $t \in \sR_{\le 0}$ given by
+\begin{align}
+  \frac{\partial p(\vx, t)}{\partial t}
+  =
+  - \sum_{d=1}^D
+  \frac{\partial}{\partial [\vx]_d} \left( [\vmu(\vx, t)]_d p(\vx, t) \right)
+  +
+  \sum_{i,j=1}^D
+  \frac{\partial^2}{\partial [\vx]_i \partial [\vx]_j}
+  \left[ \mD_{i,j}(\vx, t) p(\vx, t) \right]
+\end{align}
+with positive definite diffusion tensor $\mD(\vx, t) = \nicefrac{1}{2} \mS(\vx, t) \mS(\vx, t)^{\top}$ where $\mS(\vx, t) \in \sR^{D \times M}$ with some $M \le D$.
+After application of the product rule, we find that this term requires computing weighted sum of second-order derivative $\sum_{i,j} \mD_{i,j}  \nicefrac{\partial^2 p(\vx, t)}{\partial [\vx]_i \partial [\vx]_j}$.
+By denoting $\vs_m$ the $m$-th column of $\mS$, we find that this expression can be expressed as $\sum_{m=1}^M \partial^2 p[\nicefrac{\vs_m}{\sqrt{2}}, \nicefrac{\vs_m}{\sqrt{2}}]$ and hence we can use compute this quantity with a second-order jet whose quadratic coefficients can be collapsed into a single one.
+
+
 \paragraph{Partially collapsed Taylor mode.}
 A use case for such partially collapsed jets is in \cite{hu2023hutchinson}, which uses randomized Taylor mode (see \cref{subsec:randomized-taylor-mode}) to estimate the Laplacian.
 In their application, the randomized Laplacian feeds into square loss.

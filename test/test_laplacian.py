@@ -1,13 +1,20 @@
 from functools import partial
-from test.test___init__ import CASES_COMPACT, CASES_COMPACT_IDS, setup_case
+from test.test___init__ import (
+    CASES_COMPACT,
+    CASES_COMPACT_IDS,
+    report_nonclose,
+    setup_case,
+)
 from typing import Any, Callable, Dict
 
 from pytest import mark
-from torch import Tensor, manual_seed, zeros_like
+from torch import Tensor, arange, einsum, manual_seed, rand, zeros, zeros_like
 from torch.autograd.functional import hessian
+from torch.func import hessian, vmap
 from torch.linalg import norm
+from torch.nn import Linear, Sequential, Tanh
 
-from jet.laplacian import Laplacian, RandomizedLaplacian
+from jet.laplacian import HessianDotPSD, Laplacian, RandomizedLaplacian
 
 DISTRIBUTIONS = ["normal", "rademacher"]
 DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]
@@ -127,3 +134,32 @@ def _check_mc_convergence(
             break
 
     return converged
+
+
+def test_HessianDotPSD():
+    """Test computing dot products of the Hessian with a PSD matrix."""
+    manual_seed(0)
+    batch_size, is_batched = 6, True
+    D = 5
+    net = Sequential(Linear(D, 4), Tanh(), Linear(4, 1)).double()
+    X = rand(batch_size, D).double()
+    rank_C = 3
+
+    def S_func(_):
+        S = zeros(D, rank_C).double()
+        idx = arange(rank_C)
+        S[idx, idx] = arange(rank_C).double() + 1
+        return S.unsqueeze(0).expand(batch_size, D, rank_C)
+
+    # compute ground truth
+    H = vmap(hessian(net))(X).squeeze(1)
+    C = arange(D) + 1
+    C[rank_C:] = 0
+    C = C.double().square().diag()
+    H_dot_C_truth = einsum("nij,ij->n", H, C).unsqueeze(-1)
+
+    # use jets
+    mod = HessianDotPSD(net, X, is_batched, S_func)
+    _, _, H_dot_C = mod(X)
+
+    report_nonclose(H_dot_C_truth, H_dot_C)

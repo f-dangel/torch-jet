@@ -176,3 +176,59 @@ class RandomizedLaplacian(Laplacian):
         X1 = self.sample_func(*shape, **self.x_kwargs)
 
         return X0, X1, X2
+
+
+class HessianDotPSD(Laplacian):
+    """Class for computing dot products of the Hessian with a PSD matrix.
+
+    Given a function f, computes < ∂²f(x), C(x) > where C(x) is the PSD coefficient
+    tensor for the dot product which may depend on x. C is supplied by a function
+    S_func that computes a matrix S(x) such that C(x) = S(x) @ S(x).T.
+    """
+
+    def __init__(
+        self,
+        f: Callable[[Tensor], Tensor],
+        dummy_x: Tensor,
+        is_batched: bool,
+        S_func: Callable[[Tensor], Tensor],
+    ):
+        """Initialize the HessianDotPSD module.
+
+        Args:
+            f: The function whose Laplacian is computed.
+            dummy_x: The input on which the Laplacian is computed. It is only used to
+                infer meta-data of the function input that `torch.fx` is not capable
+                of determining at the moment.
+            is_batched: Whether the function and its input are batched. In this case,
+                we can use that computations can be carried out independently along
+                the leading dimension of tensors.
+            S_func: Function that computes the matrix S(x) such that the coefficient
+                matrix C(x) = S(x) @ S(x).T. If is_batched is True, then S(x) must
+                return a tensor of shape (batch_size, *x.shape[1:], rank_C), otherwise
+                it must return a tensor of shape (*x.shape, rank_C).
+        """
+        super().__init__(f, dummy_x, is_batched)
+        self.S_func = S_func
+        # determine how many columns S has, i.e. the rank of C, which determines the
+        # number of vectors we have to feed into the jet
+        self.num_vectors = S_func(dummy_x).shape[-1]
+
+    def set_up_taylor_coefficients(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+        """Create the Taylor coefficients for the MC-Laplacian computation.
+
+        Args:
+            x: Input tensor. Must have same shape as the dummy input tensor that was
+                passed in the constructor.
+
+        Returns:
+            The three input tensors to the 2-jet that computes the MC-Laplacian.
+        """
+        X0 = replicate(x, self.num_vectors)
+        X2 = zeros(self.num_vectors, *self.x_shape, **self.x_kwargs)
+
+        # compute the coefficient's factorization C = S @ S.T
+        S = self.S_func(x)
+        X1 = S.movedim(-1, 0)
+
+        return X0, X1, X2

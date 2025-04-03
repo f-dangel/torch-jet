@@ -4,7 +4,7 @@ from test.utils import VMAP_IDS, VMAPS
 from typing import Any, Callable, Dict, Tuple
 
 from pytest import mark
-from torch import Tensor, isclose, manual_seed, rand, sigmoid, sin, stack, tanh, tensor
+from torch import Tensor, manual_seed, rand, sigmoid, sin, stack, tanh, tensor
 from torch.fx import symbolic_trace
 from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
@@ -35,15 +35,15 @@ def report_nonclose(
         atol: Absolute tolerance. Default: `1e-8`.
         name: Name of the tensors. Default: `"Tensors"`.
     """
+    assert a.shape == b.shape, f"Shapes are not equal: {a.shape} != {b.shape}"
     close = a.allclose(b, rtol=rtol, atol=atol)
     if not close:
-        print(f"{name} are not close.")
         for idx, (x, y) in enumerate(zip(a.flatten(), b.flatten())):
-            if not isclose(x, y, rtol=rtol, atol=atol):
+            if not x.isclose(y, rtol=rtol, atol=atol):
                 print(f"Index {idx}: {x} != {y} (ratio: {x / y})")
     else:
         print(f"{name} are close.")
-    assert close
+    assert close, f"{name} are not close."
 
 
 def check_jet(f: Callable[[Primal], Value], arg: PrimalAndCoefficients, vmap: bool):

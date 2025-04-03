@@ -116,7 +116,6 @@ def measure(
                 _distributions,
                 _nums_samples,
                 allow_missing=not is_last,
-                # TODO Make this function handle distributions and num_samples
             )
             filename = savepath(name)
             print(f"Saving gathered data for experiment {name} to {filename}.")

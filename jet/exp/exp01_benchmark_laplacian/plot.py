@@ -2,9 +2,10 @@
 
 from itertools import product
 from os import makedirs, path
-from typing import List
+from typing import Dict, Union
 
 from matplotlib import pyplot as plt
+from numpy import polyfit
 from pandas import DataFrame, read_csv
 from tueplots import bundles
 
@@ -26,151 +27,163 @@ LABELS = {
 }
 
 
-def savepath(name: str, architecture: str, dim: int, device: str) -> str:
+def savepath(name: str, **kwargs) -> str:
     """Generate a file path for saving a plot.
 
     Args:
         name: The name of the experiment.
-        architecture: The architecture of the network.
-        dim: The dimension of the network.
-        device: The device used in the experiment (e.g., 'cpu', 'cuda').
+        **kwargs: Other parameters of the experiment.
 
     Returns:
         A string representing the file path where the plot will be saved.
     """
-    filename = to_string(name=name, architecture=architecture, dim=dim, device=device)
+    filename = to_string(name=name, **kwargs)
     return path.join(PLOTDIR, f"{filename}.pdf")
+
+
+def fix_columns(df: DataFrame, fix: Dict[str, Union[str, int]]) -> DataFrame:
+    """Fix specific columns of a DataFrame.
+
+    Args:
+        df: The DataFrame to fix columns in.
+        fix: The columns to fix and their values.
+
+    Returns:
+        The DataFrame with only the rows where the fixed columns have the specified
+        values.
+    """
+    keys = list(fix.keys())
+    k0 = keys[0]
+    mask = df[k0] == fix[k0]
+
+    for k in keys[1:]:
+        mask = mask & (df[k] == fix[k])
+
+    return df[mask]
 
 
 def plot_metric(
     df: DataFrame,
-    strategies: List[str],
-    architecture: str,
-    dim: int,
     metric: str,
-    device: str,
+    x: str,
+    lines: str,
     ax: plt.Axes,
 ) -> None:
     """Plot a specified metric.
 
     Args:
-        df: The DataFrame containing the data to plot.
-        strategies: A list of strategies to plot.
-        architecture: The architecture of the network to filter the data by.
-        dim: The dimension of the network to filter the data by.
+        df: The DataFrame containing only the relevant data to plot.
         metric: The metric to plot. Can be `'time'` or `'peak_memory'`.
-        device: The device to filter the data by (e.g., `'cpu'`, `'cuda'`).
+        x: The column of the values used as x-axis.
+        lines: The column of the values used to distinguish lines in the plot.
         ax: The axes to plot the data on.
     """
     ylabel = {"time": "Time [s]", "peak_memory": "Peak memory [GiB]"}[metric]
-    ax.set_xlabel("Batch size")
+    x_to_xlabel = {"batch_size": "Batch size", "num_samples": "Monte-Carlo samples"}
+    ax.set_xlabel(x_to_xlabel[x])
     ax.set_ylabel(ylabel)
 
-    for strategy in strategies:
-        mask = (
-            (df["architecture"] == architecture)
-            & (df["dim"] == dim)
-            & (df["strategy"] == strategy)
-            & (df["device"] == device)
-        )
+    for line in df[lines].unique().tolist():
+        mask = df[lines] == line
         sub_df = df[mask]
-        batch_sizes = sub_df["batch_size"]
+        xs = sub_df[x]
 
         column = {"time": "best [s]", "peak_memory": "peakmem [GiB]"}[metric]
         ax.plot(
-            batch_sizes,
+            xs,
             sub_df[column],
-            label=LABELS[strategy],
-            marker=MARKERS[strategy],
-            linestyle=LINESTYLES[strategy],
-            color=COLORS[strategy],
+            label=LABELS[line],
+            marker=MARKERS[line],
+            linestyle=LINESTYLES[line],
+            color=COLORS[line],
             markersize=3,
         )
         if metric == "peak_memory":
             column = "peakmem non-differentiable [GiB]"
             ax.plot(
-                batch_sizes,
+                xs,
                 sub_df[column],
-                marker=MARKERS[strategy],
+                marker=MARKERS[line],
                 linestyle="--",
-                color=COLORS[strategy],
+                color=COLORS[line],
                 markersize=3,
                 alpha=0.5,
             )
 
 
-def report_relative_performance(
-    df: DataFrame, architecture: str, dim: int, device: str
-):
-    """Report the relative performance of the strategies.
+def report_relative_performance(df: DataFrame, x: str, lines: str):
+    """Report the relative performance between different lines.
+
+    Fits a linear function to each line and reports the differences in slope.
 
     Args:
-        df: The DataFrame containing the data to analyze.
-        architecture: The architecture of the network to filter the data by.
-        dim: The dimension of the network to filter the data by.
-        device: The device to filter the data by (e.g., `'cpu'`, `'cuda'`).
+        df: The DataFrame containing only the relevant data to analyze.
+        x: The column of the values used as x-axis.
+        lines: The column of the values used to distinguish lines in the plot.
     """
-    baseline = "hessian_trace"
-    strategies = df["strategy"].unique().tolist()
-    if baseline not in strategies:
-        return
-    strategies.remove(baseline)
-
-    # fix the architecture, dimension, and device
-    mask = (
-        (df["architecture"] == architecture)
-        & (df["dim"] == dim)
-        & (df["device"] == device)
-    )
-    sub_df = df[mask]
-    baseline_df = sub_df[sub_df["strategy"] == baseline]
-    baseline_batch_sizes = baseline_df["batch_size"].unique()
-
     metrics = ["best [s]", "peakmem [GiB]", "peakmem non-differentiable [GiB]"]
-    ratios = {strategy: {metric: {} for metric in metrics} for strategy in strategies}
+    line_vals = df[lines].unique().tolist()
 
-    for strategy in strategies:
-        strategy_df = sub_df[sub_df["strategy"] == strategy]
-        # use only batch sizes that are present in both the strategy and the baseline
-        batch_sizes = strategy_df["batch_size"].unique()
-        batch_sizes = set(baseline_batch_sizes) & set(batch_sizes)
-        # convert to integer
-        batch_sizes = [int(n) for n in batch_sizes]
-        for bs, metric in product(batch_sizes, metrics):
-            (this,) = strategy_df[strategy_df["batch_size"] == bs][metric].values
-            (ref,) = baseline_df[baseline_df["batch_size"] == bs][metric].values
-            ratios[strategy][metric][bs] = float(this / ref)
+    # fit a linear function to each line
+    offsets_and_slopes = {m: {val: {}} for m in metrics for val in line_vals}
 
-    print(f"Relative performances for {architecture}, {dim}, {device}:")
-    for strategy, values in ratios.items():
-        for metric, batch_size_to_ratio in values.items():
-            avg = sum(batch_size_to_ratio.values()) / len(batch_size_to_ratio)
-            print(f"\t{strategy}, {metric}, {avg:.3f}")
+    for line in line_vals:
+        sub_df = df[df[lines] == line]
+        xs = sub_df[x]
+
+        for metric in metrics:
+            ys = sub_df[metric]
+            c0, c1 = polyfit(xs, ys, deg=1)
+            offsets_and_slopes[metric][line] = (c0, c1)
+
+    for metric in metrics:
+        print(f"Linear fit of {metric} w.r.t. x={x}:")
+        c1_max = max(c1 for (_, c1) in offsets_and_slopes[metric].values())
+        for line in line_vals:
+            c0, c1 = offsets_and_slopes[metric][line]
+            print(f"\t{line}:\t{c0:.5f} + {c1:.5f} * x ({c1 / c1_max:.2f}x relative)")
 
 
 if __name__ == "__main__":
     METRICS = ["time", "peak_memory"]
+    MEASUREMENT_COLUMNS = [
+        "peakmem non-differentiable [GiB]",
+        "peakmem [GiB]",
+        "mean [s]",
+        "std [s]",
+        "best [s]",
+    ]
 
-    for name, _ in EXPERIMENTS:
+    for name, _, (x, lines) in EXPERIMENTS:
         df = read_csv(savepath_gathered(name))
-        strategies = df["strategy"].unique()
-        architectures = df["architecture"].unique()
-        devices = df["device"].unique()
-        dims = df["dim"].unique()
 
-        # go over all combinations
-        for architecture, dim, device in product(architectures, dims, devices):
+        # find all columns of df that are not x and lines
+        columns = [
+            c for c in df.columns.tolist() if c not in [x, lines, *MEASUREMENT_COLUMNS]
+        ]
+        # find out for which combinations we have to generate plots
+        combinations = [
+            dict(zip(columns, combination))
+            for combination in product(*[df[col].unique().tolist() for col in columns])
+        ]
+        print(f"Generating {len(combinations)} plots with x={x!r} for {lines!r} ")
+
+        # go over all combinations and plot
+        for fix in combinations:
+            print(f"Processing combination: {fix}")
             with plt.rc_context(bundles.neurips2024(rel_width=1.0, ncols=2)):
                 fig, axs = plt.subplots(ncols=2)
+                # fix specific values, leaving only the data to be plotted
+                df_fix = fix_columns(df, fix)
                 for idx, (ax, metric) in enumerate(zip(axs, METRICS)):
-                    plot_metric(df, strategies, architecture, dim, metric, device, ax)
+                    plot_metric(df_fix, metric, x, lines, ax)
                     # set ymin to 0
                     ax.set_ylim(bottom=0)
                     if idx == 0:
                         ax.legend()
-                filename = savepath(name, architecture, dim, device)
+                filename = savepath(name=name, **fix)
                 print(f"Saving plot for experiment {name} to {filename}.")
                 fig.savefig(filename, bbox_inches="tight")
                 plt.close(fig)
 
-            report_relative_performance(df, architecture, dim, device)
+            report_relative_performance(df_fix, x, lines)

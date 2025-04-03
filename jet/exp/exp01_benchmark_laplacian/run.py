@@ -8,7 +8,7 @@ gathered into a single data frame and saved to a CSV file.
 
 from itertools import product
 from os import makedirs, path
-from typing import List
+from typing import List, Optional
 
 from pandas import DataFrame, concat
 from torch import cuda, linspace
@@ -32,6 +32,8 @@ def measure(
     name: str,
     skip_existing: bool = False,
     gather_every: int = 10,
+    distributions: Optional[List[str]] = None,
+    nums_samples: Optional[List[int]] = None,
 ):
     """Run benchmark measurements for all combinations of input parameters.
 
@@ -45,11 +47,34 @@ def measure(
         skip_existing: Whether to skip experiments if results already exist.
             Default is `False`.
         gather_every: How often to gather the data into a single table. Default is `10`.
+        distributions: List of distributions for the randomized Laplacian. `None` means
+            that the exact Laplacian will be benchmarked. Default is `None`.
+        nums_samples: List of numbers of samples for the randomized Laplacian. `None`
+            means that the exact Laplacian will be benchmarked. Default is `None`.
     """
-    combinations = list(product(architectures, dims, batch_sizes, strategies, devices))
-    for idx, (architecture, dim, batch_size, strategy, device) in enumerate(
-        combinations
-    ):
+    _distributions = [None] if distributions is None else distributions
+    _nums_samples = [None] if nums_samples is None else nums_samples
+
+    combinations = list(
+        product(
+            architectures,
+            dims,
+            batch_sizes,
+            strategies,
+            devices,
+            _distributions,
+            _nums_samples,
+        )
+    )
+    for idx, (
+        architecture,
+        dim,
+        batch_size,
+        strategy,
+        device,
+        distribution,
+        num_samples,
+    ) in enumerate(combinations):
         print(f"\n{idx + 1}/{len(combinations)}")
         kwargs = {
             "architecture": architecture,
@@ -57,6 +82,8 @@ def measure(
             "batch_size": batch_size,
             "strategy": strategy,
             "device": device,
+            "distribution": distribution,
+            "num_samples": num_samples,
         }
 
         # maybe skip the computation
@@ -78,14 +105,18 @@ def measure(
             run_verbose(cmd)
 
         # gather data every few measurements so we can plot even before all are done
-        if idx % gather_every == 0 or idx == len(combinations) - 1:
+        is_last = idx == len(combinations) - 1
+        if idx % gather_every == 0 or is_last:
             df = gather_data(
                 architectures,
                 dims,
                 batch_sizes,
                 strategies,
                 devices,
-                allow_missing=True,
+                _distributions,
+                _nums_samples,
+                allow_missing=not is_last,
+                # TODO Make this function handle distributions and num_samples
             )
             filename = savepath(name)
             print(f"Saving gathered data for experiment {name} to {filename}.")
@@ -98,6 +129,8 @@ def gather_data(
     batch_sizes: List[int],
     strategies: List[str],
     devices: List[str],
+    distributions: List[Optional[str]],
+    nums_samples: List[Optional[int]],
     allow_missing: bool = False,
 ) -> DataFrame:
     """Create a data frame that collects all the results into a single table.
@@ -108,6 +141,8 @@ def gather_data(
         batch_sizes: List of batch sizes used in the experiments.
         strategies: List of strategies for computing the Laplacian.
         devices: List of devices the experiments were run on.
+        distributions: List of distributions for the randomized Laplacian.
+        nums_samples: List of numbers of samples for the randomized Laplacian.
         allow_missing: Whether to allow missing result files. Default is False.
 
     Returns:
@@ -116,8 +151,22 @@ def gather_data(
     df = None
 
     # Iterate over all possible combinations of the input parameters
-    for architecture, dim, batch_size, strategy, device in product(
-        architectures, dims, batch_sizes, strategies, devices
+    for (
+        architecture,
+        dim,
+        batch_size,
+        strategy,
+        device,
+        distribution,
+        num_samples,
+    ) in product(
+        architectures,
+        dims,
+        batch_sizes,
+        strategies,
+        devices,
+        distributions,
+        nums_samples,
     ):
         # Create a dictionary for each combination
         result = {
@@ -126,6 +175,8 @@ def gather_data(
             "batch_size": [batch_size],
             "strategy": [strategy],
             "device": [device],
+            "distribution": [distribution],
+            "num_samples": [num_samples],
         }
         filename = savepath_raw(**{key: value[0] for key, value in result.items()})
 
@@ -144,7 +195,7 @@ def gather_data(
             result["std [s]"] = sigma
             result["best [s]"] = best
 
-        this_df = DataFrame.from_dict(result)
+        this_df = DataFrame.from_dict({k: v for k, v in result.items() if v != [None]})
         df = this_df if df is None else concat([df, this_df], ignore_index=True)
 
     return df
@@ -164,8 +215,8 @@ def savepath(name: str) -> str:
 
 
 EXPERIMENTS = [
-    # Experiment 1:  Use the largest MLP from dangel2024kroneckerfactored with 10 in
-    #                features; vary the batch size.
+    # Experiment 1:  Use the largest MLP from dangel2024kroneckerfactored with 10 and 50
+    #                in features; vary the batch size.
     (  # Experiment name, must be unique
         "dangel2024kroneckerfactored_vary_batch_size",
         # Experiment parameters
@@ -176,9 +227,32 @@ EXPERIMENTS = [
             "strategies": SUPPORTED_STRATEGIES,
             "devices": ["cuda"],
         },
-    )
+        # what to plot: x-axis is batch_sizes and each strategy is plotted in a curve
+        ("batch_size", "strategy"),
+    ),
+    # Experiment 2:  Use the largest MLP from dangel2024kroneckerfactored with 50 in
+    #                features, vary the batch size.
+    (  # Experiment name, must be unique
+        "dangel2024kroneckerfactored_vary_num_samples",
+        # Experiment parameters
+        {
+            "architectures": ["tanh_mlp_768_768_512_512_1"],
+            "dims": [50],
+            "batch_sizes": [2048],
+            "strategies": SUPPORTED_STRATEGIES,
+            "devices": ["cuda"],
+            "distributions": ["normal"],
+            "nums_samples": linspace(1, 50, 25).int().unique().tolist(),
+        },
+        # what to plot: x-axis is nums_samples and each strategy is plotted in a curve
+        ("num_samples", "strategy"),
+    ),
 ]
 
 if __name__ == "__main__":
-    for name, experiment in EXPERIMENTS:
+    names = [name for (name, _, _) in EXPERIMENTS]
+    if len(names) != len(set(names)):
+        raise ValueError(f"Experiment names must be unique. Got: {names}.")
+
+    for name, experiment, _ in EXPERIMENTS:
         measure(**experiment, name=name, skip_existing=True, gather_every=10)

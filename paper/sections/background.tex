@@ -5,7 +5,7 @@ For simplicity, consider a scalar-valued function $f: \sR \to \sR, x \mapsto f(x
 We will later introduce notation to seamlessly handle tensor-valued functions.
 Assume we Taylor-expand the path in input space up to order $K$, i.e.\,$x(t) \approx \sum_{k=0}^K\nicefrac{t^k}{k!}
 \left.\nicefrac{\partial^k x(t)}{\partial t^k}\right|_{t=0} \coloneqq \sum_{k=0}^K \nicefrac{t^k}{k!}
-x_k$ with $x_k \coloneqq \left.\nicefrac{\partial^k f(x)}{\partial t^k}\right|_{t=0}$. This operation of creating a truncated Taylor approximation is called a \emph{$K$-jet}.
+x_k$ with $x_k \coloneqq \left.\nicefrac{\partial^k x(t)}{\partial t^k}\right|_{t=0}$. This operation of creating a truncated Taylor approximation is called a \emph{$K$-jet}.
 Our goal is to compute the $K$-jet of $f(x(t))$, given the $K$-jet of $x(t)$.
 In notation, we want to compute $f_k \coloneqq \left.\nicefrac{\partial f(x(t))}{\partial t^k}\right|_{t=0}$ so that $f(x(t)) \approx \sum_{k=0}^K \nicefrac{t^k}{k!} f_k$:
 \begin{center}

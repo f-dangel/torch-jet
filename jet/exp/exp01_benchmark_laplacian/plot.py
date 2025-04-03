@@ -111,7 +111,7 @@ def plot_metric(
             )
 
 
-def report_relative_performance(df: DataFrame, x: str, lines: str):
+def report_relative_performance(df: DataFrame, x: str, lines: str, ref_line: str):
     """Report the relative performance between different lines.
 
     Fits a linear function to each line and reports the differences in slope.
@@ -120,6 +120,7 @@ def report_relative_performance(df: DataFrame, x: str, lines: str):
         df: The DataFrame containing only the relevant data to analyze.
         x: The column of the values used as x-axis.
         lines: The column of the values used to distinguish lines in the plot.
+        ref_line: The reference line to compare against.
     """
     metrics = ["best [s]", "peakmem [GiB]", "peakmem non-differentiable [GiB]"]
     line_vals = df[lines].unique().tolist()
@@ -129,19 +130,19 @@ def report_relative_performance(df: DataFrame, x: str, lines: str):
 
     for line in line_vals:
         sub_df = df[df[lines] == line]
-        xs = sub_df[x]
+        xs = sub_df[x].tolist()
 
         for metric in metrics:
-            ys = sub_df[metric]
-            c0, c1 = polyfit(xs, ys, deg=1)
-            offsets_and_slopes[metric][line] = (c0, c1)
+            ys = sub_df[metric].tolist()
+            c1, c0 = polyfit(xs, ys, deg=1)
+            offsets_and_slopes[metric][line] = (c1, c0)
 
     for metric in metrics:
         print(f"Linear fit of {metric} w.r.t. x={x}:")
-        c1_max = max(c1 for (_, c1) in offsets_and_slopes[metric].values())
+        c1_ref, _ = offsets_and_slopes[metric][ref_line]
         for line in line_vals:
-            c0, c1 = offsets_and_slopes[metric][line]
-            print(f"\t{line}:\t{c0:.5f} + {c1:.5f} * x ({c1 / c1_max:.2f}x relative)")
+            c1, c0 = offsets_and_slopes[metric][line]
+            print(f"\t{line}:\t{c0:.5f} + {c1:.5f} * x ({c1 / c1_ref:.2f}x relative)")
 
 
 if __name__ == "__main__":
@@ -186,4 +187,4 @@ if __name__ == "__main__":
                 fig.savefig(filename, bbox_inches="tight")
                 plt.close(fig)
 
-            report_relative_performance(df_fix, x, lines)
+            report_relative_performance(df_fix, x, lines, ref_line="hessian_trace")

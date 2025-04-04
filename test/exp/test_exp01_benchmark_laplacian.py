@@ -59,10 +59,6 @@ def test_randomized_laplacian_functions_identical(
     # NOTE The randomized functorch Laplacian only supports scalar output functions
     _skip_non_scalar_output(f, x, is_batched)
 
-    out_shape = f(x).shape
-    if (out_shape[1:] if is_batched else out_shape).numel() != 1:
-        skip(f"Skipping non-scalar function with output shape {out_shape}.")
-
     laps = {}
     for strategy in SUPPORTED_STRATEGIES:
         manual_seed(1)

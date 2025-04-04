@@ -80,8 +80,8 @@ def test_randomized_laplacian_functions_converge(
     config: Dict[str, Any],
     strategy: str,
     distribution: str,
-    max_num_chunks: int = 10,
-    chunk_size: int = 42,
+    max_num_chunks: int = 128,
+    chunk_size: int = 64,
     target_rel_error: float = 5e-2,
 ):
     """Test that the benchmarked MC-Laplacian functions converge.

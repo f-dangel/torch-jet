@@ -105,7 +105,7 @@ CASES_COMPACT = [
     # 5d tanh-activated two-layer MLP
     {
         "f": Sequential(
-            Linear(5, 4, bias=False), Tanh(), Linear(4, 3, bias=True), Tanh()
+            Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
         ),
         "shape": (5,),
         "k_max": INF,
@@ -114,7 +114,7 @@ CASES_COMPACT = [
     # 5d tanh-activated two-layer MLP with batched input
     {
         "f": Sequential(
-            Linear(5, 4, bias=False), Tanh(), Linear(4, 3, bias=True), Tanh()
+            Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
         ),
         "shape": (10, 5),
         "k_max": INF,

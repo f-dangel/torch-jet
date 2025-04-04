@@ -20,7 +20,7 @@ DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]
 
 
 def laplacian(f: Callable[[Tensor], Tensor], x: Tensor) -> Tensor:
-    """Compute the Laplacian of a tensor-to-tensor function.
+    """Naively compute the Laplacian of a tensor-to-tensor function.
 
     Args:
         f: The function to compute the Laplacian of.
@@ -28,7 +28,7 @@ def laplacian(f: Callable[[Tensor], Tensor], x: Tensor) -> Tensor:
 
     Returns:
         The Laplacian of the function f at the point x, evaluated
-        for each element f[i](x). Has same shape as f(x)
+        for each element f[i](x). Has same shape as f(x).
     """
     out = f(x)
 

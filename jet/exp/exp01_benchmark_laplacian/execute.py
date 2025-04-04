@@ -4,6 +4,7 @@ from argparse import ArgumentParser, Namespace
 from os import makedirs, path
 from typing import Callable, Union
 
+from einops import einsum
 from torch import Tensor, device, manual_seed, no_grad, ones_like, rand, randn
 from torch.func import hessian, jvp, vjp, vmap
 from torch.fx import symbolic_trace
@@ -66,8 +67,11 @@ def laplacian_function(
         ValueError: If the strategy is not supported.
     """
     if strategy == "hessian_trace":
-        dim_x = (X.shape[1:] if is_batched else X.shape).numel()
         hess_f = hessian(f)
+
+        # trace with einsum to support Laplacians of functions with non-scalar output
+        dims = " ".join([f"d{i}" for i in range(X.ndim - 1 if is_batched else X.ndim)])
+        tr_equation = f"... {dims} {dims} -> ..."
 
         def laplacian(x: Tensor) -> Tensor:
             """Compute the Laplacian of f on an un-batched input.
@@ -76,9 +80,9 @@ def laplacian_function(
                 x: The input tensor.
 
             Returns:
-                The Laplacian of f at x.
+                The Laplacian of f at x. Has the same shape as f(x).
             """
-            return hess_f(x).reshape(dim_x, dim_x).trace().unsqueeze(0)
+            return einsum(hess_f(x), tr_equation)
 
         if is_batched:
             laplacian = vmap(laplacian)

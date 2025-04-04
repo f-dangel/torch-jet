@@ -32,6 +32,7 @@ dynamic = ["version"]
 # Dependencies of the project:
 dependencies = [
     "torch",
+    "einops",
     "numpy",
     "scipy",
 ]

@@ -1,12 +1,13 @@
 """Script that carries out a measurement of peak memory and run time."""
 
 from argparse import ArgumentParser, Namespace
+from functools import partial
 from os import makedirs, path
 from typing import Callable, Union
 
 from einops import einsum
-from torch import Tensor, device, manual_seed, no_grad, ones_like, rand, randn
-from torch.func import hessian, jacrev, jvp, vjp, vmap
+from torch import Tensor, device, manual_seed, no_grad, rand, randn
+from torch.func import hessian, jacrev, jvp, vmap
 from torch.fx import symbolic_trace
 from torch.nn import Linear, Sequential, Tanh
 
@@ -149,10 +150,12 @@ def randomized_laplacian_function(
         dims = " ".join([f"d{i}" for i in range(sum_dims)])
         equation = f"... {dims}, {dims} -> ..."
 
-        def vhv(v: Tensor, x: Tensor) -> Tensor:
+        def vhv(x: Tensor, v: Tensor) -> Tensor:
             """Compute vector-Hessian-vector products of f evaluated at x.
 
             Args:
+                x: The input to the function at which the vector-Hessian-vector product
+                    is computed.
                 v: The vector to compute the vector-Hessian-vector product with.
                     Has same shape as `x`.
 
@@ -167,7 +170,7 @@ def randomized_laplacian_function(
         # vmap over data points and fix data
         if is_batched:
             vhv = vmap(vhv)
-        vhv_fix_X = lambda V: vhv(V, X)
+        vhv_fix_X = partial(vhv, X)
 
         # vmap over HVP
         VhV_vmap = vmap(vhv_fix_X)

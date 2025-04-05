@@ -166,10 +166,8 @@ def randomized_laplacian_function(
 
         # vmap over data points and fix data
         if is_batched:
-            vhv_vmap = vmap(vhv)
-            vhv_fix_X = lambda V: vhv_vmap(V, X)
-        else:
-            vhv_fix_X = lambda V: vhv(V, X)
+            vhv = vmap(vhv)
+        vhv_fix_X = lambda V: vhv(V, X)
 
         # vmap over HVP
         VhV_vmap = vmap(vhv_fix_X)

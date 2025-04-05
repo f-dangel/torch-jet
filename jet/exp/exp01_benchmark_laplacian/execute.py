@@ -6,7 +6,7 @@ from typing import Callable, Union
 
 from einops import einsum
 from torch import Tensor, device, manual_seed, no_grad, ones_like, rand, randn
-from torch.func import hessian, jvp, vjp, vmap
+from torch.func import hessian, jacrev, jvp, vjp, vmap
 from torch.fx import symbolic_trace
 from torch.nn import Linear, Sequential, Tanh
 
@@ -143,35 +143,41 @@ def randomized_laplacian_function(
 
     if strategy == "hessian_trace":
 
-        def vhv(v: Tensor) -> Tensor:
-            """Compute vector-Hessian-vector products of f evaluated at X.
+        # perform the contraction of the HVP and the vector with einsum to support
+        # functions with non-scalar output
+        sum_dims = X.ndim - 1 if is_batched else X.ndim
+        dims = " ".join([f"d{i}" for i in range(sum_dims)])
+        equation = f"... {dims}, {dims} -> ..."
+
+        def vhv(v: Tensor, x: Tensor) -> Tensor:
+            """Compute vector-Hessian-vector products of f evaluated at x.
 
             Args:
                 v: The vector to compute the vector-Hessian-vector product with.
-                    Has same shape as `X`.
+                    Has same shape as `x`.
 
             Returns:
-                The vector-Hessian-vector product. Has shape `(N, 1)` if `is_batched`
-                is `True` (where `N` is the batch size), otherwise `(1,)`.
+                The vector-Hessian-vector product. Has the same shape as f(x).
             """
+            grad_func = jacrev(f)
+            _, hvp = jvp(grad_func, (x,), (v,))
 
-            def grad_func(X: Tensor) -> Tensor:
-                f_X, vjp_func = vjp(f, X)
-                return vjp_func(ones_like(f_X))
+            return einsum(hvp, v, equation)
 
-            _, (hvp,) = jvp(grad_func, (X,), (v,))
+        # vmap over data points and fix data
+        if is_batched:
+            vhv_vmap = vmap(vhv)
+            vhv_fix_X = lambda V: vhv_vmap(V, X)
+        else:
+            vhv_fix_X = lambda V: vhv(V, X)
 
-            if is_batched:
-                return (v * hvp).flatten(start_dim=1).sum(dim=1, keepdim=True)
-            else:
-                return (v * hvp).sum().unsqueeze(0)
-
-        vhv_vmap = vmap(vhv)
+        # vmap over HVP
+        VhV_vmap = vmap(vhv_fix_X)
 
         sample_func = {"normal": randn, "rademacher": rademacher}[distribution]
         V = sample_func(num_samples, *X.shape, device=X.device, dtype=X.dtype)
 
-        return lambda: vhv_vmap(V).mean(0)
+        return lambda: VhV_vmap(V).mean(0)
 
     if strategy in {"jet_naive", "jet_simplified"}:
         laplacian = RandomizedLaplacian(f, X, is_batched, num_samples, distribution)

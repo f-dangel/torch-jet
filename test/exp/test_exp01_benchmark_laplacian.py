@@ -7,9 +7,9 @@ from test.test___init__ import (
     setup_case,
 )
 from test.test_laplacian import _check_mc_convergence, laplacian
-from typing import Any, Callable, Dict
+from typing import Any, Dict
 
-from pytest import mark, skip
+from pytest import mark
 from torch import Tensor, manual_seed
 
 from jet.exp.exp01_benchmark_laplacian.execute import (
@@ -56,8 +56,6 @@ def test_randomized_laplacian_functions_identical(
         num_samples: Number of samples to draw. Default: `42`.
     """
     f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
-    # NOTE The randomized functorch Laplacian only supports scalar output functions
-    _skip_non_scalar_output(f, x, is_batched)
 
     laps = {}
     for strategy in SUPPORTED_STRATEGIES:
@@ -95,8 +93,6 @@ def test_randomized_laplacian_functions_converge(
         target_rel_error: Target relative error for convergence. Default: `5e-2`.
     """
     f, X, _, is_batched = setup_case(config, taylor_coefficients=False)
-    # NOTE The randomized functorch Laplacian only supports scalar output functions
-    _skip_non_scalar_output(f, X, is_batched)
 
     lap = laplacian(f, X)
 
@@ -111,19 +107,3 @@ def test_randomized_laplacian_functions_converge(
         lap, sample, chunk_size, max_num_chunks, target_rel_error
     )
     assert converged, f"MC Laplacian ({strategy}, {distribution}) did not converge."
-
-
-def _skip_non_scalar_output(f: Callable[[Tensor], Tensor], x: Tensor, is_batched: bool):
-    """Skip if the function does not produce a scalar output.
-
-    This may be necessary because some of the implementations only support functions
-    with scalar-valued outputs.
-
-    Args:
-        f: The function to test.
-        x: The input tensor.
-        is_batched: Whether the input tensor is batched.
-    """
-    out_shape = f(x).shape
-    if (out_shape[1:] if is_batched else out_shape).numel() != 1:
-        skip(f"Skipping non-scalar function with {tuple(out_shape)} output.")

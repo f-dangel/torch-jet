@@ -1,9 +1,11 @@
 """Functions to simplify a compute graph captured with `torch.fx`."""
 
 import operator
+from collections import defaultdict
+from contextlib import contextmanager
 from typing import Any, List, Optional, Tuple
 
-from torch import add, cos, cosh, div, einsum, mul
+from torch import Tensor, add, cos, cosh, div, einsum, mul
 from torch import pow as torch_pow
 from torch import sigmoid, sin, sub, tanh
 from torch.fx import Graph, GraphModule, Node
@@ -341,7 +343,7 @@ class RewriteSumVmapped(RewriteReplicate):
         if op.target == einsum and not op.args[0].split("->")[1].startswith("..."):
             lhs, rhs = op.args[0].split("->")
             new_equation = f"{lhs}->{rhs[1:]}"
-            op.args = (new_equation, *op.args[1:])
+            op.update_arg(0, new_equation)
 
         # generate new `sum_vmapped` nodes above `op` and rewire the arguments
         else:
@@ -372,7 +374,12 @@ class RewriteSumVmapped(RewriteReplicate):
             usages = {n: ein_node.args[1:].count(n) for n in ein_node.all_input_nodes}
             for idx, (eq, arg) in enumerate(zip(lhs, ein_node.args[1:])):
                 # NOTE This assumption is overly simplistic but sufficient for now
-                if eq == "a..." and usages[arg] == 1:
+                if (
+                    eq == "a..."
+                    and usages[arg] == 1
+                    # no other operand should contain the index that is summed over
+                    and all("a" not in eq for i, eq in enumerate(lhs) if i != idx)
+                ):
                     lhs[idx] = "..."
                     with self.graph.inserting_before(ein_node):
                         new_sum = self.graph.call_function(sum_vmapped, args=(arg,))
@@ -380,7 +387,7 @@ class RewriteSumVmapped(RewriteReplicate):
 
             # update the equation
             new_equation = f"{','.join(lhs)}->..."
-            ein_node.args = (new_equation, *ein_node.args[1:])
+            ein_node.update_arg(0, new_equation)
 
     def fuse_vmapped_sum_with_tensor_constants(self):
         """Fuse tensor constants with `vmapped_sum` nodes.
@@ -388,25 +395,35 @@ class RewriteSumVmapped(RewriteReplicate):
         For instance, vmapped_sum(mod._tensor_constant0) can be simplified into
         mod._tensor_constant0 = vmapped_sum(mod._tensor_constant0)
         """
-        sum_nodes = [n for n in self.graph.nodes if self.is_sum_vmapped(n)]
-        for sum_node in sum_nodes:
-            # identify all tensor constant nodes that feed into a sum_vmapped
-            (attr,) = self.parents(sum_node)
-            if (
-                attr.op == "get_attr"
-                and not self.parents(attr)
-                and len(self.children(attr)) == 1
-            ):
-                sum_node.replace_all_uses_with(attr)
-                self.maybe_erase(sum_node)
+        # create a mapping which tensor constants are fetched by which nodes, and how
+        # these nodes are used
+        attributes = defaultdict(dict)
+        for n in self.graph.nodes:
+            if n.op == "get_attr":
+                attributes[n.target][n] = self.children(n)
+
+        for target, get_attr_to_children in attributes.items():
+            all_children = set(sum(get_attr_to_children.values(), start=[]))
+
+            # if all children of a get_attr are sum_vmappeds, we can sum first
+            if all(self.is_sum_vmapped(c) for c in all_children):
+                replacement = list(get_attr_to_children.keys())[0]
+                for sum_node in all_children:
+                    if sum_node != replacement:
+                        sum_node.replace_all_uses_with(replacement)
+                        self.maybe_erase(sum_node)
 
                 # sum the tensor constant
-                old = getattr(self.mod, attr.target)
+                old = getattr(self.mod, target)
                 new = sum_vmapped(old)
-                setattr(self.mod, attr.target, new)
+                setattr(self.mod, target, new)
                 self.maybe_print(
-                    f"Collapsing {attr}: {tuple(old.shape)} -> {tuple(new.shape)}."
+                    f"Collapsing {target}: {tuple(old.shape)} -> {tuple(new.shape)}."
                 )
+
+            # remove the get_attr nodes that are not referenced any more
+            for get_attr in get_attr_to_children:
+                self.maybe_erase(get_attr)
 
 
 def remove_duplicate_get_attrs(graph: Graph, verbose: bool = False):
@@ -433,12 +450,48 @@ def remove_duplicate_get_attrs(graph: Graph, verbose: bool = False):
             graph.erase_node(n)
 
 
+@contextmanager
+def check_unaltered(
+    mod: GraphModule, x: Optional[Tensor], rtol: float = 1e-5, atol: float = 1e-8
+):
+    """Verify that the module still produces the same output before and after the body.
+
+    Args:
+        mod: The module to be checked.
+        x: Input tensor to the module. If `None`, the check will be skipped.
+        rtol: Relative tolerance for comparing outputs. Default: `1e-5`.
+        atol: Absolute tolerance for comparing outputs. Default: `1e-8`.
+
+    Yields:
+        None
+
+    Raises:
+        RuntimeError: If the module output changes after the body.
+    """
+    if x is not None:
+        before_str = str(mod.graph)
+        out_before = mod(x)
+        yield
+
+        out_after = mod(x)
+        close = out_before.allclose(out_after, rtol=rtol, atol=atol)
+
+        if not close:
+            print(f"Before:\n{before_str}")
+            print(f"After:\n{mod.graph}")
+            raise RuntimeError("Module output changed.")
+
+    else:
+        yield
+
+
 def simplify(
     mod: GraphModule,
     push_replicate: bool = True,
     remove_unused: bool = True,
     pull_sum_vmapped: bool = True,
     verbose: bool = False,
+    test_x: Optional[Tensor] = None,
 ) -> GraphModule:
     """Simplify a compute graph.
 
@@ -460,6 +513,10 @@ def simplify(
         pull_sum_vmapped: Whether to pull `sum_vmapped` nodes up the graph.
             Default: `True`.
         verbose: Whether to print debug information. Default: `False`.
+        test_x: Input tensor to the module that will be verified after each
+            simplification to make sure it does not change the correctness.
+            This is expensive and should be considered for debugging purposes only.
+            If `None`, the verification step will be skipped. Default: `None`.
 
     Returns:
         The simplified graph module.
@@ -467,26 +524,36 @@ def simplify(
     if verbose:
         print(f"Traced graph before simplification:\n{mod.graph}")
 
-    # this assumes no side effects in the graph, so that it does not matter
-    # when we call get_attr on a module's tensor constant
-    remove_duplicate_get_attrs(mod.graph, verbose=verbose)
+    with check_unaltered(mod, test_x):
+        # this assumes no side effects in the graph, so that it does not matter
+        # when we call get_attr on a module's tensor constant
+        remove_duplicate_get_attrs(mod.graph, verbose=verbose)
 
     if push_replicate:
         rewriter = RewriteReplicate(mod, verbose=verbose)
         while pattern := rewriter.find_pattern():
-            rewriter.replace_pattern(pattern)
-        rewriter.fuse_replicates_with_einsum()
+            with check_unaltered(mod, test_x):
+                rewriter.replace_pattern(pattern)
+
+        with check_unaltered(mod, test_x):
+            rewriter.fuse_replicates_with_einsum()
 
     if remove_unused:
         rewriter = RewriteReplicate(mod, verbose=verbose)
-        rewriter.remove_unused_nodes()
+        with check_unaltered(mod, test_x):
+            rewriter.remove_unused_nodes()
 
     if pull_sum_vmapped:
         rewriter = RewriteSumVmapped(mod, verbose=verbose)
         while pattern := rewriter.find_pattern():
-            rewriter.replace_pattern(pattern)
-            rewriter.raise_sum_vmapped_outside_einsum()
-        rewriter.fuse_vmapped_sum_with_tensor_constants()
+            with check_unaltered(mod, test_x):
+                rewriter.replace_pattern(pattern)
+
+            with check_unaltered(mod, test_x):
+                rewriter.raise_sum_vmapped_outside_einsum()
+
+        with check_unaltered(mod, test_x):
+            rewriter.fuse_vmapped_sum_with_tensor_constants()
 
     mod.graph.lint()
     mod.recompile()

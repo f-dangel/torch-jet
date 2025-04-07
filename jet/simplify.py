@@ -149,18 +149,27 @@ class RewriteReplicate:
                 self.maybe_print(f"Can swap {pattern[0]} and {pattern[1]}")
                 return pattern
 
-    def maybe_erase(self, rep: Node):
-        """Remove a replicate node if it has no children.
+    def maybe_erase(self, node: Node) -> bool:
+        """Remove a node if it has no children.
 
         Args:
-            rep: The replicate node.
+            node: The node to be checked for removal.
+
+        Returns:
+            Whether the node was removed.
         """
-        children = self.children(rep)
+        if node.op == "output":
+            self.maybe_print(f"Not removing {node} because it is an output node.")
+            return False
+
+        children = self.children(node)
         if len(children) == 0:
-            self.maybe_print(f"Erasing {rep}.")
-            self.graph.erase_node(rep)
+            self.maybe_print(f"Erasing {node}.")
+            self.graph.erase_node(node)
+            return True
         else:
-            self.maybe_print(f"Not removing {rep} because it has children {children}.")
+            self.maybe_print(f"Not removing {node} because it has children {children}.")
+            return False
 
     def replace_pattern(self, pattern: Tuple[List[Node], Node]):
         """Replace a pattern in the graph.
@@ -230,6 +239,18 @@ class RewriteReplicate:
                 new_equation = f"{','.join(new_lhs)}->a..."
                 node.args = (new_equation, *node.args[1:])
                 self.maybe_print(f"Fusing {node}: {old_args} into {node.args}")
+
+    def remove_unused_nodes(self):
+        """Remove unused nodes from the graph."""
+        num_removals = 0
+        for node in list(self.graph.nodes):
+            removed = self.maybe_erase(node)
+            num_removals = num_removals + 1 if removed else num_removals
+
+        if num_removals > 0:
+            self.maybe_print(f"Removed {num_removals} unused nodes.")
+            # the removed nodes might have revealed new unused nodes
+            self.remove_unused_nodes()
 
 
 class RewriteSumVmapped(RewriteReplicate):
@@ -415,6 +436,7 @@ def remove_duplicate_get_attrs(graph: Graph, verbose: bool = False):
 def simplify(
     mod: GraphModule,
     push_replicate: bool = True,
+    remove_unused: bool = True,
     pull_sum_vmapped: bool = True,
     verbose: bool = False,
 ) -> GraphModule:
@@ -425,6 +447,8 @@ def simplify(
     - Pushing of `replicate` nodes down the graph as much as possible.
       This avoids redundant computations on replicated tensors.
 
+    - Remove nodes that do not have any users.
+
     - Pulling of `sum_vmapped` nodes up the graph as much as possible.
       This avoids redundant computations on summed tensors.
 
@@ -432,6 +456,7 @@ def simplify(
         mod: A graph module whose computation graph will be simplified.
         push_replicate: Whether to push `replicate` nodes down the graph.
             Default: `True`.
+        remove_unused: Whether to remove unused nodes from the graph. Default: `True`.
         pull_sum_vmapped: Whether to pull `sum_vmapped` nodes up the graph.
             Default: `True`.
         verbose: Whether to print debug information. Default: `False`.
@@ -451,6 +476,10 @@ def simplify(
         while pattern := rewriter.find_pattern():
             rewriter.replace_pattern(pattern)
         rewriter.fuse_replicates_with_einsum()
+
+    if remove_unused:
+        rewriter = RewriteReplicate(mod, verbose=verbose)
+        rewriter.remove_unused_nodes()
 
     if pull_sum_vmapped:
         rewriter = RewriteSumVmapped(mod, verbose=verbose)

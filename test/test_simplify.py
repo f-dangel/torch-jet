@@ -30,13 +30,14 @@ from test.test___init__ import (
     CASES_COMPACT,
     CASES_COMPACT_IDS,
     compare_jet_results,
+    report_nonclose,
     setup_case,
 )
 from test.test_laplacian import DISTRIBUTION_IDS, DISTRIBUTIONS, laplacian
 from typing import Any, Callable, Dict, Optional
 
 from pytest import mark
-from torch import Tensor, manual_seed
+from torch import Tensor, arange, manual_seed
 from torch.fx import Graph, GraphModule, symbolic_trace, wrap
 from torch.nn import Module
 
@@ -313,3 +314,28 @@ def test_simplify_laplacian(config: Dict[str, Any], distribution: Optional[str])
     assert (
         getattr(backup, c1).shape == (num_vectors, *getattr(fast, c1).shape) == V_shape
     )
+
+
+def test_simplify_remove_unused_nodes():
+    """Test removal of unused nodes."""
+
+    def f(x: Tensor) -> Tensor:
+        unused1 = x + 1
+        # Note how unused1 only becomes unused once we have removed unused2
+        unused2 = unused1 + 2  # noqa: F841
+
+        used = x + 3
+        return used
+
+    x = arange(10)
+
+    f_traced = symbolic_trace(f)
+    f_x = f_traced(x)
+    # there should be 5 nodes: x, unused1, unused2, used, output
+    assert len(list(f_traced.graph.nodes)) == 5
+
+    f_simple = simplify(f_traced, remove_unused=True, verbose=True)
+    # there should be 3 nodes: x, used, output
+    assert len(list(f_simple.graph.nodes)) == 3
+
+    report_nonclose(f_x, f_simple(x), name="f(x)")

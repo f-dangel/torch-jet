@@ -32,8 +32,10 @@ def _faa_di_bruno(vs: Tuple[Primal, ...], K: int, dn: Dict[int, Primal]) -> List
     for k in range(K):
         for idx, sigma in enumerate(integer_partitions(k + 1)):
             vs_contract = [vs[i - 1] for i in sigma]
+            term = tensor_prod(dn[len(vs_contract)], *vs_contract)
             nu = multiplicity(sigma)
-            term = nu * tensor_prod(dn[len(vs_contract)], *vs_contract)
+            # avoid multiplication by one
+            term = nu * term if nu != 1.0 else term
             vs_out.append(term if idx == 0 else vs_out.pop(-1) + term)
     return vs_out
 
@@ -103,11 +105,10 @@ def jet_tanh(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficien
             # Use that the Stirling number S(m>0, 0) = 0 to start the summation at 1
             term = None
             for k in range(1, m + 1):
+                scale = factorial(k, exact=True) / 2**k * stirling2(m, k, exact=True)
+                # avoid multiplication by one
                 term_k = (
-                    factorial(k, exact=True)
-                    / 2**k
-                    * stirling2(m, k, exact=True)
-                    * tanh_dec_powers[k]
+                    (scale * tanh_dec_powers[k]) if scale != 1.0 else tanh_dec_powers[k]
                 )
                 term = term_k if term is None else term + term_k
             dtanh[m] = (-2) ** m * tanh_inc * term
@@ -151,7 +152,10 @@ def jet_sigmoid(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoeffic
                     * factorial(k - 1, exact=True)
                     * stirling2(n + 1, k, exact=True)
                 )
-                term_k = scale * sigmoid_powers[k]
+                # avoid multiplication by one
+                term_k = (
+                    scale * sigmoid_powers[k] if scale != 1.0 else sigmoid_powers[k]
+                )
                 term = term_k if term is None else term + term_k
             dsigmoid[n] = term
 

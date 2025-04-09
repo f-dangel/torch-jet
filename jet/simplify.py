@@ -4,7 +4,7 @@ import operator
 from collections import defaultdict
 from contextlib import contextmanager
 from functools import partial
-from typing import Any, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from torch import Tensor, add, cos, cosh, div, einsum, mul
 from torch import pow as torch_pow
@@ -490,12 +490,16 @@ class RewriteSumVmapped(RewriteReplicate):
         return fused
 
 
-def common_subexpression_elimination(graph: Graph, verbose: bool = False) -> bool:
+def common_subexpression_elimination(
+    graph: Graph, verbose: bool = False, restrict_ops: Optional[Set[str]] = None
+) -> bool:
     """Replace duplicate subexpressions with a single node.
 
     Args:
         graph: The graph to be optimized.
         verbose: Whether to print debug information. Default: `False`.
+        restrict_ops: A set of operations to restrict the optimization to.
+            Default: `None`.
 
     Returns:
         Whether a subexpression was replaced.
@@ -506,6 +510,9 @@ def common_subexpression_elimination(graph: Graph, verbose: bool = False) -> boo
     num_replacements = 0
 
     for node in list(graph.nodes):
+        if restrict_ops is not None and node.op not in restrict_ops:
+            continue
+
         node_hash = (node.op, node.target, node.args, node.kwargs)
         if node_hash in nodes:
             # replace the node
@@ -626,61 +633,62 @@ def simplify(  # noqa: C901
     if verbose:
         print(f"Traced graph before simplification:\n{mod.graph}")
 
-    # collect all simplification strategies into a list
-    strategies = []
-
     replicate_rewriter = RewriteReplicate(mod, verbose=verbose)
     sum_vmapped_rewriter = RewriteSumVmapped(mod, verbose=verbose)
 
-    if remove_unused:
-        strategies.append(("remove_unused", replicate_rewriter.remove_unused_nodes))
-
-    if eliminate_common_subexpressions:
-        apply_cse = partial(
+    strategies = {
+        "remove_unused": replicate_rewriter.remove_unused_nodes,
+        "common_subexpression_elimination_get_attr": partial(
+            common_subexpression_elimination,
+            mod.graph,
+            verbose=verbose,
+            restrict_ops={"get_attr"},
+        ),
+        "common_subexpression_elimination": partial(
             common_subexpression_elimination, mod.graph, verbose=verbose
-        )
-        strategies.append(("common_subexpression_elimination", apply_cse))
+        ),
+        "push_replicate": replicate_rewriter.rewrite_pattern,
+        "fuse_replicates_with_einsum": replicate_rewriter.fuse_replicates_with_einsum,
+        "pull_sum_vmapped": sum_vmapped_rewriter.rewrite_pattern,
+        "raise_sum_vmapped_outside_einsum": sum_vmapped_rewriter.raise_sum_vmapped_outside_einsum,
+        "fuse_with_tensor_constant": sum_vmapped_rewriter.fuse_vmapped_sum_with_tensor_constants,
+    }
 
+    # round 1 of simplifications: remove redundancies in the graph
+    round_one = []
+    if remove_unused:
+        round_one.append("remove_unused")
+    if eliminate_common_subexpressions:
+        round_one.append("common_subexpression_elimination_get_attr")
+    _exhaust_incrementally({s: strategies[s] for s in round_one}, mod, test_x, verbose)
+
+    # round 2 of simplifications: push forward replicate nodes
+    round_two = []
     if push_replicate:
-        strategies.extend(
-            (
-                ("push_replicate", replicate_rewriter.rewrite_pattern),
-                (
-                    "fuse_replicates_with_einsum",
-                    replicate_rewriter.fuse_replicates_with_einsum,
-                ),
-            )
-        )
+        round_two.extend(["push_replicate", "fuse_replicates_with_einsum"])
+    _exhaust_incrementally({s: strategies[s] for s in round_two}, mod, test_x, verbose)
 
+    # round 3 of simplifications: pull sum_vmapped nodes up
+    round_three = []
     if pull_sum_vmapped:
-        strategies.extend(
-            (
-                ("pull_sum_vmapped", sum_vmapped_rewriter.rewrite_pattern),
-                (
-                    "raise_sum_vmapped_outside_einsum",
-                    sum_vmapped_rewriter.raise_sum_vmapped_outside_einsum,
-                ),
-                (
-                    "fuse_with_tensor_constant",
-                    sum_vmapped_rewriter.fuse_vmapped_sum_with_tensor_constants,
-                ),
-            )
+        round_three.extend(
+            [
+                "pull_sum_vmapped",
+                "raise_sum_vmapped_outside_einsum",
+                "fuse_with_tensor_constant",
+            ]
         )
+    _exhaust_incrementally(
+        {s: strategies[s] for s in round_three}, mod, test_x, verbose
+    )
 
-    # cycle through the strategies, continue until no strategy performs a change
-    do_simplify = True
-    while do_simplify:
-        simplified = False
-        for name, apply_strategy in strategies:
-            with check_unaltered(mod, test_x):
-                simplified = apply_strategy()
-                if verbose:
-                    print(f"Applying strategy {name}: {simplified}")
-
-            if simplified:
-                break
-
-        do_simplify = simplified
+    # round 4 of simplifications: remove redundancies in the graph and clean up
+    round_four = []
+    if eliminate_common_subexpressions:
+        round_four.append("common_subexpression_elimination")
+    if remove_unused:
+        round_four.append("remove_unused")
+    _exhaust_incrementally({s: strategies[s] for s in round_four}, mod, test_x, verbose)
 
     mod.graph.lint()
     mod.recompile()
@@ -694,3 +702,42 @@ def simplify(  # noqa: C901
         print(f"Number of nodes after simplification: {nodes_after}.")
 
     return mod
+
+
+def _exhaust_incrementally(
+    strategies: Dict[str, Callable[[], None]],
+    mod: GraphModule,
+    test_x: Optional[Tensor],
+    verbose: bool,
+):
+    """Apply one round of simplifications.
+
+    Loop through the simplification strategies until one is successful, then start
+    from the beginning until we complete one round where none of the strategies is
+    successful.
+
+    Args:
+        strategies: A dictionary of strategies to be applied.
+        mod: The module to be simplified.
+        test_x: Input tensor to the module that will be verified after each
+            simplification to make sure it does not change the correctness.
+            This is expensive and should be considered for debugging purposes only.
+            If `None`, the verification step will be skipped. Default: `None`.
+        verbose: Whether to print debug information. Default: `False`.
+    """
+    if not strategies:
+        return
+
+    do_simplify = True
+    while do_simplify:
+        simplified = False
+        for name, apply_strategy in strategies.items():
+            with check_unaltered(mod, test_x):
+                simplified = apply_strategy()
+                if verbose:
+                    print(f"Applying strategy {name}: {simplified}")
+
+            if simplified:
+                break
+
+        do_simplify = simplified

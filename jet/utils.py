@@ -154,7 +154,7 @@ def get_letters(num_letters: int, blocked: Optional[Set] = None) -> List[str]:
         List of ``num_letters`` unique letters.
 
     Raises:
-        ValueError: If ``num_letters`` cannot be satisfies with einsum-supported
+        ValueError: If ``num_letters`` cannot be satisfied with einsum-supported
             letters.
     """
     if num_letters == 0:

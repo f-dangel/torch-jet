@@ -450,6 +450,53 @@ def remove_duplicate_get_attrs(graph: Graph, verbose: bool = False):
             graph.erase_node(n)
 
 
+def common_subexpression_elimination(graph: Graph, verbose: bool = False) -> bool:
+    """Replace duplicate subexpressions with a single node.
+
+    Args:
+        graph: The graph to be optimized.
+        verbose: Whether to print debug information. Default: `False`.
+
+    Returns:
+        Whether a subexpression was replaced.
+    """
+    nodes = {}
+
+    replaced = False
+    num_replacements = 0
+
+    for node in list(graph.nodes):
+        node_hash = (node.op, node.target, node.args, node.kwargs)
+        if node_hash in nodes:
+            # replace the node
+            replacement = nodes[node_hash]
+            if verbose:
+                print(
+                    f"Replacing {node}"
+                    + f" ({node.op}, {node.target}, {node.args}, {node.kwargs})"
+                )
+                print(
+                    f"with {replacement} ({replacement.op}, {replacement.target},"
+                    + f" {replacement.args}, {replacement.kwargs})"
+                )
+            node.replace_all_uses_with(replacement)
+
+            # remove the node from the graph
+            if verbose:
+                print(f"Erasing {node}.")
+            graph.erase_node(node)
+
+            replaced = True
+            num_replacements += 1
+        else:
+            nodes[node_hash] = node
+
+    if verbose:
+        print(f"Replacements: {num_replacements}")
+
+    return replaced
+
+
 @contextmanager
 def check_unaltered(
     mod: GraphModule, x: Optional[Tensor], rtol: float = 1e-5, atol: float = 1e-8

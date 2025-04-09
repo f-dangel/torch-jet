@@ -43,7 +43,12 @@ from torch.nn import Module
 
 from jet import JetTracer, jet, rev_jet
 from jet.laplacian import Laplacian, RandomizedLaplacian
-from jet.simplify import RewriteReplicate, RewriteSumVmapped, simplify
+from jet.simplify import (
+    RewriteReplicate,
+    RewriteSumVmapped,
+    common_subexpression_elimination,
+    simplify,
+)
 from jet.utils import (
     PrimalAndCoefficients,
     ValueAndCoefficients,
@@ -339,3 +344,30 @@ def test_simplify_remove_unused_nodes():
     assert len(list(f_simple.graph.nodes)) == 3
 
     report_nonclose(f_x, f_simple(x), name="f(x)")
+
+
+def test_common_subexpression_elimination():
+    """Test common subexpression elimination."""
+
+    def f(x: Tensor) -> Tensor:
+        # NOTE that instead of computing y1, y2, we could simply compute y1 and
+        # return y1 + y1
+        x1 = x + 1
+        x2 = x + 1
+        y1 = 2 * x1
+        y2 = 2 * x2
+        z = y1 + y2
+        return z
+
+    x = arange(10)
+
+    f_traced = symbolic_trace(f)
+    f_x = f_traced(x)
+    # there should be 7 nodes: x, x1, x2, y1, y2, z, output
+    assert len(list(f_traced.graph.nodes)) == 7
+
+    common_subexpression_elimination(f_traced.graph, verbose=True)
+    # there should be 5 nodes after CSE: x, v=x+1, w=2*v, z=w+w, output
+    assert len(list(f_traced.graph.nodes)) == 5
+
+    report_nonclose(f_x, f_traced(x), name="f(x)")

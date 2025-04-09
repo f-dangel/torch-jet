@@ -218,12 +218,16 @@ class RewriteReplicate:
         if self.verbose:
             print(message)
 
-    def fuse_replicates_with_einsum(self):
+    def fuse_replicates_with_einsum(self) -> bool:
         """Attempt to fuse replicate nodes that act as inputs to einsum.
 
         E.g. consider einsum('...,...->...', replicate(x), y). This can be simplified
         into einsum('...,a...->a...', x, y)).
+
+        Returns:
+            Whether replicate nodes were fused einsum nodes.
         """
+        fused = False
         for node in self.graph.nodes:
             if (
                 node.op == "call_function"
@@ -253,14 +257,18 @@ class RewriteReplicate:
                 new_equation = f"{','.join(new_lhs)}->a..."
                 node.args = (new_equation, *node.args[1:])
                 self.maybe_print(f"Fusing {node}: {old_args} into {node.args}")
+                fused = True
 
-    def remove_unused_node(self) -> bool:
-        """Find and remove an unused node from the graph.
+        return fused
+
+    def remove_unused_nodes(self) -> bool:
+        """Find and remove unused nodes from the graph.
 
         Returns:
-            Whether a node was removed.
+            Whether nodes were removed.
         """
-        return any(self.maybe_erase(node) for node in list(self.graph.nodes))
+        removed = [self.maybe_erase(node) for node in list(self.graph.nodes)]
+        return any(removed)
 
 
 class RewriteSumVmapped(RewriteReplicate):
@@ -400,8 +408,9 @@ class RewriteSumVmapped(RewriteReplicate):
 
         Returns:
             Whether a `sum_vmapped` was raised outside an `einsum` node.
-
         """
+        modified = False
+
         for node in list(self.graph.nodes):
             if node.op != "call_function" or node.target != einsum:
                 continue
@@ -414,8 +423,6 @@ class RewriteSumVmapped(RewriteReplicate):
             # hoist out tensors with 'a...'
             lhs = lhs.split(",")
             usages = {n: node.args[1:].count(n) for n in node.all_input_nodes}
-
-            modified = False
 
             for idx, (eq, arg) in enumerate(zip(lhs, node.args[1:])):
                 # NOTE This assumption is overly simplistic but sufficient for now
@@ -431,13 +438,11 @@ class RewriteSumVmapped(RewriteReplicate):
                     node.replace_input_with(arg, new_sum)
                     modified = True
 
-            if modified:
-                # update the equation
-                new_equation = f"{','.join(lhs)}->..."
-                node.update_arg(0, new_equation)
-                return True
+            # update the equation
+            new_equation = f"{','.join(lhs)}->..."
+            node.update_arg(0, new_equation)
 
-        return False
+        return modified
 
     def fuse_vmapped_sum_with_tensor_constants(self) -> bool:
         """Fuse tensor constants with `vmapped_sum` nodes.
@@ -626,7 +631,7 @@ def simplify(
     sum_vmapped_rewriter = RewriteSumVmapped(mod, verbose=verbose)
 
     if remove_unused:
-        strategies.append(("remove_unused", replicate_rewriter.remove_unused_node))
+        strategies.append(("remove_unused", replicate_rewriter.remove_unused_nodes))
 
     if eliminate_common_subexpressions:
         apply_cse = lambda: common_subexpression_elimination(mod.graph, verbose=verbose)

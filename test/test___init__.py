@@ -20,7 +20,7 @@ def compare_jet_results(out1: ValueAndCoefficients, out2: ValueAndCoefficients):
     report_nonclose(value1, value2, name="Values")
     assert len(series1) == len(series2)
     for i, (s1, s2) in enumerate(zip(series1, series2)):
-        report_nonclose(s1, s2, name=f"Coefficients {i+1}")
+        report_nonclose(s1, s2, name=f"Coefficients {i + 1}")
 
 
 def report_nonclose(

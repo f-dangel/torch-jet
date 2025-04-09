@@ -125,7 +125,7 @@ def _check_mc_convergence(
         estimate = (estimate * i + estimate_i.detach()) / (i + 1.0)
 
         rel_error = (norm(estimate - truth) / norm(truth)).item()
-        print(f"Relative error at {(i+1) * chunk_size} samples: {rel_error:.3e}.")
+        print(f"Relative error at {(i + 1) * chunk_size} samples: {rel_error:.3e}.")
 
         # check for convergence
         if rel_error < target_rel_error:

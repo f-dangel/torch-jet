@@ -79,7 +79,11 @@ def plot_metric(
         ax: The axes to plot the data on.
     """
     ylabel = {"time": "Time [s]", "peak_memory": "Peak memory [GiB]"}[metric]
-    x_to_xlabel = {"batch_size": "Batch size", "num_samples": "Monte-Carlo samples"}
+    x_to_xlabel = {
+        "batch_size": "Batch size",
+        "num_samples": "Monte-Carlo samples",
+        "dim": "Input dimension",
+    }
     ax.set_xlabel(x_to_xlabel.get(x, x))
     ax.set_ylabel(ylabel)
 

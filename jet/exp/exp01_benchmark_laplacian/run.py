@@ -34,6 +34,7 @@ def measure(
     gather_every: int = 10,
     distributions: Optional[List[str]] = None,
     nums_samples: Optional[List[int]] = None,
+    operator: str = "laplacian",
 ):
     """Run benchmark measurements for all combinations of input parameters.
 
@@ -51,6 +52,7 @@ def measure(
             that the exact Laplacian will be benchmarked. Default is `None`.
         nums_samples: List of numbers of samples for the randomized Laplacian. `None`
             means that the exact Laplacian will be benchmarked. Default is `None`.
+        operator: The differential operator to benchmark. Default is `'laplacian'`.
     """
     _distributions = [None] if distributions is None else distributions
     _nums_samples = [None] if nums_samples is None else nums_samples
@@ -99,8 +101,8 @@ def measure(
             skip = True
 
         if not skip:
-            cmd = ["python", SCRIPT] + [
-                f"--{key}={value}" for key, value in kwargs.items()
+            cmd = ["python", SCRIPT, f"--operator={operator}"] + [
+                f"--{key}={value}" for key, value in kwargs.items() if value is not None
             ]
             run_verbose(cmd)
 
@@ -115,6 +117,7 @@ def measure(
                 devices,
                 _distributions,
                 _nums_samples,
+                operator,
                 allow_missing=not is_last,
             )
             filename = savepath(name)
@@ -130,6 +133,7 @@ def gather_data(
     devices: List[str],
     distributions: List[Optional[str]],
     nums_samples: List[Optional[int]],
+    operator: str,
     allow_missing: bool = False,
 ) -> DataFrame:
     """Create a data frame that collects all the results into a single table.
@@ -142,6 +146,7 @@ def gather_data(
         devices: List of devices the experiments were run on.
         distributions: List of distributions for the randomized Laplacian.
         nums_samples: List of numbers of samples for the randomized Laplacian.
+        operator: The differential operator that was benchmarked.
         allow_missing: Whether to allow missing result files. Default is False.
 
     Returns:
@@ -177,7 +182,9 @@ def gather_data(
             "distribution": [distribution],
             "num_samples": [num_samples],
         }
-        filename = savepath_raw(**{key: value[0] for key, value in result.items()})
+        filename = savepath_raw(
+            **{key: value[0] for key, value in result.items()}, operator=operator
+        )
 
         if not path.exists(filename) and allow_missing:
             print(f"Skipping missing file {filename}.")
@@ -225,6 +232,7 @@ EXPERIMENTS = [
             "batch_sizes": linspace(1, 2048, 25).int().unique().tolist(),
             "strategies": SUPPORTED_STRATEGIES,
             "devices": ["cuda"],
+            "operator": "laplacian",
         },
         # what to plot: x-axis is batch_sizes and each strategy is plotted in a curve
         ("batch_size", "strategy"),
@@ -240,6 +248,7 @@ EXPERIMENTS = [
             "batch_sizes": [2048],
             "strategies": SUPPORTED_STRATEGIES,
             "devices": ["cuda"],
+            "operator": "laplacian",
             "distributions": ["normal"],
             "nums_samples": linspace(1, 50, 25).int().unique().tolist(),
         },

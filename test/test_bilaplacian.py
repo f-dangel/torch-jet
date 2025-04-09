@@ -42,20 +42,29 @@ def bilaplacian(f: Callable[[Tensor], Tensor], X: Tensor, is_batched: bool) -> T
     # correct unit vectors, similar to the vHv-approach for the randomized Laplacian.
     d4f = hessian(hessian(f))
 
-    if is_batched:
-        d4f = vmap(d4f)
-    d4f_X = d4f(X)
-
     # trace it using einsum to support functions with non-scalar outputs
     num_summed_dims = X.ndim - 1 if is_batched else X.ndim
     dims1 = " ".join([f"i{i}" for i in range(num_summed_dims)])
     dims2 = " ".join([f"j{j}" for j in range(num_summed_dims)])
-    batch_str = "n " if is_batched else ""
     # if x is a vector, this is just '... i i j j -> ...' where '...' corresponds
     # to the shape of f(x)
-    equation = f"{batch_str}... {dims1} {dims1} {dims2} {dims2} -> {batch_str}..."
+    equation = f"... {dims1} {dims1} {dims2} {dims2} -> ..."
 
-    return einsum(d4f_X, equation)
+    def _bilaplacian(x: Tensor) -> Tensor:
+        """Compute the Bi-Laplacian on an unbatched input.
+
+        Args:
+            x: The input tensor.
+
+        Returns:
+            The Bi-Laplacian of the function f at the point x. Has same shape as f(x).
+        """
+        return einsum(d4f(x), equation)
+
+    if is_batched:
+        _bilaplacian = vmap(_bilaplacian)
+
+    return _bilaplacian(X)
 
 
 def bilaplacian_naive(

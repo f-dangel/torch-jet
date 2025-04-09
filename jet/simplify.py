@@ -225,7 +225,7 @@ class RewriteReplicate:
         into einsum('...,a...->a...', x, y)).
 
         Returns:
-            Whether replicate nodes were fused einsum nodes.
+            Whether replicate nodes were fused with einsum nodes.
         """
         fused = False
         for node in self.graph.nodes:
@@ -665,16 +665,15 @@ def simplify(
 
     # cycle through the strategies, continue until no strategy performs a change
     do_simplify = True
-    strategy_used = []
     while do_simplify:
         simplified = False
         for name, apply_strategy in strategies:
             with check_unaltered(mod, test_x):
                 simplified = apply_strategy()
-                print(f"Applying strategy {name}: {simplified}")
+                if verbose:
+                    print(f"Applying strategy {name}: {simplified}")
 
             if simplified:
-                strategy_used.append(name)
                 break
 
         do_simplify = simplified

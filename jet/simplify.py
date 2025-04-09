@@ -11,7 +11,7 @@ from torch import sigmoid, sin, sub, tanh
 from torch.fx import Graph, GraphModule, Node
 from torch.nn.functional import linear
 
-from jet.utils import replicate, sum_vmapped
+from jet.utils import get_letters, replicate, sum_vmapped
 
 
 class RewriteReplicate:
@@ -318,9 +318,7 @@ class RewriteSumVmapped(RewriteReplicate):
             elif op.target == linear:
                 pattern = [node, op]
             # sum_vmapped(einsum('xyz->a...')) -> einsum('xyz->...')
-            elif op.target == einsum and not op.args[0].split("->")[1].startswith(
-                "..."
-            ):
+            elif op.target == einsum:
                 pattern = [node, op]
 
             if pattern is not None:
@@ -339,10 +337,22 @@ class RewriteSumVmapped(RewriteReplicate):
         sum_node.replace_all_uses_with(op)
         self.maybe_erase(sum_node)
 
-        # for einsum, we only have to modify the equation
-        if op.target == einsum and not op.args[0].split("->")[1].startswith("..."):
+        # for summing out the leading index of an einsum, we have to modify the equation
+        if op.target == einsum:
             lhs, rhs = op.args[0].split("->")
-            new_equation = f"{lhs}->{rhs[1:]}"
+
+            if rhs.startswith("..."):  # we need to introduce a new index
+                used_letters = set(lhs)
+                (new_letter,) = get_letters(1, blocked=used_letters)
+                new_lhs = ",".join(
+                    [l.replace("...", f"{new_letter}...") for l in lhs.split(",")]
+                )
+                new_rhs = rhs
+            else:
+                new_lhs = lhs
+                new_rhs = rhs[1:]
+
+            new_equation = f"{new_lhs}->{new_rhs}"
             op.update_arg(0, new_equation)
 
         # generate new `sum_vmapped` nodes above `op` and rewire the arguments

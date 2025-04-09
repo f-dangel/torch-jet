@@ -70,6 +70,18 @@ class RewriteReplicate:
         """
         return [n for n in self.graph.nodes if node in n.all_input_nodes]
 
+    def rewrite_pattern(self) -> bool:
+        """Try to find the next replicate node and rewrite it.
+
+        Returns:
+            Whether a pattern was found and rewritten.
+        """
+        rewritten = False
+        if pattern := self.find_pattern():
+            self.replace_pattern(pattern)
+            rewritten = True
+        return rewritten
+
     def find_pattern(self) -> Optional[Tuple[List[Node], Node]]:
         """Find a pattern that can be simplified.
 
@@ -242,17 +254,13 @@ class RewriteReplicate:
                 node.args = (new_equation, *node.args[1:])
                 self.maybe_print(f"Fusing {node}: {old_args} into {node.args}")
 
-    def remove_unused_nodes(self):
-        """Remove unused nodes from the graph."""
-        num_removals = 0
-        for node in list(self.graph.nodes):
-            removed = self.maybe_erase(node)
-            num_removals = num_removals + 1 if removed else num_removals
+    def remove_unused_node(self) -> bool:
+        """Find and remove an unused node from the graph.
 
-        if num_removals > 0:
-            self.maybe_print(f"Removed {num_removals} unused nodes.")
-            # the removed nodes might have revealed new unused nodes
-            self.remove_unused_nodes()
+        Returns:
+            Whether a node was removed.
+        """
+        return any(self.maybe_erase(node) for node in list(self.graph.nodes))
 
 
 class RewriteSumVmapped(RewriteReplicate):
@@ -273,6 +281,18 @@ class RewriteSumVmapped(RewriteReplicate):
             and arg.op == "call_function"
             and arg.target == sum_vmapped
         )
+
+    def rewrite_pattern(self) -> bool:
+        """Try to find the next sum_vmapped node and rewrite it.
+
+        Returns:
+            Whether a pattern was found and rewritten.
+        """
+        rewritten = False
+        if pattern := self.find_pattern():
+            self.replace_pattern(pattern)
+            rewritten = True
+        return rewritten
 
     def find_pattern(self) -> Optional[Tuple[Node, Node]]:
         """Find a pattern that can be simplified.
@@ -372,25 +392,32 @@ class RewriteSumVmapped(RewriteReplicate):
                 op.replace_input_with(parent, new_sum)
                 self.maybe_erase(parent)
 
-    def raise_sum_vmapped_outside_einsum(self):
+    def raise_sum_vmapped_outside_einsum(self) -> bool:
         """Hoist out `sum_vmapped` nodes from a einsum operations.
 
         For instance einsum('a...,a...->...', x, y) can be simplified into
         einsum('...,...->...', sum_vmapped(x), sum_vmapped(y)).
-        """
-        ein_nodes = [
-            n
-            for n in self.graph.nodes
-            if n.op == "call_function" and n.target == einsum
-            # NOTE This assumption is overly simplistic but sufficient for now
-            and n.args[0].split("->")[1] == "..."
-        ]
 
-        for ein_node in ein_nodes:
+        Returns:
+            Whether a `sum_vmapped` was raised outside an `einsum` node.
+
+        """
+        for node in list(self.graph.nodes):
+            if node.op != "call_function" or node.target != einsum:
+                continue
+
+            # NOTE This assumption is overly simplistic but sufficient for now
+            lhs, rhs = node.args[0].split("->")
+            if rhs != "...":
+                continue
+
             # hoist out tensors with 'a...'
-            lhs = ein_node.args[0].split("->")[0].split(",")
-            usages = {n: ein_node.args[1:].count(n) for n in ein_node.all_input_nodes}
-            for idx, (eq, arg) in enumerate(zip(lhs, ein_node.args[1:])):
+            lhs = lhs.split(",")
+            usages = {n: node.args[1:].count(n) for n in node.all_input_nodes}
+
+            modified = False
+
+            for idx, (eq, arg) in enumerate(zip(lhs, node.args[1:])):
                 # NOTE This assumption is overly simplistic but sufficient for now
                 if (
                     eq == "a..."
@@ -399,19 +426,27 @@ class RewriteSumVmapped(RewriteReplicate):
                     and all("a" not in eq for i, eq in enumerate(lhs) if i != idx)
                 ):
                     lhs[idx] = "..."
-                    with self.graph.inserting_before(ein_node):
+                    with self.graph.inserting_before(node):
                         new_sum = self.graph.call_function(sum_vmapped, args=(arg,))
-                    ein_node.replace_input_with(arg, new_sum)
+                    node.replace_input_with(arg, new_sum)
+                    modified = True
 
-            # update the equation
-            new_equation = f"{','.join(lhs)}->..."
-            ein_node.update_arg(0, new_equation)
+            if modified:
+                # update the equation
+                new_equation = f"{','.join(lhs)}->..."
+                node.update_arg(0, new_equation)
+                return True
 
-    def fuse_vmapped_sum_with_tensor_constants(self):
+        return False
+
+    def fuse_vmapped_sum_with_tensor_constants(self) -> bool:
         """Fuse tensor constants with `vmapped_sum` nodes.
 
         For instance, vmapped_sum(mod._tensor_constant0) can be simplified into
         mod._tensor_constant0 = vmapped_sum(mod._tensor_constant0)
+
+        Returns:
+            Whether a `sum_vmapped` was fused with a tensor constant.
         """
         # create a mapping which tensor constants are fetched by which nodes, and how
         # these nodes are used
@@ -419,6 +454,8 @@ class RewriteSumVmapped(RewriteReplicate):
         for n in self.graph.nodes:
             if n.op == "get_attr":
                 attributes[n.target][n] = self.children(n)
+
+        fused = False
 
         for target, get_attr_to_children in attributes.items():
             all_children = set(sum(get_attr_to_children.values(), start=[]))
@@ -438,10 +475,13 @@ class RewriteSumVmapped(RewriteReplicate):
                 self.maybe_print(
                     f"Collapsing {target}: {tuple(old.shape)} -> {tuple(new.shape)}."
                 )
+                fused = True
 
             # remove the get_attr nodes that are not referenced any more
             for get_attr in get_attr_to_children:
                 self.maybe_erase(get_attr)
+
+        return fused
 
 
 def common_subexpression_elimination(graph: Graph, verbose: bool = False) -> bool:
@@ -539,6 +579,7 @@ def simplify(
     push_replicate: bool = True,
     remove_unused: bool = True,
     pull_sum_vmapped: bool = True,
+    eliminate_common_subexpressions: bool = True,
     verbose: bool = False,
     test_x: Optional[Tensor] = None,
 ) -> GraphModule:
@@ -551,6 +592,8 @@ def simplify(
 
     - Remove nodes that do not have any users.
 
+    - Common subexpression elimination (CSE) to remove duplicate computations.
+
     - Pulling of `sum_vmapped` nodes up the graph as much as possible.
       This avoids redundant computations on summed tensors.
 
@@ -560,6 +603,8 @@ def simplify(
             Default: `True`.
         remove_unused: Whether to remove unused nodes from the graph. Default: `True`.
         pull_sum_vmapped: Whether to pull `sum_vmapped` nodes up the graph.
+            Default: `True`.
+        eliminate_common_subexpressions: Whether to eliminate common subexpressions.
             Default: `True`.
         verbose: Whether to print debug information. Default: `False`.
         test_x: Input tensor to the module that will be verified after each
@@ -574,61 +619,60 @@ def simplify(
     if verbose:
         print(f"Traced graph before simplification:\n{mod.graph}")
 
-    with check_unaltered(mod, test_x):
-        rewriter = RewriteReplicate(mod, verbose=verbose)
-        rewriter.remove_unused_nodes()
+    # collect all simplification strategies into a list
+    strategies = []
 
-    do_cse = True
-    while do_cse:
-        with check_unaltered(mod, test_x):
-            # Starting from Python 3.12 (released 2-Oct-2023), slice objects
-            # are hashable (https://stackoverflow.com/a/76562346)
-            do_cse = common_subexpression_elimination(mod.graph, verbose=verbose)
-
-    if push_replicate:
-        rewriter = RewriteReplicate(mod, verbose=verbose)
-        while pattern := rewriter.find_pattern():
-            with check_unaltered(mod, test_x):
-                rewriter.replace_pattern(pattern)
-
-        with check_unaltered(mod, test_x):
-            rewriter.fuse_replicates_with_einsum()
+    replicate_rewriter = RewriteReplicate(mod, verbose=verbose)
+    sum_vmapped_rewriter = RewriteSumVmapped(mod, verbose=verbose)
 
     if remove_unused:
-        rewriter = RewriteReplicate(mod, verbose=verbose)
-        with check_unaltered(mod, test_x):
-            rewriter.remove_unused_nodes()
+        strategies.append(("remove_unused", replicate_rewriter.remove_unused_node))
+
+    if eliminate_common_subexpressions:
+        apply_cse = lambda: common_subexpression_elimination(mod.graph, verbose=verbose)
+        strategies.append(("common_subexpression_elimination", apply_cse))
+
+    if push_replicate:
+        strategies.extend(
+            (
+                ("push_replicate", replicate_rewriter.rewrite_pattern),
+                (
+                    "fuse_replicates_with_einsum",
+                    replicate_rewriter.fuse_replicates_with_einsum,
+                ),
+            )
+        )
 
     if pull_sum_vmapped:
-        rewriter = RewriteSumVmapped(mod, verbose=verbose)
-        while pattern := rewriter.find_pattern():
+        strategies.extend(
+            (
+                ("pull_sum_vmapped", sum_vmapped_rewriter.rewrite_pattern),
+                (
+                    "raise_sum_vmapped_outside_einsum",
+                    sum_vmapped_rewriter.raise_sum_vmapped_outside_einsum,
+                ),
+                (
+                    "fuse_with_tensor_constant",
+                    sum_vmapped_rewriter.fuse_vmapped_sum_with_tensor_constants,
+                ),
+            )
+        )
+
+    # cycle through the strategies, continue until no strategy performs a change
+    do_simplify = True
+    strategy_used = []
+    while do_simplify:
+        simplified = False
+        for name, apply_strategy in strategies:
             with check_unaltered(mod, test_x):
-                rewriter.replace_pattern(pattern)
+                simplified = apply_strategy()
+                print(f"Applying strategy {name}: {simplified}")
 
-            with check_unaltered(mod, test_x):
-                rewriter.raise_sum_vmapped_outside_einsum()
+            if simplified:
+                strategy_used.append(name)
+                break
 
-        with check_unaltered(mod, test_x):
-            rewriter.fuse_vmapped_sum_with_tensor_constants()
-
-    do_cse = True
-    while do_cse:
-        with check_unaltered(mod, test_x):
-            # Starting from Python 3.12 (released 2-Oct-2023), slice objects
-            # are hashable (https://stackoverflow.com/a/76562346)
-            do_cse = common_subexpression_elimination(mod.graph, verbose=verbose)
-
-    if pull_sum_vmapped:
-        rewriter = RewriteSumVmapped(mod, verbose=verbose)
-        while pattern := rewriter.find_pattern():
-            with check_unaltered(mod, test_x):
-                rewriter.replace_pattern(pattern)
-
-            with check_unaltered(mod, test_x):
-                rewriter.raise_sum_vmapped_outside_einsum()
-
-        with check_unaltered(mod, test_x):
-            rewriter.fuse_vmapped_sum_with_tensor_constants()
+        do_simplify = simplified
 
     mod.graph.lint()
     mod.recompile()

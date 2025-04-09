@@ -345,7 +345,7 @@ class RewriteSumVmapped(RewriteReplicate):
                 used_letters = set(lhs)
                 (new_letter,) = get_letters(1, blocked=used_letters)
                 new_lhs = ",".join(
-                    [l.replace("...", f"{new_letter}...") for l in lhs.split(",")]
+                    [lh.replace("...", f"{new_letter}...") for lh in lhs.split(",")]
                 )
                 new_rhs = rhs
             else:

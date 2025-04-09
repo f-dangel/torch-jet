@@ -3,10 +3,16 @@
 from typing import Callable, Tuple
 
 from torch import Tensor, eye, zeros
+from torch.fx import wrap
 from torch.nn import Module
 
 from jet import jet
 from jet.utils import replicate, sum_vmapped
+
+# tell `torch.fx` to trace `replicate` as one node (required for simplification)
+wrap(replicate)
+# tell `torch.fx` to trace `sum_vmapped` as one node (required for simplification)
+wrap(sum_vmapped)
 
 
 class Bilaplacian(Module):

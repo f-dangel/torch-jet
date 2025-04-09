@@ -637,7 +637,7 @@ def simplify(  # noqa: C901
 
     if eliminate_common_subexpressions:
         apply_cse = partial(
-            common_subexpression_elimination(mod.graph, verbose=verbose)
+            common_subexpression_elimination, mod.graph, verbose=verbose
         )
         strategies.append(("common_subexpression_elimination", apply_cse))
 

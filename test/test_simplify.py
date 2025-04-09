@@ -173,7 +173,10 @@ def ensure_tensor_constants_collapsed(
         if c_tensor.shape == collapsed_shape:
             num_collapsed += 1
         elif c_tensor.shape != non_collapsed_shape:
-            raise ValueError(f"Unexpected shape for {c}: {c_tensor.shape}.")
+            raise ValueError(
+                f"Unexpected shape for {c}: {c_tensor.shape}. "
+                + f"Should be {collapsed_shape} or {non_collapsed_shape}."
+            )
 
     if num_collapsed < at_least or strict and num_collapsed != at_least:
         raise ValueError(

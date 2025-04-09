@@ -3,6 +3,7 @@
 import operator
 from collections import defaultdict
 from contextlib import contextmanager
+from functools import partial
 from typing import Any, List, Optional, Tuple
 
 from torch import Tensor, add, cos, cosh, div, einsum, mul
@@ -553,6 +554,7 @@ def check_unaltered(
 
     Raises:
         RuntimeError: If the module output changes after the body.
+        Exception: If the module cannot be compiled or executed anymore.
     """
     if x is not None:
         before_str = str(mod.graph)
@@ -579,7 +581,7 @@ def check_unaltered(
         yield
 
 
-def simplify(
+def simplify(  # noqa: C901
     mod: GraphModule,
     push_replicate: bool = True,
     remove_unused: bool = True,
@@ -634,7 +636,9 @@ def simplify(
         strategies.append(("remove_unused", replicate_rewriter.remove_unused_nodes))
 
     if eliminate_common_subexpressions:
-        apply_cse = lambda: common_subexpression_elimination(mod.graph, verbose=verbose)
+        apply_cse = partial(
+            common_subexpression_elimination(mod.graph, verbose=verbose)
+        )
         strategies.append(("common_subexpression_elimination", apply_cse))
 
     if push_replicate:

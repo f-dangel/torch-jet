@@ -23,7 +23,6 @@ There are three kinds of tests:
         pass is only carried out for one x, and not their replicated version X.
 """
 
-from copy import deepcopy
 from test.test___init__ import (
     CASE_IDS,
     CASES,
@@ -34,10 +33,10 @@ from test.test___init__ import (
     setup_case,
 )
 from test.test_laplacian import DISTRIBUTION_IDS, DISTRIBUTIONS, laplacian
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 from pytest import mark
-from torch import Tensor, arange, manual_seed
+from torch import Size, Tensor, arange, manual_seed
 from torch.fx import Graph, GraphModule, symbolic_trace, wrap
 from torch.nn import Module
 
@@ -126,6 +125,60 @@ def ensure_num_replicates(graph: Graph, num_replicates: int):
     """
     replicates = [n for n in graph.nodes if RewriteReplicate.is_replicate(n)]
     assert len(replicates) == num_replicates
+
+
+def ensure_num_sum_vmapped(graph: Graph, num_sum_vmapped: int):
+    """Make sure the compute graph has the specified number of `sum_vmapped` nodes.
+
+    Args:
+        graph: The compute graph to check.
+        num_sum_vmapped: The number of `sum_vmapped` nodes to check for.
+    """
+    sum_nodes = [n for n in graph.nodes if RewriteSumVmapped.is_sum_vmapped(n)]
+    assert len(sum_nodes) == num_sum_vmapped
+
+
+def ensure_tensor_constants_collapsed(
+    mod: GraphModule,
+    collapsed_shape: Union[Size, Tuple[int, ...]],
+    non_collapsed_shape: Union[Size, Tuple[int, ...]],
+    at_least: int = 1,
+    strict: bool = True,
+):
+    """Make sure some tensor constants in the module are collapsed.
+
+    Args:
+        mod: The module to check.
+        collapsed_shape: The shape of a collapsed tensor constant.
+        non_collapsed_shape: The shape of a non-collapsed tensor constant.
+        at_least: The smallest number of tensor constants that should be detected as
+            collapsed for the check to pass. Default: `1`.
+        strict: Whether to raise an error if the number of collapsed tensor
+            constants is not exactly `at_least`. Default: `False`.
+
+    Raises:
+        ValueError: If the number of collapsed tensor constants is not as expected or
+            if there is a tensor constant with an unexpected shape.
+    """
+    constants = [
+        n.target
+        for n in mod.graph.nodes
+        if n.op == "get_attr" and n.target.startswith("_tensor_constant")
+    ]
+
+    num_collapsed = 0
+    for c in constants:
+        c_tensor = getattr(mod, c)
+        if c_tensor.shape == collapsed_shape:
+            num_collapsed += 1
+        elif c_tensor.shape != non_collapsed_shape:
+            raise ValueError(f"Unexpected shape for {c}: {c_tensor.shape}.")
+
+    if num_collapsed < at_least or strict and num_collapsed != at_least:
+        raise ValueError(
+            f"Expected {'' if strict else '>'}={at_least} collapsed tensor constants. "
+            + f" Found {num_collapsed}."
+        )
 
 
 @mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
@@ -278,7 +331,6 @@ def test_simplify_laplacian(config: Dict[str, Any], distribution: Optional[str])
     if randomized:
         manual_seed(seed)
     fast = symbolic_trace(mod)
-    backup = deepcopy(fast)  # backup for later comparison
     fast = simplify(fast, verbose=True)
 
     # make sure the simplified module still behaves the same
@@ -291,34 +343,18 @@ def test_simplify_laplacian(config: Dict[str, Any], distribution: Optional[str])
     ensure_outputs_replicates(fast.graph, num_outputs=3, num_replicates=1)
     ensure_num_replicates(fast.graph, num_replicates=1)
 
-    # make sure the `sum_vmapped` node is not at the output node anymore
-    output_node = list(fast.graph.nodes)[-1]
-    sum_outputs = [
-        n for n in output_node.all_input_nodes if RewriteSumVmapped.is_sum_vmapped(n)
-    ]
-    assert not sum_outputs
-
     # make sure there are no other `sum_vmapped` nodes in the graph
-    sum_nodes = [n for n in fast.graph.nodes if RewriteSumVmapped.is_sum_vmapped(n)]
-    assert not sum_nodes
+    ensure_num_sum_vmapped(fast.graph, num_sum_vmapped=0)
 
     # make sure the module's tensor constant corresponding to the highest
     # Taylor coefficient was collapsed
-    constants = [n.target for n in fast.graph.nodes if n.op == "get_attr"]
-
-    c0, c1 = [c for c in constants if c.startswith("_tensor_constant")]
-
-    # make sure first-order coefficient is still the same shape
     if randomized:
         num_vectors = num_samples
     else:
         num_vectors = x.shape[1:].numel() if is_batched else x.numel()
-    V_shape = (num_vectors, *x.shape)
-    assert getattr(backup, c0).shape == getattr(fast, c0).shape == V_shape
-    # make sure second-order coefficient was collapsed
-    assert (
-        getattr(backup, c1).shape == (num_vectors, *getattr(fast, c1).shape) == V_shape
-    )
+    non_collapsed_shape = (num_vectors, *x.shape)
+    collapsed_shape = x.shape
+    ensure_tensor_constants_collapsed(fast, collapsed_shape, non_collapsed_shape)
 
 
 def test_simplify_remove_unused_nodes():

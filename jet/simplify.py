@@ -530,13 +530,21 @@ def check_unaltered(
         out_before = mod(x)
         yield
 
-        out_after = mod(x)
-        close = out_before.allclose(out_after, rtol=rtol, atol=atol)
+        try:
+            mod.graph.lint()
+            mod.recompile()
+            out_after = mod(x)
+            close = out_before.allclose(out_after, rtol=rtol, atol=atol)
 
-        if not close:
+            if not close:
+                print(f"Before:\n{before_str}")
+                print(f"After:\n{mod.graph}")
+                raise RuntimeError("Module output changed.")
+        except Exception as e:
             print(f"Before:\n{before_str}")
             print(f"After:\n{mod.graph}")
-            raise RuntimeError("Module output changed.")
+            print("Module cannot be compiled or executed anymore.")
+            raise e
 
     else:
         yield

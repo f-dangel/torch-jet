@@ -41,6 +41,7 @@ from torch.fx import Graph, GraphModule, symbolic_trace, wrap
 from torch.nn import Module
 
 from jet import JetTracer, jet, rev_jet
+from jet.bilaplacian import Bilaplacian
 from jet.laplacian import Laplacian, RandomizedLaplacian
 from jet.simplify import (
     RewriteReplicate,
@@ -407,3 +408,52 @@ def test_common_subexpression_elimination():
     assert len(list(f_traced.graph.nodes)) == 5
 
     report_nonclose(f_x, f_traced(x), name="f(x)")
+
+
+@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
+def test_simplify_bilaplacian(config: Dict[str, Any]):
+    """Test the simplifications for the Bi-Laplacian module.
+
+    Args:
+        config: The configuration of the test case.
+    """
+    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    bilap_mod = Bilaplacian(f, x, is_batched)
+    bilap = bilap_mod(x)
+
+    # simplify the traced module
+    simple_mod = symbolic_trace(bilap_mod)
+    simple_mod = simplify(simple_mod, verbose=True, test_x=x)
+
+    # make sure the `replicate` node from the 0th component made it to the end
+    # and was successfully pruned because it is not returned
+    ensure_outputs_replicates(simple_mod.graph, num_outputs=1, num_replicates=0)
+    ensure_num_replicates(simple_mod.graph, num_replicates=0)
+
+    # make sure there are no other `sum_vmapped` nodes in the graph
+    ensure_num_sum_vmapped(simple_mod.graph, num_sum_vmapped=0)
+
+    # make sure at least one coefficient was collapsed
+    num_vectors = (x.shape[1:] if is_batched else x).numel() ** 2
+    collapsed_shape = (num_vectors, *x.shape)
+    non_collapsed_shape = x.shape
+    ensure_tensor_constants_collapsed(
+        simple_mod, collapsed_shape, non_collapsed_shape, strict=False
+    )
+
+    # make sure the simplified module still behaves the same
+    bilap_simple = simple_mod(x)
+    report_nonclose(bilap, bilap_simple, name="Bi-Laplacians")
+
+    # check for a bunch of configs that the number of nodes remains the same
+    expected_nodes = {
+        "sin": 82,
+        "sin-sin": 260,
+        "tanh-tanh": 354,
+        "tanh-linear": 133,
+        "two-layer-tanh-mlp": 383,
+        "batched-two-layer-tanh-mlp": 383,
+        "sigmoid-sigmoid": 350,
+    }
+    if config["id"] in expected_nodes:
+        assert len(list(simple_mod.graph.nodes)) == expected_nodes[config["id"]]

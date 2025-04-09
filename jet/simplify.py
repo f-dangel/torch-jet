@@ -289,6 +289,10 @@ class RewriteSumVmapped(RewriteReplicate):
             if op.op != "call_function":
                 continue
 
+            # Can only replace nodes that are not consumed by others
+            if self.children(op) != [node]:
+                continue
+
             pattern = None
             parents = self.parents(op)
 
@@ -298,18 +302,22 @@ class RewriteSumVmapped(RewriteReplicate):
                 op.target
                 in {
                     operator.mul,  # sum_vmapped(x * 2) -> 2 * sum_vmapped(x)
+                    operator.truediv,  # sum_vmapped(x / 2) -> sum_vmapped(x) / 2
                 }
                 and len(parents) == 1
             ):
                 pattern = [node, op]
             # operations that produce a tensor from two tensors `x`, `y`, which is then
             # `sum_vmapped`
+
+            # NOTE This assumes there is no broadcasting (x.shape == y.shape)!
             elif (
                 op.target
                 in {
-                    # NOTE This assumes there is no broadcasting (x.shape == y.shape)!
                     # sum_vmapped(x + y) -> sum_vmapped(x) + sum_vmapped(y)
                     operator.add,
+                    # sum_vmapped(x - y) -> sum_vmapped(x) - sum_vmapped(y)
+                    operator.sub,
                 }
                 and len(parents) == 2
             ):
@@ -434,30 +442,6 @@ class RewriteSumVmapped(RewriteReplicate):
             # remove the get_attr nodes that are not referenced any more
             for get_attr in get_attr_to_children:
                 self.maybe_erase(get_attr)
-
-
-def remove_duplicate_get_attrs(graph: Graph, verbose: bool = False):
-    """Remove duplicate `get_attr` nodes.
-
-    Args:
-        graph: The compute graph.
-        verbose: Whether to print debug information. Default: `False`.
-    """
-    # find all nodes that getattr the same constant
-    mapping = {}
-    for node in graph.nodes:
-        if node.op == "get_attr":
-            mapping[node.target] = mapping.get(node.target, []) + [node]
-
-    for nodes in mapping.values():
-        first, tail = nodes[0], nodes[1:]
-        if verbose:
-            print(f"Replacing {tail} with {first}")
-        for n in tail:
-            n.replace_all_uses_with(first)
-            if verbose:
-                print(f"Erasing {n}.")
-            graph.erase_node(n)
 
 
 def common_subexpression_elimination(graph: Graph, verbose: bool = False) -> bool:
@@ -591,9 +575,15 @@ def simplify(
         print(f"Traced graph before simplification:\n{mod.graph}")
 
     with check_unaltered(mod, test_x):
-        # this assumes no side effects in the graph, so that it does not matter
-        # when we call get_attr on a module's tensor constant
-        remove_duplicate_get_attrs(mod.graph, verbose=verbose)
+        rewriter = RewriteReplicate(mod, verbose=verbose)
+        rewriter.remove_unused_nodes()
+
+    do_cse = True
+    while do_cse:
+        with check_unaltered(mod, test_x):
+            # Starting from Python 3.12 (released 2-Oct-2023), slice objects
+            # are hashable (https://stackoverflow.com/a/76562346)
+            do_cse = common_subexpression_elimination(mod.graph, verbose=verbose)
 
     if push_replicate:
         rewriter = RewriteReplicate(mod, verbose=verbose)
@@ -608,6 +598,25 @@ def simplify(
         rewriter = RewriteReplicate(mod, verbose=verbose)
         with check_unaltered(mod, test_x):
             rewriter.remove_unused_nodes()
+
+    if pull_sum_vmapped:
+        rewriter = RewriteSumVmapped(mod, verbose=verbose)
+        while pattern := rewriter.find_pattern():
+            with check_unaltered(mod, test_x):
+                rewriter.replace_pattern(pattern)
+
+            with check_unaltered(mod, test_x):
+                rewriter.raise_sum_vmapped_outside_einsum()
+
+        with check_unaltered(mod, test_x):
+            rewriter.fuse_vmapped_sum_with_tensor_constants()
+
+    do_cse = True
+    while do_cse:
+        with check_unaltered(mod, test_x):
+            # Starting from Python 3.12 (released 2-Oct-2023), slice objects
+            # are hashable (https://stackoverflow.com/a/76562346)
+            do_cse = common_subexpression_elimination(mod.graph, verbose=verbose)
 
     if pull_sum_vmapped:
         rewriter = RewriteSumVmapped(mod, verbose=verbose)

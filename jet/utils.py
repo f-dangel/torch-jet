@@ -1,7 +1,7 @@
 """Utility functions for computing jets."""
 
 from math import factorial, prod
-from typing import Callable, Optional, Tuple
+from typing import Callable, List, Optional, Set, Tuple
 
 from torch import Tensor, device, dtype, einsum, empty
 from torch.nn import Module
@@ -140,4 +140,38 @@ def rademacher(
         .bernoulli_()
         .mul_(2)
         .sub_(1)
+    )
+
+
+def get_letters(num_letters: int, blocked: Optional[Set] = None) -> List[str]:
+    """Return a list of ``num_letters`` unique letters for an einsum equation.
+
+    Args:
+        num_letters: Number of letters to return.
+        blocked: Set of letters that should not be used.
+
+    Returns:
+        List of ``num_letters`` unique letters.
+
+    Raises:
+        ValueError: If ``num_letters`` cannot be satisfied with einsum-supported
+            letters.
+    """
+    if num_letters == 0:
+        return []
+
+    max_letters = 26
+    blocked = set() if blocked is None else blocked
+    letters = []
+
+    for i in range(max_letters):
+        letter = chr(ord("a") + i)
+        if letter not in blocked:
+            letters.append(letter)
+            if len(letters) == num_letters:
+                return letters
+
+    raise ValueError(
+        f"Ran out of letters. PyTorch's einsum supports {max_letters} letters."
+        + f" Requested {num_letters}, blocked: {len(blocked)}.)"
     )

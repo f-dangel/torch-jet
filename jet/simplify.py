@@ -586,6 +586,7 @@ def simplify(
     Returns:
         The simplified graph module.
     """
+    nodes_before = len(list(mod.graph.nodes))
     if verbose:
         print(f"Traced graph before simplification:\n{mod.graph}")
 
@@ -625,5 +626,10 @@ def simplify(
 
     if verbose:
         print(f"Traced graph after simplification:\n{mod.graph}")
+
+    if verbose:
+        print(f"Number of nodes before simplification: {nodes_before}.")
+        nodes_after = len(list(mod.graph.nodes))
+        print(f"Number of nodes after simplification: {nodes_after}.")
 
     return mod

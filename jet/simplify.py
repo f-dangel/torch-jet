@@ -230,7 +230,7 @@ class RewriteReplicate:
         if self.verbose:
             print(message)
 
-    def fuse_replicates_with_einsum(self) -> bool:
+    def fuse_replicates_with_einsum(self) -> bool:  # noqa: C901
         """Attempt to fuse replicate nodes that act as inputs to einsum.
 
         E.g. consider einsum('...,...->...', replicate(x), y). This can be simplified
@@ -240,36 +240,72 @@ class RewriteReplicate:
             Whether replicate nodes were fused with einsum nodes.
         """
         fused = False
-        for node in self.graph.nodes:
-            if (
-                node.op == "call_function"
-                and node.target == einsum
-                # NOTE This assumption is overly simplistic but sufficient for now
-                and node.args[0]
-                == f"{','.join((node.args[0].count(',') + 1) * ['...'])}->..."
-                and any(self.is_replicate(arg) for arg in node.all_input_nodes)
-            ):
-                old_args = node.args
-                # modify the operands
-                positions = [
-                    i for i, arg in enumerate(node.args[1:]) if self.is_replicate(arg)
-                ]
-                for rep in list(node.all_input_nodes):
-                    if self.is_replicate(rep):
-                        (parent,) = self.parents(rep)
-                        node.replace_input_with(rep, parent)
-                        # try removing the old replicate nodes
-                        self.maybe_erase(rep)
+        for ein_node in list(self.graph.nodes):
+            if ein_node.op != "call_function" or ein_node.target != einsum:
+                continue
 
-                # modify the einsum equation
-                new_lhs = [
-                    "..." if i in positions else "a..."
-                    for i in range(len(node.args[1:]))
+            equation, operands = ein_node.args[0], ein_node.args[1:]
+
+            # check whether there are any replicate nodes in the operands and what
+            # their positions are
+            replicate_pos = defaultdict(list)
+            for pos, op in enumerate(operands):
+                if self.is_replicate(op):
+                    replicate_pos[op].append(pos)
+
+            if not replicate_pos:
+                continue
+
+            lhs, rhs = equation.split("->")
+            lhs = lhs.split(",")
+
+            # for each replicate op, determine if we can omit the replicating index
+            for rep_op, positions in replicate_pos.items():
+                # figure out what is the replicated letter
+                (rep_letter,) = {lhs[pos][0] for pos in positions}
+
+                # maybe introduce a new letter
+                if rep_letter == ".":
+                    # get the letters that are used in the other operands
+                    other_letters = set("".join(lhs))
+                    # get a new letter that is not used in the other operands
+                    (rep_letter,) = get_letters(1, blocked=other_letters)
+                    lhs = [lh.replace("...", f"{rep_letter}...") for lh in lhs]
+                    rhs = rhs.replace("...", f"{rep_letter}...")
+
+                # check if we can leave out the replicated index
+                can_omit = False
+                if rep_letter not in rhs:
+                    can_omit = True
+                else:
+                    # check that the letter is introduced by another operand
+                    can_omit = any(
+                        rep_letter in lh
+                        for pos, lh in enumerate(lhs)
+                        if pos not in positions
+                    )
+
+                if not can_omit:
+                    continue
+
+                # update the operands
+                (op,) = self.parents(rep_op)
+                ein_node.replace_input_with(rep_op, op)
+                # try removing the old replicate nodes
+                self.maybe_erase(rep_op)
+
+                # update the equation
+                lhs = [
+                    lh if pos not in positions else lh[1:] for pos, lh in enumerate(lhs)
                 ]
-                new_equation = f"{','.join(new_lhs)}->a..."
-                node.args = (new_equation, *node.args[1:])
-                self.maybe_print(f"Fusing {node}: {old_args} into {node.args}")
+                new_equation = f"{','.join(lhs)}->{rhs}"
+                ein_node.update_arg(0, new_equation)
+
                 fused = True
+                self.maybe_print(
+                    f"Fusing {ein_node}: {equation} {operands} into "
+                    + f"{ein_node.args[0]} {ein_node.args[1:]}"
+                )
 
         return fused
 
@@ -415,8 +451,8 @@ class RewriteSumVmapped(RewriteReplicate):
     def raise_sum_vmapped_outside_einsum(self) -> bool:
         """Hoist out `sum_vmapped` nodes from a einsum operations.
 
-        For instance einsum('a...,a...->...', x, y) can be simplified into
-        einsum('...,...->...', sum_vmapped(x), sum_vmapped(y)).
+        For instance einsum('a...,...->...', x, y) can be simplified into
+        einsum('...,...->...', sum_vmapped(x), y).
 
         Returns:
             Whether a `sum_vmapped` was raised outside an `einsum` node.

@@ -91,7 +91,7 @@ class RewriteReplicate:
 
         return rewritten
 
-    def find_pattern(self) -> Optional[Tuple[List[Node], Node]]:
+    def find_pattern(self) -> Optional[Tuple[List[Node], Node]]:  # noqa: C901
         """Find a pattern that can be simplified.
 
         Returns:
@@ -156,19 +156,69 @@ class RewriteReplicate:
             ):
                 pattern = [parents, node]
 
-            # operations that consume multiple replicate tensors, e.g.
-            # `x_rep1 = replicate(x1)`, `x_rep2 = replicate(x2)` and
-            # `x_rep3 = replicate(x3)`. Then
+            # operations that consume multiple replicate tensors, and produce a tensor
+            # that can be expressed as a replicate, e.g. let `x_rep1 = replicate(x1)`,
+            # `x_rep2 = replicate(x2)` and `x_rep3 = replicate(x3)`. Then
             # `einsum("...,...,...->...", x_rep1, x_rep2, x_rep3)`
             # -> `replicate(einsum("...,...,...->...", x1, x2, x3))`
-            elif (
-                node.target == einsum
-                # NOTE This assumption is overly simplistic but sufficient for now
-                and node.args[0]
-                == f"{','.join((node.args[0].count(',') + 1) * ['...'])}->..."
-                and all(self.is_replicate(arg) for arg in node.all_input_nodes)
-            ):
-                pattern = [list(node.all_input_nodes), node]
+            elif node.target == einsum:
+                # check if there are replicate nodes
+                equation, operands = node.args[0], node.args[1:]
+                replicate_pos = defaultdict(list)
+                for pos, op in enumerate(operands):
+                    if self.is_replicate(op):
+                        replicate_pos[op].append(pos)
+
+                if not replicate_pos:
+                    continue
+
+                # check if all replicate nodes have the same leading letter
+                lhs, rhs = equation.split("->")
+                lhs = lhs.split(",")
+                leading_letters = {
+                    lh[0]
+                    for pos, lh in enumerate(lhs)
+                    if pos in sum(list(replicate_pos.values()), [])
+                }
+                if len(leading_letters) != 1:
+                    continue
+
+                (rep_letter,) = leading_letters
+
+                # check that this leading letter is the first of the output
+                if rep_letter != rhs[0]:
+                    continue
+
+                # make sure it is not introduced by other non-replicate ops
+                introduced_by_others = any(
+                    rep_letter in lh
+                    for pos, lh in enumerate(lhs)
+                    if pos not in sum(list(replicate_pos.values()), [])
+                )
+
+                if introduced_by_others:
+                    continue
+
+                # maybe introduce a new letter
+                if rep_letter == ".":
+                    # get the letters that are used in the other operands
+                    other_letters = set("".join(lhs))
+                    # get a new letter that is not used in the other operands
+                    (rep_letter,) = get_letters(1, blocked=other_letters)
+                    lhs = [lh.replace("...", f"{rep_letter}...") for lh in lhs]
+                    rhs = rhs.replace("...", f"{rep_letter}...")
+
+                # We can omit the replicated index. The node rewrite is performed
+                # elsewhere, we only have to update the equation
+                lhs = [lh.replace(rep_letter, "") for lh in lhs]
+                rhs = rhs.replace(rep_letter, "")
+                new_equation = f"{','.join(lhs)}->{rhs}"
+                self.maybe_print(
+                    f"Changing {node} with {operands} from {equation}"
+                    + f" into {new_equation}."
+                )
+                node.update_arg(0, new_equation)
+                pattern = [list(replicate_pos.keys()), node]
 
             if pattern is not None:
                 self.maybe_print(f"Can swap {pattern[0]} and {pattern[1]}")

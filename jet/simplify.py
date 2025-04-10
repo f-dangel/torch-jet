@@ -32,6 +32,7 @@ class RewriteReplicate:
         self.mod = mod
         self.graph = mod.graph
         self.verbose = verbose
+        self.last_pattern_pos = 0
 
     @staticmethod
     def is_replicate(arg: Any) -> bool:
@@ -78,9 +79,16 @@ class RewriteReplicate:
             Whether a pattern was found and rewritten.
         """
         rewritten = False
+
         if pattern := self.find_pattern():
             self.replace_pattern(pattern)
             rewritten = True
+
+        if not rewritten:
+            rewritten = self.fuse_replicates_with_einsum()
+            if rewritten:
+                self.last_pattern_pos = 0
+
         return rewritten
 
     def find_pattern(self) -> Optional[Tuple[List[Node], Node]]:
@@ -91,7 +99,9 @@ class RewriteReplicate:
             A pattern consists of two parts: a list of nodes that can be swapped with
             the node returned as second part.
         """
-        for node in self.graph.nodes:
+        for pos, node in enumerate(
+            list(self.graph.nodes)[self.last_pattern_pos :], start=self.last_pattern_pos
+        ):
             if node.op != "call_function":
                 continue
 
@@ -162,6 +172,7 @@ class RewriteReplicate:
 
             if pattern is not None:
                 self.maybe_print(f"Can swap {pattern[0]} and {pattern[1]}")
+                self.last_pattern_pos = max(0, pos - 1)
                 return pattern
 
     def maybe_erase(self, node: Node) -> bool:
@@ -648,7 +659,6 @@ def simplify(  # noqa: C901
             common_subexpression_elimination, mod.graph, verbose=verbose
         ),
         "push_replicate": replicate_rewriter.rewrite_pattern,
-        "fuse_replicates_with_einsum": replicate_rewriter.fuse_replicates_with_einsum,
         "pull_sum_vmapped": sum_vmapped_rewriter.rewrite_pattern,
         "raise_sum_vmapped_outside_einsum": sum_vmapped_rewriter.raise_sum_vmapped_outside_einsum,
         "fuse_with_tensor_constant": sum_vmapped_rewriter.fuse_vmapped_sum_with_tensor_constants,
@@ -665,7 +675,7 @@ def simplify(  # noqa: C901
     # round 2 of simplifications: push forward replicate nodes
     round_two = []
     if push_replicate:
-        round_two.extend(["push_replicate", "fuse_replicates_with_einsum"])
+        round_two.append("push_replicate")
     _exhaust_incrementally({s: strategies[s] for s in round_two}, mod, test_x, verbose)
 
     # round 3 of simplifications: pull sum_vmapped nodes up

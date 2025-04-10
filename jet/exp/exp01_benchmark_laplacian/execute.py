@@ -246,9 +246,12 @@ def bilaplacian_function(
 
         return lambda: bilaplacian(X)
 
-    elif strategy == "jet_naive":
+    elif strategy in {"jet_naive", "jet_simplified"}:
         bilaplacian = Bilaplacian(f, X, is_batched)
-        bilaplacian = simplify(symbolic_trace(bilaplacian), pull_sum_vmapped=False)
+        pull_sum_vmapped = strategy == "jet_simplified"
+        bilaplacian = simplify(
+            symbolic_trace(bilaplacian), pull_sum_vmapped=pull_sum_vmapped
+        )
         return lambda: bilaplacian(X)
 
     else:

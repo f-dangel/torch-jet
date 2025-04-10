@@ -40,6 +40,8 @@ SUPPORTED_ARCHITECTURES = {
 
 # Define supported strategies
 SUPPORTED_STRATEGIES = ["hessian_trace", "jet_naive", "jet_simplified"]
+# Verify other implementations against the result of this baseline
+BASELINE = "hessian_trace"
 
 
 def laplacian_function(
@@ -301,6 +303,57 @@ def check_mutually_required(args: Namespace):
         )
 
 
+def get_function_and_description(
+    operator: str,
+    strategy: str,
+    distribution: Union[str, None],
+    num_samples: Union[int, None],
+    net: Callable[[Tensor], Tensor],
+    X: Tensor,
+    is_batched: bool,
+) -> tuple[Callable[[], Tensor], str]:
+    """Determine the function and its description based on the operator and strategy.
+
+    Args:
+        operator: The operator to be used, either 'laplacian' or 'bilaplacian'.
+        strategy: The strategy to be used for computation.
+        distribution: The distribution type, if any.
+        num_samples: The number of samples, if any.
+        net: The neural network model.
+        X: The input tensor.
+        is_batched: A flag indicating if the input is batched.
+
+    Returns:
+        A tuple containing the function to compute the operator and a description string.
+
+    Raises:
+        ValueError: If an unsupported operator is specified.
+        NotImplementedError: If a randomized Bi-Laplacian is requested.
+    """
+    if operator == "laplacian":
+        if distribution is None and num_samples is None:
+            func = laplacian_function(net, X, is_batched, strategy)
+            description = f"{strategy}"
+        else:
+            func = randomized_laplacian_function(
+                net, X, is_batched, strategy, distribution, num_samples
+            )
+            description = (
+                f"{strategy}, distribution={distribution}, "
+                + f"num_samples={num_samples}"
+            )
+    elif operator == "bilaplacian":
+        if distribution is None and num_samples is None:
+            func = bilaplacian_function(net, X, is_batched, strategy)
+            description = f"{strategy}"
+        else:
+            raise NotImplementedError("Randomized Bi-Laplacian not implemented.")
+    else:
+        raise ValueError(f"Unsupported operator: {operator}.")
+
+    return func, description
+
+
 if __name__ == "__main__":
     parser = ArgumentParser("Parse arguments of measurement.")
     parser.add_argument(
@@ -333,28 +386,17 @@ if __name__ == "__main__":
     X = rand(args.batch_size, args.dim).double().to(dev)
     is_batched = True
 
+    manual_seed(1)  # this allows making the randomized methods deterministic
     start = perf_counter()
-    if args.operator == "laplacian":
-        if args.distribution is None and args.num_samples is None:
-            func = laplacian_function(net, X, is_batched, args.strategy)
-            description = f"{args.strategy}"
-        else:
-            func = randomized_laplacian_function(
-                net, X, is_batched, args.strategy, args.distribution, args.num_samples
-            )
-            description = (
-                f"{args.strategy}, distribution={args.distribution}, "
-                + f"num_samples={args.num_samples}"
-            )
-    elif args.operator == "bilaplacian":
-        if args.distribution is None and args.num_samples is None:
-            func = bilaplacian_function(net, X, is_batched, args.strategy)
-            description = f"{args.strategy}"
-        else:
-            raise NotImplementedError("Randomized Bi-Laplacian not implemented.")
-    else:
-        raise ValueError(f"Unsupported operator: {args.operator}.")
-
+    func, description = get_function_and_description(
+        args.operator,
+        args.strategy,
+        args.distribution,
+        args.num_samples,
+        net,
+        X,
+        is_batched,
+    )
     print(f"Setting up function took: {perf_counter() - start:.3f} s.")
 
     is_cuda = args.device == "cuda"
@@ -367,6 +409,33 @@ if __name__ == "__main__":
         )
     mem = measure_peak_memory(func, f"{op} ({description})", is_cuda)
     mu, sigma, best = measure_time(func, f"{op} ({description})", is_cuda)
+
+    # sanity check: make sure that the results correspond to the baseline implementation
+    if args.strategy != BASELINE:
+        print("Checking correctness against baseline.")
+        with no_grad():
+            result = func()
+
+        manual_seed(1)  # make sure that the baseline is deterministic
+        baseline_func, _ = get_function_and_description(
+            args.operator,
+            BASELINE,
+            args.distribution,
+            args.num_samples,
+            net,
+            X,
+            is_batched,
+        )
+        with no_grad():
+            baseline_result = baseline_func()
+
+        assert (
+            baseline_result.shape == result.shape
+        ), f"Shapes do not match: {baseline_result.shape} != {result.shape}."
+        assert baseline_result.allclose(
+            result
+        ), f"Results do not match: {result} != {baseline_result}."
+        print("Results match.")
 
     # write them to a file
     data = ", ".join([str(val) for val in [mem_no, mem, mu, sigma, best]])

@@ -3,6 +3,7 @@
 from argparse import ArgumentParser, Namespace
 from functools import partial
 from os import makedirs, path
+from time import perf_counter
 from typing import Callable, Union
 
 from einops import einsum
@@ -329,6 +330,7 @@ if __name__ == "__main__":
     X = rand(args.batch_size, args.dim).double().to(dev)
     is_batched = True
 
+    start = perf_counter()
     if args.operator == "laplacian":
         if args.distribution is None and args.num_samples is None:
             func = laplacian_function(net, X, is_batched, args.strategy)
@@ -349,6 +351,9 @@ if __name__ == "__main__":
             raise NotImplementedError("Randomized Bi-Laplacian not implemented.")
     else:
         raise ValueError(f"Unsupported operator: {args.operator}.")
+
+    print(f"Setting up function took: {perf_counter() - start:.3f} s.")
+
     is_cuda = args.device == "cuda"
 
     op = args.operator.capitalize()

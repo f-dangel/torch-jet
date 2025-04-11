@@ -86,6 +86,7 @@ def measure(
             "device": device,
             "distribution": distribution,
             "num_samples": num_samples,
+            "operator": operator,
         }
 
         # maybe skip the computation
@@ -101,7 +102,7 @@ def measure(
             skip = True
 
         if not skip:
-            cmd = ["python", SCRIPT, f"--operator={operator}"] + [
+            cmd = ["python", SCRIPT] + [
                 f"--{key}={value}" for key, value in kwargs.items() if value is not None
             ]
             run_verbose(cmd)
@@ -192,7 +193,7 @@ def gather_data(
 
         with open(filename, "r") as f:
             content = "\n".join(f.readlines())
-            peakmem_no, peakmem, best, mu, sigma = [
+            peakmem_no, peakmem, mu, sigma, best = [
                 float(n) for n in content.split(", ")
             ]
             result["peakmem non-differentiable [GiB]"] = peakmem_no
@@ -229,7 +230,7 @@ EXPERIMENTS = [
         {
             "architectures": ["tanh_mlp_768_768_512_512_1"],
             "dims": [10, 50],
-            "batch_sizes": linspace(1, 2048, 25).int().unique().tolist(),
+            "batch_sizes": linspace(1, 2048, 10).int().unique().tolist(),
             "strategies": SUPPORTED_STRATEGIES,
             "devices": ["cuda"],
             "operator": "laplacian",
@@ -250,7 +251,7 @@ EXPERIMENTS = [
             "devices": ["cuda"],
             "operator": "laplacian",
             "distributions": ["normal"],
-            "nums_samples": linspace(1, 50, 25).int().unique().tolist(),
+            "nums_samples": linspace(1, 50, 10).int().unique().tolist(),
         },
         # what to plot: x-axis is nums_samples and each strategy is plotted in a curve
         ("num_samples", "strategy"),

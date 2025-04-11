@@ -222,14 +222,14 @@ def savepath(name: str) -> str:
 
 
 EXPERIMENTS = [
-    # Experiment 1:  Use the largest MLP from dangel2024kroneckerfactored with 10 and 50
+    # Experiment 1:  Use the largest MLP from dangel2024kroneckerfactored with 50
     #                in features; vary the batch size.
     (  # Experiment name, must be unique
         "dangel2024kroneckerfactored_vary_batch_size",
         # Experiment parameters
         {
             "architectures": ["tanh_mlp_768_768_512_512_1"],
-            "dims": [10, 50],
+            "dims": [50],
             "batch_sizes": linspace(1, 2048, 10).int().unique().tolist(),
             "strategies": SUPPORTED_STRATEGIES,
             "devices": ["cuda"],

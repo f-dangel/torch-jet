@@ -545,6 +545,11 @@ We know from previous explanations that this requires propagating $2 + D$ vector
 Now, let's apply the Laplacian a second time, i.e. $\Delta \tilde{f}$ where evaluating $\tilde{f} = \Delta f$ propagates $2 + D$ vectors. 
 Naively we get $(2 + D) + D * (2 + D) + D * (2 + D)$, but the second-order components can again be collapsed into a single vector, so we obtain \todo{Are you sure that we can contract $D(2 + D)$ into $1$? Shouldn't it be $2 + D$?}$(2 + D) + D * (2 + D) + 1 = D^2 + 3D + 3$ vectors that need to be pushed forward for the biharmonic.
 \textbf{We should expect Tim's $D^2 + 2D + 3$ from below though, so there is still a slight mismatch we need to understand.}
+\textbf{Tim: In general: I'm pretty sure you can not expect the same results as in the multitvariate-propatation case. In the multivariate case you can leverage the linearity in terms where different directions are propagated. In univariate you can not. This can be seen from the different chain-rules.}
+\\
+\textbf{
+Regarding the propagation scheme above, we can only leverage the trick for the second-order terms, but not for third-order, because the scheme can only see up to the second derivative. But in the multivariate case we can leverage the trick to safe $D$ third derivatives and $D^2-1$ forth. Instead we can not safe the third derivatives, but $D$ fourth derivatives, since we can apply the laplace trick here.}
+
 
 \paragraph{Leveraging TTC formula} \todo{Not done}\todo{Need better notation}
 A different technique to reconstruct mixed-partials from jets was already proposed by Griewank et al in 1999 in \cite{griewank_evaluating_1999}. The authors summarized their method in the following formula
@@ -605,6 +610,12 @@ A close look into the definition of the coefficients $\gamma_{kl}$ shows that th
     \sum_{\underset{j \neq i}{j=0}}^D
     f^{4}(x; 2 e_i+ 2 e_j).
 \end{align}
+@Tim: Can you write down the values for the $\gamma$s?
+Then @Felix can implement and benchmark this approach. 
+This is probably better than the current approach which uses 6-jets.
+And it uses 4-jets, which are also used by the randomized variant.
+We should see a stronger performance impact when collapsing the highest-order coefficients, compared to the 6-jet approach.
+
 In this case, we have to propagate $D + 2 D(D-1)$ fourth-order jets. All these fourth-order jets rely on the same derivative evaluation point $\vx_0$ and the summation can be pulled inside the highest coefficients in the propagation scheme, like for the Laplacian. From this we conclude that this propagation scheme has the effort of propagating $1 + 3D + 1 + 2 \left(1 + 3 \cdot D(D-1) + 1 \right) = 6D^2 - 3D + 6$ vectors. Comparing the memory complexity with the memory complexity of the previous result, it can be seen that there is an overhead. However, all jets can be computed in parallel, which provides benefits for the run-time complexity.
 
 \paragraph{Biharmonic operator --- Revisited}

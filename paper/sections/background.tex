@@ -543,13 +543,13 @@ Hence, we can collapse coefficients in the inner Laplacian, as well as the outer
 Suppose we start with a collapsed interior Laplacian $\Delta f: \vx \in \sR^D \mapsto \Delta f(x) \in \sR$ where function $f$ propagates forward one vector.
 We know from previous explanations that this requires propagating $2 + D$ vectors.
 Now, let's apply the Laplacian a second time, i.e. $\Delta \tilde{f}$ where evaluating $\tilde{f} = \Delta f$ propagates $2 + D$ vectors. 
-Naively we get $(2 + D) + D * (2 + D) + D * (2 + D)$, but the second-order components can again be collapsed into a single vector, so we obtain $(2 + D) + D * (2 + D) + 1 = D^2 + 3D + 3$ vectors that need to be pushed forward for the biharmonic.
+Naively we get $(2 + D) + D * (2 + D) + D * (2 + D)$, but the second-order components can again be collapsed into a single vector, so we obtain \todo{Are you sure that we can contract $D(2 + D)$ into $1$? Shouldn't it be $2 + D$?}$(2 + D) + D * (2 + D) + 1 = D^2 + 3D + 3$ vectors that need to be pushed forward for the biharmonic.
 \textbf{We should expect Tim's $D^2 + 2D + 3$ from below though, so there is still a slight mismatch we need to understand.}
 
-\paragraph{Leveraging TTC formula}
-A different technique to reconstruct mixed-partials from jets was already proposed by Griewank et al in 1999 in \cite{griewank_evaluating_1999}. The authors summarized there method in the following formula
+\paragraph{Leveraging TTC formula} \todo{Not done}\todo{Need better notation}
+A different technique to reconstruct mixed-partials from jets was already proposed by Griewank et al in 1999 in \cite{griewank_evaluating_1999}. The authors summarized their method in the following formula
 \begin{equation}
-    \frac{\partial^k}{\partial z^k} f(x + Sz)\Big|_{z = 0} = \sum_{\underset{l \in M^p}{|l| = |k|}} \gamma_{kl} f^{|k|}(x; Sl),
+    \frac{\partial^{|k|}}{\partial z^k} f(x + Sz)\Big|_{z = 0} = \sum_{\underset{l \in M^p}{|l| = |k|}} \gamma_{kl} f^{|k|}(x; Sl),
 \end{equation}
 where $M^p$ is a multi-index set with $p$ entries, $k, l \in M^p$ and $S \in \mathbb{R}^{n \times p}$. The coefficient $\gamma_{kl}$ is given as
 \begin{equation}
@@ -567,12 +567,46 @@ where $M^p$ is a multi-index set with $p$ entries, $k, l \in M^p$ and $S \in \ma
     \end{matrix} 
     \right)  
     \left( 
-    \frac{|m|}{4}
+    \frac{|m|}{|k|}
     \right)^{|k|}
 \end{equation}
 and $f^{|k|}(x; Sl)$ defines the $|k|$-th univariate Taylor coefficient in direction $Sj$ at $x \in \mathbb{R}^n$.
 
-In case of the Biharmonic Operator, the constants are $k = (2, 2)$, $p = 2$ and for every term, $S_{ij} = (e_i e_i)$, 
+For the Biharmonic Operator, the parameters differ between the case $i=j$ and $i \neq j$. When $i = j$ it is $k = (4)$, $p = 1$, $S_{ii} = e_i$. For $i \neq j$, $k = (2, 2)$, $p = 2$ and for every term, $S_{ij} = (e_i \; e_j)$. Thus, 
+\begin{align}
+        \sum_{i=0}^D \sum_{j=0}^D
+        \frac{\partial^|k|}{\partial z^k} f(x + Sz)\Big|_{z = 0} &= 
+        \sum_{i=0}^D 
+        \frac{\partial^4}{\partial z_1^4} f(x + z_1 e_i)\Big|_{z_1 = 0} 
+        +
+        \sum_{i=0}^D 
+        \sum_{\underset{j \neq i}{j=0}}^D 
+        \frac{\partial^4}{\partial z_1^2 \partial z_2^2} f(x + z_1 e_i + z_2 e_j)\Big|_{z = 0}.
+\end{align}
+A close look into the definition of the coefficients $\gamma_{kl}$ shows that there are independent of $i, j$ and they coincide if $l = (4,0)$ or $l=(0, 4)$ as well as if $l = (3, 1)$ or $l = (3,1)$. Leveraging these facts we end up with the following formula
+\begin{align}
+   \sum_{i=1}^D \sum_{j=1}^D \frac{\partial^4}{\partial x_i^2 \partial x_j^2} f(x)
+   &=
+    \left(
+   \gamma_{44} + 2 (D - 1) \gamma_{(2,2)(4, 0)}
+   \right)
+   \sum_{i=0}^D
+    f^4(x; 4 e_i)
+    \\
+    &+ 
+    2 \gamma_{(2, 2)(3, 1)} 
+    \sum_{i=0}^D 
+    \sum_{\underset{j \neq i}{j=0}}^D
+    f^{4}(x; 3 e_i+ e_j) 
+    \\
+    &+ 
+    \gamma_{(2, 2)(2, 2)}
+     \sum_{i=0}^D 
+    \sum_{\underset{j \neq i}{j=0}}^D
+    f^{4}(x; 2 e_i+ 2 e_j).
+\end{align}
+In this case, we have to propagate $D + 2 D(D-1)$ fourth-order jets. All these fourth-order jets rely on the same derivative evaluation point $\vx_0$ and the summation can be pulled inside the highest coefficients in the propagation scheme, like for the Laplacian. From this we conclude that this propagation scheme has the effort of propagating $1 + 3D + 1 + 2 \left(1 + 3 \cdot D(D-1) + 1 \right) = 6D^2 - 3D + 6$ vectors. Comparing the memory complexity with the memory complexity of the previous result, it can be seen that there is an overhead. However, all jets can be computed in parallel, which provides benefits for the run-time complexity.
+
 \paragraph{Biharmonic operator --- Revisited}
 Up to now, the derivative computation method is based on the propagation of univariate Taylor polynomials. Although the propagated coefficients of these polynomials contain all the required derivative information, the direct access to arbitrary mixed-partial derivatives by propagating certain directions is not possible. This fact led to rather complicated schemes in the case of the Biharmonic Operator. In contrast, multi-variate Taylor polynomial propagation allows a fine-grained access to all partial derivatives, which usually results in a higher memory consumption in comparison to the univariate approach. For a comparison of both approaches see e.g., \cite{griewank_evaluating_1999}. However, in the following, we show that fined-grained access to mixed-partials is beneficial to derive efficient propagation schemes for the Biharmonic Operator. 
 

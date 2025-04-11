@@ -215,8 +215,8 @@ def bilaplacian_function(
                 graph is simplified by propagating replication nodes.
 
     Returns:
-        A function that computes the Bi-Laplacian of the function f at the input tensor X.
-        The function is expected to be called with no arguments.
+        A function that computes the Bi-Laplacian of the function f at the input
+        tensor X. The function is expected to be called with no arguments.
 
     Raises:
         ValueError: If the strategy is not supported.
@@ -324,7 +324,8 @@ def get_function_and_description(
         is_batched: A flag indicating if the input is batched.
 
     Returns:
-        A tuple containing the function to compute the operator and a description string.
+        A tuple containing the function to compute the operator and a description
+        string.
 
     Raises:
         ValueError: If an unsupported operator is specified.

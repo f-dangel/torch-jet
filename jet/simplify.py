@@ -746,8 +746,8 @@ def simplify(  # noqa: C901
         ),
         "push_replicate": replicate_rewriter.rewrite_pattern,
         "pull_sum_vmapped": sum_vmapped_rewriter.rewrite_pattern,
-        "raise_sum_vmapped_outside_einsum": sum_vmapped_rewriter.raise_sum_vmapped_outside_einsum,
-        "fuse_with_tensor_constant": sum_vmapped_rewriter.fuse_vmapped_sum_with_tensor_constants,
+        "raise_sum_vmapped_outside_einsum": sum_vmapped_rewriter.raise_sum_vmapped_outside_einsum,  # noqa: B950
+        "fuse_with_tensor_constant": sum_vmapped_rewriter.fuse_vmapped_sum_with_tensor_constants,  # noqa: B950
     }
 
     # round 1 of simplifications: remove redundancies in the graph

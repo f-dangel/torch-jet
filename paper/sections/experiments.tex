@@ -1,0 +1,32 @@
+\newcommand{\dummyEntry}{%
+\includegraphics[width=0.185\textwidth]{example-image-a}\hspace{0.02\textwidth}\includegraphics[width=0.185\textwidth]{example-image-a}%
+}
+
+\begin{figure*}[!t]
+  \centering
+  % From https://tex.stackexchange.com/a/7318
+  \newcolumntype{C}{ >{\centering\arraybackslash} m{0.12\textwidth} }
+  \newcolumntype{D}{ >{\centering\arraybackslash} m{0.40\textwidth} }
+  \begin{tabular}{CDD}
+    & \textbf{Exact}
+    & \textbf{Randomized}
+    \\[2mm]
+    \textbf{Laplacian}
+    & \dummyEntry
+    & \dummyEntry
+    \\
+    \makecell{\textbf{Weighted} \\ \textbf{Laplacian}}
+    & \dummyEntry
+    & \dummyEntry
+    \\
+    \makecell{\textbf{Bi-harmonic} \\ \textbf{operator}}
+    & \dummyEntry
+    & \dummyEntry
+  \end{tabular}
+  \caption{\textbf{Collapsed Taylor mode improves standard Taylor mode in time and memory.}}
+  \label{fig:benchmark}
+\end{figure*}
+%%% Local Variables:
+%%% mode: LaTeX
+%%% TeX-master: "../main"
+%%% End:

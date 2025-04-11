@@ -14,7 +14,7 @@ Our contributions are the following:
     Our collapsed Taylor mode improves over it in two ways.
     First, it separates the trick into using standard Taylor mode, combined with simple graph rewrites based on linearity.
     Second, it generalizes to other differential operators, and can also be applied to recently proposed randomization techniques for Taylor mode.
-    
+
     \item This leads to a conceptually clean separation of concepts, allowing for a simple implementation that can handle all scenarios and does not require manual implementations for each differential operator.
     To demonstrate this, we build a Taylor mode library for PyTorch and equip it with the necessary graph simplifications using the \texttt{torch.fx} library, and show how collapsed Taylor mode accelerates the computation of various differential operators.
 
@@ -28,12 +28,12 @@ Next tasks:
 
     \item @Felix: Look into computing the trace of third order derivatives.
     It will be interesting to check how first-order AD performs here.
-    
+
     \item @Felix: Extend the graph simplifications to work with weighted sum of second-order derivatives where $\mC$ is indefinite.
     For this, we need to compute two collapsed 2-jets which share some computation (both use the same value on which the function is evaluated. They can therefore share this computation, as well as the derivatives).
     This will require some form of rudimentary common sub-expression elimination.
 
-    \item @Felix [vague]: Think about an example where 
+    \item @Felix [vague]: Think about an example where
 \end{enumerate}
 \newpage
 
@@ -56,6 +56,15 @@ Next tasks:
   We show the performance evaluation of the randomized Laplacian with identical setup \Cref{fig:benchmark-laplacians}, but we fix the batch size to be $2048$ and vary the number of samples $S$ used by the Monte-Carlo estimator.
   We find the same relative speedups and memory reductions of collapsing Taylor mode than for the exact Laplacian (as expected since all expressions for the computational demands look the same, but with $S$ replacing $D$).
   Also compare to \Cref{fig:benchmark-laplacians} and note how for $N=2048$ we can obtain a noisy estimate of the Laplacian at much lower cost when $S < D$.
+}\label{fig:benchmark-randomized-laplacians}
+\end{figure}
+
+\begin{figure}
+  \centering
+\includegraphics*{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_16_device_cuda_name_dangel2024kroneckerfactored_bilaplacian_vary_dim.pdf}
+\caption{\textbf{Collapsed Taylor mode applied to the Bi-Laplacian.}
+  The net is the same as in \Cref{fig:benchmark-laplacians}, but we fix the batch size to be $16$ and vary the net's input dimension.
+  Note that nesting first-order AD scales worse.
 }\label{fig:benchmark-randomized-laplacians}
 \end{figure}
 

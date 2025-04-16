@@ -57,7 +57,7 @@ install-test:
 .PHONY: test test-light
 
 test:
-	@pytest -vx --run-optional-tests=expensive --cov=jet test
+	@pytest -vx --cov=jet test
 
 test-light:
 	@pytest -vx --cov=jet test

@@ -68,6 +68,8 @@ def plot_metric(
     x: str,
     lines: str,
     ax: plt.Axes,
+    xlabel: bool = True,
+    ylabel: bool = True,
 ) -> None:
     """Plot a specified metric.
 
@@ -77,15 +79,19 @@ def plot_metric(
         x: The column of the values used as x-axis.
         lines: The column of the values used to distinguish lines in the plot.
         ax: The axes to plot the data on.
+        xlabel: Whether to add an x-axis label. Defaults to `True`.
+        ylabel: Whether to add a y-axis label. Defaults to `True`.
     """
-    ylabel = {"time": "Time [s]", "peak_memory": "Peak memory [GiB]"}[metric]
-    x_to_xlabel = {
-        "batch_size": "Batch size",
-        "num_samples": "Monte-Carlo samples",
-        "dim": "Input dimension",
-    }
-    ax.set_xlabel(x_to_xlabel.get(x, x))
-    ax.set_ylabel(ylabel)
+    if xlabel:
+        x_to_xlabel = {
+            "batch_size": "Batch size",
+            "num_samples": "Samples",
+            "dim": "Input dimension",
+        }
+        ax.set_xlabel(x_to_xlabel.get(x, x))
+    if ylabel:
+        y_to_ylabel = {"time": "Time [s]", "peak_memory": "Mem. [GiB]"}
+        ax.set_ylabel(y_to_ylabel.get(metric, metric))
 
     for line in df[lines].unique().tolist():
         mask = df[lines] == line
@@ -138,11 +144,20 @@ def report_relative_performance(df: DataFrame, x: str, lines: str, ref_line: str
 
         for metric in metrics:
             ys = sub_df[metric].tolist()
+
+            # use ms instead of s and MiB instead of GiB
+            if "[s]" in metric:
+                ys = [y * 1000 for y in ys]
+            if "[GiB]" in metric:
+                ys = [y * 2**10 for y in ys]
+
             c1, c0 = polyfit(xs, ys, deg=1)
             offsets_and_slopes[metric][line] = (c1, c0)
 
     for metric in metrics:
-        print(f"Linear fit of {metric} w.r.t. x={x}:")
+        # use ms instead of s and MiB instead of GiB
+        metric_adapted = metric.replace("[s]", "[ms]").replace("[GiB]", "[MiB]")
+        print(f"Linear fit of {metric_adapted} w.r.t. x={x}:")
         c1_ref, _ = offsets_and_slopes[metric][ref_line]
         for line in line_vals:
             c1, c0 = offsets_and_slopes[metric][line]
@@ -176,16 +191,16 @@ if __name__ == "__main__":
         # go over all combinations and plot
         for fix in combinations:
             print(f"Processing combination: {fix}")
-            with plt.rc_context(bundles.neurips2024(rel_width=1.0, ncols=2)):
-                fig, axs = plt.subplots(ncols=2)
+            with plt.rc_context(bundles.neurips2024(rel_width=0.27, ncols=1, nrows=2)):
+                fig, axs = plt.subplots(nrows=2, sharex=True)
                 # fix specific values, leaving only the data to be plotted
                 df_fix = fix_columns(df, fix)
                 for idx, (ax, metric) in enumerate(zip(axs, METRICS)):
-                    plot_metric(df_fix, metric, x, lines, ax)
+                    plot_metric(df_fix, metric, x, lines, ax, xlabel=idx == 1)
                     # set ymin to 0
                     ax.set_ylim(bottom=0)
-                    if idx == 0:
-                        ax.legend()
+                    ax.spines["top"].set_visible(False)
+                    ax.spines["right"].set_visible(False)
                 filename = savepath(name=name, **fix)
                 print(f"Saving plot for experiment {name} to {filename}.")
                 fig.savefig(filename, bbox_inches="tight")

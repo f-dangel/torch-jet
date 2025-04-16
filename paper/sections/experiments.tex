@@ -1,61 +1,182 @@
-\newcommand{\dummyEntry}{%
-\includegraphics[width=0.185\textwidth]{example-image-a}\hspace{0.02\textwidth}\includegraphics[width=0.185\textwidth]{example-image-a}%
-}
 
 \begin{figure*}[!t]
   \centering
   % From https://tex.stackexchange.com/a/7318
   \newcolumntype{C}{ >{\centering\arraybackslash} m{0.12\textwidth} }
-  \newcolumntype{D}{ >{\centering\arraybackslash} m{0.40\textwidth} }
-  \begin{tabular}{CDD}
-    & \textbf{Exact}
-    & \textbf{Randomized}
-    \\[2mm]
-    \textbf{Laplacian}
-    & \dummyEntry
-    & \dummyEntry
+  \newcolumntype{D}{ >{\centering\arraybackslash} m{0.27\textwidth} }
+  \begin{tabular}{CDDD}
+    & \textbf{Laplacian $(D=50)$}
+    & \textbf{Weighted Laplacian $(D=50)$}
+    & \textbf{Bi-harmonic $(D=5)$}
     \\
-    \makecell{\textbf{Weighted} \\ \textbf{Laplacian}}
-    & \dummyEntry
-    & \dummyEntry
+    \textbf{Exact}
+    & \includegraphics{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_dangel2024kroneckerfactored_vary_batch_size.pdf}
+    & TODO
+    & TODO
     \\
-    \makecell{\textbf{Bi-harmonic} \\ \textbf{operator}}
-    & \dummyEntry
-    & \dummyEntry
+    \textbf{Stochastic}
+    & \includegraphics{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_2048_device_cuda_dim_50_distribution_normal_name_dangel2024kroneckerfactored_vary_num_samples.pdf}
+    & TODO
+    & TODO
   \end{tabular}
-  \caption{\textbf{Collapsed Taylor mode improves standard Taylor mode in time and memory.}}
+
+  \caption{\textbf{\textcolor{tab:green}{Collapsed Taylor mode} is faster than \textcolor{tab:orange}{standard Taylor mode} and \textcolor{tab:blue}{nested first-order automatic differentiaion} while using less or the same memory, \textcolor{black!50!white}{opaque} memory consumptions are for non-differentiable computations.}
+    Results are on GPU and we use a $D \to 768 \to 768 \to 512 \to 512 \to 1$ MLP with tanh activations with $D=50$ for the Laplacians and $D=5$ for the Bi-harmonic operator.
+    The exact computation varies the batch size, and the approximate computation fixes $N=2048$ and varies the number of Monte-Carlo samples such that $S < D$ (we can compute exactly otherwise).
+    For each approach, we fit a line to the data and report the slope in \Cref{tab:benchmark}  to quantify the relative speedup and memory reduction.
+  }
   \label{fig:benchmark}
 \end{figure*}
 
-\begin{figure}[t]
+\begin{table}[!t]
   \centering
-\includegraphics*{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_dangel2024kroneckerfactored_vary_batch_size.pdf}
-\caption{ \textbf{Computing the Laplacian with collapsed Taylor mode is faster \emph{and} uses less memory than nested first-order AD; naive Taylor mode is competitive in time but uses more memory.}
-  We compare different strategies for computing Laplacians for a $50\to 768 \to 768 \to 512 \to 512 \to 1$ MLP with tanh activations for varying batch sizes on an NVIDIA A40 GPU.
-  Solid markers correspond to computing differentiable Laplacians (\eg used in PINNs), opaque markers compute a non-differentiable Laplacian (\eg used in VMC).
-  Averaged over all batch sizes, \emph{our collapsed Taylor mode uses only 80\% memory of nested first-order AD (70\% in the non-differentiable setting), and 50\% of time}.
-  In contrast, naive Taylor mode uses 120\% memory of nested first-order AD (70\% in the non-differentiable setting) and 95\% of time.
-}
-  \label{fig:benchmark-laplacians}
-\end{figure}
+  \caption{\textbf{Benchmark from \Cref{fig:benchmark} in numbers.}
+    We fit linear functions and report their slopes, \ie how much run time and memory increase when incrementing the batch size or number of Monte-Carlo samples.
+    Our collapsed Taylor mode is up to two times faster than nested first-order autodiff, while using 80\% of memory in the differentiable, and 70\% in the non-differentiable, setting.}
+  \label{tab:benchmark}
+  \vspace{1.5ex}
+  \resizebox{\linewidth}{!}{%
+    % configuration options for the \num command
+    \sisetup{%
+      scientific-notation=true,%
+      round-mode=figures,%
+      round-precision=2,%
+      detect-weight, % for bolding to work
+      tight-spacing=true, % less space around \cdot
+    }
+    \begin{tabular}{ccc|cccc}
+      \toprule
+      \textbf{Mode}
+      & \makecell{\textbf{Per-datum or } \\ \textbf{-sample cost}}
+      & \textbf{Implementation}
+      & \textbf{Laplacian}
+      & \makecell{\textbf{Weighted} \\ \textbf{Laplacian}}
+      & \textbf{Bi-harmonic}
+      \\
+      \midrule
+      \multirow{9}{*}{\textbf{Exact}}
+      & \multirow{3}{*}{Time [ms]}
+      & \textcolor{tab:blue}{Nested first-order}
+      & \num{0.61035} (1.0x)
+      & TODO
+      & TODO
+      \\
+      &
+      & \textcolor{tab:orange}{Standard Taylor}
+      & \num{0.59648} (0.98x)
+      & TODO
+      & TODO
+      \\
+      &
+      & \textcolor{tab:green}{Collapsed (ours)}
+      & \textbf{\num{0.32716} (0.54x)}
+      & TODO
+      & TODO
+      \\ \cmidrule{2-6}
+      & \multirow{3}{*}{\makecell{Mem.\,[MiB] \\ (differentiable)}}
+      & \textcolor{tab:blue}{Nested first-order}
+      & \num[]{4.41504} (1.0x)
+      & TODO
+      & TODO
+      \\
+      &
+      & \textcolor{tab:orange}{Standard Taylor}
+      & \num{5.47051} (1.2x)
+      & TODO
+      & TODO
+      \\
+      &
+      & \textcolor{tab:green}{Collapsed (ours)}
+      & \textbf{\num{3.55586} (0.81x)}
+      & TODO
+      & TODO
+      \\ \cmidrule{2-6}
+      & \multirow{3}{*}{\makecell{Mem.\,[MiB] \\ (non-diff.)}}
+      & \textcolor{tab:blue}{Nested first-order}
+      & \num{2.21092} (1.0x)
+      & TODO
+      & TODO
+      \\
+      &
+      & \textcolor{tab:orange}{Standard Taylor}
+      & \textbf{\num{1.49652} (0.68x)}
+      & TODO
+      & TODO
+      \\
+      &
+      & \textcolor{tab:green}{Collapsed (ours)}
+      & \textbf{\num{1.50445} (0.68x)}
+      & TODO
+      & TODO
+      \\
+      \midrule
+      \multirow{9}{*}{\textbf{Stochastic}}
+      & \multirow{3}{*}{Time [ms]}
+      & \textcolor{tab:blue}{Nested first-order}
+      & \num{24.34915} (1.0x)
+      & TODO
+      & TODO
+      \\
+      &
+      & \textcolor{tab:orange}{Standard Taylor}
+      & \num{24.06503} (0.99x)
+      & TODO
+      & TODO
+      \\
+      &
+      & \textcolor{tab:green}{Collapsed (ours)}
+      & \textbf{\num{12.56058} (0.52x)}
+      & TODO
+      & TODO
+      \\ \cmidrule{2-6}
+      & \multirow{3}{*}{\makecell{Mem.\,[MiB]\\(differentiable)}}
+      & \textcolor{tab:blue}{Nested first-order}
+      & \num{176.80382} (1.0x)
+      & TODO
+      & TODO
+      \\
+      &
+      & \textcolor{tab:orange}{Standard Taylor}
+      & \num{217.57639} (1.2x)
+      & TODO
+      & TODO
+      \\
+      &
+      & \textcolor{tab:green}{Collapsed (ours)}
+      & \textbf{\num{137.48264} (0.78x)}
+      & TODO
+      & TODO
+      \\ \cmidrule{2-6}
+      & \multirow{3}{*}{\makecell{Mem.\,[MiB]\\(non-diff.)}}
+      & \textcolor{tab:blue}{Nested first-order}
+      & \num{88.80382} (1.0x)
+      & TODO
+      & TODO
+      \\
+      &
+      & \textcolor{tab:orange}{Standard Taylor}
+      & \textbf{\num{61.45887} (0.69x)}
+      & TODO
+      & TODO
+      \\
+      &
+      & \textcolor{tab:green}{Collapsed (ours)}
+      & \textbf{\num{61.52181} (0.69x)}
+      & TODO
+      & TODO
+      \\
+      \bottomrule
+    \end{tabular}
+  }
+\end{table}
 
 \begin{figure}
   \centering
-\includegraphics*{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_2048_device_cuda_dim_50_distribution_normal_name_dangel2024kroneckerfactored_vary_num_samples.pdf}
-\caption{\textbf{Collapsed Taylor mode is compatible with randomization.}
-  We show the performance evaluation of the randomized Laplacian with identical setup \Cref{fig:benchmark-laplacians}, but we fix the batch size to be $2048$ and vary the number of samples $S$ used by the Monte-Carlo estimator.
-  We find the same relative speedups and memory reductions of collapsing Taylor mode than for the exact Laplacian (as expected since all expressions for the computational demands look the same, but with $S$ replacing $D$).
-  Also compare to \Cref{fig:benchmark-laplacians} and note how for $N=2048$ we can obtain a noisy estimate of the Laplacian at much lower cost when $S < D$.
-}\label{fig:benchmark-randomized-laplacians}
-\end{figure}
-
-\begin{figure}
-  \centering
-\includegraphics*{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_16_device_cuda_name_dangel2024kroneckerfactored_bilaplacian_vary_dim.pdf}
-\caption{\textbf{Collapsed Taylor mode applied to the Bi-Laplacian.}
-  The net is the same as in \Cref{fig:benchmark-laplacians}, but we fix the batch size to be $16$ and vary the net's input dimension.
-  Note that nesting first-order AD scales worse.
-}\label{fig:benchmark-randomized-laplacians}
+  \includegraphics*{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_16_device_cuda_name_dangel2024kroneckerfactored_bilaplacian_vary_dim.pdf}
+  \caption{\textbf{Collapsed Taylor mode applied to the Bi-Laplacian.}
+    The net is the same as before, but we fix the batch size to be $16$ and vary the net's input dimension.
+    Note that nesting first-order AD scales worse.
+  }\label{fig:benchmark-randomized-laplacians}
 \end{figure}
 
 %%% Local Variables:

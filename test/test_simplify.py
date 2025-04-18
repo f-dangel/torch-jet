@@ -23,6 +23,7 @@ There are three kinds of tests:
         pass is only carried out for one x, and not their replicated version X.
 """
 
+from functools import partial
 from test.test___init__ import (
     CASE_IDS,
     CASES,
@@ -33,6 +34,7 @@ from test.test___init__ import (
     setup_case,
 )
 from test.test_laplacian import DISTRIBUTION_IDS, DISTRIBUTIONS, laplacian
+from test.test_weighted_laplacian import weighted_laplacian
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 from pytest import mark
@@ -55,6 +57,10 @@ from jet.utils import (
     WrapperModule,
     replicate,
     sum_vmapped,
+)
+from jet.weighted_laplacian import (
+    C_func_diagonal_increments,
+    WeightedLaplacian,
 )
 
 # tell `torch.fx` to trace `replicate` as one node
@@ -356,6 +362,53 @@ def test_simplify_laplacian(config: Dict[str, Any], distribution: Optional[str])
         num_vectors = num_samples
     else:
         num_vectors = x.shape[1:].numel() if is_batched else x.numel()
+    non_collapsed_shape = (num_vectors, *x.shape)
+    collapsed_shape = x.shape
+    ensure_tensor_constants_collapsed(fast, collapsed_shape, non_collapsed_shape)
+
+
+@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
+def test_simplify_weighted_laplacian(config: Dict[str, Any]):
+    """Test the simplification of a weighted Laplacian's compute graph.
+
+    Replicate nodes should be propagated down the graph.
+    Sum nodes should be propagated up.
+
+    Args:
+        config: The configuration of the test case.
+    """
+    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+
+    C_func = partial(C_func_diagonal_increments, is_batched=is_batched)
+    mod = WeightedLaplacian(f, x, is_batched, weighting="diagonal_increments")
+
+    mod_out = mod(x)
+    lap = weighted_laplacian(f, x, is_batched, C_func)
+    assert lap.allclose(mod_out[2])
+    print("Exact weighted Laplacian in functorch and jet match.")
+
+    # simplify the traced module
+    fast = symbolic_trace(mod)
+    fast = simplify(fast, verbose=True)
+
+    # make sure the simplified module still behaves the same
+    fast_out = fast(x)
+    compare_jet_results(mod_out, fast_out)
+    print(
+        "Weighted Laplacian via jet matches weighted Laplacian via simplified module."
+    )
+
+    # make sure the `replicate` node from the 0th component made it to the end
+    # and all other `replicate`s were successfully fused
+    ensure_outputs_replicates(fast.graph, num_outputs=3, num_replicates=1)
+    ensure_num_replicates(fast.graph, num_replicates=1)
+
+    # make sure there are no other `sum_vmapped` nodes in the graph
+    ensure_num_sum_vmapped(fast.graph, num_sum_vmapped=0)
+
+    # make sure the module's tensor constant corresponding to the highest
+    # Taylor coefficient was collapsed
+    num_vectors = x.shape[1:].numel() if is_batched else x.numel()
     non_collapsed_shape = (num_vectors, *x.shape)
     collapsed_shape = x.shape
     ensure_tensor_constants_collapsed(fast, collapsed_shape, non_collapsed_shape)

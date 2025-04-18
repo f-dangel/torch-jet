@@ -16,7 +16,6 @@ from torch.func import hessian, vmap
 
 from jet.weighted_laplacian import (
     C_func_diagonal_increments,
-    S_func_diagonal_increments,
     WeightedLaplacian,
 )
 
@@ -84,14 +83,13 @@ def test_WeightedLaplacian(config: Dict[str, Any]):
         config: Configuration dictionary of the test case.
     """
     f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
-    S_func = partial(S_func_diagonal_increments, is_batched=is_batched)
     C_func = partial(C_func_diagonal_increments, is_batched=is_batched)
 
     # compute ground truth
     H_dot_C_truth = weighted_laplacian(f, x, is_batched, C_func)
 
     # use jets
-    mod = WeightedLaplacian(f, x, is_batched, S_func)
+    mod = WeightedLaplacian(f, x, is_batched, weighting="diagonal_increments")
     _, _, H_dot_C = mod(x)
 
     report_nonclose(H_dot_C_truth, H_dot_C)

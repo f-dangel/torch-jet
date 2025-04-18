@@ -418,7 +418,7 @@ def get_function_and_description(
                 + f"num_samples={num_samples}"
             )
     elif operator == "weighted-laplacian":
-        if distribution and num_samples is None:
+        if distribution is None and num_samples is None:
             func = weighted_laplacian_function(net, X, is_batched, strategy)
             description = f"{strategy}"
         else:

@@ -7,11 +7,11 @@ from test.test___init__ import (
 )
 from typing import Any, Callable, Dict
 
+from einops import einsum
 from pytest import mark
-from torch import Tensor, arange, einsum, manual_seed, rand, zeros, zeros_like
+from torch import Tensor, arange, manual_seed, zeros, zeros_like
 from torch.func import hessian, vmap
 from torch.linalg import norm
-from torch.nn import Linear, Sequential, Tanh
 
 from jet.laplacian import HessianDotPSD, Laplacian, RandomizedLaplacian
 
@@ -135,30 +135,100 @@ def _check_mc_convergence(
     return converged
 
 
-def test_HessianDotPSD():
-    """Test computing dot products of the Hessian with a PSD matrix."""
-    manual_seed(0)
-    batch_size, is_batched = 6, True
-    D = 5
-    net = Sequential(Linear(D, 4), Tanh(), Linear(4, 1)).double()
-    X = rand(batch_size, D).double()
-    rank_C = 3
+def weighted_laplacian(
+    f: Callable[[Tensor], Tensor],
+    x: Tensor,
+    is_batched: bool,
+    C_func_diagonal_increments: Callable[[Tensor], Tensor],
+) -> Tensor:
+    """Compute the weighted Laplacian.
 
-    def S_func(_):
-        S = zeros(D, rank_C).double()
-        idx = arange(rank_C)
-        S[idx, idx] = arange(rank_C).double() + 1
-        return S.unsqueeze(0).expand(batch_size, D, rank_C)
+    Args:
+        f: The function to compute the weighted Laplacian of.
+        x: The point at which to compute the weighted Laplacian.
+        is_batched: Whether the function and its input are batched.
+        C_func_diagonal_increments: Function that computes the coefficient matrix C(x).
+            If is_batched is True, then C(x) must return a tensor of shape
+            (batch_size, *x.shape[1:], *x.shape[1:]), otherwise
+            it must return a tensor of shape (*x.shape, *x.shape).
+
+    Raises:
+        ValueError: If the coefficient tensor has an unexpected shape.
+
+    Returns:
+        The weighted Laplacian of the function f at the point x, evaluated
+        for each element f[i](x). Has same shape as f(x).
+    """
+    # compute the coefficient tensor
+    C = C_func_diagonal_increments(x)
+
+    # make sure it has the correct shape
+    unbatched = x.shape[1:] if is_batched else x.shape
+    C_shape = ((x.shape[0],) if is_batched else ()) + (*unbatched, *unbatched)
+    if C.shape != C_shape:
+        raise ValueError(
+            f"Coefficient tensor C has shape {tuple(C.shape)}, expected {C_shape}."
+        )
+
+    # compute the Hessian
+    H_func = hessian(f)
+    if is_batched:
+        H_func = vmap(H_func)
+    H = H_func(x)
+
+    # do the contraction with einsum to support non-vector functions
+    in_dims1 = " ".join([f"i{i}" for i in range(len(unbatched))])
+    in_dims2 = " ".join([f"j{j}" for j in range(len(unbatched))])
+    batch_str = "n " if is_batched else ""
+    equation = (
+        f"{batch_str}... {in_dims1} {in_dims2}, "
+        + f"{batch_str}{in_dims1} {in_dims2} -> {batch_str}..."
+    )
+    return einsum(H, C, equation)
+
+
+@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
+def test_HessianDotPSD(config: Dict[str, Any]):
+    """Test computing dot products of the Hessian with a PSD matrix.
+
+    Use a diagonal coefficient tensor whose diagonal elements are
+    increments of 1 starting from 1.
+
+    Args:
+        config: Configuration dictionary of the test case.
+    """
+    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+
+    D = (x.shape[1:] if is_batched else x.shape).numel()
+    unbatched = x.shape[1:] if is_batched else x.shape
+    rank_C = D
+
+    # define the coefficient functions
+    def S_func_diagonal_increments(_: Tensor) -> Tensor:
+        S = zeros(D, rank_C, dtype=x.dtype, device=x.device)
+        idx = arange(rank_C, device=x.device)
+        S[idx, idx] = (arange(rank_C, dtype=x.dtype, device=x.device) + 1).sqrt()
+        S = S.reshape(*unbatched, rank_C)
+        if is_batched:
+            batch_size = x.shape[0]
+            S = S.unsqueeze(0).expand(batch_size, *unbatched, rank_C)
+        return S
+
+    def C_func_diagonal_increments(_: Tensor) -> Tensor:
+        C = zeros(D, dtype=x.dtype, device=x.device)
+        C[:rank_C] = arange(rank_C, dtype=x.dtype, device=x.device) + 1
+        C = C.diag()
+        C = C.reshape(*unbatched, *unbatched)
+        if is_batched:
+            batch_size = x.shape[0]
+            C = C.unsqueeze(0).expand(batch_size, *unbatched, *unbatched)
+        return C
 
     # compute ground truth
-    H = vmap(hessian(net))(X).squeeze(1)
-    C = arange(D) + 1
-    C[rank_C:] = 0
-    C = C.double().square().diag()
-    H_dot_C_truth = einsum("nij,ij->n", H, C).unsqueeze(-1)
+    H_dot_C_truth = weighted_laplacian(f, x, is_batched, C_func_diagonal_increments)
 
     # use jets
-    mod = HessianDotPSD(net, X, is_batched, S_func)
-    _, _, H_dot_C = mod(X)
+    mod = HessianDotPSD(f, x, is_batched, S_func_diagonal_increments)
+    _, _, H_dot_C = mod(x)
 
     report_nonclose(H_dot_C_truth, H_dot_C)

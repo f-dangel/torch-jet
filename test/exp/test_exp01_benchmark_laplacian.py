@@ -1,5 +1,6 @@
 """Tests for exp01 (Laplacian benchmark)."""
 
+from functools import partial
 from test.test___init__ import (
     CASES_COMPACT,
     CASES_COMPACT_IDS,
@@ -7,6 +8,7 @@ from test.test___init__ import (
     setup_case,
 )
 from test.test_laplacian import _check_mc_convergence, laplacian
+from test.test_weighted_laplacian import weighted_laplacian
 from typing import Any, Dict
 
 from pytest import mark
@@ -16,8 +18,10 @@ from jet.exp.exp01_benchmark_laplacian.execute import (
     SUPPORTED_STRATEGIES,
     laplacian_function,
     randomized_laplacian_function,
+    weighted_laplacian_function,
 )
 from jet.laplacian import RandomizedLaplacian
+from jet.weighted_laplacian import C_func_diagonal_increments
 
 STRATEGY_IDS = [f"strategy={s}" for s in SUPPORTED_STRATEGIES]
 DISTRIBUTION_IDS = [
@@ -107,3 +111,20 @@ def test_randomized_laplacian_functions_converge(
         lap, sample, chunk_size, max_num_chunks, target_rel_error
     )
     assert converged, f"MC Laplacian ({strategy}, {distribution}) did not converge."
+
+
+@mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
+@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
+def test_weighted_laplacian_functions(config: Dict[str, Any], strategy: str):
+    """Test that the benchmarked weighted Laplacians produce the correct result.
+
+    Args:
+        config: Configuration dictionary of the test case.
+        strategy: The strategy to test.
+    """
+    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    C_func = partial(C_func_diagonal_increments, is_batched=is_batched)
+    weighted_lap = weighted_laplacian(f, x, is_batched, C_func)
+    weighted_lap_func = weighted_laplacian_function(f, x, is_batched, strategy)()
+
+    report_nonclose(weighted_lap, weighted_lap_func)

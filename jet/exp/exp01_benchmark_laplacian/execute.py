@@ -17,6 +17,7 @@ from jet.exp.utils import measure_peak_memory, measure_time, to_string
 from jet.laplacian import Laplacian, RandomizedLaplacian
 from jet.simplify import simplify
 from jet.utils import rademacher
+from jet.weighted_laplacian import C_func_diagonal_increments, WeightedLaplacian
 
 HERE = path.abspath(__file__)
 HEREDIR = path.dirname(HERE)
@@ -197,6 +198,78 @@ def randomized_laplacian_function(
         )
 
 
+def weighted_laplacian_function(
+    f: Callable[[Tensor], Tensor], X: Tensor, is_batched: bool, strategy: str
+) -> Callable[[], Tensor]:
+    """Construct a function to compute a weighted Laplacian using different strategies.
+
+    Args:
+        f: The function to compute the weighted Laplacian of.
+            Processes an un-batched tensor.
+        X: The input tensor at which to compute the weighted Laplacian.
+        is_batched: Whether the input is a batched tensor.
+        strategy: Which strategy will be used by the returned function to compute
+            the weighted Laplacian. The following strategies are supported:
+            - `'hessian_trace'`: The Laplacian is computed by computing the Hessian,
+                then weighting it. The Hessian is computed via forward-over-reverse
+                mode autodiff.
+            - `'jet_naive'`: The weighted Laplacian is computed using jets. The
+                computation graph is simplified by propagating replication nodes.
+            - `'jet_simplified'`: The weighted Laplacian is computed using Taylor mode.
+                The computation graph is simplified by propagating replications down,
+                and summations up, the computation graph.
+
+    Returns:
+        A function that computes the weighted Laplacian of the function f at the input
+        tensor X. The function is expected to be called with no arguments.
+
+    Raises:
+        ValueError: If the strategy is not supported.
+    """
+    if strategy == "hessian_trace":
+        hess_f = hessian(f)
+        C = C_func_diagonal_increments(X, is_batched)
+
+        # weight with einsum to support Laplacians of functions with non-scalar output
+        unbatched = X.ndim - 1 if is_batched else X.ndim
+        dims1 = " ".join([f"i{i}" for i in range(unbatched)])
+        dims2 = " ".join([f"j{j}" for j in range(unbatched)])
+        tr_equation = f"... {dims1} {dims2}, {dims1} {dims2} -> ..."
+
+        def weighted_laplacian(x: Tensor, c: Tensor) -> Tensor:
+            """Compute the weighted Laplacian of f on an un-batched input.
+
+            Args:
+                x: The input tensor.
+                c: The coefficient tensor. Must have shape (*x.shape, *x.shape).
+
+            Returns:
+                The weighted Laplacian of f at x. Has the same shape as f(x).
+            """
+            return einsum(hess_f(x), c, tr_equation)
+
+        if is_batched:
+            weighted_laplacian = vmap(weighted_laplacian)
+
+        return lambda: weighted_laplacian(X, C)
+
+    elif strategy in {"jet_naive", "jet_simplified"}:
+        weighted_laplacian = WeightedLaplacian(
+            f, X, is_batched, weighting="diagonal_increments"
+        )
+        pull_sum_vmapped = strategy == "jet_simplified"
+        weighted_laplacian = simplify(
+            symbolic_trace(weighted_laplacian), pull_sum_vmapped=pull_sum_vmapped
+        )
+
+        return lambda: weighted_laplacian(X)[2]
+
+    else:
+        raise ValueError(
+            f"Unsupported strategy: {strategy}. Supported: {SUPPORTED_STRATEGIES}."
+        )
+
+
 def bilaplacian_function(
     f: Callable[[Tensor], Tensor], X: Tensor, is_batched: bool, strategy: str
 ) -> Callable[[], Tensor]:
@@ -329,7 +402,8 @@ def get_function_and_description(
 
     Raises:
         ValueError: If an unsupported operator is specified.
-        NotImplementedError: If a randomized Bi-Laplacian is requested.
+        NotImplementedError: If a randomized Bi-Laplacian or weighted Laplacian
+            are requested.
     """
     if operator == "laplacian":
         if distribution is None and num_samples is None:
@@ -343,6 +417,12 @@ def get_function_and_description(
                 f"{strategy}, distribution={distribution}, "
                 + f"num_samples={num_samples}"
             )
+    elif operator == "weighted-laplacian":
+        if distribution and num_samples is None:
+            func = weighted_laplacian_function(net, X, is_batched, strategy)
+            description = f"{strategy}"
+        else:
+            raise NotImplementedError
     elif operator == "bilaplacian":
         if distribution is None and num_samples is None:
             func = bilaplacian_function(net, X, is_batched, strategy)
@@ -374,7 +454,10 @@ if __name__ == "__main__":
     parser.add_argument("--num_samples", required=False, type=int)
     parser.add_argument("--device", type=str, choices={"cpu", "cuda"}, required=True)
     parser.add_argument(
-        "--operator", type=str, choices={"laplacian", "bilaplacian"}, required=True
+        "--operator",
+        type=str,
+        choices={"laplacian", "weighted-laplacian", "bilaplacian"},
+        required=True,
     )
     args = parser.parse_args()
 

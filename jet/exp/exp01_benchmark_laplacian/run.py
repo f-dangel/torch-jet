@@ -295,5 +295,5 @@ if __name__ == "__main__":
     if len(names) != len(set(names)):
         raise ValueError(f"Experiment names must be unique. Got: {names}.")
 
-    for name, experiment, _ in EXPERIMENTS[-1:]:
+    for name, experiment, _ in EXPERIMENTS:
         measure(**experiment, name=name, skip_existing=True, gather_every=10)

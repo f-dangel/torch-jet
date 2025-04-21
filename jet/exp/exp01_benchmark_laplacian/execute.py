@@ -254,9 +254,7 @@ def weighted_laplacian_function(
         return lambda: weighted_laplacian(X, C)
 
     elif strategy in {"jet_naive", "jet_simplified"}:
-        weighted_laplacian = WeightedLaplacian(
-            f, X, is_batched, weighting="diagonal_increments"
-        )
+        weighted_laplacian = WeightedLaplacian(f, X, is_batched, "diagonal_increments")
         pull_sum_vmapped = strategy == "jet_simplified"
         weighted_laplacian = simplify(
             symbolic_trace(weighted_laplacian), pull_sum_vmapped=pull_sum_vmapped

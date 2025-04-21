@@ -380,7 +380,7 @@ def test_simplify_weighted_laplacian(config: Dict[str, Any]):
     f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
 
     C_func = partial(C_func_diagonal_increments, is_batched=is_batched)
-    mod = WeightedLaplacian(f, x, is_batched, weighting="diagonal_increments")
+    mod = WeightedLaplacian(f, x, is_batched, "diagonal_increments")
 
     mod_out = mod(x)
     lap = weighted_laplacian(f, x, is_batched, C_func)

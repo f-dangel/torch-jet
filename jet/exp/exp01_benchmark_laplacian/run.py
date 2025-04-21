@@ -318,7 +318,7 @@ EXPERIMENTS = [
             "dims": [5],
             "batch_sizes": [2048],
             "strategies": SUPPORTED_STRATEGIES,
-            "devices": ["cpu"],
+            "devices": ["cuda"],
             "operator": "bilaplacian",
             "distributions": ["normal"],
             "nums_samples": linspace(1, 5, 5).int().unique().tolist(),

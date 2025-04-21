@@ -7,6 +7,7 @@ from test.test___init__ import (
     report_nonclose,
     setup_case,
 )
+from test.test_bilaplacian import bilaplacian
 from test.test_laplacian import _check_mc_convergence, laplacian
 from test.test_weighted_laplacian import weighted_laplacian
 from typing import Any, Dict
@@ -16,6 +17,7 @@ from torch import Tensor, manual_seed
 
 from jet.exp.exp01_benchmark_laplacian.execute import (
     SUPPORTED_STRATEGIES,
+    bilaplacian_function,
     laplacian_function,
     randomized_laplacian_function,
     randomized_weighted_laplacian_function,
@@ -207,3 +209,19 @@ def test_randomized_weighted_laplacian_functions_converge(
     assert (
         converged
     ), f"MC weighted Laplacian ({strategy}, {distribution}) did not converge."
+
+
+@mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
+@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
+def test_bilaplacian_functions(config: Dict[str, Any], strategy: str):
+    """Test that the benchmarked Bi-Laplacians produce the correct result.
+
+    Args:
+        config: Configuration dictionary of the test case.
+        strategy: The strategy to test.
+    """
+    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    bilap = bilaplacian(f, x, is_batched)
+    bilap_func = bilaplacian_function(f, x, is_batched, strategy)()
+
+    report_nonclose(bilap, bilap_func)

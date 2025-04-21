@@ -33,6 +33,7 @@ from test.test___init__ import (
     report_nonclose,
     setup_case,
 )
+from test.test_bilaplacian import bilaplacian
 from test.test_laplacian import DISTRIBUTION_IDS, DISTRIBUTIONS, laplacian
 from test.test_weighted_laplacian import weighted_laplacian
 from typing import Any, Callable, Dict, Optional, Tuple, Union
@@ -43,7 +44,7 @@ from torch.fx import Graph, GraphModule, symbolic_trace, wrap
 from torch.nn import Module
 
 from jet import JetTracer, jet, rev_jet
-from jet.bilaplacian import Bilaplacian
+from jet.bilaplacian import Bilaplacian, RandomizedBiLaplacian
 from jet.laplacian import Laplacian, RandomizedLaplacian
 from jet.simplify import (
     RewriteReplicate,
@@ -467,17 +468,42 @@ def test_common_subexpression_elimination():
 
 
 @mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
-def test_simplify_bilaplacian(config: Dict[str, Any]):
+@mark.parametrize(
+    "distribution", [None] + ["normal"], ids=["exact", "distribution=normal"]
+)
+def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str]):
     """Test the simplifications for the Bi-Laplacian module.
 
     Args:
         config: The configuration of the test case.
+        distribution: The distribution from which to draw random vectors.
+            If `None`, the exact Bi-Laplacian is computed. Default: `None`.
     """
+    randomized = distribution is not None
+    num_samples, seed = 42, 1  # only relevant with randomization
     f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
-    bilap_mod = Bilaplacian(f, x, is_batched)
+
+    bilap_mod = (
+        RandomizedBiLaplacian(f, x, is_batched, num_samples, distribution)
+        if randomized
+        else Bilaplacian(f, x, is_batched)
+    )
+    # we have to set the random seed to make sure the same random vectors are used
+    if randomized:
+        manual_seed(seed)
     bilap = bilap_mod(x)
 
+    if not randomized:
+        bilap_true = bilaplacian(f, x, is_batched)
+        assert bilap_true.allclose(bilap)
+        print("Exact Bi-Laplacian in functorch and jet match.")
+
     # simplify the traced module
+
+    # we have to set the random seed because tracing executes the functions that
+    # draw random vectors and stores them as tensor constants
+    if randomized:
+        manual_seed(seed)
     simple_mod = symbolic_trace(bilap_mod)
     simple_mod = simplify(simple_mod, verbose=True, test_x=x)
 
@@ -490,7 +516,12 @@ def test_simplify_bilaplacian(config: Dict[str, Any]):
     ensure_num_sum_vmapped(simple_mod.graph, num_sum_vmapped=0)
 
     # make sure at least one coefficient was collapsed
-    num_vectors = (x.shape[1:] if is_batched else x).numel() ** 2
+
+    # Taylor coefficient was collapsed
+    if randomized:
+        num_vectors = num_samples
+    else:
+        num_vectors = (x.shape[1:] if is_batched else x).numel() ** 2
     collapsed_shape = (num_vectors, *x.shape)
     non_collapsed_shape = x.shape
     ensure_tensor_constants_collapsed(
@@ -502,14 +533,15 @@ def test_simplify_bilaplacian(config: Dict[str, Any]):
     report_nonclose(bilap, bilap_simple, name="Bi-Laplacians")
 
     # check for a bunch of configs that the number of nodes remains the same
-    expected_nodes = {
-        "sin": 82,
-        "sin-sin": 260,
-        "tanh-tanh": 354,
-        "tanh-linear": 133,
-        "two-layer-tanh-mlp": 383,
-        "batched-two-layer-tanh-mlp": 383,
-        "sigmoid-sigmoid": 350,
-    }
-    if config["id"] in expected_nodes:
-        assert len(list(simple_mod.graph.nodes)) == expected_nodes[config["id"]]
+    if not randomized:
+        expected_nodes = {
+            "sin": 82,
+            "sin-sin": 260,
+            "tanh-tanh": 354,
+            "tanh-linear": 133,
+            "two-layer-tanh-mlp": 383,
+            "batched-two-layer-tanh-mlp": 383,
+            "sigmoid-sigmoid": 350,
+        }
+        if config["id"] in expected_nodes:
+            assert len(list(simple_mod.graph.nodes)) == expected_nodes[config["id"]]

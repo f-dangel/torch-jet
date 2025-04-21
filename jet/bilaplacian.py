@@ -120,10 +120,10 @@ class RandomizedBiLaplacian(Bilaplacian):
     """Computes a Monte-Carlo estimate of the Bi-Laplacian using jets.
 
     Attributes:
-        SUPPORTED_DISTRIBUTIONS: Set of supported distributions for the random vectors.
+        SUPPORTED_DISTRIBUTIONS: List of supported distributions for the random vectors.
     """
 
-    SUPPORTED_DISTRIBUTIONS = {"normal"}
+    SUPPORTED_DISTRIBUTIONS = ["normal"]
 
     def __init__(
         self,

@@ -12,7 +12,7 @@ from torch.func import hessian, jacrev, jvp, vmap
 from torch.fx import symbolic_trace
 from torch.nn import Linear, Sequential, Tanh
 
-from jet.bilaplacian import Bilaplacian
+from jet.bilaplacian import Bilaplacian, RandomizedBilaplacian
 from jet.exp.utils import measure_peak_memory, measure_time, to_string
 from jet.laplacian import Laplacian, RandomizedLaplacian
 from jet.simplify import simplify
@@ -435,6 +435,97 @@ def bilaplacian_function(
         raise ValueError(f"Unsupported strategy: {strategy}.")
 
 
+def randomized_bilaplacian_function(
+    f: Callable[[Tensor], Tensor],
+    X: Tensor,
+    is_batched: bool,
+    strategy: str,
+    distribution: str,
+    num_samples: int,
+) -> Callable[[], Tensor]:
+    """Build function to compute the MC-Bi-Laplacian with different strategies.
+
+    Args:
+        f: The function to compute the MC-Bi-Laplacian of. Processes an
+            un-batched tensor.
+        X: The input tensor at which to compute the MC-Bi-Laplacian.
+        is_batched: Whether the input is a batched tensor.
+        strategy: Which strategy will be used by the returned function to compute
+            the MC-Bi-Laplacian. The following strategies are supported:
+            - `'hessian_trace'`: The MC-Bi-Laplacian is computed by vector-
+                tensor products between a random vector and the fourth-order
+                derivative tensor via (3x)forward-over-reverse mode autodiff.
+            - `'jet_naive'`: The MC-Bi-Laplacian is computed using jets.
+                The computation graph is simplified by propagating replication nodes.
+            - `'jet_simplified'`: The MC-Bi-Laplacian is computed using Taylor
+                mode. The computation graph is simplified by propagating replications
+                down, and summations up, the computation graph.
+        distribution: From which distribution to draw the random vectors. Supported
+            values are `'normal'`.
+        num_samples: How many Monte-Carlo samples should be used by the estimation.
+
+    Returns:
+        A function that computes the randomized Bi-Laplacian of the function f at the
+        input tensor X. The function is expected to be called with no arguments.
+
+    Raises:
+        ValueError: If the strategy or distribution are not supported.
+    """
+    if distribution != "normal":
+        raise ValueError(f"Unsupported distribution: {distribution!r}.")
+
+    if strategy == "hessian_trace":
+        # perform the contraction of the vector-Hessian-vector product with einsum to
+        # support functions with non-scalar output
+        sum_dims = X.ndim - 1 if is_batched else X.ndim
+        dims = " ".join([f"d{i}" for i in range(sum_dims)])
+        equation = f"... {dims}, {dims} -> ..."
+
+        def d4f_vvvv(x: Tensor, v: Tensor) -> Tensor:
+            """Multiply the 4th-order derivative tensor of f(x) with v along all axes.
+
+            Args:
+                x: The input to the function at which the tensor-vector product
+                    is computed.
+                v: The vector to compute the tensor-vector product with.
+                    Has same shape as `x`.
+
+            Returns:
+                The vector-derivative tensor product. Has the same shape as f(x).
+            """
+            grad_func = jacrev(f)
+            d2f_v_func = lambda x: jvp(grad_func, (x,), (v,))[1]  # noqa: E731
+            d3f_vv_func = lambda x: jvp(d2f_v_func, (x,), (v,))[1]  # noqa: E731
+            _, d4f_vvv = jvp(d3f_vv_func, (x,), (v,))
+
+            return einsum(d4f_vvv, v, equation)
+
+        # vmap over data points and fix data
+        if is_batched:
+            d4f_vvvv = vmap(d4f_vvvv)
+        d4f_vvvv_fix_X = partial(d4f_vvvv, X)
+
+        # vmap over vectors
+        d4f_VVVV_vmap = vmap(d4f_vvvv_fix_X)
+
+        # draw random vectors
+        sample_func = {"normal": randn}[distribution]
+        V = sample_func(num_samples, *X.shape, device=X.device, dtype=X.dtype)
+
+        return lambda: d4f_VVVV_vmap(V).mean(0) / 3
+
+    if strategy in {"jet_naive", "jet_simplified"}:
+        pull_sum_vmapped = strategy == "jet_simplified"
+        bilap = RandomizedBilaplacian(f, X, is_batched, num_samples, distribution)
+        bilap = simplify(symbolic_trace(bilap), pull_sum_vmapped=pull_sum_vmapped)
+        return lambda: bilap(X)
+
+    else:
+        raise ValueError(
+            f"Unsupported strategy: {strategy}. Supported: {SUPPORTED_STRATEGIES}."
+        )
+
+
 def setup_architecture(architecture: str, dim: int) -> Callable[[Tensor], Tensor]:
     """Set up a neural network architecture based on the specified configuration.
 
@@ -504,8 +595,6 @@ def get_function_and_description(
 
     Raises:
         ValueError: If an unsupported operator is specified.
-        NotImplementedError: If a randomized Bi-Laplacian or weighted Laplacian
-            are requested.
     """
     is_stochastic = distribution is not None and num_samples is not None
     args = (
@@ -519,22 +608,24 @@ def get_function_and_description(
         else f"{strategy}"
     )
 
-    if operator == "laplacian":
-        if not is_stochastic:
-            func = laplacian_function(*args)
-        else:
-            func = randomized_laplacian_function(*args)
+    if operator == "bilaplacian":
+        func = (
+            randomized_bilaplacian_function(*args)
+            if is_stochastic
+            else bilaplacian_function(*args)
+        )
+    elif operator == "laplacian":
+        func = (
+            randomized_laplacian_function(*args)
+            if is_stochastic
+            else laplacian_function(*args)
+        )
     elif operator == "weighted-laplacian":
-        if not is_stochastic:
-            func = weighted_laplacian_function(*args)
-        else:
-            func = randomized_weighted_laplacian_function(*args)
-    elif operator == "bilaplacian":
-        if not is_stochastic:
-            func = bilaplacian_function(*args)
-            description = f"{strategy}"
-        else:
-            raise NotImplementedError("Randomized Bi-Laplacian not implemented.")
+        func = (
+            randomized_weighted_laplacian_function(*args)
+            if is_stochastic
+            else weighted_laplacian_function(*args)
+        )
     else:
         raise ValueError(f"Unsupported operator: {operator}.")
 

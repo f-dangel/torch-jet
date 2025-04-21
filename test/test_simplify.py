@@ -44,7 +44,7 @@ from torch.fx import Graph, GraphModule, symbolic_trace, wrap
 from torch.nn import Module
 
 from jet import JetTracer, jet, rev_jet
-from jet.bilaplacian import Bilaplacian, RandomizedBiLaplacian
+from jet.bilaplacian import Bilaplacian, RandomizedBilaplacian
 from jet.laplacian import Laplacian, RandomizedLaplacian
 from jet.simplify import (
     RewriteReplicate,
@@ -484,7 +484,7 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
     f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
 
     bilap_mod = (
-        RandomizedBiLaplacian(f, x, is_batched, num_samples, distribution)
+        RandomizedBilaplacian(f, x, is_batched, num_samples, distribution)
         if randomized
         else Bilaplacian(f, x, is_batched)
     )

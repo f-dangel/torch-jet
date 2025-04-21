@@ -22,9 +22,9 @@ from torch import Tensor, manual_seed, zeros, zeros_like
 from torch.autograd import grad
 from torch.func import hessian, vmap
 
-from jet.bilaplacian import Bilaplacian, RandomizedBiLaplacian
+from jet.bilaplacian import Bilaplacian, RandomizedBilaplacian
 
-DISTRIBUTIONS = RandomizedBiLaplacian.SUPPORTED_DISTRIBUTIONS
+DISTRIBUTIONS = RandomizedBilaplacian.SUPPORTED_DISTRIBUTIONS
 DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]
 
 
@@ -143,7 +143,7 @@ def test_bilaplacian(config: Dict[str, Any]):
 
 @mark.parametrize("distribution", DISTRIBUTIONS, ids=DISTRIBUTION_IDS)
 @mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
-def test_RandomizedBiLaplacian(
+def test_RandomizedBilaplacian(
     config: Dict[str, Any],
     distribution: str,
     max_num_chunks: int = 500,
@@ -167,7 +167,7 @@ def test_RandomizedBiLaplacian(
     # check convergence of MC estimator
     def sample(idx: int) -> Tensor:
         manual_seed(idx)
-        return RandomizedBiLaplacian(f, x, is_batched, chunk_size, distribution)(x)
+        return RandomizedBilaplacian(f, x, is_batched, chunk_size, distribution)(x)
 
     converged = _check_mc_convergence(
         bilap, sample, chunk_size, max_num_chunks, target_rel_error

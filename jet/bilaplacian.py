@@ -116,7 +116,7 @@ class Bilaplacian(Module):
         return X0, X1, X2, X3, X4, X5, X6
 
 
-class RandomizedBiLaplacian(Bilaplacian):
+class RandomizedBilaplacian(Bilaplacian):
     """Computes a Monte-Carlo estimate of the Bi-Laplacian using jets.
 
     Attributes:

@@ -11,7 +11,7 @@ from torch.linalg import norm
 
 from jet.laplacian import Laplacian, RandomizedLaplacian
 
-DISTRIBUTIONS = ["normal", "rademacher"]
+DISTRIBUTIONS = RandomizedLaplacian.SUPPORTED_DISTRIBUTIONS
 DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]
 
 

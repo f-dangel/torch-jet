@@ -2,7 +2,7 @@
 
 from typing import Callable, Tuple
 
-from torch import Tensor, eye, zeros
+from torch import Tensor, eye, randn, zeros
 from torch.fx import wrap
 from torch.nn import Module
 
@@ -114,3 +114,103 @@ class Bilaplacian(Module):
             X2 = X2.reshape(self.unbatched_dim**2, *self.x_shape)
 
         return X0, X1, X2, X3, X4, X5, X6
+
+
+class RandomizedBiLaplacian(Bilaplacian):
+    """Computes a Monte-Carlo estimate of the Bi-Laplacian using jets.
+
+    Attributes:
+        SUPPORTED_DISTRIBUTIONS: Set of supported distributions for the random vectors.
+    """
+
+    SUPPORTED_DISTRIBUTIONS = {"normal"}
+
+    def __init__(
+        self,
+        f: Callable[[Tensor], Tensor],
+        dummy_x: Tensor,
+        is_batched: bool,
+        num_samples: int,
+        distribution: str,
+    ):
+        """Initialize the Monte-Carlo Bi-Laplacian module.
+
+        Args:
+            f: The function whose Bi-Laplacian is approximated.
+            dummy_x: The input on which the Bi-Laplacian is computed. It is only used to
+                infer meta-data of the function input that `torch.fx` is not capable
+                of determining at the moment.
+            is_batched: Whether the function and its input are batched. In this case,
+                we can use that computations can be carried out independently along
+                the leading dimension of tensors.
+            num_samples: How many Monte-Carlo samples should be used by the estimation.
+                Must be a positive integer.
+            distribution: From which distribution to draw the random vectors.
+                Possible values is `'normal'`.
+
+        Raises:
+            ValueError: If the distribution is not supported or the number of samples
+                is not positive.
+        """
+        super().__init__(f, dummy_x, is_batched)
+
+        if distribution not in self.SUPPORTED_DISTRIBUTIONS:
+            raise ValueError(
+                f"Unsupported distribution {distribution!r}. "
+                f"Supported distributions are {self.SUPPORTED_DISTRIBUTIONS}."
+            )
+        if num_samples <= 0:
+            raise ValueError(f"Number of samples must be positive, got {num_samples}.")
+
+        self.distribution = distribution
+        self.sample_func = {"normal": randn}[distribution]
+        self.num_samples = num_samples
+        # TODO Remove this once the exact Laplacian is implemented with 4-jets
+        # rather than 6-jets
+        self.jet_f = jet(f, 4, vmap=True)
+
+    def forward(self, x: Tensor) -> Tensor:
+        """Compute the MC-Bi-Laplacian of the function at the input tensor.
+
+        Replicates the input tensor, then evaluates the 4-jet of f using
+        random vectors for v1 and zero vectors for v2, v3, v4.
+
+        Args:
+            x: Input tensor. Must have same shape as the dummy input tensor that was
+                passed in the constructor.
+
+        Returns:
+            The randomized Bi-Laplacian.
+        """
+        X0, X1, X2, X3, X4 = self.set_up_taylor_coefficients(x)
+        _, _, _, _, F4 = self.jet_f(X0, X1, X2, X3, X4)
+
+        # need to divide the Laplacian by number of MC samples
+        return sum_vmapped(F4) / (3 * self.num_samples)
+
+    def set_up_taylor_coefficients(
+        self, x: Tensor
+    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+        """Create the Taylor coefficients for the MC-Bi-Laplacian computation.
+
+        Args:
+            x: Input tensor. Must have same shape as the dummy input tensor that was
+                passed in the constructor.
+
+        Returns:
+            The five input tensors to the 4-jet that computes the MC-Bi-Laplacian.
+        """
+        X0 = replicate(x, self.num_samples)
+        X2 = zeros(self.num_samples, *self.x_shape, **self.x_kwargs)
+        X3 = zeros(self.num_samples, *self.x_shape, **self.x_kwargs)
+        X4 = zeros(self.num_samples, *self.x_shape, **self.x_kwargs)
+
+        # sample the random vectors
+        shape = (
+            (self.num_samples, self.batched_dim, *self.x_shape[1:])
+            if self.is_batched
+            else (self.num_samples, *self.x_shape)
+        )
+        X1 = self.sample_func(*shape, **self.x_kwargs)
+
+        return X0, X1, X2, X3, X4

@@ -89,10 +89,10 @@ class RandomizedLaplacian(Laplacian):
     """Computes a Monte-Carlo estimate of the Laplacian using jets.
 
     Attributes:
-        SUPPORTED_DISTRIBUTIONS: Set of supported distributions for the random vectors.
+        SUPPORTED_DISTRIBUTIONS: List of supported distributions for the random vectors.
     """
 
-    SUPPORTED_DISTRIBUTIONS = {"normal", "rademacher"}
+    SUPPORTED_DISTRIBUTIONS = ["normal", "rademacher"]
 
     def __init__(
         self,

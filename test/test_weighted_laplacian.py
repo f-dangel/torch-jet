@@ -7,7 +7,7 @@ from test.test___init__ import (
     report_nonclose,
     setup_case,
 )
-from test.test_laplacian import DISTRIBUTION_IDS, DISTRIBUTIONS, _check_mc_convergence
+from test.test_laplacian import _check_mc_convergence
 from typing import Any, Callable, Dict
 
 from einops import einsum
@@ -20,6 +20,9 @@ from jet.weighted_laplacian import (
     RandomizedWeightedLaplacian,
     WeightedLaplacian,
 )
+
+DISTRIBUTIONS = RandomizedWeightedLaplacian.SUPPORTED_DISTRIBUTIONS
+DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]
 
 
 def weighted_laplacian(

@@ -13,15 +13,19 @@ from test.test___init__ import (
     report_nonclose,
     setup_case,
 )
+from test.test_laplacian import _check_mc_convergence
 from typing import Any, Callable, Dict
 
 from einops import einsum
 from pytest import mark
-from torch import Tensor, zeros, zeros_like
+from torch import Tensor, manual_seed, zeros, zeros_like
 from torch.autograd import grad
 from torch.func import hessian, vmap
 
-from jet.bilaplacian import Bilaplacian
+from jet.bilaplacian import Bilaplacian, RandomizedBilaplacian
+
+DISTRIBUTIONS = RandomizedBilaplacian.SUPPORTED_DISTRIBUTIONS
+DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]
 
 
 def bilaplacian(f: Callable[[Tensor], Tensor], X: Tensor, is_batched: bool) -> Tensor:
@@ -135,3 +139,37 @@ def test_bilaplacian(config: Dict[str, Any]):
     bilap_mod = Bilaplacian(f, x, is_batched)
     bilap_jet = bilap_mod(x)
     report_nonclose(bilap_rev, bilap_jet, name="Naive and jet Bi-Laplacians")
+
+
+@mark.parametrize("distribution", DISTRIBUTIONS, ids=DISTRIBUTION_IDS)
+@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
+def test_RandomizedBilaplacian(
+    config: Dict[str, Any],
+    distribution: str,
+    max_num_chunks: int = 500,
+    chunk_size: int = 4_096,
+    target_rel_error: float = 5e-3,
+):
+    """Test convergence of the Bi-Laplacian's Monte-Carlo estimator.
+
+    Args:
+        config: Configuration dictionary of the test case.
+        distribution: The distribution from which to draw random vectors.
+        max_num_chunks: Maximum number of chunks to accumulate. Default: `500`.
+        chunk_size: Number of samples per chunk. Default: `4_096`.
+        target_rel_error: Target relative error for convergence. Default: `5e-3`.
+    """
+    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+
+    # reference: Using PyTorch
+    bilap = bilaplacian(f, x, is_batched)
+
+    # check convergence of MC estimator
+    def sample(idx: int) -> Tensor:
+        manual_seed(idx)
+        return RandomizedBilaplacian(f, x, is_batched, chunk_size, distribution)(x)
+
+    converged = _check_mc_convergence(
+        bilap, sample, chunk_size, max_num_chunks, target_rel_error
+    )
+    assert converged, f"Monte-Carlo Bi-Laplacian ({distribution}) did not converge."

@@ -438,7 +438,7 @@ def test_simplify_weighted_laplacian(
     if randomized:
         num_vectors = num_samples
     else:
-        num_vectors = x.shape[1:].numel() if is_batched else x.numel()
+        num_vectors = (x.shape[1:] if is_batched else x.shape).numel()
     non_collapsed_shape = (num_vectors, *x.shape)
     collapsed_shape = x.shape
     ensure_tensor_constants_collapsed(fast, collapsed_shape, non_collapsed_shape)

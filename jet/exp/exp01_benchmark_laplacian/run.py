@@ -328,6 +328,22 @@ EXPERIMENTS = [
         # what to plot: x-axis is nums_samples and each strategy is plotted in a curve
         ("num_samples", "strategy"),
     ),
+    # Experiment 7:  Use the largest MLP from dangel2024kroneckerfactored with 5
+    #                in features; vary the batch size, computing the Bi-Laplacian.
+    (  # Experiment name, must be unique
+        "dangel2024kroneckerfactored_bilaplacian_vary_batch_size",
+        # Experiment parameters
+        {
+            "architectures": ["tanh_mlp_768_768_512_512_1"],
+            "dims": [5],
+            "batch_sizes": linspace(1, 256, 10).int().unique().tolist(),
+            "strategies": SUPPORTED_STRATEGIES,
+            "devices": ["cuda"],
+            "operator": "bilaplacian",
+        },
+        # what to plot: x-axis is batch size and each strategy is plotted in a curve
+        ("batch_size", "strategy"),
+    ),
 ]
 
 if __name__ == "__main__":

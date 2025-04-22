@@ -272,8 +272,8 @@ EXPERIMENTS = [
         # what to plot: x-axis is dims and each strategy is plotted in a curve
         ("dim", "strategy"),
     ),
-    # Experiment 4:  Use the largest MLP from dangel2024kroneckerfactored and vary the
-    #                in features, computing the weighted Laplacian.
+    # Experiment 4:  Use the largest MLP from dangel2024kroneckerfactored with 50
+    #                in features; vary the batch size, computing the weighted Laplacian.
     (  # Experiment name, must be unique
         "dangel2024kroneckerfactored_weighted_laplacian_vary_batch_size",
         # Experiment parameters

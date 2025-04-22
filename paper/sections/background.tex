@@ -552,69 +552,103 @@ Regarding the propagation scheme above, we can only leverage the trick for the s
 
 
 \paragraph{Leveraging TTC formula} \todo{Not done}\todo{Need better notation}
-A different technique to reconstruct mixed-partials from jets was already proposed by Griewank et al in 1999 in \cite{griewank_evaluating_1999}. The authors summarized their method in the following formula
+A technique to reconstruct mixed-partials of arbitrary order from jets has already been proposed in 1999 by Griewank et al. in \cite{griewank_evaluating_1999}. The authors summarized their method in the following formula
 \begin{equation}
-    \frac{\partial^{|k|}}{\partial z^k} f(x + Sz)\Big|_{z = 0} = \sum_{\underset{l \in M^p}{|l| = |k|}} \gamma_{kl} f^{|k|}(x; Sl),
+\label{eq:ttc_general}
+    \frac{\partial^{|\vk|}}{\partial \vz^\vk} \vf(\vx + \boldsymbol{S} \vz)\Big|_{\vz = 0} 
+    = 
+    \sum_{\underset{\vl \in M^p}{|\vl| = |\vk|}}
+    \gamma_{\vk \vl}
+    \frac{1}{\vk!}
+    \partial^{|\vk|}\vf \left[
+    \underbrace{
+    \sum_{i=1}^p l_i \vs_i, \dots, \sum_{i=1}^p l_i \vs_i
+    }_k
+    \right].
 \end{equation}
-where $M^p$ is a multi-index set with $p$ entries, $k, l \in M^p$ and $S \in \mathbb{R}^{n \times p}$. The coefficient $\gamma_{kl}$ is given as
-\begin{equation}
-    \gamma_{kl} = \sum_{0 < m \leq k} (-1)^{|k - m|} 
-    \left(
-    \begin{matrix}
-        k \\
-        m
-    \end{matrix}
-    \right) 
-    \left( 
-    \begin{matrix}
-        |k|\frac{m}{|m|} \\
-        l
-    \end{matrix} 
-    \right)  
-    \left( 
-    \frac{|m|}{|k|}
-    \right)^{|k|}
-\end{equation}
-and $f^{|k|}(x; Sl)$ defines the $|k|$-th univariate Taylor coefficient in direction $Sj$ at $x \in \mathbb{R}^n$.
+\cref{sec:appendix_ttc} provides supplementary details to the formula.
+As the authors of the formula already noted, the coefficients $\gamma$ only depend on the problem structure and are independent of the function $\vf$. As we will show, this allows to exploit symmetry that is inherent to differential operators.
 
-For the Biharmonic Operator, the parameters differ between the case $i=j$ and $i \neq j$. When $i = j$ it is $k = (4)$, $p = 1$, $S_{ii} = e_i$. For $i \neq j$, $k = (2, 2)$, $p = 2$ and for every term, $S_{ij} = (e_i \; e_j)$. Thus, 
+
+\cref{eq:ttc_general} can be leveraged to map the Biharmonic Operator to a collection of fourth-order jets:
+
+\begin{equation}
+     \Delta^2 \vf (\vx)
+     =  
+     \sum_{i=1}^D \sum_{j=1}^D
+     \frac{\partial^{4}}{\partial z_1^2 \partial z_2^2} \vf(\vx + \boldsymbol{S}_{ij} \vz)\Big|_{\vz = 0} 
+\end{equation}
+, which are then handled in our proposed propagation framework. 
+
+For the Biharmonic Operator, the parameters differ between cases $i=j$ and $i \neq j$. When $i = j$ it is $\vk = (4)$, $p = 1$, $\boldsymbol{S}_{ii} = \ve_i$. For $i \neq j$, $\vk = (2, 2)$, $p = 2$ and for every term, $\boldsymbol{S}_{ij} = (\ve_i \; \ve_j)$. Thus, 
 \begin{align}
-        \sum_{i=0}^D \sum_{j=0}^D
-        \frac{\partial^|k|}{\partial z^k} f(x + Sz)\Big|_{z = 0} &= 
-        \sum_{i=0}^D 
-        \frac{\partial^4}{\partial z_1^4} f(x + z_1 e_i)\Big|_{z_1 = 0} 
-        +
-        \sum_{i=0}^D 
-        \sum_{\underset{j \neq i}{j=0}}^D 
-        \frac{\partial^4}{\partial z_1^2 \partial z_2^2} f(x + z_1 e_i + z_2 e_j)\Big|_{z = 0}.
+        \sum_{i=1}^D \sum_{j=1}^D
+        \frac{\partial^4}{\partial \vz_1^2 \partial \vz_2^2} 
+        \vf(\vx + \boldsymbol{S}\vz)
+        \Big|_{\vz = \boldsymbol{0}}
+        &=
+        \sum_{i=1}^D 
+        \frac{\partial^4}{\partial \vz_1^4} 
+        \vf(\vx + \vz_1 \ve_i)
+        \Big|_{\vz_1 = 0} \\
+        &+
+        \sum_{i=1}^D 
+        \sum_{\underset{j \neq i}{j=1}}^D 
+        \frac{\partial^4}{\partial \vz_1^2 \partial \vz_2^2} 
+        \vf(\vx + \vz_1 \ve_i + \vz_2 \ve_j)
+        \Big|_{\vz = \boldsymbol{0}}.
 \end{align}
-A close look into the definition of the coefficients $\gamma_{kl}$ shows that there are independent of $i, j$ and they coincide if $l = (4,0)$ or $l=(0, 4)$ as well as if $l = (3, 1)$ or $l = (3,1)$. Leveraging these facts we end up with the following formula
+A close look into the definition of the coefficients $\gamma_{\vk \vl}$ shows that there are independent of $i, j$ and they coincide if $\vl = (4,0)$ or $\vl=(0, 4)$ as well as if $\vl = (3, 1)$ or $\vl = (3,1)$. Leveraging these facts we end up with the following formula
 \begin{align}
-   \sum_{i=1}^D \sum_{j=1}^D \frac{\partial^4}{\partial x_i^2 \partial x_j^2} f(x)
+\label{eq:ttc_biharm}
+   \sum_{i=1}^D \sum_{j=1}^D 
+   \frac{\partial^4}{\partial \vx_i^2 \partial \vx_j^2} 
+   \vf(x)
    &=
     \left(
-   \gamma_{44} + 2 (D - 1) \gamma_{(2,2)(4, 0)}
+   \gamma_{(4)(4)} + 2 (D - 1) \gamma_{(2,2)(4, 0)}
    \right)
-   \sum_{i=0}^D
-    f^4(x; 4 e_i)
+   \sum_{i=1}^D
+    \partial^4 \vf [
+    4\ve_i, 4\ve_i, 4\ve_i, 4\ve_i
+    ]
     \\
     &+ 
     2 \gamma_{(2, 2)(3, 1)} 
-    \sum_{i=0}^D 
-    \sum_{\underset{j \neq i}{j=0}}^D
-    f^{4}(x; 3 e_i+ e_j) 
+    \sum_{i=1}^D 
+    \sum_{\underset{j \neq i}{j=1}}^D
+    \partial^4 \vf[
+    3 \ve_i+ \ve_j, 3 \ve_i+ \ve_j, 3 \ve_i+ \ve_j, 3 \ve_i+ \ve_j
+    ]
     \\
     &+ 
     \gamma_{(2, 2)(2, 2)}
-     \sum_{i=0}^D 
-    \sum_{\underset{j \neq i}{j=0}}^D
-    f^{4}(x; 2 e_i+ 2 e_j).
+    \sum_{i=1}^D 
+    \sum_{\underset{j \neq i}{j=1}}^D
+    \partial^4 \vf [
+    2 \ve_i+ 2 \ve_j, 2 \ve_i+ 2 \ve_j, 2 \ve_i+ 2 \ve_j, 2 \ve_i+ 2 \ve_j
+    ].
 \end{align}
-@Tim: Can you write down the values for the $\gamma$s?
-Then @Felix can implement and benchmark this approach. 
+
+\todo{Then @Felix can implement and benchmark this approach. 
 This is probably better than the current approach which uses 6-jets.
 And it uses 4-jets, which are also used by the randomized variant.
-We should see a stronger performance impact when collapsing the highest-order coefficients, compared to the 6-jet approach.
+We should see a stronger performance impact when collapsing the highest-order coefficients, compared to the 6-jet approach.}
+
+The coefficients are given in \cref{tab:ttc_biharm_coeffs}.
+
+\begin{table}[]
+    \centering
+    \begin{tabular}{|c|c|c|c|}
+        \toprule
+        $\gamma_{(4)(4)}$ & $\gamma_{(2, 2) (4, 0)}$ & $\gamma_{(2, 2) (3, 1)}$ & $\gamma_{(2, 2) (2, 2)}$ \\
+        \midrule
+        $\frac{3}{32}$ & $\frac{13}{192}$ & $\frac{5}{8}$ & -$\frac{1}{3}$ \\
+        \bottomrule
+    \end{tabular}
+    \caption{Coefficients to compute the Biharmonic Operator by \cref{eq:ttc_biharm}.}
+    \label{tab:ttc_biharm_coeffs}
+\end{table}
 
 In this case, we have to propagate $D + 2 D(D-1)$ fourth-order jets. All these fourth-order jets rely on the same derivative evaluation point $\vx_0$ and the summation can be pulled inside the highest coefficients in the propagation scheme, like for the Laplacian. From this we conclude that this propagation scheme has the effort of propagating $1 + 3D + 1 + 2 \left(1 + 3 \cdot D(D-1) + 1 \right) = 6D^2 - 3D + 6$ vectors. Comparing the memory complexity with the memory complexity of the previous result, it can be seen that there is an overhead. However, all jets can be computed in parallel, which provides benefits for the run-time complexity.
 

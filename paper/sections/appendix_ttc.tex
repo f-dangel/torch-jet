@@ -1,0 +1,27 @@
+
+
+where $M^p$ is a multi-index set with $p$ entries, $\vk, \vl \in M^p$ and $\boldsymbol{S} = (\vs_1 \dots \vs_p) \in \mathbb{R}^{n \times p}$. The coefficient $\gamma_{\vk \vl}$ is given as \todo{explain set of indices for the summation}
+\begin{equation}
+    \gamma_{\vk \vl} = \sum_{0 < \vm \leq \vk} (-1)^{|\vk - \vm|} 
+    \left(
+    \begin{matrix}
+        \vk \\
+        \vm
+    \end{matrix}
+    \right) 
+    \left( 
+    \begin{matrix}
+        |\vk|\frac{\vm}{|\vm|} \\
+        \vl
+    \end{matrix} 
+    \right)  
+    \left( 
+    \frac{|\vm|}{|\vk|}
+    \right)^{|\vk|}.
+\end{equation}
+As in the paper \cite{griewank_evaluating_1999}, $\left( 
+    \begin{matrix}
+        \alpha \\
+        l
+    \end{matrix}
+    \right)$ is defined as the generalized binomial coefficient $\prod_{i=0}^{l-1} \frac{\alpha - i}{l - i}$.   

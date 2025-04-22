@@ -290,7 +290,7 @@ def randomized_weighted_laplacian_function(
         strategy: Which strategy will be used by the returned function to compute
             the weighted MC-Laplacian. The following strategies are supported:
             - `'hessian_trace'`: The weighted MC-Laplacian is computed by vector-
-                Hesian-vector products with random vectors via forward-over-reverse
+                Hessian-vector products with random vectors via forward-over-reverse
                 mode autodiff.
             - `'jet_naive'`: The weighted MC-Laplacian is computed using jets.
                 The computation graph is simplified by propagating replication nodes.

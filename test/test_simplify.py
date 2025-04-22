@@ -61,6 +61,7 @@ from jet.utils import (
 )
 from jet.weighted_laplacian import (
     C_func_diagonal_increments,
+    RandomizedWeightedLaplacian,
     WeightedLaplacian,
 )
 
@@ -382,7 +383,12 @@ def test_simplify_laplacian(config: Dict[str, Any], distribution: Optional[str])
 
 
 @mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
-def test_simplify_weighted_laplacian(config: Dict[str, Any]):
+@mark.parametrize(
+    "distribution", [None] + DISTRIBUTIONS, ids=["exact"] + DISTRIBUTION_IDS
+)
+def test_simplify_weighted_laplacian(
+    config: Dict[str, Any], distribution: Optional[str]
+):
     """Test the simplification of a weighted Laplacian's compute graph.
 
     Replicate nodes should be propagated down the graph.
@@ -390,18 +396,39 @@ def test_simplify_weighted_laplacian(config: Dict[str, Any]):
 
     Args:
         config: The configuration of the test case.
+        distribution: The distribution from which to draw random vectors.
+            If `None`, the exact Laplacian is computed. Default: `None`.
     """
+    randomized = distribution is not None
+    num_samples, seed = 42, 1  # only relevant with randomization
     f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    weighting = "diagonal_increments"
 
-    C_func = partial(C_func_diagonal_increments, is_batched=is_batched)
-    mod = WeightedLaplacian(f, x, is_batched, "diagonal_increments")
+    mod = (
+        RandomizedWeightedLaplacian(
+            f, x, is_batched, num_samples, distribution, weighting
+        )
+        if randomized
+        else WeightedLaplacian(f, x, is_batched, weighting)
+    )
 
+    # we have to set the random seed to make sure the same random vectors are used
+    if randomized:
+        manual_seed(seed)
     mod_out = mod(x)
-    lap = weighted_laplacian(f, x, is_batched, C_func)
-    assert lap.allclose(mod_out[2])
-    print("Exact weighted Laplacian in functorch and jet match.")
+
+    if not randomized:
+        C_func = partial(C_func_diagonal_increments, is_batched=is_batched)
+        H_dot_C = weighted_laplacian(f, x, is_batched, C_func)
+        assert H_dot_C.allclose(mod_out[2])
+        print("Exact weighted Laplacian in functorch and jet match.")
 
     # simplify the traced module
+
+    # we have to set the random seed because tracing executes the functions that
+    # draw random vectors and stores them as tensor constants
+    if randomized:
+        manual_seed(seed)
     fast = symbolic_trace(mod)
     fast = simplify(fast, verbose=True)
 
@@ -422,7 +449,10 @@ def test_simplify_weighted_laplacian(config: Dict[str, Any]):
 
     # make sure the module's tensor constant corresponding to the highest
     # Taylor coefficient was collapsed
-    num_vectors = x.shape[1:].numel() if is_batched else x.numel()
+    if randomized:
+        num_vectors = num_samples
+    else:
+        num_vectors = (x.shape[1:] if is_batched else x.shape).numel()
     non_collapsed_shape = (num_vectors, *x.shape)
     collapsed_shape = x.shape
     ensure_tensor_constants_collapsed(fast, collapsed_shape, non_collapsed_shape)
@@ -490,7 +520,7 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
     Args:
         config: The configuration of the test case.
         distribution: The distribution from which to draw random vectors.
-            If `None`, the exact Bi-Laplacian is computed. Default: `None`.
+            If `None`, the exact Bi-Laplacian is computed.
     """
     randomized = distribution is not None
     num_samples, seed = 42, 1  # only relevant with randomization

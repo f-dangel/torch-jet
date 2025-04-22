@@ -264,7 +264,7 @@ EXPERIMENTS = [
         {
             "architectures": ["tanh_mlp_768_768_512_512_1"],
             "dims": linspace(1, 10, 10).int().unique().tolist(),
-            "batch_sizes": [64],
+            "batch_sizes": [16],
             "strategies": SUPPORTED_STRATEGIES,
             "devices": ["cuda"],
             "operator": "bilaplacian",

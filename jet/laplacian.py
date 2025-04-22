@@ -139,7 +139,7 @@ class RandomizedLaplacian(Laplacian):
         """Compute the MC-Laplacian of the function at the input tensor.
 
         Replicates the input tensor, then evaluates the 2-jet of f using
-        canonical basis vectors for v1 and zero vectors for v2.
+        random vectors for v1 and zero vectors for v2.
 
         Args:
             x: Input tensor. Must have same shape as the dummy input tensor that was

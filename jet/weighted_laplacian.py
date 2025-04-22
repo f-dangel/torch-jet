@@ -2,11 +2,11 @@
 
 from typing import Callable, Tuple
 
-from torch import Tensor, arange, zeros
+from torch import Tensor, arange, cat, einsum, randn, zeros
 from torch.fx import wrap
 
 from jet.laplacian import Laplacian
-from jet.utils import replicate, sum_vmapped
+from jet.utils import rademacher, replicate, sum_vmapped
 
 # tell `torch.fx` to trace `replicate` as one node (required for simplification)
 wrap(replicate)
@@ -27,7 +27,7 @@ class WeightedLaplacian(Laplacian):
         f: Callable[[Tensor], Tensor],
         dummy_x: Tensor,
         is_batched: bool,
-        weighting: str = "diagonal_increments",
+        weighting: str,
     ):
         """Initialize the WeightedLaplacian module.
 
@@ -97,6 +97,144 @@ class WeightedLaplacian(Laplacian):
             S = S.unsqueeze(0).expand(self.x_shape[0], *unbatched, rank_C)
 
         return S
+
+
+class RandomizedWeightedLaplacian(WeightedLaplacian):
+    """Computes a Monte-Carlo estimate of the weighted Laplacian using jets.
+
+    Given a function f, approximates < ∂²f(x), C(x) > where C(x) is the PSD coefficient
+    tensor for the dot product which may depend on x. C is supplied by a function
+    apply_S_func that applies a matrix S(x) such that C(x) = S(x) @ S(x).T to another
+    matrix V.
+
+    Attributes:
+        SUPPORTED_DISTRIBUTIONS: Set of supported distributions for the random vectors.
+    """
+
+    SUPPORTED_DISTRIBUTIONS = {"normal", "rademacher"}
+
+    def __init__(
+        self,
+        f: Callable[[Tensor], Tensor],
+        dummy_x: Tensor,
+        is_batched: bool,
+        num_samples: int,
+        distribution: str,
+        weighting: str,
+    ):
+        """Initialize the RandomizedWeightedLaplacian module.
+
+        Args:
+            f: The function whose Laplacian is approximated.
+            dummy_x: The input on which the Laplacian is approximated. It is only used
+                to infer meta-data of the function input that `torch.fx` is not capable
+                of determining at the moment.
+            is_batched: Whether the function and its input are batched. In this case,
+                we can use that computations can be carried out independently along
+                the leading dimension of tensors.
+            num_samples: How many Monte-Carlo samples should be used by the estimation.
+                Must be a positive integer.
+            distribution: From which distribution to draw the random vectors.
+                Possible values are `'normal'` or `'rademacher'`.
+            weighting: The type of weighting to use. Currently only
+                "diagonal_increments" is supported.
+
+        Raises:
+            ValueError: If the distribution is unsupported, or the number of samples is
+                non-positive.
+        """
+        super().__init__(f, dummy_x, is_batched, weighting)
+
+        if distribution not in self.SUPPORTED_DISTRIBUTIONS:
+            raise ValueError(
+                f"Unsupported distribution {distribution!r}. "
+                f"Supported distributions are {self.SUPPORTED_DISTRIBUTIONS}."
+            )
+        if num_samples <= 0:
+            raise ValueError(f"Number of samples must be positive, got {num_samples}.")
+
+        self.distribution = distribution
+        self.sample_func = {"normal": randn, "rademacher": rademacher}[distribution]
+        self.num_samples = num_samples
+
+        self.apply_S_func = {
+            "diagonal_increments": self.apply_S_func_diagonal_increments
+        }[weighting]
+        self.rank_C = {"diagonal_increments": self.unbatched_dim}[weighting]
+
+    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+        """Compute the MC weighted Laplacian of the function at the input tensor.
+
+        Replicates the input tensor, then evaluates the 2-jet of f using
+        random vectors for v1 and zero vectors for v2.
+
+        Args:
+            x: Input tensor. Must have same shape as the dummy input tensor that was
+                passed in the constructor.
+
+        Returns:
+            Tuple containing the replicated function value, the randomized Jacobian,
+            and the randomized Laplacian.
+        """
+        F0, F1, F2 = super().forward(x)
+
+        # need to divide the weighted Laplacian by number of MC samples
+        return F0, F1, F2 / self.num_samples
+
+    def set_up_taylor_coefficients(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+        """Create the Taylor coefficients for the weighted MC-Laplacian computation.
+
+        Args:
+            x: Input tensor. Must have same shape as the dummy input tensor that was
+                passed in the constructor.
+
+        Returns:
+            The three input tensors to the 2-jet that computes the weighted
+            MC-Laplacian.
+        """
+        X0 = replicate(x, self.num_samples)
+        X2 = zeros(self.num_samples, *self.x_shape, **self.x_kwargs)
+
+        # sample the random vectors
+        shape = (
+            (self.num_samples, self.batched_dim, self.rank_C)
+            if self.is_batched
+            else (self.num_samples, self.rank_C)
+        )
+        V = self.sample_func(*shape, **self.x_kwargs)
+        X1 = self.apply_S_func(x, V)
+
+        return X0, X1, X2
+
+    def apply_S_func_diagonal_increments(self, x: Tensor, V: Tensor) -> Tensor:
+        """Apply a synthetic coefficient factor S(x) for weighting the Laplacian to V.
+
+        The factor S(x) relates to the coefficient tensor C(x) via C(x) = S(x) @ S(x).T.
+
+        Args:
+            x: Argument at which the weighted Laplacian is evaluated.
+            V: The matrix onto which S(x) is applied. Has shape
+                `(K, batch_size, rank_C)` where `K` is the number of columns if
+                `is_batched` is True, otherwise `(K, rank_C)`.
+
+        Returns:
+            The coefficient factor S(x) applied to V. Has shape
+            `(K, *x.shape).
+        """
+        S = (arange(self.rank_C, **self.x_kwargs) + 1).sqrt()
+        SV = einsum("c,...c->...c", S, V)
+
+        # if rank_C < D, we have to add zero padding to satisfy the output dimension
+        D = (self.x_shape[1:] if self.is_batched else self.x_shape).numel()
+        padding_shape = (
+            (self.num_samples, self.x_shape[0], D - self.rank_C)
+            if self.is_batched
+            else (self.num_samples, D - self.rank_C)
+        )
+        P = zeros(*padding_shape, **self.x_kwargs)
+        SV_padded = cat([SV, P], dim=-1)
+
+        return SV_padded.reshape(self.num_samples, *self.x_shape)
 
 
 # Definitions of synthetic coefficient functions for illustration purposes

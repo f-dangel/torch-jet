@@ -17,7 +17,11 @@ from jet.exp.utils import measure_peak_memory, measure_time, to_string
 from jet.laplacian import Laplacian, RandomizedLaplacian
 from jet.simplify import simplify
 from jet.utils import rademacher
-from jet.weighted_laplacian import C_func_diagonal_increments, WeightedLaplacian
+from jet.weighted_laplacian import (
+    C_func_diagonal_increments,
+    RandomizedWeightedLaplacian,
+    WeightedLaplacian,
+)
 
 HERE = path.abspath(__file__)
 HEREDIR = path.dirname(HERE)
@@ -254,15 +258,113 @@ def weighted_laplacian_function(
         return lambda: weighted_laplacian(X, C)
 
     elif strategy in {"jet_naive", "jet_simplified"}:
-        weighted_laplacian = WeightedLaplacian(
-            f, X, is_batched, weighting="diagonal_increments"
-        )
+        weighted_laplacian = WeightedLaplacian(f, X, is_batched, "diagonal_increments")
         pull_sum_vmapped = strategy == "jet_simplified"
         weighted_laplacian = simplify(
             symbolic_trace(weighted_laplacian), pull_sum_vmapped=pull_sum_vmapped
         )
 
         return lambda: weighted_laplacian(X)[2]
+
+    else:
+        raise ValueError(
+            f"Unsupported strategy: {strategy}. Supported: {SUPPORTED_STRATEGIES}."
+        )
+
+
+def randomized_weighted_laplacian_function(
+    f: Callable[[Tensor], Tensor],
+    X: Tensor,
+    is_batched: bool,
+    strategy: str,
+    distribution: str,
+    num_samples: int,
+) -> Callable[[], Tensor]:
+    """Build function to compute the weighted MC-Laplacian with different strategies.
+
+    Args:
+        f: The function to compute the weighted MC-Laplacian of. Processes an
+            un-batched tensor.
+        X: The input tensor at which to compute the weighted MC-Laplacian.
+        is_batched: Whether the input is a batched tensor.
+        strategy: Which strategy will be used by the returned function to compute
+            the weighted MC-Laplacian. The following strategies are supported:
+            - `'hessian_trace'`: The weighted MC-Laplacian is computed by vector-
+                Hessian-vector products with random vectors via forward-over-reverse
+                mode autodiff.
+            - `'jet_naive'`: The weighted MC-Laplacian is computed using jets.
+                The computation graph is simplified by propagating replication nodes.
+            - `'jet_simplified'`: The weighted MC-Laplacian is computed using Taylor
+                mode. The computation graph is simplified by propagating replications
+                down, and summations up, the computation graph.
+        distribution: From which distribution to draw the random vectors. Supported
+            values are `'normal'` and `'rademacher'`.
+        num_samples: How many Monte-Carlo samples should be used by the estimation.
+
+    Returns:
+        A function that computes the randomized weighted Laplacian of the function f
+        at the input tensor X. The function is expected to be called with no arguments.
+
+    Raises:
+        ValueError: If the strategy or distribution are not supported.
+    """
+    if distribution not in {"normal", "rademacher"}:
+        raise ValueError(f"Unsupported distribution: {distribution!r}.")
+
+    weighting = "diagonal_increments"
+    H_dot_C = RandomizedWeightedLaplacian(
+        f, X, is_batched, num_samples, distribution, weighting
+    )
+
+    if strategy == "hessian_trace":
+
+        # perform the contraction of the vector-Hessian-vector product with einsum to
+        # support functions with non-scalar output
+        sum_dims = X.ndim - 1 if is_batched else X.ndim
+        dims = " ".join([f"d{i}" for i in range(sum_dims)])
+        equation = f"... {dims}, {dims} -> ..."
+
+        def vhv(x: Tensor, v: Tensor) -> Tensor:
+            """Compute vector-Hessian-vector products of f evaluated at x.
+
+            Args:
+                x: The input to the function at which the vector-Hessian-vector product
+                    is computed.
+                v: The vector to compute the vector-Hessian-vector product with.
+                    Has same shape as `x`.
+
+            Returns:
+                The vector-Hessian-vector product. Has the same shape as f(x).
+            """
+            grad_func = jacrev(f)
+            _, hvp = jvp(grad_func, (x,), (v,))
+
+            return einsum(hvp, v, equation)
+
+        # vmap over data points and fix data
+        if is_batched:
+            vhv = vmap(vhv)
+        vhv_fix_X = partial(vhv, X)
+
+        # vmap over VHVP
+        VhV_vmap = vmap(vhv_fix_X)
+
+        sample_func = {"normal": randn, "rademacher": rademacher}[distribution]
+        rank_C = {
+            "diagonal_increments": (X.shape[1:] if is_batched else X.shape).numel()
+        }[weighting]
+        sample_shape = (
+            (num_samples, X.shape[0], rank_C) if is_batched else (num_samples, rank_C)
+        )
+        V = sample_func(*sample_shape, device=X.device, dtype=X.dtype)
+        SV = H_dot_C.apply_S_func(X, V)
+
+        return lambda: VhV_vmap(SV).mean(0)
+
+    if strategy in {"jet_naive", "jet_simplified"}:
+        pull_sum_vmapped = strategy == "jet_simplified"
+        H_dot_C = simplify(symbolic_trace(H_dot_C), pull_sum_vmapped=pull_sum_vmapped)
+        return lambda: H_dot_C(X)[2]
 
     else:
         raise ValueError(
@@ -405,27 +507,31 @@ def get_function_and_description(
         NotImplementedError: If a randomized Bi-Laplacian or weighted Laplacian
             are requested.
     """
+    is_stochastic = distribution is not None and num_samples is not None
+    args = (
+        (net, X, is_batched, strategy, distribution, num_samples)
+        if is_stochastic
+        else (net, X, is_batched, strategy)
+    )
+    description = (
+        f"{strategy}, distribution={distribution}, " + f"num_samples={num_samples}"
+        if is_stochastic
+        else f"{strategy}"
+    )
+
     if operator == "laplacian":
-        if distribution is None and num_samples is None:
-            func = laplacian_function(net, X, is_batched, strategy)
-            description = f"{strategy}"
+        if not is_stochastic:
+            func = laplacian_function(*args)
         else:
-            func = randomized_laplacian_function(
-                net, X, is_batched, strategy, distribution, num_samples
-            )
-            description = (
-                f"{strategy}, distribution={distribution}, "
-                + f"num_samples={num_samples}"
-            )
+            func = randomized_laplacian_function(*args)
     elif operator == "weighted-laplacian":
-        if distribution is None and num_samples is None:
-            func = weighted_laplacian_function(net, X, is_batched, strategy)
-            description = f"{strategy}"
+        if not is_stochastic:
+            func = weighted_laplacian_function(*args)
         else:
-            raise NotImplementedError
+            func = randomized_weighted_laplacian_function(*args)
     elif operator == "bilaplacian":
-        if distribution is None and num_samples is None:
-            func = bilaplacian_function(net, X, is_batched, strategy)
+        if not is_stochastic:
+            func = bilaplacian_function(*args)
             description = f"{strategy}"
         else:
             raise NotImplementedError("Randomized Bi-Laplacian not implemented.")

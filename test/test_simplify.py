@@ -151,6 +151,7 @@ def ensure_tensor_constants_collapsed(
     mod: GraphModule,
     collapsed_shape: Union[Size, Tuple[int, ...]],
     non_collapsed_shape: Union[Size, Tuple[int, ...]],
+    other_shapes: Optional[list[Union[Size, tuple[int, ...]]]] = None,
     at_least: int = 1,
     strict: bool = True,
 ):
@@ -160,15 +161,25 @@ def ensure_tensor_constants_collapsed(
         mod: The module to check.
         collapsed_shape: The shape of a collapsed tensor constant.
         non_collapsed_shape: The shape of a non-collapsed tensor constant.
+        other_shapes: Other admissible shapes that will not lead to errors if
+            encountered. Default is `None`, i.e. no other shapes are expected.
         at_least: The smallest number of tensor constants that should be detected as
             collapsed for the check to pass. Default: `1`.
         strict: Whether to raise an error if the number of collapsed tensor
             constants is not exactly `at_least`. Default: `False`.
 
     Raises:
-        ValueError: If the number of collapsed tensor constants is not as expected or
-            if there is a tensor constant with an unexpected shape.
+        ValueError: If the number of collapsed tensor constants is not as expected,
+            if there is a tensor constant with an unexpected shape, or if there is
+            an overlap between the supplied `other_shapes` and the (non-)collapsed ones.
     """
+    other_shapes = [] if other_shapes is None else other_shapes
+    if any(s in [collapsed_shape, non_collapsed_shape] for s in other_shapes):
+        raise ValueError(
+            f"Shape in other_shapes ({other_shapes}) matches either collapsed"
+            + f" ({collapsed_shape}) or non-collapsed ({non_collapsed_shape}) shape."
+        )
+
     constants = [
         n.target
         for n in mod.graph.nodes
@@ -178,12 +189,14 @@ def ensure_tensor_constants_collapsed(
     num_collapsed = 0
     for c in constants:
         c_tensor = getattr(mod, c)
-        if c_tensor.shape == collapsed_shape:
+        shape = c_tensor.shape
+        if shape == collapsed_shape:
             num_collapsed += 1
-        elif c_tensor.shape != non_collapsed_shape:
+        elif shape != non_collapsed_shape and shape not in other_shapes:
             raise ValueError(
-                f"Unexpected shape for {c}: {c_tensor.shape}. "
+                f"Unexpected shape for {c}: {shape}. "
                 + f"Should be {collapsed_shape} or {non_collapsed_shape}."
+                + f" Other accepted shapes are {other_shapes}."
             )
 
     if num_collapsed < at_least or strict and num_collapsed != at_least:
@@ -546,17 +559,42 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
     ensure_num_sum_vmapped(simple_mod.graph, num_sum_vmapped=0)
 
     # make sure at least one coefficient was collapsed
+    D = (x.shape[1:] if is_batched else x).numel()
 
     # Taylor coefficient was collapsed
     if randomized:
         num_vectors = num_samples
+        collapsed_shape = x.shape
+        non_collapsed_shape = (num_vectors, *x.shape)
+        ensure_tensor_constants_collapsed(
+            simple_mod, collapsed_shape, non_collapsed_shape, strict=False
+        )
+
     else:
-        num_vectors = (x.shape[1:] if is_batched else x).numel() ** 2
-    collapsed_shape = (num_vectors, *x.shape)
-    non_collapsed_shape = x.shape
-    ensure_tensor_constants_collapsed(
-        simple_mod, collapsed_shape, non_collapsed_shape, strict=False
-    )
+        # we need to run two checks because we use D-dimensional 4-jets and
+        # D*(D-1)-dimensional 4-jets
+        num_vectors1 = D
+        non_collapsed_shape1 = (num_vectors1, *x.shape)
+
+        num_vectors2 = D * (D - 1)
+        non_collapsed_shape2 = (num_vectors2, *x.shape)
+
+        collapsed_shape = x.shape
+
+        ensure_tensor_constants_collapsed(
+            simple_mod,
+            collapsed_shape,
+            non_collapsed_shape1,
+            other_shapes=[non_collapsed_shape2] if num_vectors1 != num_vectors2 else [],
+            strict=False,
+        )
+        ensure_tensor_constants_collapsed(
+            simple_mod,
+            collapsed_shape,
+            non_collapsed_shape2,
+            other_shapes=[non_collapsed_shape1] if num_vectors1 != num_vectors2 else [],
+            strict=False,
+        )
 
     # make sure the simplified module still behaves the same
     bilap_simple = simple_mod(x)
@@ -565,13 +603,15 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
     # check for a bunch of configs that the number of nodes remains the same
     if not randomized:
         expected_nodes = {
-            "sin": 82,
-            "sin-sin": 260,
-            "tanh-tanh": 354,
-            "tanh-linear": 133,
-            "two-layer-tanh-mlp": 383,
-            "batched-two-layer-tanh-mlp": 383,
-            "sigmoid-sigmoid": 350,
+            # NOTE The Bi-Laplacian for a 1d function does not evaluate off-diagonal
+            # terms (there are none), hence the number of ops varies
+            "sin": 23 if D == 1 else 59,
+            "sin-sin": 129,
+            "tanh-tanh": 175,
+            "tanh-linear": 86,
+            "two-layer-tanh-mlp": 204,
+            "batched-two-layer-tanh-mlp": 204,
+            "sigmoid-sigmoid": 171,
         }
         if config["id"] in expected_nodes:
             assert len(list(simple_mod.graph.nodes)) == expected_nodes[config["id"]]

@@ -305,7 +305,7 @@ EXPERIMENTS = [
             "nums_samples": linspace(1, 50, 10).int().unique().tolist(),
         },
         # what to plot: x-axis is nums_samples and each strategy is plotted in a curve
-        ("nums_samples", "strategy"),
+        ("num_samples", "strategy"),
     ),
 ]
 

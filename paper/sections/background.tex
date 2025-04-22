@@ -434,6 +434,7 @@ This, of course, limits us to coefficient tensors that can be written as $\tC = 
 The Biharmonic Operator is a fourth-order differential operator that is interesting for some practitioners.
 It is defined as
 \begin{align}
+\label{eq:biharm}
     \Delta^2 f(\vx)
     \coloneqq
     \sum_{i=1}^D \sum_{j=1}^D
@@ -567,43 +568,33 @@ A technique to reconstruct mixed-partials of arbitrary order from jets has alrea
     \right].
 \end{equation}
 \cref{sec:appendix_ttc} provides supplementary details to the formula.
-As the authors of the formula already noted, the coefficients $\gamma$ only depend on the problem structure and are independent of the function $\vf$. As we will show, this allows to exploit symmetry that is inherent to differential operators.
+As the authors of the formula already noted, the coefficients $\gamma$ only depend on the problem structure and are independent of the function $\vf$. As we will show, this allows to exploit symmetry that is often inherent to differential operators.
 
+To apply \cref{eq:ttc_general} to the Biharmonic Operator \cref{eq:biharm}, parameters $\vk, p$, auxiliary variables $\vz$ and matrices $\boldsymbol{S}_{ij}$ has to be selected for all mixed-partial derivatives. For the case where all four derivative directions coincides, i.e.,$i = j$, the parameters are given by $\vk = (4)$, $p = 1$, the auxiliary variable $\vz = (z_1)$ and $\boldsymbol{S}_{ii} = \ve_i$. If $i \neq j$ we have $\vk = (2, 2)$, $p = 2$, $\vz = (z_1, z_2)$ and $\boldsymbol{S}_{ij} = (\ve_i \; \ve_j)$. 
 
-\cref{eq:ttc_general} can be leveraged to map the Biharmonic Operator to a collection of fourth-order jets:
-
-\begin{equation}
-     \Delta^2 \vf (\vx)
-     =  
-     \sum_{i=1}^D \sum_{j=1}^D
-     \frac{\partial^{4}}{\partial z_1^2 \partial z_2^2} \vf(\vx + \boldsymbol{S}_{ij} \vz)\Big|_{\vz = 0} 
-\end{equation}
-, which are then handled in our proposed propagation framework. 
-
-For the Biharmonic Operator, the parameters differ between cases $i=j$ and $i \neq j$. When $i = j$ it is $\vk = (4)$, $p = 1$, $\boldsymbol{S}_{ii} = \ve_i$. For $i \neq j$, $\vk = (2, 2)$, $p = 2$ and for every term, $\boldsymbol{S}_{ij} = (\ve_i \; \ve_j)$. Thus, 
+Having defined the parameters, we utilize \cref{eq:ttc_general} to map the Biharmonic Operator \cref{eq:biharm} of a function $\vf$ to a collection of fourth-order jets: 
 \begin{align}
-        \sum_{i=1}^D \sum_{j=1}^D
-        \frac{\partial^4}{\partial \vz_1^2 \partial \vz_2^2} 
-        \vf(\vx + \boldsymbol{S}\vz)
-        \Big|_{\vz = \boldsymbol{0}}
-        &=
-        \sum_{i=1}^D 
-        \frac{\partial^4}{\partial \vz_1^4} 
-        \vf(\vx + \vz_1 \ve_i)
-        \Big|_{\vz_1 = 0} \\
-        &+
-        \sum_{i=1}^D 
-        \sum_{\underset{j \neq i}{j=1}}^D 
-        \frac{\partial^4}{\partial \vz_1^2 \partial \vz_2^2} 
-        \vf(\vx + \vz_1 \ve_i + \vz_2 \ve_j)
-        \Big|_{\vz = \boldsymbol{0}}.
+    \Delta^2 \vf(\vx)
+    &=
+    \sum_{i=1}^D
+    \gamma_{(4)(4)}
+    \frac{1}{4!}
+    \partial^{4}\vf \left[
+    4 \ve_i, 4 \ve_i, 4 \ve_i, 4 \ve_i 
+    \right]
+    \\
+    &+
+    \sum_{i=1}^D \sum_{\underset{j \neq i}{j=1}}^D
+    \sum_{\underset{\vl \in M^2}{|\vl| = 4}}
+    \gamma_{(2, 2) \vl}
+    \frac{1}{(2, 2)!}
+    \partial^{4} \vf \left[
+    \boldsymbol{S}_{ij} \vl, \boldsymbol{S}_{ij} \vl, \boldsymbol{S}_{ij} \vl, \boldsymbol{S}_{ij} \vl
+    \right].
 \end{align}
-A close look into the definition of the coefficients $\gamma_{\vk \vl}$ shows that there are independent of $i, j$ and they coincide if $\vl = (4,0)$ or $\vl=(0, 4)$ as well as if $\vl = (3, 1)$ or $\vl = (3,1)$. Leveraging these facts we end up with the following formula
+As mentioned before, the coefficients $\gamma_{\vk \vl}$ capture the symmetric structure of the differential operator. A close look into the definition \cref{eq:ttc_coeff} shows the equality of $\vl = (4,0)$ with $\vl=(0, 4)$ and $\vl = (3, 1)$ with $\vl = (3, 1)$. Exploiting those symmetries the formula boils down to 
 \begin{align}
-\label{eq:ttc_biharm}
-   \sum_{i=1}^D \sum_{j=1}^D 
-   \frac{\partial^4}{\partial \vx_i^2 \partial \vx_j^2} 
-   \vf(x)
+   \Delta^2 \vf(\vx)
    &=
     \left(
    \gamma_{(4)(4)} + 2 (D - 1) \gamma_{(2,2)(4, 0)}
@@ -613,7 +604,7 @@ A close look into the definition of the coefficients $\gamma_{\vk \vl}$ shows th
     4\ve_i, 4\ve_i, 4\ve_i, 4\ve_i
     ]
     \\
-    &+ 
+    &+
     2 \gamma_{(2, 2)(3, 1)} 
     \sum_{i=1}^D 
     \sum_{\underset{j \neq i}{j=1}}^D
@@ -635,7 +626,7 @@ This is probably better than the current approach which uses 6-jets.
 And it uses 4-jets, which are also used by the randomized variant.
 We should see a stronger performance impact when collapsing the highest-order coefficients, compared to the 6-jet approach.}
 
-The coefficients are given in \cref{tab:ttc_biharm_coeffs}.
+\Cref{tab:ttc_biharm_coeffs} lists all required coefficients.
 
 \begin{table}[]
     \centering
@@ -646,11 +637,42 @@ The coefficients are given in \cref{tab:ttc_biharm_coeffs}.
         $\frac{3}{32}$ & $\frac{13}{192}$ & $\frac{5}{8}$ & -$\frac{1}{3}$ \\
         \bottomrule
     \end{tabular}
-    \caption{Coefficients to compute the Biharmonic Operator by \cref{eq:ttc_biharm}.}
+    \caption{Coefficients to compute the Biharmonic Operator by \Crefrange{eq:ttc_biharm_full1}{eq:ttc_biharm_full3}.}
     \label{tab:ttc_biharm_coeffs}
 \end{table}
 
-In this case, we have to propagate $D + 2 D(D-1)$ fourth-order jets. All these fourth-order jets rely on the same derivative evaluation point $\vx_0$ and the summation can be pulled inside the highest coefficients in the propagation scheme, like for the Laplacian. From this we conclude that this propagation scheme has the effort of propagating $1 + 3D + 1 + 2 \left(1 + 3 \cdot D(D-1) + 1 \right) = 6D^2 - 3D + 6$ vectors. Comparing the memory complexity with the memory complexity of the previous result, it can be seen that there is an overhead. However, all jets can be computed in parallel, which provides benefits for the run-time complexity.
+Leveraging the symmetry of the direction $2 \ve_i + 2 \ve_j$, the last term can be further simplified. This simplification leads to the following efficient propagation scheme for \cref{eq:biharm}:
+\begin{align}
+   \Delta^2 \vf(\vx)
+   &= \label{eq:ttc_biharm_full1}
+    \left(
+   \gamma_{(4)(4)} + 2 (D - 1) \gamma_{(2,2)(4, 0)}
+   \right)
+   \sum_{i=1}^D
+    \partial^4 \vf [
+    4\ve_i, 4\ve_i, 4\ve_i, 4\ve_i
+    ]
+    \\
+    &+ \label{eq:ttc_biharm_full2}
+    2 \gamma_{(2, 2)(3, 1)} 
+    \sum_{i=1}^D 
+    \sum_{\underset{j \neq i}{j=1}}^D
+    \partial^4 \vf[
+    3 \ve_i+ \ve_j, 3 \ve_i+ \ve_j, 3 \ve_i+ \ve_j, 3 \ve_i+ \ve_j
+    ]
+    \\
+    &+ \label{eq:ttc_biharm_full3}
+    2 \gamma_{(2, 2)(2, 2)}
+    \sum_{i=1}^{D-1} 
+    \sum_{j=i+1}^D
+    \partial^4 \vf [
+    2 \ve_i+ 2 \ve_j, 2 \ve_i+ 2 \ve_j, 2 \ve_i+ 2 \ve_j, 2 \ve_i+ 2 \ve_j
+    ].
+\end{align} 
+
+The \Crefrange{eq:ttc_biharm_full1}{eq:ttc_biharm_full3} are computed through $D + D(D-1) + \frac{D(D-1)}{2}$ fourth-order jets. All these fourth-order jets expose the same structure as need for our proposed propagation trick. Thus, the summation can be pulled inside the highest coefficients in the propagation scheme, like for the Laplacian. From this we conclude that this propagation scheme has the effort of propagating $1 + 3D + 1 + 1 + 3 \cdot D(D-1) + 1 + 1 + 3 \frac{D(D-1)}{2} + 1 = 9\frac{D^2}{2} - 3\frac{D}{2} + 6$ vectors. It should be noted, that all jets can be computed in parallel, which provides further benefits for the run-time complexity.
+
+
 
 \paragraph{Biharmonic operator --- Revisited}
 Up to now, the derivative computation method is based on the propagation of univariate Taylor polynomials. Although the propagated coefficients of these polynomials contain all the required derivative information, the direct access to arbitrary mixed-partial derivatives by propagating certain directions is not possible. This fact led to rather complicated schemes in the case of the Biharmonic Operator. In contrast, multi-variate Taylor polynomial propagation allows a fine-grained access to all partial derivatives, which usually results in a higher memory consumption in comparison to the univariate approach. For a comparison of both approaches see e.g., \cite{griewank_evaluating_1999}. However, in the following, we show that fined-grained access to mixed-partials is beneficial to derive efficient propagation schemes for the Biharmonic Operator. 

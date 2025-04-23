@@ -161,7 +161,7 @@ def report_relative_performance(df: DataFrame, x: str, lines: str, ref_line: str
         c1_ref, _ = offsets_and_slopes[metric][ref_line]
         for line in line_vals:
             c1, c0 = offsets_and_slopes[metric][line]
-            print(f"\t{line}:\t{c0:.5f} + {c1:.5f} * x ({c1 / c1_ref:.2f}x relative)")
+            print(f"\t{line}:\t{c0:.5f} + {c1:.5f} * x ({c1 / c1_ref:.3f}x relative)")
 
 
 if __name__ == "__main__":

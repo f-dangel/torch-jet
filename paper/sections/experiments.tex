@@ -12,7 +12,7 @@
     \textbf{Exact}
     & \includegraphics{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_dangel2024kroneckerfactored_vary_batch_size.pdf}
     &  \includegraphics{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_dangel2024kroneckerfactored_weighted_laplacian_vary_batch_size.pdf}
-    & TODO
+    & \includegraphics{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_5_name_dangel2024kroneckerfactored_bilaplacian_vary_batch_size.pdf}
     \\
     \textbf{Stochastic}
     & \includegraphics{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_2048_device_cuda_dim_50_distribution_normal_name_dangel2024kroneckerfactored_vary_num_samples.pdf}
@@ -60,55 +60,55 @@
       & \textcolor{tab:blue}{Nested first-order}
       & \num{0.61035} (1.0x)
       & \num{0.61141} (1.0x)
-      & TODO
+      & \num{15.68459} (1.0x)
       \\
       &
       & \textcolor{tab:orange}{Standard Taylor}
       & \num{0.59648} (0.98x)
       & \num{0.59747} (0.98x)
-      & TODO
+      & \num{1.17882} (0.075x)
       \\
       &
       & \textcolor{tab:green}{Collapsed (ours)}
       & \textbf{\num{0.32716} (0.54x)}
       & \textbf{\num{0.32823} (0.54x)}
-      & TODO
+      & \textbf{\num{1.02444} (0.065x)}
       \\ \cmidrule{2-6}
       & \multirow{3}{*}{\makecell{Mem.\,[MiB] \\ (differentiable)}}
       & \textcolor{tab:blue}{Nested first-order}
-      & \num[]{4.41504} (1.0x)
       & \num{4.41504} (1.0x)
-      & TODO
+      & \num{4.41504} (1.0x)
+      & \num{87.10853} (1.0x)
       \\
       &
       & \textcolor{tab:orange}{Standard Taylor}
       & \num{5.47051} (1.2x)
       & \num{5.47051} (1.2x)
-      &
+      & \num{16.26104} (0.19x)
       \\
       &
       & \textcolor{tab:green}{Collapsed (ours)}
       & \textbf{\num{3.55586} (0.81x)}
       & \textbf{\num{3.55991} (0.81x)}
-      & TODO
+      & \textbf{\num{14.60546} (0.17x)}
       \\ \cmidrule{2-6}
       & \multirow{3}{*}{\makecell{Mem.\,[MiB] \\ (non-diff.)}}
       & \textcolor{tab:blue}{Nested first-order}
       & \num{2.21092} (1.0x)
       & \num{2.21092} (1.0x)
-      & TODO
+      & \num{34.05347} (1.0x)
       \\
       &
       & \textcolor{tab:orange}{Standard Taylor}
       & \textbf{\num{1.49652} (0.68x)}
       & \textbf{\num{1.49652} (0.68x)}
-      & TODO
+      & \textbf{\num{1.14351} (0.034x)}
       \\
       &
       & \textcolor{tab:green}{Collapsed (ours)}
       & \textbf{\num{1.50445} (0.68x)}
       & \textbf{\num{1.50850} (0.68x)}
-      & TODO
+      & \textbf{\num{1.15687} (0.034x)}
       \\
       \midrule
       \multirow{9}{*}{\textbf{Stochastic}}

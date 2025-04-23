@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from torch import Tensor, add, cos, cosh, div, einsum, mul
 from torch import pow as torch_pow
 from torch import sigmoid, sin, sub, tanh
-from torch.fx import Graph, GraphModule, Node
+from torch.fx import Graph, GraphModule, Node, map_arg
 from torch.nn.functional import linear
 
 from jet.utils import get_letters, replicate, sum_vmapped
@@ -837,3 +837,114 @@ def _exhaust_incrementally(
                 break
 
         do_simplify = simplified
+
+
+def reschedule_asap(mod: GraphModule) -> GraphModule:
+    """Re-arrange the nodes in a graph module to execute as soon as possible.
+
+    This is useful for optimizing the execution order of nodes in a computation graph.
+
+    Args:
+        mod: The graph module to be rescheduled.
+
+    Returns:
+        A new graph module with the nodes rescheduled in an "as soon as possible" order.
+    """
+    graph = mod.graph
+
+    # Track dependencies for each node
+    dep_count = {node: 0 for node in graph.nodes}
+    users = defaultdict(list)
+
+    for node in graph.nodes:
+        for input_node in node.all_input_nodes:
+            dep_count[node] += 1
+            users[input_node].append(node)
+
+    # Topological sort using ready queue (nodes with no unscheduled deps)
+    ready = [
+        node for node in graph.nodes if dep_count[node] == 0 and node.op != "output"
+    ]
+    scheduled = []
+    scheduled_set = set()
+
+    while ready:
+        node = ready.pop(0)
+        scheduled.append(node)
+        scheduled_set.add(node)
+        for user in users[node]:
+            dep_count[user] -= 1
+            if dep_count[user] == 0 and user.op != "output":
+                ready.append(user)
+
+    # Add the output node at the end
+    scheduled.extend(node for node in graph.nodes if node.op == "output")
+
+    # Rebuild graph in ASAP order
+    new_graph = Graph()
+    env = {}
+
+    for node in scheduled:
+        # Rewrites the args tuple by replacing each Node in it with the new
+        # corresponding node in the new graph.
+        map_arg(node.args, lambda n: env[n])
+        # Same thing but for keyword arguments
+        map_arg(node.kwargs, lambda n: env[n])
+        # Actually copies the node into the new graph, automatically applying
+        # the mapped args and kwargs via the lambda.
+        new_node = new_graph.node_copy(node, lambda n: env[n])
+        env[node] = new_node
+
+    return GraphModule(mod, new_graph)
+
+
+def reschedule_alap(mod: GraphModule) -> GraphModule:
+    """Re-arrange the nodes in a graph module to execute as late as possible.
+
+    This is useful for optimizing the execution order of nodes in a computation graph.
+
+    Args:
+        mod: The graph module to be rescheduled.
+
+    Returns:
+        A new graph module with the nodes rescheduled in a "as late as possible" order.
+    """
+    old_graph = mod.graph
+
+    # Build a map from nodes to their users
+    user_map = defaultdict(list)
+    for node in old_graph.nodes:
+        for input_node in node.all_input_nodes:
+            user_map[input_node].append(node)
+
+    # Schedule nodes in reverse topological order (as late as possible)
+    scheduled = []
+    visited = set()
+
+    def schedule_node(node):
+        if node in visited:
+            return
+        visited.add(node)
+        # Recursively schedule all users first (so this node runs right before needed)
+        for user in user_map.get(node, []):
+            schedule_node(user)
+        scheduled.append(node)
+
+    # Start from output node's args
+    for node in old_graph.nodes:
+        if node.op == "output":
+            map_arg(node.args, lambda n: schedule_node(n))
+            scheduled.append(node)
+
+    # Rebuild graph in correct execution order (producers before consumers)
+    scheduled.reverse()
+
+    new_graph = Graph()
+    env = {}
+
+    for node in scheduled:
+        # NOTE This does not work at the moment
+        new_node = new_graph.node_copy(node, lambda n: env[n])
+        env[node] = new_node
+
+    return GraphModule(mod, new_graph)

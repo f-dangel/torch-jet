@@ -15,7 +15,7 @@ from torch.nn import Linear, Sequential, Tanh
 from jet.bilaplacian import Bilaplacian, RandomizedBilaplacian
 from jet.exp.utils import measure_peak_memory, measure_time, to_string
 from jet.laplacian import Laplacian, RandomizedLaplacian
-from jet.simplify import simplify
+from jet.simplify import reschedule_asap, simplify
 from jet.utils import rademacher
 from jet.weighted_laplacian import (
     C_func_diagonal_increments,
@@ -429,6 +429,7 @@ def bilaplacian_function(
         bilaplacian = simplify(
             symbolic_trace(bilaplacian), pull_sum_vmapped=pull_sum_vmapped
         )
+        bilaplacian = reschedule_asap(mod)
         return lambda: bilaplacian(X)
 
     else:

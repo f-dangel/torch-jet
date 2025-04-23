@@ -579,7 +579,7 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
         num_vectors2 = D * (D - 1)
         non_collapsed_shape2 = (num_vectors2, *x.shape)
 
-        num_vectors3 = D * (D - 1) / 2
+        num_vectors3 = D * (D - 1) // 2
         non_collapsed_shape3 = (num_vectors3, *x.shape)
 
         collapsed_shape = x.shape

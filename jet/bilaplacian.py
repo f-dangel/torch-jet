@@ -86,7 +86,7 @@ class Bilaplacian(Module):
         gamma_2_2 = 5 / 8
         _, _, _, _, F4_3 = self.jet_f(*C3)
         # NOTE Needs a 1/24 here to match the current write-up in the paper
-        factor3 = gamma_2_2 / 24
+        factor3 = 2 * gamma_2_2 / 24
         term3 = factor3 * sum_vmapped(F4_3)
 
         return term1 + term2 + term3
@@ -146,24 +146,26 @@ class Bilaplacian(Module):
         C2 = (X2_0, X2_1, X2_2, X2_3, X2_4)
 
         # third 4-jet
-        X3_0 = replicate(x, D * (D - 1))
-        X3_2 = zeros(D * (D - 1), *self.x_shape, **self.x_kwargs)
-        X3_3 = zeros(D * (D - 1), *self.x_shape, **self.x_kwargs)
-        X3_4 = zeros(D * (D - 1), *self.x_shape, **self.x_kwargs)
+        X3_0 = replicate(x, D * (D - 1) // 2)
+        X3_2 = zeros(D * (D - 1) // 2, *self.x_shape, **self.x_kwargs)
+        X3_3 = zeros(D * (D - 1) // 2, *self.x_shape, **self.x_kwargs)
+        X3_4 = zeros(D * (D - 1) // 2, *self.x_shape, **self.x_kwargs)
 
-        X3_1 = zeros(D, D - 1, D, **self.x_kwargs)
-        for i in range(D):
-            not_i = [j for j in range(D) if i != j]
-            for j_idx, j in enumerate(not_i):
-                X3_1[i, j_idx, i] = 2
-                X3_1[i, j_idx, j] = 2
+        X3_1 = zeros(D * (D - 1) // 2, D, **self.x_kwargs)
+        counter = 0
+        for i in range(D - 1):
+            for j in range(i + 1, D):
+                X3_1[counter, i] = 2
+                X3_1[counter, j] = 2
+                counter += 1
+        assert counter == D * (D - 1) // 2
 
         if self.is_batched:
-            X3_1 = X3_1.reshape(D * (D - 1), 1, *self.x_shape[1:])
+            X3_1 = X3_1.reshape(D * (D - 1) // 2, 1, *self.x_shape[1:])
             # copy without using more memory
             X3_1 = X3_1.expand(-1, self.batched_dim, *(-1 for _ in self.x_shape[1:]))
         else:
-            X3_1 = X3_1.reshape(D * (D - 1), *self.x_shape)
+            X3_1 = X3_1.reshape(D * (D - 1) // 2, *self.x_shape)
 
         C3 = (X3_0, X3_1, X3_2, X3_3, X3_4)
 

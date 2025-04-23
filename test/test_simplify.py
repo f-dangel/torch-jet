@@ -571,30 +571,32 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
         )
 
     else:
-        # we need to run two checks because we use D-dimensional 4-jets and
-        # D*(D-1)-dimensional 4-jets
+        # we need to run three checks because we use D-dimensional 4-jets,
+        # D*(D-1)-dimensional 4-jets, and D*(D-1)/2-dimensional 4-jets
         num_vectors1 = D
         non_collapsed_shape1 = (num_vectors1, *x.shape)
 
         num_vectors2 = D * (D - 1)
         non_collapsed_shape2 = (num_vectors2, *x.shape)
 
-        collapsed_shape = x.shape
+        num_vectors3 = D * (D - 1) // 2
+        non_collapsed_shape3 = (num_vectors3, *x.shape)
 
-        ensure_tensor_constants_collapsed(
-            simple_mod,
-            collapsed_shape,
+        collapsed_shape = x.shape
+        non_collapsed_shapes = {
             non_collapsed_shape1,
-            other_shapes=[non_collapsed_shape2] if num_vectors1 != num_vectors2 else [],
-            strict=False,
-        )
-        ensure_tensor_constants_collapsed(
-            simple_mod,
-            collapsed_shape,
             non_collapsed_shape2,
-            other_shapes=[non_collapsed_shape1] if num_vectors1 != num_vectors2 else [],
-            strict=False,
-        )
+            non_collapsed_shape3,
+        }
+
+        for non_collapsed in non_collapsed_shapes:
+            ensure_tensor_constants_collapsed(
+                simple_mod,
+                collapsed_shape,
+                non_collapsed,
+                other_shapes=list(non_collapsed_shapes - {non_collapsed}),
+                strict=False,
+            )
 
     # make sure the simplified module still behaves the same
     bilap_simple = simple_mod(x)

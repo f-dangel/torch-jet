@@ -5,6 +5,7 @@ from subprocess import CalledProcessError, CompletedProcess, run
 from time import perf_counter
 from typing import Callable, List, Tuple, Union
 
+import jax
 from memory_profiler import memory_usage
 from torch import cuda
 
@@ -44,7 +45,9 @@ def measure_time(
     return mu, sigma, best
 
 
-def measure_peak_memory(f: Callable, name: str, is_cuda: bool) -> float:
+def measure_peak_memory(
+    f: Callable, name: str, is_cuda: bool, use_jax: bool = False
+) -> float:
     """Measure the peak memory usage of a function.
 
     Args:
@@ -57,7 +60,12 @@ def measure_peak_memory(f: Callable, name: str, is_cuda: bool) -> float:
     """
     if is_cuda:
         f()
-        peakmem_bytes = cuda.max_memory_allocated()
+        if use_jax:
+            # See https://github.com/jax-ml/jax/issues/8096
+            stats = jax.devices("cuda")[0].memory_stats()
+            peakmem_bytes = stats["peak_bytes_in_use"]
+        else:
+            peakmem_bytes = cuda.max_memory_allocated()
     else:
         peakmem_bytes = memory_usage(f, interval=1e-4, max_usage=True) * 2**20
 
@@ -97,12 +105,18 @@ def run_verbose(cmd: List[str]) -> CompletedProcess:
         raise e
 
 
-def to_string(drop_none_values: bool = True, **kwargs: Union[str, int]) -> str:
+def to_string(
+    drop_none_values: bool = True,
+    compact_bool_values: bool = True,
+    **kwargs: Union[str, int],
+) -> str:
     """Convert a dictionary to a string representation.
 
     Args:
         **kwargs: The arguments and their values.
         drop_none_values: Whether to drop arguments with value `None`. Default: `True`.
+        compact_bool_values: Whether to convert boolean values. If a value is `True`,
+            its key will be in the string. If it is `False`, the key will not.
 
     Returns:
         A string representation of the sorted arguments and their values.
@@ -110,4 +124,15 @@ def to_string(drop_none_values: bool = True, **kwargs: Union[str, int]) -> str:
     sorted_keys = sorted(kwargs.keys())
     if drop_none_values:
         sorted_keys = [key for key in sorted_keys if kwargs[key] is not None]
+
+    formatted = []
+    for key, value in kwargs.items():
+        if isinstance(value, bool) and compact_bool_values and value:
+            formatted.append(str(key))
+        elif (
+            isinstance(value, bool)
+            and not compact_bool_values
+            or not isinstance(value, bool)
+        ):
+            formatted.append(f"{key}_{value}")
     return "_".join(f"{key}_{kwargs[key]}" for key in sorted_keys)

@@ -302,6 +302,8 @@ def jax_laplacian_function(
     if is_batched:
         laplacian = jax.vmap(laplacian)
 
+    laplacian = jax.jit(laplacian)
+
     return lambda: laplacian(X).block_until_ready()
 
 

@@ -9,17 +9,21 @@ from typing import Callable, Union
 
 import folx
 import jax
-
-# Turning on double precision on MAC gives errors
-ON_MAC = platform == "darwin"
-if not ON_MAC:
-    # Enable float64 computation in JAX. This has to be done at start-up!
-    jax.config.update("jax_enable_x64", True)
 import jax.example_libraries.stax as stax
 import jax.numpy as jnp
 from einops import einsum
 from jax.experimental.jet import jet as jax_jet
-from torch import Tensor, allclose, device, float64, manual_seed, no_grad, rand, randn
+from torch import (
+    Tensor,
+    allclose,
+    device,
+    dtype,
+    float64,
+    manual_seed,
+    no_grad,
+    rand,
+    randn,
+)
 from torch.func import hessian, jacrev, jvp, vmap
 from torch.fx import symbolic_trace
 from torch.nn import Linear, Sequential, Tanh
@@ -34,6 +38,12 @@ from jet.weighted_laplacian import (
     RandomizedWeightedLaplacian,
     WeightedLaplacian,
 )
+
+# Turning on double precision on MAC gives errors
+ON_MAC = platform == "darwin"
+if not ON_MAC:
+    # Enable float64 computation in JAX. This has to be done at start-up!
+    jax.config.update("jax_enable_x64", True)
 
 HERE = path.abspath(__file__)
 HEREDIR = path.dirname(HERE)
@@ -229,8 +239,11 @@ def randomized_laplacian_function(
 
 
 def jax_laplacian_function(
-    f: Callable[[jax.Array], jax.Array], X: jax.Array, is_batched: bool, strategy: str
-) -> Callable[[], jax.Array]:
+    f: Callable[[jax.typing.ArrayLike], jax.typing.ArrayLike],
+    X: jax.typing.ArrayLike,
+    is_batched: bool,
+    strategy: str,
+) -> Callable[[], jax.typing.ArrayLike]:
     """Construct a function to compute the Laplacian in JAX using different strategies.
 
     Args:
@@ -261,7 +274,7 @@ def jax_laplacian_function(
         dims = " ".join([f"d{i}" for i in range(X.ndim - 1 if is_batched else X.ndim)])
         tr_equation = f"... {dims} {dims} -> ..."
 
-        def laplacian(x: jax.Array) -> jax.Array:
+        def laplacian(x: jax.typing.ArrayLike) -> jax.typing.ArrayLike:
             """Compute the Laplacian of f on an un-batched input.
 
             Args:
@@ -276,7 +289,7 @@ def jax_laplacian_function(
         shape = X.shape[1:] if is_batched else X.shape
         D = jnp.size(X[0] if is_batched else X)
 
-        def laplacian(x: jax.Array) -> jax.Array:
+        def laplacian(x: jax.typing.ArrayLike) -> jax.typing.ArrayLike:
             v2 = jnp.zeros(shape, dtype=X.dtype, device=X.device)
 
             def d2(x, v1):
@@ -291,7 +304,7 @@ def jax_laplacian_function(
         # disable sparsity to remove its run time benefits
         lap_f = folx.ForwardLaplacianOperator(0)(f)
 
-        def laplacian(x: jax.Array) -> jax.Array:
+        def laplacian(x: jax.typing.ArrayLike) -> jax.typing.ArrayLike:
             return lap_f(x)[0]
 
     else:
@@ -632,7 +645,12 @@ def randomized_bilaplacian_function(
 
 
 def setup_architecture(
-    architecture: str, dim: int, dev, dtype, use_jax: bool = False, seed: int = 0
+    architecture: str,
+    dim: int,
+    dev: Union[device, jax.Device],
+    dt: Union[dtype, jax.typing.DTypeLike],
+    use_jax: bool = False,
+    seed: int = 0,
 ):
     """Set up a neural network architecture based on the specified configuration.
 
@@ -640,23 +658,23 @@ def setup_architecture(
         architecture: The architecture identifier.
         dim: The input dimension for the architecture.
         dev: The device to place the model on.
-        dtype: The data type to use.
-        use_jax: Whether to use JAX instead of PyTorch.
-        seed: The random seed for initialization.
+        dt: The data type to use.
+        use_jax: Whether to use JAX instead of PyTorch. Default: `False`.
+        seed: The random seed for initialization. Default is `0`.
 
     Returns:
-        A PyTorch model or JAX model parameters and apply function based on the specified architecture.
+        A PyTorch or JAX model of the specified architecture.
     """
     if not use_jax:
         manual_seed(seed)
-        return SUPPORTED_ARCHITECTURES[architecture](dim).to(device=dev, dtype=dtype)
+        return SUPPORTED_ARCHITECTURES[architecture](dim).to(device=dev, dtype=dt)
     else:
         init_fun, apply_fun = SUPPORTED_JAX_ARCHITECTURES[architecture]()
         key = jax.random.PRNGKey(seed)
         _, params = init_fun(key, (dim,))
         # move to data type and device
         params = jax.tree_util.tree_map(
-            lambda x: jax.device_put(jnp.array(x, dtype=jnp.float64), device=dev),
+            lambda x: jax.device_put(jnp.array(x, dtype=dt), device=dev),
             params,
         )
         # curry the network function
@@ -705,11 +723,14 @@ def get_function_and_description(
     strategy: str,
     distribution: Union[str, None],
     num_samples: Union[int, None],
-    net: Union[Callable[[Tensor], Tensor], Callable[[jax.Array], jax.Array]],
+    net: Union[
+        Callable[[Tensor], Tensor],
+        Callable[[jax.typing.ArrayLike], jax.typing.ArrayLike],
+    ],
     X: Tensor,
     is_batched: bool,
     use_jax: bool = False,
-) -> tuple[Callable[[], Union[Tensor, jax.Array]], str]:
+) -> tuple[Callable[[], Union[Tensor, jax.typing.ArrayLike]], str]:
     """Determine the function and its description based on the operator and strategy.
 
     Args:
@@ -720,6 +741,8 @@ def get_function_and_description(
         net: The neural network model.
         X: The input tensor.
         is_batched: A flag indicating if the input is batched.
+        use_jax: Whether to use JAX instead of PyTorch for computations.
+            Default: `False`.
 
     Returns:
         A tuple containing the function to compute the operator and a description
@@ -767,14 +790,32 @@ def get_function_and_description(
     return func, description
 
 
-def setup_input(batch_size: int, dim: int, dev, dtype, use_jax=False, seed=1):
+def setup_input(
+    batch_size: int,
+    dim: int,
+    dev: Union[device, jax.Device],
+    dt: dtype,
+    use_jax: bool = False,
+    seed: int = 1,
+) -> Union[Tensor, jax.typing.ArrayLike]:
+    """Set up the input tensor for the neural network.
+
+    Args:
+        batch_size: The number of samples in the batch.
+        dim: The dimensionality of the input tensor.
+        dev: The device to place the tensor on.
+        dt: The data type of the tensor.
+        use_jax: Whether to use JAX instead of PyTorch for computations.
+            Default: `False`.
+        seed: The random seed for initialization. Default is `1`.
+    """
     shape = (batch_size, dim)
     if use_jax:
         key = jax.random.PRNGKey(seed)
-        return jax.device_put(jax.random.uniform(key, shape=shape, dtype=dtype), dev)
+        return jax.device_put(jax.random.uniform(key, shape=shape, dtype=dt), dev)
     else:
         manual_seed(seed)
-        return rand(*shape, dtype=dtype, device=dev)
+        return rand(*shape, dtype=dt, device=dev)
 
 
 if __name__ == "__main__":

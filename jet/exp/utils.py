@@ -54,6 +54,7 @@ def measure_peak_memory(
         f: Function to measure the peak memory usage of.
         name: Name of the function. Will be used to print the peak memory usage.
         is_cuda: Whether the function is executed on a CUDA device.
+        use_jax: Whether the function uses JAX instead of PyTorch. Default: `False`.
 
     Returns:
         The peak memory usage in GiB.

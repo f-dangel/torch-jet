@@ -321,8 +321,8 @@ EXPERIMENTS = [
             "devices": ["cuda"],
             "operator": "bilaplacian",
             "distributions": ["normal"],
-            # exact takes 4.5 D**2 - 1.5 D + 4 = 109, randomized takes 2 + 3S, so choosing
-            # S <= 36 because for S=36 we can compute the Bi-Laplacian exactly
+            # exact takes 4.5 D**2 - 1.5 D + 4 = 109, randomized takes 2 + 3S, so
+            # choosing S <= 36 because for S=36 we can compute the Bi-Laplacian exactly
             "nums_samples": linspace(1, 36, 10).int().unique().tolist(),
         },
         # what to plot: x-axis is nums_samples and each strategy is plotted in a curve

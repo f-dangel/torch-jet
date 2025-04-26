@@ -848,7 +848,10 @@ if __name__ == "__main__":
     # If using JAX's jit, this run will trigger the compilation
     with no_grad():
         mem_no = measure_peak_memory(
-            func, f"{op} non-differentiable ({description})", is_cuda
+            func,
+            f"{op} non-differentiable ({description})",
+            is_cuda,
+            use_jax=args.use_jax,
         )
 
     # 2) Peak memory with differentiable result (PyTorch only as there is

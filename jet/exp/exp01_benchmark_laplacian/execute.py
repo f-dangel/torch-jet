@@ -853,16 +853,14 @@ if __name__ == "__main__":
 
     # set up the function that will be measured
     dev = jax.devices(args.device)[0] if args.use_jax else device(args.device)
-    dtype = jnp.float64 if args.use_jax else float64
+    dt = jnp.float64 if args.use_jax else float64
 
     net = setup_architecture(
-        args.architecture, args.dim, use_jax=args.use_jax, dev=dev, dtype=dtype
+        args.architecture, args.dim, use_jax=args.use_jax, dev=dev, dt=dt
     )
 
     is_batched = True
-    X = setup_input(
-        args.batch_size, args.dim, dev=dev, dtype=dtype, use_jax=args.use_jax
-    )
+    X = setup_input(args.batch_size, args.dim, dev=dev, dt=dt, use_jax=args.use_jax)
 
     # NOTE As we currently do not look into randomization with JAX, handling only
     # PyTorch here is fine
@@ -938,14 +936,17 @@ if __name__ == "__main__":
         # Therefore we need to increase the tolerance.
         compare = jnp.allclose if args.use_jax else allclose
         same = compare(
-            baseline_result, result, atol=1e-7 if ON_MAC and args.use_jax else 1e-8
+            baseline_result,
+            result,
+            atol=5e-6 if ON_MAC and args.use_jax else 1e-8,
+            rtol=5e-4 if ON_MAC and args.use_jax else 1e-5,
         )
         assert same, f"Results do not match: {result} != {baseline_result}."
         print("Results match.")
 
     # Write measurements to a file
     data = ", ".join([str(val) for val in [mem_no, mem, mu, sigma, best]])
-    filename = savepath(**vars(args))
+    filename = savepath(**{k: v for k, v in vars(args).items() if k != "use_jax"})
     with open(filename, "w") as f:
         print(f"Writing to {filename}.")
         f.write(data)

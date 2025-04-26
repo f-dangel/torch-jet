@@ -35,6 +35,7 @@ def measure(
     distributions: Optional[List[str]] = None,
     nums_samples: Optional[List[int]] = None,
     operator: str = "laplacian",
+    use_jax: bool = False,
 ):
     """Run benchmark measurements for all combinations of input parameters.
 
@@ -53,6 +54,8 @@ def measure(
         nums_samples: List of numbers of samples for the randomized Laplacian. `None`
             means that the exact Laplacian will be benchmarked. Default is `None`.
         operator: The differential operator to benchmark. Default is `'laplacian'`.
+        use_jax: Whether to use JAX instead of PyTorch for the computations.
+            Default is `False`.
     """
     _distributions = [None] if distributions is None else distributions
     _nums_samples = [None] if nums_samples is None else nums_samples
@@ -102,9 +105,15 @@ def measure(
             skip = True
 
         if not skip:
-            cmd = ["python", SCRIPT] + [
-                f"--{key}={value}" for key, value in kwargs.items() if value is not None
-            ]
+            cmd = (
+                ["python", SCRIPT]
+                + [
+                    f"--{key}={value}"
+                    for key, value in kwargs.items()
+                    if value is not None
+                ]
+                + (["--use_jax"] if use_jax else [])
+            )
             run_verbose(cmd)
 
         # gather data every few measurements so we can plot even before all are done
@@ -342,6 +351,23 @@ EXPERIMENTS = [
             "operator": "bilaplacian",
         },
         # what to plot: x-axis is batch size and each strategy is plotted in a curve
+        ("batch_size", "strategy"),
+    ),
+    # Experiment 8: Laplacian in JAX for varying batch sizes. Same as experiment 1
+    # but using JAX instead of PyTorch.
+    (  # Experiment name, must be unique
+        "jax_laplacian_vary_batch_size",
+        # Experiment parameters
+        {
+            "architectures": ["tanh_mlp_768_768_512_512_1"],
+            "dims": [50],
+            "batch_sizes": linspace(1, 2048, 10).int().unique().tolist(),
+            "strategies": SUPPORTED_STRATEGIES,
+            "devices": ["cuda"],
+            "operator": "laplacian",
+            "use_jax": True,
+        },
+        # what to plot: x-axis is batch_sizes and each strategy is plotted in a curve
         ("batch_size", "strategy"),
     ),
 ]

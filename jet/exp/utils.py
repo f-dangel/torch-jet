@@ -127,7 +127,8 @@ def to_string(
         sorted_keys = [key for key in sorted_keys if kwargs[key] is not None]
 
     formatted = []
-    for key, value in kwargs.items():
+    for key in sorted_keys:
+        value = kwargs[key]
         if isinstance(value, bool) and compact_bool_values and value:
             formatted.append(str(key))
         elif (
@@ -136,4 +137,4 @@ def to_string(
             or not isinstance(value, bool)
         ):
             formatted.append(f"{key}_{value}")
-    return "_".join(f"{key}_{kwargs[key]}" for key in sorted_keys)
+    return "_".join(formatted)

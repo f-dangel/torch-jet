@@ -902,7 +902,7 @@ if __name__ == "__main__":
         func, f"{op} ({description})", is_cuda, use_jax=args.use_jax
     )
     if args.use_jax:
-        mem_no = float("nan")
+        mem = float("nan")
 
     # 3) Run time
     mu, sigma, best = measure_time(func, f"{op} ({description})", is_cuda)

@@ -818,7 +818,12 @@ def setup_input(
         return rand(*shape, dtype=dt, device=dev)
 
 
-if __name__ == "__main__":
+def setup_parser() -> ArgumentParser:
+    """Set up the argument parser for this script.
+
+    Returns:
+        The benchmark script's argument parser.
+    """
     parser = ArgumentParser("Parse arguments of measurement.")
     parser.add_argument(
         "--architecture",
@@ -847,8 +852,13 @@ if __name__ == "__main__":
         action="store_true",
         help="Use JAX instead of PyTorch for computations",
     )
-    args = parser.parse_args()
+    return parser
 
+
+if __name__ == "__main__":
+    # parse command line arguments
+    parser = setup_parser()
+    args = parser.parse_args()
     check_mutually_required(args)
 
     # set up the function that will be measured

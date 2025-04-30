@@ -3,16 +3,10 @@
 from argparse import ArgumentParser, Namespace
 from functools import partial
 from os import makedirs, path
-from sys import platform
 from time import perf_counter
 from typing import Callable, Union
 
-import folx
-import jax
-import jax.example_libraries.stax as stax
-import jax.numpy as jnp
 from einops import einsum
-from jax.experimental.jet import jet as jax_jet
 from torch import (
     Tensor,
     allclose,
@@ -39,12 +33,6 @@ from jet.weighted_laplacian import (
     WeightedLaplacian,
 )
 
-# Turning on double precision on MAC gives errors
-ON_MAC = platform == "darwin"
-if not ON_MAC:
-    # Enable float64 computation in JAX. This has to be done at start-up!
-    jax.config.update("jax_enable_x64", True)
-
 HERE = path.abspath(__file__)
 HEREDIR = path.dirname(HERE)
 RAWDIR = path.join(HEREDIR, "raw")
@@ -62,20 +50,6 @@ SUPPORTED_ARCHITECTURES = {
         Linear(512, 512),
         Tanh(),
         Linear(512, 1),
-    )
-}
-# Define supported PyTorch architectures
-SUPPORTED_JAX_ARCHITECTURES = {
-    "tanh_mlp_768_768_512_512_1": lambda: stax.serial(
-        stax.Dense(768),
-        stax.Tanh,
-        stax.Dense(768),
-        stax.Tanh,
-        stax.Dense(512),
-        stax.Tanh,
-        stax.Dense(512),
-        stax.Tanh,
-        stax.Dense(1),  # No activation on the last layer
     )
 }
 
@@ -236,88 +210,6 @@ def randomized_laplacian_function(
         raise ValueError(
             f"Unsupported strategy: {strategy}. Supported: {SUPPORTED_STRATEGIES}."
         )
-
-
-def jax_laplacian_function(
-    f: Callable[[jax.typing.ArrayLike], jax.typing.ArrayLike],
-    X: jax.typing.ArrayLike,
-    is_batched: bool,
-    strategy: str,
-) -> Callable[[], jax.typing.ArrayLike]:
-    """Construct a function to compute the Laplacian in JAX using different strategies.
-
-    Args:
-        f: The function to compute the Laplacian of. Processes an un-batched tensor.
-        X: The input tensor at which to compute the Laplacian.
-        is_batched: Whether the input is a batched tensor.
-        strategy: Which strategy will be used by the returned function to compute
-            the Laplacian. The following strategies are supported:
-            - `'hessian_trace'`: The Laplacian is computed by tracing the Hessian.
-              The Hessian is computed via forward-over-reverse mode autodiff.
-            - `'jet_naive'`: The Laplacian is computed using jets. The computation graph
-                is simplified by propagating replication nodes.
-            - `'jet_simplified'`: The Laplacian is computed using Taylor mode. The
-              computation graph is simplified by propagating replications down, and
-              summations up, the computation graph.
-
-    Returns:
-        A function that computes the Laplacian of the function f at the input tensor X.
-        The function is expected to be called with no arguments.
-
-    Raises:
-        ValueError: If the strategy is not supported.
-    """
-    if strategy == "hessian_trace":
-        hess_f = jax.hessian(f)
-
-        # trace with einsum to support Laplacians of functions with non-scalar output
-        dims = " ".join([f"d{i}" for i in range(X.ndim - 1 if is_batched else X.ndim)])
-        tr_equation = f"... {dims} {dims} -> ..."
-
-        def laplacian(x: jax.typing.ArrayLike) -> jax.typing.ArrayLike:
-            """Compute the Laplacian of f on an un-batched input.
-
-            Args:
-                x: The input tensor.
-
-            Returns:
-                The Laplacian of f at x. Has the same shape as f(x).
-            """
-            return einsum(hess_f(x), tr_equation)
-
-    elif strategy == "jet_naive":
-        shape = X.shape[1:] if is_batched else X.shape
-        D = jnp.size(X[0] if is_batched else X)
-
-        def laplacian(x: jax.typing.ArrayLike) -> jax.typing.ArrayLike:
-            v2 = jnp.zeros(shape, dtype=X.dtype, device=X.device)
-
-            def d2(x, v1):
-                f0, (f1, f2) = jax_jet(f, (x,), ((v1, v2),))
-                return f2
-
-            d2_vmap = jax.vmap(lambda v1: d2(x, v1))
-            v1 = jnp.eye(D, dtype=X.dtype, device=X.device).reshape(D, *shape)
-            return d2_vmap(v1).sum(0)
-
-    elif strategy == "jet_simplified":
-        # disable sparsity to remove its run time benefits
-        lap_f = folx.ForwardLaplacianOperator(0)(f)
-
-        def laplacian(x: jax.typing.ArrayLike) -> jax.typing.ArrayLike:
-            return lap_f(x)[0]
-
-    else:
-        raise ValueError(
-            f"Unsupported strategy: {strategy}. Supported: {SUPPORTED_STRATEGIES}."
-        )
-
-    if is_batched:
-        laplacian = jax.vmap(laplacian)
-
-    laplacian = jax.jit(laplacian)
-
-    return lambda: laplacian(X).block_until_ready()
 
 
 def weighted_laplacian_function(
@@ -645,12 +537,7 @@ def randomized_bilaplacian_function(
 
 
 def setup_architecture(
-    architecture: str,
-    dim: int,
-    dev: Union[device, jax.Device],
-    dt: Union[dtype, jax.typing.DTypeLike],
-    use_jax: bool = False,
-    seed: int = 0,
+    architecture: str, dim: int, dev: device, dt: dtype, seed: int = 0
 ):
     """Set up a neural network architecture based on the specified configuration.
 
@@ -659,29 +546,16 @@ def setup_architecture(
         dim: The input dimension for the architecture.
         dev: The device to place the model on.
         dt: The data type to use.
-        use_jax: Whether to use JAX instead of PyTorch. Default: `False`.
         seed: The random seed for initialization. Default is `0`.
 
     Returns:
-        A PyTorch or JAX model of the specified architecture.
+        A PyTorch model of the specified architecture.
     """
-    if not use_jax:
-        manual_seed(seed)
-        return SUPPORTED_ARCHITECTURES[architecture](dim).to(device=dev, dtype=dt)
-    else:
-        init_fun, apply_fun = SUPPORTED_JAX_ARCHITECTURES[architecture]()
-        key = jax.random.PRNGKey(seed)
-        _, params = init_fun(key, (dim,))
-        # move to data type and device
-        params = jax.tree_util.tree_map(
-            lambda x: jax.device_put(jnp.array(x, dtype=dt), device=dev),
-            params,
-        )
-        # curry the network function
-        return lambda x: apply_fun(params, x)
+    manual_seed(seed)
+    return SUPPORTED_ARCHITECTURES[architecture](dim).to(device=dev, dtype=dt)
 
 
-def savepath(**kwargs: Union[str, int]) -> str:
+def savepath(rawdir: str = RAWDIR, **kwargs: Union[str, int]) -> str:
     """Generate a file path for saving measurement results.
 
     Args:
@@ -691,7 +565,7 @@ def savepath(**kwargs: Union[str, int]) -> str:
         A string representing the file path where the results will be saved.
     """
     filename = to_string(**kwargs)
-    return path.join(RAWDIR, f"{filename}.csv")
+    return path.join(rawdir, f"{filename}.csv")
 
 
 def check_mutually_required(args: Namespace):
@@ -702,7 +576,6 @@ def check_mutually_required(args: Namespace):
 
     Raises:
         ValueError: If the arguments are not mutually specified or unspecified.
-        ValueError: If JAX is enabled but the operator is not the exact Laplacian.
     """
     distribution, num_samples = args.distribution, args.num_samples
     if (distribution is None) != (num_samples is None):
@@ -711,38 +584,27 @@ def check_mutually_required(args: Namespace):
             f" ({num_samples}) are mutually required."
         )
 
-    is_stochastic = distribution is not None and num_samples is not None
-    if args.use_jax and args.operator != "laplacian" and not is_stochastic:
-        raise ValueError(
-            "JAX implementation is only supported for the exact Laplacian operator."
-        )
-
 
 def get_function_and_description(
     operator: str,
     strategy: str,
     distribution: Union[str, None],
     num_samples: Union[int, None],
-    net: Union[
-        Callable[[Tensor], Tensor],
-        Callable[[jax.typing.ArrayLike], jax.typing.ArrayLike],
-    ],
+    net: Callable[[Tensor], Tensor],
     X: Tensor,
     is_batched: bool,
-    use_jax: bool = False,
-) -> tuple[Callable[[], Union[Tensor, jax.typing.ArrayLike]], str]:
+) -> tuple[Callable[[], Tensor], str]:
     """Determine the function and its description based on the operator and strategy.
 
     Args:
-        operator: The operator to be used, either 'laplacian' or 'bilaplacian'.
+        operator: The operator to be used, either 'laplacian', 'weighted-laplacian',
+            or 'bilaplacian'.
         strategy: The strategy to be used for computation.
         distribution: The distribution type, if any.
         num_samples: The number of samples, if any.
         net: The neural network model.
         X: The input tensor.
         is_batched: A flag indicating if the input is batched.
-        use_jax: Whether to use JAX instead of PyTorch for computations.
-            Default: `False`.
 
     Returns:
         A tuple containing the function to compute the operator and a description
@@ -770,14 +632,11 @@ def get_function_and_description(
             else bilaplacian_function(*args)
         )
     elif operator == "laplacian":
-        if use_jax and not is_stochastic:
-            func = jax_laplacian_function(*args)
-        else:
-            func = (
-                randomized_laplacian_function(*args)
-                if is_stochastic
-                else laplacian_function(*args)
-            )
+        func = (
+            randomized_laplacian_function(*args)
+            if is_stochastic
+            else laplacian_function(*args)
+        )
     elif operator == "weighted-laplacian":
         func = (
             randomized_weighted_laplacian_function(*args)
@@ -791,13 +650,8 @@ def get_function_and_description(
 
 
 def setup_input(
-    batch_size: int,
-    dim: int,
-    dev: Union[device, jax.Device],
-    dt: dtype,
-    use_jax: bool = False,
-    seed: int = 1,
-) -> Union[Tensor, jax.typing.ArrayLike]:
+    batch_size: int, dim: int, dev: device, dt: dtype, seed: int = 1
+) -> Tensor:
     """Set up the input tensor for the neural network.
 
     Args:
@@ -805,24 +659,18 @@ def setup_input(
         dim: The dimensionality of the input tensor.
         dev: The device to place the tensor on.
         dt: The data type of the tensor.
-        use_jax: Whether to use JAX instead of PyTorch for computations.
-            Default: `False`.
         seed: The random seed for initialization. Default is `1`.
     """
+    manual_seed(seed)
     shape = (batch_size, dim)
-    if use_jax:
-        key = jax.random.PRNGKey(seed)
-        return jax.device_put(jax.random.uniform(key, shape=shape, dtype=dt), dev)
-    else:
-        manual_seed(seed)
-        return rand(*shape, dtype=dt, device=dev)
+    return rand(*shape, dtype=dt, device=dev)
 
 
-def setup_parser() -> ArgumentParser:
-    """Set up the argument parser for this script.
+def parse_args() -> Namespace:
+    """Parse the benchmark script's command line arguments.
 
     Returns:
-        The benchmark script's argument parser.
+        The benchmark script's arguments.
     """
     parser = ArgumentParser("Parse arguments of measurement.")
     parser.add_argument(
@@ -847,35 +695,27 @@ def setup_parser() -> ArgumentParser:
         choices={"laplacian", "weighted-laplacian", "bilaplacian"},
         required=True,
     )
-    parser.add_argument(
-        "--use_jax",
-        action="store_true",
-        help="Use JAX instead of PyTorch for computations",
-    )
-    return parser
 
-
-if __name__ == "__main__":
-    # parse command line arguments
-    parser = setup_parser()
+    # parse and check validity
     args = parser.parse_args()
     check_mutually_required(args)
 
-    # set up the function that will be measured
-    dev = jax.devices(args.device)[0] if args.use_jax else device(args.device)
-    dt = jnp.float64 if args.use_jax else float64
+    return args
 
-    net = setup_architecture(
-        args.architecture, args.dim, use_jax=args.use_jax, dev=dev, dt=dt
-    )
+
+if __name__ == "__main__":
+    args = parse_args()
+
+    # set up the function that will be measured
+    dev = device(args.device)
+    dt = float64
+
+    net = setup_architecture(args.architecture, args.dim, dev, dt)
 
     is_batched = True
-    X = setup_input(args.batch_size, args.dim, dev=dev, dt=dt, use_jax=args.use_jax)
+    X = setup_input(args.batch_size, args.dim, dev, dt)
 
-    # NOTE As we currently do not look into randomization with JAX, handling only
-    # PyTorch here is fine
     manual_seed(2)  # this allows making the randomized methods deterministic
-
     start = perf_counter()
     func, description = get_function_and_description(
         args.operator,
@@ -885,34 +725,22 @@ if __name__ == "__main__":
         net,
         X,
         is_batched,
-        use_jax=args.use_jax,
     )
     print(f"Setting up function took: {perf_counter() - start:.3f} s.")
 
     is_cuda = args.device == "cuda"
-
     op = args.operator.capitalize()
 
     # Carry out the measurements
 
     # 1) Peak memory with non-differentiable result
-    # If using JAX's jit, this run will trigger the compilation
     with no_grad():
         mem_no = measure_peak_memory(
-            func,
-            f"{op} non-differentiable ({description})",
-            is_cuda,
-            use_jax=args.use_jax,
+            func, f"{op} non-differentiable ({description})", is_cuda
         )
 
-    # 2) Peak memory with differentiable result (PyTorch only as there is
-    # no equivalent of torch's requires_grad in JAX, see the discussion in
-    # https://github.com/jax-ml/jax/issues/1937)
-    mem = measure_peak_memory(
-        func, f"{op} ({description})", is_cuda, use_jax=args.use_jax
-    )
-    if args.use_jax:
-        mem = float("nan")
+    # 2) Peak memory with differentiable result
+    mem = measure_peak_memory(func, f"{op} ({description})", is_cuda)
 
     # 3) Run time
     mu, sigma, best = measure_time(func, f"{op} ({description})", is_cuda)
@@ -923,7 +751,6 @@ if __name__ == "__main__":
         with no_grad():
             result = func()
 
-        # NOTE As we currently do not look into randomization with JAX, handling only
         # PyTorch here is fine
         manual_seed(2)  # make sure that the baseline is deterministic
         baseline_func, _ = get_function_and_description(
@@ -934,7 +761,6 @@ if __name__ == "__main__":
             net,
             X,
             is_batched,
-            use_jax=args.use_jax,
         )
         with no_grad():
             baseline_result = baseline_func()
@@ -942,21 +768,13 @@ if __name__ == "__main__":
         assert (
             baseline_result.shape == result.shape
         ), f"Shapes do not match: {baseline_result.shape} != {result.shape}."
-        # NOTE On MAC, we cannot force float64 computations without getting errors.
-        # Therefore we need to increase the tolerance.
-        compare = jnp.allclose if args.use_jax else allclose
-        same = compare(
-            baseline_result,
-            result,
-            atol=5e-6 if ON_MAC and args.use_jax else 1e-8,
-            rtol=5e-4 if ON_MAC and args.use_jax else 1e-5,
-        )
+        same = allclose(baseline_result, result)
         assert same, f"Results do not match: {result} != {baseline_result}."
         print("Results match.")
 
     # Write measurements to a file
     data = ", ".join([str(val) for val in [mem_no, mem, mu, sigma, best]])
-    filename = savepath(**{k: v for k, v in vars(args).items() if k != "use_jax"})
+    filename = savepath(**vars(args))
     with open(filename, "w") as f:
         print(f"Writing to {filename}.")
         f.write(data)

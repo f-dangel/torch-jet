@@ -14,7 +14,7 @@ from pandas import DataFrame, concat
 from torch import cuda, linspace
 
 from jet.exp.exp01_benchmark_laplacian.execute import HERE as SCRIPT
-from jet.exp.exp01_benchmark_laplacian.execute import SUPPORTED_STRATEGIES
+from jet.exp.exp01_benchmark_laplacian.execute import RAWDIR, SUPPORTED_STRATEGIES
 from jet.exp.exp01_benchmark_laplacian.execute import savepath as savepath_raw
 from jet.exp.utils import run_verbose, to_string
 
@@ -35,7 +35,9 @@ def measure(
     distributions: Optional[List[str]] = None,
     nums_samples: Optional[List[int]] = None,
     operator: str = "laplacian",
-    use_jax: bool = False,
+    script_file: str = SCRIPT,
+    rawdir: str = RAWDIR,
+    gatherdir: str = GATHERDIR,
 ):
     """Run benchmark measurements for all combinations of input parameters.
 
@@ -54,8 +56,6 @@ def measure(
         nums_samples: List of numbers of samples for the randomized Laplacian. `None`
             means that the exact Laplacian will be benchmarked. Default is `None`.
         operator: The differential operator to benchmark. Default is `'laplacian'`.
-        use_jax: Whether to use JAX instead of PyTorch for the computations.
-            Default is `False`.
     """
     _distributions = [None] if distributions is None else distributions
     _nums_samples = [None] if nums_samples is None else nums_samples
@@ -93,7 +93,7 @@ def measure(
         }
 
         # maybe skip the computation
-        raw = savepath_raw(**kwargs)
+        raw = savepath_raw(rawdir=rawdir, **kwargs)
         skip = False
         if path.exists(raw) and skip_existing:
             print(f"Skipping because file already exists: {raw}.")
@@ -105,15 +105,9 @@ def measure(
             skip = True
 
         if not skip:
-            cmd = (
-                ["python", SCRIPT]
-                + [
-                    f"--{key}={value}"
-                    for key, value in kwargs.items()
-                    if value is not None
-                ]
-                + (["--use_jax"] if use_jax else [])
-            )
+            cmd = ["python", script_file] + [
+                f"--{key}={value}" for key, value in kwargs.items() if value is not None
+            ]
             run_verbose(cmd)
 
         # gather data every few measurements so we can plot even before all are done
@@ -128,9 +122,10 @@ def measure(
                 _distributions,
                 _nums_samples,
                 operator,
+                rawdir,
                 allow_missing=not is_last,
             )
-            filename = savepath(name)
+            filename = savepath(name, gatherdir=gatherdir)
             print(f"Saving gathered data for experiment {name} to {filename}.")
             df.to_csv(filename, index=False)
 
@@ -144,6 +139,7 @@ def gather_data(
     distributions: List[Optional[str]],
     nums_samples: List[Optional[int]],
     operator: str,
+    rawdir: str,
     allow_missing: bool = False,
 ) -> DataFrame:
     """Create a data frame that collects all the results into a single table.
@@ -193,7 +189,9 @@ def gather_data(
             "num_samples": [num_samples],
         }
         filename = savepath_raw(
-            **{key: value[0] for key, value in result.items()}, operator=operator
+            **{key: value[0] for key, value in result.items()},
+            operator=operator,
+            rawdir=rawdir,
         )
 
         if not path.exists(filename) and allow_missing:
@@ -217,7 +215,7 @@ def gather_data(
     return df
 
 
-def savepath(name: str) -> str:
+def savepath(name: str, gatherdir: str = GATHERDIR) -> str:
     """Generate a file path for saving gathered data.
 
     Args:
@@ -227,7 +225,7 @@ def savepath(name: str) -> str:
         A string representing the file path where the data will be saved.
     """
     filename = to_string(name=name)
-    return path.join(GATHERDIR, f"{filename}.csv")
+    return path.join(gatherdir, f"{filename}.csv")
 
 
 EXPERIMENTS = [
@@ -351,23 +349,6 @@ EXPERIMENTS = [
             "operator": "bilaplacian",
         },
         # what to plot: x-axis is batch size and each strategy is plotted in a curve
-        ("batch_size", "strategy"),
-    ),
-    # Experiment 8: Laplacian in JAX for varying batch sizes. Same as experiment 1
-    # but using JAX instead of PyTorch.
-    (  # Experiment name, must be unique
-        "jax_laplacian_vary_batch_size",
-        # Experiment parameters
-        {
-            "architectures": ["tanh_mlp_768_768_512_512_1"],
-            "dims": [50],
-            "batch_sizes": linspace(1, 2048, 10).int().unique().tolist(),
-            "strategies": SUPPORTED_STRATEGIES,
-            "devices": ["cuda"],
-            "operator": "laplacian",
-            "use_jax": True,
-        },
-        # what to plot: x-axis is batch_sizes and each strategy is plotted in a curve
         ("batch_size", "strategy"),
     ),
 ]

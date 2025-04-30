@@ -1,0 +1,115 @@
+This section presents experiments that show that the graph simplifications we propose to collapse standard Taylor mode are currently not applied by the \texttt{jit} compiler in JAX.
+
+\paragraph{Setup.} TODO
+
+\paragraph{Results.} TODO
+
+\begin{figure*}[!t]
+  \centering
+  % From https://tex.stackexchange.com/a/7318
+  \newcolumntype{C}{ >{\centering\arraybackslash} m{0.12\textwidth} }
+  \newcolumntype{D}{ >{\centering\arraybackslash} m{0.42\textwidth} }
+  \begin{tabular}{CDD}
+    & \textbf{Laplacian $(D=50)$}
+    & \textbf{Bi-harmonic $(D=5)$}
+    \\
+    \textbf{Exact}
+    & \includegraphics{../jet/exp/exp04_jax_benchmark/figures/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_jax_laplacian_vary_batch_size.pdf}
+    & TODO
+  \end{tabular}
+  \caption{\textbf{JAX's \texttt{jit} compiler does not apply our graph simplifications to standard Taylor mode.} Colors: \textcolor{tab:green}{Collapsed Taylor mode}, \textcolor{tab:orange}{standard Taylor mode}, and \textcolor{tab:blue}{nested first-order automatic differentiaion}, \textcolor{black!50!white}{opaque} memory consumptions are for non-differentiable computations.
+    Results are on GPU and we use a $D \to 768 \to 768 \to 512 \to 512 \to 1$ MLP with tanh activations with $D=50$ for the Laplacians and $D=5$ for the Bi-harmonic operator, varying the batch size.
+    For each approach, we fit a line to the data and report the slope in \Cref{tab:jax-benchmark}  to quantify the relative speedup and memory reduction.
+    \textbf{Why are there no solid memory consumptions for differentiable results?} TODO
+  }
+  \label{fig:jax-benchmark}
+\end{figure*}
+
+\begin{table}[!t]
+  \centering
+  \caption{\textbf{JAX Benchmark from \Cref{fig:jax-benchmark} in numbers.}
+    We fit linear functions and report their slopes, \ie how much run time and memory increase when incrementing the batch size.
+    % Our collapsed Taylor mode is up to two times faster than nested first-order autodiff, while using 80\% of memory in the differentiable, and 70\% in the non-differentiable, setting.
+    All numbers are shown with two significant digits and bold values are best according to parenthesized values.}
+  \label{tab:jax-benchmark}
+  \vspace{1.5ex}
+  % paths where the performances are stored
+  \def\datapathJAXLaplacianExact{../jet/exp/exp04_jax_benchmark/performance/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_jax_laplacian_vary_batch_size}
+  % configuration options for the \num command
+  \sisetup{%
+    % scientific-notation=true,%
+    round-mode=figures,%
+    round-precision=2,%
+    detect-weight, % for bolding to work
+    tight-spacing=true, % less space around \cdot
+  }
+  % temporarily overwrite the \num command to process nan's
+  \let\origsiunitxnum\num
+  % Redefine \num to check for non-numeric strings
+  \renewcommand{\num}[1]{\IfStrEq{#1}{nan}{\text{n/a} }{\origsiunitxnum{#1}}}
+  \begin{tabular}{ccc|cc}
+    \toprule
+    \textbf{Mode}
+    & \textbf{Per-datum cost}
+    & \textbf{Implementation}
+    & \textbf{Laplacian}
+    & \textbf{Bi-harmonic}
+    \\
+    \midrule
+    \multirow{9}{*}{\textbf{Exact}}
+    & \multirow{3}{*}{Time [ms]}
+    & \textcolor{tab:blue}{Nested first-order}
+    & \input{\datapathJAXLaplacianExact/hessian_trace_best.txt}
+    & %\input{\datapathBilaplacianExact/hessian_trace_best.txt}
+    \\
+    &
+    & \textcolor{tab:orange}{Standard Taylor}
+    & \input{\datapathJAXLaplacianExact/jet_naive_best.txt}
+    & %\input{\datapathBilaplacianExact/jet_naive_best.txt}
+    \\
+    &
+    & \textcolor{tab:green}{Collapsed (ours)}
+    & \textbf{\input{\datapathJAXLaplacianExact/jet_simplified_best.txt}}
+    & %\textbf{\input{\datapathBilaplacianExact/jet_simplified_best.txt}}
+    \\ \cmidrule{2-5}
+    & \multirow{3}{*}{\makecell{Mem.\,[MiB] \\ (differentiable)}}
+    & \textcolor{tab:blue}{Nested first-order}
+    & \input{\datapathJAXLaplacianExact/hessian_trace_peakmem.txt}
+    & %\input{\datapathBilaplacianExact/hessian_trace_peakmem.txt}
+    \\
+    &
+    & \textcolor{tab:orange}{Standard Taylor}
+    & \input{\datapathJAXLaplacianExact/jet_naive_peakmem.txt}
+    & %\input{\datapathBilaplacianExact/jet_naive_peakmem.txt}
+    \\
+    &
+    & \textcolor{tab:green}{Collapsed (ours)}
+    & \textbf{\input{\datapathJAXLaplacianExact/jet_simplified_peakmem.txt}}
+    & %\textbf{\input{\datapathBilaplacianExact/jet_simplified_peakmem.txt}}
+    \\ \cmidrule{2-5}
+    & \multirow{3}{*}{\makecell{Mem.\,[MiB] \\ (non-diff.)}}
+    & \textcolor{tab:blue}{Nested first-order}
+    & \input{\datapathJAXLaplacianExact/hessian_trace_peakmem_nondifferentiable.txt}
+    & %\input{\datapathBilaplacianExact/hessian_trace_peakmem_nondifferentiable.txt}
+    \\
+    &
+    & \textcolor{tab:orange}{Standard Taylor}
+    & \textbf{\input{\datapathJAXLaplacianExact/jet_naive_peakmem_nondifferentiable.txt}}
+    & %\textbf{\input{\datapathBilaplacianExact/jet_naive_peakmem_nondifferentiable.txt}}
+    \\
+    &
+    & \textcolor{tab:green}{Collapsed (ours)}
+    & \textbf{\input{\datapathJAXLaplacianExact/jet_simplified_peakmem_nondifferentiable.txt}}
+    & %\textbf{\input{\datapathBilaplacianExact/jet_simplified_peakmem_nondifferentiable.txt}}
+    \\
+    \bottomrule
+  \end{tabular}
+  % Re-set the \num command to the original one
+  \let\num\origsiunitxnum
+\end{table}
+
+
+%%% Local Variables:
+%%% mode: LaTeX
+%%% TeX-master: "../main"
+%%% End:

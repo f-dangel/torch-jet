@@ -14,7 +14,7 @@ from jet.exp.exp01_benchmark_laplacian.plot import (
     savepath,
     savepath_gathered,
 )
-from jet.exp.exp04_jax_benchmark.run import EXPERIMENTS
+from jet.exp.exp04_jax_benchmark.run import EXPERIMENTS, GATHERDIR
 
 HEREDIR = path.dirname(path.abspath(__file__))
 PLOTDIR = path.join(HEREDIR, "figures")
@@ -24,7 +24,7 @@ if __name__ == "__main__":
     METRICS = ["time", "peak_memory"]
 
     for name, _, (x, lines) in EXPERIMENTS:
-        df = read_csv(savepath_gathered(name))
+        df = read_csv(savepath_gathered(name, gatherdir=GATHERDIR))
 
         # find all columns of df that are not x and lines
         columns = [

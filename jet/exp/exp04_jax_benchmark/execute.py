@@ -289,11 +289,7 @@ if __name__ == "__main__":
     # no equivalent of torch's requires_grad in JAX, see the discussion in
     # https://github.com/jax-ml/jax/issues/1937)
     mem = measure_peak_memory(func, f"{op} ({description})", is_cuda, use_jax=True)
-    if (
-        args.operator != "laplacian"
-        and args.strategy != "hessian_trace"
-        and not is_cuda
-    ):
+    if args.strategy != "hessian_trace" and not is_cuda:
         mem = float("nan")
 
     # 3) Run time

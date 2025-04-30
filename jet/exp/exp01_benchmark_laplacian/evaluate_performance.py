@@ -7,7 +7,7 @@ from numpy import polyfit
 from pandas import read_csv
 
 from jet.exp.exp01_benchmark_laplacian.plot import MEASUREMENT_COLUMNS, fix_columns
-from jet.exp.exp01_benchmark_laplacian.run import EXPERIMENTS
+from jet.exp.exp01_benchmark_laplacian.run import EXPERIMENTS, GATHERDIR
 from jet.exp.exp01_benchmark_laplacian.run import savepath as savepath_gathered
 from jet.exp.utils import to_string
 
@@ -18,7 +18,9 @@ makedirs(PERFDIR, exist_ok=True)
 REFERENCE = "hessian_trace"
 
 
-def savepath(name: str, implementation: str, metric: str, **kwargs) -> str:
+def savepath(
+    name: str, implementation: str, metric: str, perfdir: str = PERFDIR, **kwargs
+) -> str:
     """Generate a file path for saving a plot.
 
     Args:
@@ -30,12 +32,19 @@ def savepath(name: str, implementation: str, metric: str, **kwargs) -> str:
     Returns:
         A string representing the file path where the plot will be saved.
     """
-    subdir = path.join(PERFDIR, to_string(name=name, **kwargs))
+    subdir = path.join(perfdir, to_string(name=name, **kwargs))
     makedirs(subdir, exist_ok=True)
     return path.join(subdir, f"{implementation}_{metric}.txt")
 
 
-def report_relative_performance(name: str, x: str, lines: str, ref_line: str):
+def report_relative_performance(
+    name: str,
+    x: str,
+    lines: str,
+    ref_line: str,
+    gatherdir: str = GATHERDIR,
+    perfdir: str = PERFDIR,
+):
     """Report the relative performance between different lines.
 
     Fits a linear function to each line and reports the differences in slope.
@@ -52,7 +61,7 @@ def report_relative_performance(name: str, x: str, lines: str, ref_line: str):
         ("peakmem [GiB]", "peakmem"),
         ("peakmem non-differentiable [GiB]", "peakmem_nondifferentiable"),
     ]
-    df = read_csv(savepath_gathered(name))
+    df = read_csv(savepath_gathered(name, gatherdir=gatherdir))
 
     # find all columns of df that are not x and lines
     columns = [
@@ -102,7 +111,7 @@ def report_relative_performance(name: str, x: str, lines: str, ref_line: str):
                 print(f"\t{line}:\t{c0:.5f} + {c1:.5f} * x ({relative:.3f}x relative)")
 
                 # save to file
-                path = savepath(name, line, metric_store, **fix)
+                path = savepath(name, line, metric_store, perfdir=perfdir, **fix)
                 with open(path, "w") as f:
                     content = r"\num{" + str(c1) + r"} (\num{" + str(relative) + "}x)"
                     f.write(content)

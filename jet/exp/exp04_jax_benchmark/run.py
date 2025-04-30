@@ -1,3 +1,11 @@
+"""Execute the JAX benchmark and gather the results.
+
+Runs a series of benchmark experiments by calling out to a script that executes the
+measurement of one experiment in a separate Python session to avoid memory allocations
+from previous measurements to leak into the current one. The results are gathered in a
+specified directory in csv files.
+"""
+
 from os import makedirs, path
 
 from torch import linspace

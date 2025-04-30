@@ -149,6 +149,7 @@ def laplacian_function(  # noqa: C901
             """Compute the Laplacian of f on an un-batched input.
 
             Args:
+                params: The parameters of the neural network.
                 x: The input tensor.
 
             Returns:

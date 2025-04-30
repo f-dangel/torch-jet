@@ -4,6 +4,7 @@ from statistics import mean, stdev
 from subprocess import CalledProcessError, CompletedProcess, run
 from time import perf_counter
 from typing import Callable, List, Tuple, Union
+from warnings import warn
 
 import jax
 from memory_profiler import memory_usage
@@ -68,6 +69,8 @@ def measure_peak_memory(
         else:
             peakmem_bytes = cuda.max_memory_allocated()
     else:
+        if use_jax:
+            warn("Memory measurements of JAX code on CPU do not work.")
         peakmem_bytes = memory_usage(f, interval=1e-4, max_usage=True) * 2**20
 
     peakmem_gib = peakmem_bytes / 2**30

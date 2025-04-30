@@ -45,8 +45,8 @@ exp = [
     "matplotlib",
     "tueplots",
     "pydot", # visualizing torch.fx compute graphs
-    "jax[cuda12]==0.5.3", # for compatibility with folx
-    "folx==0.2.15"
+    "jax[cuda12],
+    "folx",
 ]
 # Dependencies needed to run the tests (semicolon/line-separated).
 test = [

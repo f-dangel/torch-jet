@@ -21,7 +21,7 @@ EXPERIMENTS = [
             "dims": [50],
             "batch_sizes": linspace(1, 2048, 10).int().unique().tolist(),
             "strategies": SUPPORTED_STRATEGIES,
-            "devices": ["cpu"],
+            "devices": ["cuda"],
             "operator": "laplacian",
         },
         # what to plot: x-axis is batch_sizes and each strategy is plotted in a curve

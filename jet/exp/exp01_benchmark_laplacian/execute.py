@@ -754,7 +754,6 @@ if __name__ == "__main__":
         with no_grad():
             result = func()
 
-        # PyTorch here is fine
         manual_seed(2)  # make sure that the baseline is deterministic
         baseline_func, _ = get_function_and_description(
             args.operator,

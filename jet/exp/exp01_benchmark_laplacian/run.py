@@ -14,7 +14,7 @@ from pandas import DataFrame, concat
 from torch import cuda, linspace
 
 from jet.exp.exp01_benchmark_laplacian.execute import HERE as SCRIPT
-from jet.exp.exp01_benchmark_laplacian.execute import SUPPORTED_STRATEGIES
+from jet.exp.exp01_benchmark_laplacian.execute import RAWDIR, SUPPORTED_STRATEGIES
 from jet.exp.exp01_benchmark_laplacian.execute import savepath as savepath_raw
 from jet.exp.utils import run_verbose, to_string
 
@@ -35,6 +35,9 @@ def measure(
     distributions: Optional[List[str]] = None,
     nums_samples: Optional[List[int]] = None,
     operator: str = "laplacian",
+    script_file: str = SCRIPT,
+    rawdir: str = RAWDIR,
+    gatherdir: str = GATHERDIR,
 ):
     """Run benchmark measurements for all combinations of input parameters.
 
@@ -53,6 +56,12 @@ def measure(
         nums_samples: List of numbers of samples for the randomized Laplacian. `None`
             means that the exact Laplacian will be benchmarked. Default is `None`.
         operator: The differential operator to benchmark. Default is `'laplacian'`.
+        gatherdir: The directory to save the gathered data into. Default is the gather
+            directory of the PyTorch benchmark.
+        script_file: The path to the script file that runs the benchmark. Default is the
+            script of the PyTorch benchmark.
+        rawdir: The directory to save the raw data into. Default is the raw directory
+            of the PyTorch benchmark.
     """
     _distributions = [None] if distributions is None else distributions
     _nums_samples = [None] if nums_samples is None else nums_samples
@@ -90,7 +99,7 @@ def measure(
         }
 
         # maybe skip the computation
-        raw = savepath_raw(**kwargs)
+        raw = savepath_raw(rawdir=rawdir, **kwargs)
         skip = False
         if path.exists(raw) and skip_existing:
             print(f"Skipping because file already exists: {raw}.")
@@ -102,7 +111,7 @@ def measure(
             skip = True
 
         if not skip:
-            cmd = ["python", SCRIPT] + [
+            cmd = ["python", script_file] + [
                 f"--{key}={value}" for key, value in kwargs.items() if value is not None
             ]
             run_verbose(cmd)
@@ -119,9 +128,10 @@ def measure(
                 _distributions,
                 _nums_samples,
                 operator,
+                rawdir,
                 allow_missing=not is_last,
             )
-            filename = savepath(name)
+            filename = savepath(name, gatherdir=gatherdir)
             print(f"Saving gathered data for experiment {name} to {filename}.")
             df.to_csv(filename, index=False)
 
@@ -135,6 +145,7 @@ def gather_data(
     distributions: List[Optional[str]],
     nums_samples: List[Optional[int]],
     operator: str,
+    rawdir: str,
     allow_missing: bool = False,
 ) -> DataFrame:
     """Create a data frame that collects all the results into a single table.
@@ -148,6 +159,7 @@ def gather_data(
         distributions: List of distributions for the randomized Laplacian.
         nums_samples: List of numbers of samples for the randomized Laplacian.
         operator: The differential operator that was benchmarked.
+        rawdir: The directory where the raw data is stored.
         allow_missing: Whether to allow missing result files. Default is False.
 
     Returns:
@@ -184,7 +196,9 @@ def gather_data(
             "num_samples": [num_samples],
         }
         filename = savepath_raw(
-            **{key: value[0] for key, value in result.items()}, operator=operator
+            **{key: value[0] for key, value in result.items()},
+            operator=operator,
+            rawdir=rawdir,
         )
 
         if not path.exists(filename) and allow_missing:
@@ -208,17 +222,19 @@ def gather_data(
     return df
 
 
-def savepath(name: str) -> str:
+def savepath(name: str, gatherdir: str = GATHERDIR) -> str:
     """Generate a file path for saving gathered data.
 
     Args:
         name: The name of the experiment.
+        gatherdir: The directory where the gathered data will be saved. Default is the
+            gather directory of the PyTorch benchmark.
 
     Returns:
         A string representing the file path where the data will be saved.
     """
     filename = to_string(name=name)
-    return path.join(GATHERDIR, f"{filename}.csv")
+    return path.join(gatherdir, f"{filename}.csv")
 
 
 EXPERIMENTS = [
@@ -321,8 +337,8 @@ EXPERIMENTS = [
             "devices": ["cuda"],
             "operator": "bilaplacian",
             "distributions": ["normal"],
-            # exact takes 4.5 D**2 - 1.5 D + 4 = 109, randomized takes 2 + 3S, so choosing
-            # S <= 36 because for S=36 we can compute the Bi-Laplacian exactly
+            # exact takes 4.5 D**2 - 1.5 D + 4 = 109, randomized takes 2 + 3S, so
+            # choosing S <= 36 because for S=36 we can compute the Bi-Laplacian exactly
             "nums_samples": linspace(1, 36, 10).int().unique().tolist(),
         },
         # what to plot: x-axis is nums_samples and each strategy is plotted in a curve

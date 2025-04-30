@@ -26,18 +26,20 @@ LABELS = {
 }
 
 
-def savepath(name: str, **kwargs) -> str:
+def savepath(name: str, plotdir: str = PLOTDIR, **kwargs) -> str:
     """Generate a file path for saving a plot.
 
     Args:
         name: The name of the experiment.
+        plotdir: The directory where the plot will be saved. Default is the figure
+            directory of the PyTorch benchmark.
         **kwargs: Other parameters of the experiment.
 
     Returns:
         A string representing the file path where the plot will be saved.
     """
     filename = to_string(name=name, **kwargs)
-    return path.join(PLOTDIR, f"{filename}.pdf")
+    return path.join(plotdir, f"{filename}.pdf")
 
 
 def fix_columns(df: DataFrame, fix: Dict[str, Union[str, int]]) -> DataFrame:

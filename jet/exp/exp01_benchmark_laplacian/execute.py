@@ -7,7 +7,17 @@ from time import perf_counter
 from typing import Callable, Union
 
 from einops import einsum
-from torch import Tensor, device, manual_seed, no_grad, rand, randn
+from torch import (
+    Tensor,
+    allclose,
+    device,
+    dtype,
+    float64,
+    manual_seed,
+    no_grad,
+    rand,
+    randn,
+)
 from torch.func import hessian, jacrev, jvp, vmap
 from torch.fx import symbolic_trace
 from torch.nn import Linear, Sequential, Tanh
@@ -28,7 +38,7 @@ HEREDIR = path.dirname(HERE)
 RAWDIR = path.join(HEREDIR, "raw")
 makedirs(RAWDIR, exist_ok=True)
 
-# Define supported architectures
+# Define supported PyTorch architectures
 SUPPORTED_ARCHITECTURES = {
     "tanh_mlp_768_768_512_512_1": lambda dim: Sequential(
         Linear(dim, 768),
@@ -526,30 +536,38 @@ def randomized_bilaplacian_function(
         )
 
 
-def setup_architecture(architecture: str, dim: int) -> Callable[[Tensor], Tensor]:
+def setup_architecture(
+    architecture: str, dim: int, dev: device, dt: dtype, seed: int = 0
+) -> Callable[[Tensor], Tensor]:
     """Set up a neural network architecture based on the specified configuration.
 
     Args:
         architecture: The architecture identifier.
         dim: The input dimension for the architecture.
+        dev: The device to place the model on.
+        dt: The data type to use.
+        seed: The random seed for initialization. Default is `0`.
 
     Returns:
-        A PyTorch model configured with the specified architecture.
+        A PyTorch model of the specified architecture.
     """
-    return SUPPORTED_ARCHITECTURES[architecture](dim)
+    manual_seed(seed)
+    return SUPPORTED_ARCHITECTURES[architecture](dim).to(device=dev, dtype=dt)
 
 
-def savepath(**kwargs: Union[str, int]) -> str:
+def savepath(rawdir: str = RAWDIR, **kwargs: Union[str, int]) -> str:
     """Generate a file path for saving measurement results.
 
     Args:
+        rawdir: The directory where the results will be saved. Default is the raw
+            directory of the PyTorch benchmark.
         **kwargs: Key-value pairs representing the parameters of the measurement.
 
     Returns:
         A string representing the file path where the results will be saved.
     """
     filename = to_string(**kwargs)
-    return path.join(RAWDIR, f"{filename}.csv")
+    return path.join(rawdir, f"{filename}.csv")
 
 
 def check_mutually_required(args: Namespace):
@@ -581,7 +599,8 @@ def get_function_and_description(
     """Determine the function and its description based on the operator and strategy.
 
     Args:
-        operator: The operator to be used, either 'laplacian' or 'bilaplacian'.
+        operator: The operator to be used, either 'laplacian', 'weighted-laplacian',
+            or 'bilaplacian'.
         strategy: The strategy to be used for computation.
         distribution: The distribution type, if any.
         num_samples: The number of samples, if any.
@@ -632,7 +651,32 @@ def get_function_and_description(
     return func, description
 
 
-if __name__ == "__main__":
+def setup_input(
+    batch_size: int, dim: int, dev: device, dt: dtype, seed: int = 1
+) -> Tensor:
+    """Set up the seeded input tensor for the neural network.
+
+    Args:
+        batch_size: The number of samples in the batch.
+        dim: The dimensionality of the input tensor.
+        dev: The device to place the tensor on.
+        dt: The data type of the tensor.
+        seed: The random seed for initialization. Default is `1`.
+
+    Returns:
+        A PyTorch tensor of shape (batch_size, dim) and specified data type and device.
+    """
+    manual_seed(seed)
+    shape = (batch_size, dim)
+    return rand(*shape, dtype=dt, device=dev)
+
+
+def parse_args() -> Namespace:
+    """Parse the benchmark script's command line arguments.
+
+    Returns:
+        The benchmark script's arguments.
+    """
     parser = ArgumentParser("Parse arguments of measurement.")
     parser.add_argument(
         "--architecture",
@@ -656,18 +700,25 @@ if __name__ == "__main__":
         choices={"laplacian", "weighted-laplacian", "bilaplacian"},
         required=True,
     )
-    args = parser.parse_args()
 
+    # parse and check validity
+    args = parser.parse_args()
     check_mutually_required(args)
+
+    return args
+
+
+if __name__ == "__main__":
+    args = parse_args()
 
     # set up the function that will be measured
     dev = device(args.device)
-    manual_seed(0)
-    net = setup_architecture(args.architecture, args.dim).double().to(dev)
-    X = rand(args.batch_size, args.dim).double().to(dev)
+    dt = float64
+    net = setup_architecture(args.architecture, args.dim, dev, dt)
     is_batched = True
+    X = setup_input(args.batch_size, args.dim, dev, dt)
 
-    manual_seed(1)  # this allows making the randomized methods deterministic
+    manual_seed(2)  # this allows making the randomized methods deterministic
     start = perf_counter()
     func, description = get_function_and_description(
         args.operator,
@@ -681,23 +732,29 @@ if __name__ == "__main__":
     print(f"Setting up function took: {perf_counter() - start:.3f} s.")
 
     is_cuda = args.device == "cuda"
-
     op = args.operator.capitalize()
-    # carry out the measurements
+
+    # Carry out the measurements
+
+    # 1) Peak memory with non-differentiable result
     with no_grad():
         mem_no = measure_peak_memory(
             func, f"{op} non-differentiable ({description})", is_cuda
         )
+
+    # 2) Peak memory with differentiable result
     mem = measure_peak_memory(func, f"{op} ({description})", is_cuda)
+
+    # 3) Run time
     mu, sigma, best = measure_time(func, f"{op} ({description})", is_cuda)
 
-    # sanity check: make sure that the results correspond to the baseline implementation
+    # Sanity check: make sure that the results correspond to the baseline implementation
     if args.strategy != BASELINE:
         print("Checking correctness against baseline.")
         with no_grad():
             result = func()
 
-        manual_seed(1)  # make sure that the baseline is deterministic
+        manual_seed(2)  # make sure that the baseline is deterministic
         baseline_func, _ = get_function_and_description(
             args.operator,
             BASELINE,
@@ -713,12 +770,11 @@ if __name__ == "__main__":
         assert (
             baseline_result.shape == result.shape
         ), f"Shapes do not match: {baseline_result.shape} != {result.shape}."
-        assert baseline_result.allclose(
-            result
-        ), f"Results do not match: {result} != {baseline_result}."
+        same = allclose(baseline_result, result)
+        assert same, f"Results do not match: {result} != {baseline_result}."
         print("Results match.")
 
-    # write them to a file
+    # Write measurements to a file
     data = ", ".join([str(val) for val in [mem_no, mem, mu, sigma, best]])
     filename = savepath(**vars(args))
     with open(filename, "w") as f:

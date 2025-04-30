@@ -1,0 +1,1 @@
+\num{nan} (\num{nan}x)

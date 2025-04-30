@@ -4,7 +4,9 @@ from statistics import mean, stdev
 from subprocess import CalledProcessError, CompletedProcess, run
 from time import perf_counter
 from typing import Callable, List, Tuple, Union
+from warnings import warn
 
+import jax
 from memory_profiler import memory_usage
 from torch import cuda
 
@@ -44,21 +46,31 @@ def measure_time(
     return mu, sigma, best
 
 
-def measure_peak_memory(f: Callable, name: str, is_cuda: bool) -> float:
+def measure_peak_memory(
+    f: Callable, name: str, is_cuda: bool, use_jax: bool = False
+) -> float:
     """Measure the peak memory usage of a function.
 
     Args:
         f: Function to measure the peak memory usage of.
         name: Name of the function. Will be used to print the peak memory usage.
         is_cuda: Whether the function is executed on a CUDA device.
+        use_jax: Whether the function uses JAX instead of PyTorch. Default: `False`.
 
     Returns:
         The peak memory usage in GiB.
     """
     if is_cuda:
         f()
-        peakmem_bytes = cuda.max_memory_allocated()
+        if use_jax:
+            # See https://github.com/jax-ml/jax/issues/8096
+            stats = jax.devices("cuda")[0].memory_stats()
+            peakmem_bytes = stats["peak_bytes_in_use"]
+        else:
+            peakmem_bytes = cuda.max_memory_allocated()
     else:
+        if use_jax:
+            warn("Memory measurements of JAX code on CPU do not work.")
         peakmem_bytes = memory_usage(f, interval=1e-4, max_usage=True) * 2**20
 
     peakmem_gib = peakmem_bytes / 2**30
@@ -97,12 +109,18 @@ def run_verbose(cmd: List[str]) -> CompletedProcess:
         raise e
 
 
-def to_string(drop_none_values: bool = True, **kwargs: Union[str, int]) -> str:
+def to_string(
+    drop_none_values: bool = True,
+    compact_bool_values: bool = True,
+    **kwargs: Union[str, int],
+) -> str:
     """Convert a dictionary to a string representation.
 
     Args:
         **kwargs: The arguments and their values.
         drop_none_values: Whether to drop arguments with value `None`. Default: `True`.
+        compact_bool_values: Whether to convert boolean values. If a value is `True`,
+            its key will be in the string. If it is `False`, the key will not.
 
     Returns:
         A string representation of the sorted arguments and their values.
@@ -110,4 +128,16 @@ def to_string(drop_none_values: bool = True, **kwargs: Union[str, int]) -> str:
     sorted_keys = sorted(kwargs.keys())
     if drop_none_values:
         sorted_keys = [key for key in sorted_keys if kwargs[key] is not None]
-    return "_".join(f"{key}_{kwargs[key]}" for key in sorted_keys)
+
+    formatted = []
+    for key in sorted_keys:
+        value = kwargs[key]
+        if isinstance(value, bool) and compact_bool_values and value:
+            formatted.append(str(key))
+        elif (
+            isinstance(value, bool)
+            and not compact_bool_values
+            or not isinstance(value, bool)
+        ):
+            formatted.append(f"{key}_{value}")
+    return "_".join(formatted)

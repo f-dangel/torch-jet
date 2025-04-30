@@ -64,24 +64,43 @@ SUPPORTED_ARCHITECTURES = {
 def setup_architecture(
     architecture: str, dim: int, dev: Device, dt: DTypeLike, seed: int = 0
 ) -> tuple[list[ArrayLike], Callable[[list[ArrayLike], ArrayLike], ArrayLike]]:
-    """Set up the architecture for the experiment."""
+    """Set up the architecture for the benchmark.
 
+    Args:
+        architecture: The architecture to use. Must be one of the supported
+            architectures in `SUPPORTED_ARCHITECTURES`.
+        dim: The dimension of the input.
+        dev: The device to use.
+        dt: The data type to use.
+        seed: The random seed to use. Default is 0.
+
+    Returns:
+        A tuple containing the parameters of the architecture and the function to
+        compute the output of the architecture given parameters and data.
+    """
     init_fun, apply_fun = SUPPORTED_ARCHITECTURES[architecture]()
     key = PRNGKey(seed)
     _, params = init_fun(key, (dim,))
     # move to data type and device
-    params = tree_map(
-        lambda x: device_put(array(x, dtype=dt), device=dev),
-        params,
-    )
-    # curry the network function
+    params = tree_map(lambda x: device_put(array(x, dtype=dt), device=dev), params)
     return params, apply_fun
 
 
 def setup_input(
     batch_size: int, dim: int, dev: Device, dt: DTypeLike, seed: int = 1
 ) -> ArrayLike:
-    """Set up the input for the experiment."""
+    """Set up the seeded input for the benchmark.
+
+    Args:
+        batch_size: The batch size to use.
+        dim: The dimension of the input.
+        dev: The device to use.
+        dt: The data type to use.
+        seed: The random seed to use. Default is 1.
+
+    Returns:
+        The seeded input tensor.
+    """
     shape = (batch_size, dim)
     key = PRNGKey(seed)
     return device_put(uniform(key, shape=shape, dtype=dt), dev)
@@ -98,7 +117,9 @@ def laplacian_function(  # noqa: C901
     """Construct a function to compute the Laplacian in JAX using different strategies.
 
     Args:
-        f: The function to compute the Laplacian of. Processes an un-batched tensor.
+        params_and_f: The neural net's parameters and the unbatched forward function
+            whose Laplacian we want to compute. The function should take the parameters
+            and the input tensor as arguments and return the output tensor.
         X: The input tensor at which to compute the Laplacian.
         is_batched: Whether the input is a batched tensor.
         strategy: Which strategy will be used by the returned function to compute
@@ -111,7 +132,7 @@ def laplacian_function(  # noqa: C901
 
     Returns:
         A function that computes the Laplacian of the function f at the input tensor X.
-        The function is expected to be called with no arguments.
+        The function is expected to be called with no arguments and is jitted.
 
     Raises:
         ValueError: If the strategy is not supported.
@@ -142,9 +163,7 @@ def laplacian_function(  # noqa: C901
         func = lambda: laplacian(params, X)  # noqa: E731
         # function that computes the Laplacian's gradient used as proxy for the
         # computation graph's memory footprint
-        summed_laplacian = (
-            lambda params, X: laplacian(params, X).sum() ** 2
-        )  # noqa: E731
+        summed_laplacian = lambda params, X: laplacian(params, X).sum()  # noqa: E731
         grad_func = lambda: grad(summed_laplacian, argnums=0)(params, X)  # noqa: E731
 
         # jit the functions
@@ -161,6 +180,14 @@ def laplacian_function(  # noqa: C901
         f_fix_params = lambda x: f(params, x)  # noqa: E731
 
         def laplacian(x: ArrayLike) -> ArrayLike:
+            """Compute the Laplacian of f on an un-batched input.
+
+            Args:
+                x: The un-batched input tensor.
+
+            Returns:
+                The Laplacian of f at x. Has the same shape as f(x).
+            """
             v2 = zeros(shape, dtype=X.dtype, device=X.device)
 
             def d2(x, v1):
@@ -176,6 +203,14 @@ def laplacian_function(  # noqa: C901
 
         laplacian = jit(laplacian)
         func = lambda: block_until_ready(laplacian(X))  # noqa: E731
+
+        # NOTE JAX's jet does not support the gradient of the Laplacian,
+        # because we cannot compute Taylor-mode w.r.t. x, followed by the
+        # gradient w.r.t. params (we could do the opposite order, but that
+        # would not be a meaningful proxy for the compute graph size of the
+        # Laplacian when using PyTorch with requires_grad=True). Hence we
+        # simply return the same function twice and ignore one of the
+        # measurements.
         return func, func
 
     elif strategy == "jet_simplified":
@@ -184,6 +219,14 @@ def laplacian_function(  # noqa: C901
         lap_f = ForwardLaplacianOperator(0)(f_fix_params)
 
         def laplacian(x: ArrayLike) -> ArrayLike:
+            """Compute the Laplacian of f on an un-batched input.
+
+            Args:
+                x: The un-batched input tensor.
+
+            Returns:
+                The Laplacian of f at x. Has the same shape as f(x).
+            """
             return lap_f(x)[0]
 
         if is_batched:
@@ -191,6 +234,8 @@ def laplacian_function(  # noqa: C901
 
         laplacian = jit(laplacian)
         func = lambda: block_until_ready(laplacian(X))  # noqa: E731
+
+        # NOTE See the comment for `jet_naive` from above
         return func, func
 
     else:
@@ -217,16 +262,17 @@ def get_function_and_description(
         strategy: The strategy to be used for computation.
         distribution: The distribution type, if any.
         num_samples: The number of samples, if any.
-        net: The neural network model.
+        params_and_net: The parameters and neural network function.
         X: The input tensor.
         is_batched: A flag indicating if the input is batched.
 
     Returns:
-        A tuple containing the function to compute the operator and a description
-        string.
+        A tuple containing the functions to compute the operator w/o being
+        able to differentiate through it, and a description string.
 
     Raises:
         ValueError: If an unsupported operator is specified.
+        NotImplementedError: If the specified mode is stochastic.
     """
     is_stochastic = distribution is not None and num_samples is not None
     args = (
@@ -243,10 +289,10 @@ def get_function_and_description(
     if operator != "laplacian":
         raise ValueError(f"Unsupported operator: {operator}.")
 
-    if not is_stochastic:
-        func_no, func = laplacian_function(*args)
-    else:
-        raise NotImplementedError
+    if is_stochastic:
+        raise NotImplementedError("Stochastic operators are not implemented yet.")
+
+    func_no, func = laplacian_function(*args)
 
     return func_no, func, description
 
@@ -277,7 +323,6 @@ if __name__ == "__main__":
 
     # Carry out the measurements
     # 1) Peak memory with non-differentiable result
-    # If using JAX's jit, this run will trigger the compilation
     mem_no = measure_peak_memory(
         func_no,
         f"{op} non-differentiable ({description})",
@@ -285,9 +330,10 @@ if __name__ == "__main__":
         use_jax=True,
     )
 
-    # 2) Peak memory with differentiable result (PyTorch only as there is
-    # no equivalent of torch's requires_grad in JAX, see the discussion in
-    # https://github.com/jax-ml/jax/issues/1937)
+    # 2) Peak memory with differentiable result (NOTE we can not always build a
+    # good proxy function to measure the equivalent of PyTorch's peak memory
+    # with requires_grad=True in JAX because it does not have an equivalent,
+    # see the discussion in https://github.com/jax-ml/jax/issues/1937)
     mem = measure_peak_memory(func, f"{op} ({description})", is_cuda, use_jax=True)
     if args.strategy != "hessian_trace" and not is_cuda:
         mem = float("nan")
@@ -296,7 +342,6 @@ if __name__ == "__main__":
     mu, sigma, best = measure_time(func_no, f"{op} ({description})", is_cuda)
 
     # Sanity check: make sure that the results correspond to the baseline implementation
-
     if args.strategy != BASELINE:
         print("Checking correctness against baseline.")
         result = func_no()

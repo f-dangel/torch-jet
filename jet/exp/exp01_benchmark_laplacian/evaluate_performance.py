@@ -27,6 +27,8 @@ def savepath(
         name: The name of the experiment.
         implementation: The implementation whose performance is stored.
         metric: The metric whose performance is reported.
+        perfdir: The directory where the performance report will be stored. Default is
+            the performance directory of the PyTorch benchmark.
         **kwargs: Other parameters of the experiment.
 
     Returns:
@@ -54,6 +56,10 @@ def report_relative_performance(
         x: The column of the values used as x-axis.
         lines: The column of the values used to distinguish lines in the plot.
         ref_line: The reference line to compare against.
+        gatherdir: The directory where the gathered data is stored. Default is the
+            gathered data directory of the PyTorch benchmark.
+        perfdir: The directory where the performance report will be stored. Default is
+            the performance directory of the PyTorch benchmark.
     """
     # tuple of metric and its savename
     metrics = [

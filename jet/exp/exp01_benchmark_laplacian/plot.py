@@ -31,6 +31,8 @@ def savepath(name: str, plotdir: str = PLOTDIR, **kwargs) -> str:
 
     Args:
         name: The name of the experiment.
+        plotdir: The directory where the plot will be saved. Default is the figure
+            directory of the PyTorch benchmark.
         **kwargs: Other parameters of the experiment.
 
     Returns:

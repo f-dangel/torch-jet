@@ -559,6 +559,8 @@ def savepath(rawdir: str = RAWDIR, **kwargs: Union[str, int]) -> str:
     """Generate a file path for saving measurement results.
 
     Args:
+        rawdir: The directory where the results will be saved. Default is the raw
+            directory of the PyTorch benchmark.
         **kwargs: Key-value pairs representing the parameters of the measurement.
 
     Returns:
@@ -652,7 +654,7 @@ def get_function_and_description(
 def setup_input(
     batch_size: int, dim: int, dev: device, dt: dtype, seed: int = 1
 ) -> Tensor:
-    """Set up the input tensor for the neural network.
+    """Set up the seeded input tensor for the neural network.
 
     Args:
         batch_size: The number of samples in the batch.
@@ -660,6 +662,9 @@ def setup_input(
         dev: The device to place the tensor on.
         dt: The data type of the tensor.
         seed: The random seed for initialization. Default is `1`.
+
+    Returns:
+        A PyTorch tensor of shape (batch_size, dim) and specified data type and device.
     """
     manual_seed(seed)
     shape = (batch_size, dim)
@@ -709,9 +714,7 @@ if __name__ == "__main__":
     # set up the function that will be measured
     dev = device(args.device)
     dt = float64
-
     net = setup_architecture(args.architecture, args.dim, dev, dt)
-
     is_batched = True
     X = setup_input(args.batch_size, args.dim, dev, dt)
 

@@ -56,6 +56,12 @@ def measure(
         nums_samples: List of numbers of samples for the randomized Laplacian. `None`
             means that the exact Laplacian will be benchmarked. Default is `None`.
         operator: The differential operator to benchmark. Default is `'laplacian'`.
+        gatherdir: The directory to save the gathered data into. Default is the gather
+            directory of the PyTorch benchmark.
+        script_file: The path to the script file that runs the benchmark. Default is the
+            script of the PyTorch benchmark.
+        rawdir: The directory to save the raw data into. Default is the raw directory
+            of the PyTorch benchmark.
     """
     _distributions = [None] if distributions is None else distributions
     _nums_samples = [None] if nums_samples is None else nums_samples
@@ -153,6 +159,7 @@ def gather_data(
         distributions: List of distributions for the randomized Laplacian.
         nums_samples: List of numbers of samples for the randomized Laplacian.
         operator: The differential operator that was benchmarked.
+        rawdir: The directory where the raw data is stored.
         allow_missing: Whether to allow missing result files. Default is False.
 
     Returns:
@@ -220,6 +227,8 @@ def savepath(name: str, gatherdir: str = GATHERDIR) -> str:
 
     Args:
         name: The name of the experiment.
+        gatherdir: The directory where the gathered data will be saved. Default is the
+            gather directory of the PyTorch benchmark.
 
     Returns:
         A string representing the file path where the data will be saved.

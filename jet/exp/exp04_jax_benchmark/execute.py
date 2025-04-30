@@ -31,7 +31,7 @@ from jet.exp.exp01_benchmark_laplacian.execute import (
     parse_args,
     savepath,
 )
-from jet.exp.utils import measure_peak_memory, measure_time, to_string
+from jet.exp.utils import measure_peak_memory, measure_time
 
 HERE = path.abspath(__file__)
 HEREDIR = path.dirname(HERE)
@@ -87,7 +87,7 @@ def setup_input(
     return device_put(uniform(key, shape=shape, dtype=dt), dev)
 
 
-def laplacian_function(
+def laplacian_function(  # noqa: C901
     params_and_f: tuple[
         list[ArrayLike], Callable[[list[ArrayLike], ArrayLike], ArrayLike]
     ],
@@ -105,11 +105,9 @@ def laplacian_function(
             the Laplacian. The following strategies are supported:
             - `'hessian_trace'`: The Laplacian is computed by tracing the Hessian.
               The Hessian is computed via forward-over-reverse mode autodiff.
-            - `'jet_naive'`: The Laplacian is computed using jets. The computation graph
-                is simplified by propagating replication nodes.
-            - `'jet_simplified'`: The Laplacian is computed using Taylor mode. The
-              computation graph is simplified by propagating replications down, and
-              summations up, the computation graph.
+            - `'jet_naive'`: The Laplacian is computed using jets.
+            - `'jet_simplified'`: The Laplacian is computed using the forward
+              Laplacian library.
 
     Returns:
         A function that computes the Laplacian of the function f at the input tensor X.
@@ -141,11 +139,13 @@ def laplacian_function(
             laplacian = vmap(laplacian, in_axes=[None, 0])
 
         # function that computes the Laplacian
-        func = lambda: laplacian(params, X)
-        # function that computes the Laplacian's gradient used as proxy for the computation
-        # graph's memory footprint
-        summed_laplacian = lambda params, X: laplacian(params, X).sum() ** 2
-        grad_func = lambda: grad(summed_laplacian, argnums=0)(params, X)
+        func = lambda: laplacian(params, X)  # noqa: E731
+        # function that computes the Laplacian's gradient used as proxy for the
+        # computation graph's memory footprint
+        summed_laplacian = (
+            lambda params, X: laplacian(params, X).sum() ** 2
+        )  # noqa: E731
+        grad_func = lambda: grad(summed_laplacian, argnums=0)(params, X)  # noqa: E731
 
         # jit the functions
         func = jit(func)
@@ -158,7 +158,7 @@ def laplacian_function(
         shape = X.shape[1:] if is_batched else X.shape
         D = size(X[0] if is_batched else X)
 
-        f_fix_params = lambda x: f(params, x)
+        f_fix_params = lambda x: f(params, x)  # noqa: E731
 
         def laplacian(x: ArrayLike) -> ArrayLike:
             v2 = zeros(shape, dtype=X.dtype, device=X.device)
@@ -175,11 +175,11 @@ def laplacian_function(
             laplacian = vmap(laplacian)
 
         laplacian = jit(laplacian)
-        func = lambda: block_until_ready(laplacian(X))
+        func = lambda: block_until_ready(laplacian(X))  # noqa: E731
         return func, func
 
     elif strategy == "jet_simplified":
-        f_fix_params = lambda x: f(params, x)
+        f_fix_params = lambda x: f(params, x)  # noqa: E731
         # disable sparsity to remove its run time benefits
         lap_f = ForwardLaplacianOperator(0)(f_fix_params)
 
@@ -190,7 +190,7 @@ def laplacian_function(
             laplacian = vmap(laplacian)
 
         laplacian = jit(laplacian)
-        func = lambda: block_until_ready(laplacian(X))
+        func = lambda: block_until_ready(laplacian(X))  # noqa: E731
         return func, func
 
     else:

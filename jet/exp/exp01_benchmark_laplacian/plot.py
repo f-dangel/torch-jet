@@ -26,7 +26,7 @@ LABELS = {
 }
 
 
-def savepath(name: str, **kwargs) -> str:
+def savepath(name: str, plotdir: str = PLOTDIR, **kwargs) -> str:
     """Generate a file path for saving a plot.
 
     Args:
@@ -37,7 +37,7 @@ def savepath(name: str, **kwargs) -> str:
         A string representing the file path where the plot will be saved.
     """
     filename = to_string(name=name, **kwargs)
-    return path.join(PLOTDIR, f"{filename}.pdf")
+    return path.join(plotdir, f"{filename}.pdf")
 
 
 def fix_columns(df: DataFrame, fix: Dict[str, Union[str, int]]) -> DataFrame:

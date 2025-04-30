@@ -14,23 +14,37 @@
 \input{preamble/custom.tex}
 \input{preamble/metadata.tex}
 
+\definecolor{darkgreen}{rgb}{0,0.6,0}
+%\newcommand{\AK}[2][]{\alternatingtodo[color=red!40, #1]{#2 }}
+\newcommand{\temp}[1]{\textcolor{blue}{#1}}
+\newcommand{\AW}[1]{\textcolor{darkgreen}{#1}}
+
 \begin{document}
 
 \maketitle
 
 \begin{abstract}
-  We explore automating the acceleration of differential operators through compute graph simplifications based on the concept of linearity.
-  These occur in common differential operators like the Laplacian, that computes then sums diagonal elements of the Hessian using Taylor mode automatic differentiation (\texttt{jet}s).
-  Instead, we show that the Taylor coefficients can first be summed, then propagated, which reduces computational cost.
-  Due to the simplicity of this simplification (propagating a sum up a computation graph), we argue it could (or should) be performed by the just-in-time (\texttt{jit}) compiler in machine learning frameworks.
+  For the accelerated evaluation differential operators, we explore automated computational graph simplifications based on the concept of linearity.
+  These simplification can be used for many common differential operators like the Laplacian that computes the sum of diagonal elements of the Hessian using Taylor mode automatic differentiation (\texttt{jet}s).
+  We show that the required Taylor coefficients can first be summed, then propagated, which reduces the overall computational cost.
+  Due to the simplicity of this simplification (propagating a sum up a computational graph), we argue that it could (or should) be performed by the just-in-time (\texttt{jit}) compiler in machine learning frameworks.
   Our preliminary experiments achieve promising, fully automated, speed-ups, which we believe can easily be integrated into automatic differentiation libraries.
 \end{abstract}
 
-\section{Introduction}\label{sec:introduction}
+\AW{comments
+ \begin{itemize}
+     \item compute graph, computation graph $\Rightarrow$ computational graph?
+     \item Fig. 1 wird nicht referenziert, ich teile die Bedenken, dass die Graphik sehr ähnlich ist, ich mache mal für Sec. 2 einen neuen Vorschlag
+ \end{itemize}
+}\section{Introduction}\label{sec:introduction}
 \input{sections/introduction.tex}
 
 \section{Background}\label{sec:background}
 \input{sections/background.tex}
+
+\section{[Not done] Methodology}\label{sec:methodology}
+\input{paper/sections/method}
+
 
 % \section{Kronecker-Factored Approximate Curvature for
 % PINNs}\label{sec:kfac_pinns}
@@ -49,18 +63,18 @@
 \clearpage
 \appendix
 
+\section{Linearity for Taylor-mode AD}
+\input{paper/sections/appendix_linearity_for_taylor}
+
 \section{Visual Explanation of Graph Simplifications}\label{sec:appendix-simplifications}
 \input{sections/appendix_simplifications}
 
 \section{Fa\`a Di Bruno Formula Cheat Sheet}\label{sec:faa-di-bruno-cheatsheet}
 \input{sections/faa_di_bruno}
 
-\section{Biharmonic Operator --- Multivariate Taylor Polynomial Approach}
-\input{sections/appendix_biharmonic}
 
 
-\section{TTC}
-\label{sec:appendix_ttc}
+\section{TTC}\label{sec:appendix_ttc}
 \input{sections/appendix_ttc}
 
 \section{JAX benchmark}

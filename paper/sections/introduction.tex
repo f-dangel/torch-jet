@@ -1,8 +1,8 @@
-Recently, neural networks have increasingly bee used to represent potentially high-dimensional probability densities or functions constrained by physical laws \cite{carleo2017solving, pfau2020ab, hermann2020deep, karniadakis2021physics, raissi2019physics, hu2023hutchinson, sun2020global}.
+Recently, neural networks have increasingly been used to represent potentially high-dimensional probability densities or functions constrained by physical laws \cite{carleo2017solving, pfau2020ab, hermann2020deep, karniadakis2021physics, raissi2019physics, hu2023hutchinson, sun2020global}.
 The physics is typically encoded in the form of partial differential equations (PDEs), and the neural network representation must therefore satisfy such equations.
 This requires the application of partial differential operators to the neural network representation, which need to be computed with respect to the input rather than the trainable weights.
-Different to the setting of network training with first-order methods, these input derivatives are often high-order PDE operators, requiring second derivatives, or even more.
-Efficient automatic differentiation of such operators must therefore go beyond mere backpropagation, a realization that motivated this and previous work and is illustrated in Figure \ref{fig:benchmark-laplacians}.
+Unlike the setting of network training with first-order methods, these input derivatives are often high-order PDE operators, requiring second derivatives or even higher.
+Efficient automatic differentiation of such operators must therefore go beyond mere backpropagation, a realization that motivated this and previous work and is illustrated in Figure \ref{fig:benchmark}.
 
 
 \paragraph{Variational Monte Carlo} A prominent example is variational Monte Carlo (VMC), where neural quantum states must satisfy Schrödinger's equation \cite{carleo2017solving, pfau2020ab, hermann2020deep}.
@@ -10,31 +10,35 @@ This involves the computation of the input Laplacian to capture the kinetic ener
 In many settings, this Laplacian need not be differentiable with respect to the network weights \cite{li2023forward}.
 However, recent developments in optimization techniques have also revived the use of differentiable Laplacians \cite{webber2022rayleigh, toulouse2007optimization}.
 
-\paragraph{Physics-Informed Neural Networks} A more general framework arises in physics-informed neural networks (PINNs), which cast PDE-constrained problems as optimization tasks by minimizing the residuals of the governing equations \cite{raissi2019physics, karniadakis2021physics}.
+\paragraph{Physics-Informed Neural Networks} A more general framework arises in physics-informed neural networks (PINNs), which cast PDE problems as optimization tasks by minimizing the residuals of the governing equations \cite{raissi2019physics, karniadakis2021physics}.
 This approach necessitates differentiable application of potentially high-order PDE operators.
 For instance, the PINN formulation of Kolmogorov-type equations—including the Fokker-Planck, Black-Scholes, and Hamilton-Jacobi-Bellman equations—requires the evaluation of weighted second-order input derivatives in high-dimensional spatial domains \cite{hu2023hutchinson, sun2024dynamical}.
 
-\paragraph{Compuational Challenges} As illustrated in Figures \ref{fig:benchmark-laplacians} and Figure \ref{fig:benchmark-randomized-laplacians}, the computation of input derivatives can be a significant computational bottleneck in terms of both memory and runtime, particularly for high-dimensional or high-order operators. This limitation may restrict the scalability of recent approaches and hinder broader applicability. To address this challenge, we advocate for more efficient and automated use of advanced automatic differentiation techniques. In particular, we propose to generalize recent graph simplification strategies—such as the forward Laplacian scheme—by systematically exploiting the linearity of differential operators. We formulate these in terms of Taylor-mode automatic differentiation. This has the potential to both reduce resource consumption and broaden the range of feasible applications in VMC, PINNs, and related areas.
+\paragraph{Compuational Challenges} As illustrated in Figure \ref{fig:benchmark} and Figure \ref{fig:benchmark-randomized-laplacians}, the computation of input derivatives can be a significant computational bottleneck in terms of both memory and runtime, particularly for high-dimensional or high-order operators. This limitation may restrict the scalability of recent approaches and hinder broader applicability. To address this challenge, we advocate for more efficient and automated use of advanced automatic differentiation techniques. In particular, we propose to generalize recent graph simplification strategies—such as the forward Laplacian scheme—by systematically exploiting the linearity of differential operators leveraging Taylor-mode automatic differentiation. This has the potential to both reduce resource consumption and broaden the range of feasible applications in VMC, PINNs, and related areas.
 
+\todo{Our graphical abstract (Figure 1) is very similar to Fig.1 in \cite{li2023forward}. We can leave it as is, I just want us to be aware of it. \AW{I completely agree and would favor a different figure, also the notation is not clear at this point, I would give a }}
 \input{figures/visual_abstract.tex}
 
-Our contributions are the following:
+
+Our contributions comprise the following topics:
 \begin{enumerate}
-    \item We describe `collapsed' Taylor mode which allows to collapse the highest Taylor coefficients during the forward propagation whenever we compute a weighted sum of said derivatives.
-    This trick has first been used in the `forward Laplacian' framework, which however does not rely on Taylor mode.
-    Our collapsed Taylor mode improves over it in two ways.
-    First, it separates the trick into using standard Taylor mode, combined with simple graph rewrites based on linearity.
-    Second, it generalizes to other differential operators, and can also be applied to recently proposed randomization techniques for Taylor mode.
+    \item We describe the `collapsed' Taylor mode where the highest Taylor coefficients during the forward propagation are propagated as a weighted sum of said derivatives.
+    This approach has first been used in the `forward Laplacian framework \cite{li2023forward}, which, however, does not rely on Taylor mode.
+    Our collapsed Taylor mode improves on it in two ways.
+    First, it is based on standard Taylor mode that then allows simple graph rewrites based on linearity.
+    Second, it generalizes to other differential operators and can also be applied to recently proposed randomization techniques for Taylor mode.
 
     \item This leads to a conceptually clean separation of concepts, allowing for a simple implementation that can handle all scenarios and does not require manual implementations for each differential operator.
     To demonstrate this, we build a Taylor mode library for PyTorch and equip it with the necessary graph simplifications using the \texttt{torch.fx} library, and show how collapsed Taylor mode accelerates the computation of various differential operators.
 
-    \item Ideally, we find specially structured differential operators for which our trick is especially suited, and classify them.
+    \item Ideally, we find specially structured differential operators for which our approach is especially suited and classify them.
     One example is the trace of derivative tensors of arbitrary order, although this seems to be an operator that is not practically relevant.
 \end{enumerate}
 
 Next tasks:
 \begin{enumerate}
+\item @Felix: Compare Laplacian and Bi-Laplacian in JAX. 
+We expect the same performance behaviors as our PyTorch results.
 \item @Felix: We should say that our trick applies to computing traces of higher-order derivative tensors.
   However, we don't empirically investigate this as we do not know any use cases for such operators (yet).
 

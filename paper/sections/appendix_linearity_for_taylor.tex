@@ -1,0 +1,464 @@
+
+\begin{align}\label{eq:sum-taylor-mode-naive}
+  \begin{split}
+      \begin{pmatrix*}
+        \vx_0
+        \\
+       \{\vx_{1,n}\}
+        \\
+        \{\vx_{2,n}\}
+        \\
+        \vdots
+        \\
+        \{\vx_{K, n}\}
+      \end{pmatrix*}
+      &\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
+        \begin{pmatrix*}[l]
+          \vh_0 =  \vh(\vx_0)
+          \\
+          \{\vh_{1,n}\} =  
+          \left\{
+          \left< 
+          \partial \vh(\vx_0),
+          \vx_{1, n} 
+          \right>
+          \right\}
+          \\
+          \{\vh_{2, n}\} = 
+          \left\{
+          \left< 
+          \partial^2 \vh(\vx_0),
+          \vx_{1, n} \otimes \vx_{1, n} 
+          \right>
+          +
+          \left<
+          \partial \vh(\vx_0),
+          \vx_{2, n}
+          \right>
+          \right\}
+          \\
+          \vdots
+          \\
+          \{\vh_{K, n}\} =
+          \left\{
+          \displaystyle \sum_{
+          \sigma \in \partitioning(K)
+          }
+          \nu(\sigma) \left<
+          \partial^{|\sigma|} \vh(\vx_0),
+          \tensorprod{s \in \sigma} \vx_{s, n}
+          \right>
+          \right\}
+        \end{pmatrix*} 
+        \\
+        &\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
+        \begin{pmatrix*}[l]
+          \vg_0 =  \vg(\vh_0)
+          \\
+          \{\vg_{1,n}\} = 
+          \left\{
+          \left< 
+          \partial \vg(\vh_0), 
+          \vh_{1, n}
+          \right>
+          \right\}
+          \\
+          \{\vg_{2,n}\} = 
+          \left\{
+          \left<
+          \partial^2 \vg(\vh_0), 
+          \vh_{1, n} \otimes \vh_{1, n}\right>
+          + 
+          \left< \partial \vg(\vh_0),
+          \vh_{2, n}
+          \right>
+          \right\}
+          \\
+          \vdots
+          \\
+          \{\vg_{K,n}\} =
+          \left\{
+          \displaystyle\sum_{
+          \sigma \in \partitioning(K)
+          } 
+          \nu(\sigma) \left<
+          \partial^{|\sigma|} \vg(\vh_0),
+          \tensorprod{s \in \sigma} \vh_{s, n}
+          \right>
+          \right\}
+        \end{pmatrix*}
+        \\
+        &\overset{\text{(\ref{eq:faa-di-bruno})}}{=}
+        \begin{pmatrix*}[l]
+          \vf_0 =  \vf(\vx_0)
+          \\
+          \{\vf_{1,n}\} = \left\{
+          \left<
+          \partial \vf(\vx_0), 
+          \vx_{1, n}
+          \right>
+          \right\}
+          \\
+          \{\vf_{2,n}\} = \left\{
+          \left<
+          \partial^2 \vf(\vx_0), 
+          \vx_{1, n} \otimes \vx_{1, n}
+          \right>
+          + 
+          \left< \partial \vf(\vx_0),
+          \vx_{2, n}
+          \right>
+          \right\}
+          \\
+          \vdots
+          \\
+          \{\vf_{K, n}\} =
+          \left\{
+          \displaystyle\sum_{
+          \sigma \in \partitioning(K)
+          }
+          \nu(\sigma) \left< 
+          \partial^{|\sigma|} \vf(\vx_0),
+          \tensorprod{s \in \sigma} \vx_{s, n}
+          \right>
+          \right\}
+        \end{pmatrix*}
+        \\
+        &\overset{\text{slice}}{\to} \{ \vg_{K,n} \}
+        \\
+        &\overset{\text{sum}}{\to} \sum_{n=1}^N \vg_{K,n} 
+          \overset{\{\vx_{1,n} = \vv_n, \vx_{2,n} = \vzero, \dots, \vx_{K, n} = \vzero \}_n}{=} 
+          \sum_{n=1}^N \left<
+          \partial^K \vf(\vx_0), 
+          \otimes_{k=1}^K \vv_n
+          \right>
+    \end{split}
+\end{align}
+
+
+Can we do better?
+
+\begin{align}\label{eq:sum-taylor-mode-efficient}
+  \begin{split}
+      \begin{pmatrix*}
+        \vx_0
+        \\
+       \{\vx_{1,n}\}
+        \\
+        \{\vx_{2,n}\}
+        \\
+        \vdots
+        \\
+        \mathemph{\displaystyle\sum_{n = 1}^N\vx_{K, n}}
+      \end{pmatrix*}
+      &\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
+        \begin{pmatrix*}[l]
+          \vh_0 =  \vh(\vx_0)
+          \\
+          \{\vh_{1,n}\} =  
+          \left\{
+          \left< 
+          \partial \vh(\vx_0),
+          \vx_{1, n} 
+          \right>
+          \right\}
+          \\
+          \{\vh_{2, n}\} = 
+          \left\{
+          \left< 
+          \partial^2 \vh(\vx_0),
+          \vx_{1, n} \otimes \vx_{1, n} 
+          \right>
+          +
+          \left<
+          \partial \vh(\vx_0),
+          \vx_{2, n}
+          \right>
+          \right\}
+          \\
+          \vdots
+          \\
+          \mathemph{ \displaystyle \sum_{n = 1}^N \vh_{K, n}} =
+          \displaystyle \sum_{n=1}^N \sum_{
+          \sigma \in \partitioning(K) \setminus \{\sigma_t\}
+          }
+          \nu(\sigma) \left<
+          \partial^{|\sigma|} \vh(\vx_0),
+          \tensorprod{s \in \sigma} \vx_{s, n}
+          \right>
+          + 
+          \left<
+          \partial \vh(\vx_0),
+          \mathemph{
+          \sum_{n=1}^N \vx_{K, n}
+          }
+          \right>
+        \end{pmatrix*} 
+        \\
+        &\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
+        \begin{pmatrix*}[l]
+          \vg_0 =  \vg(\vh_0)
+          \\
+          \{\vg_{1,n}\} = 
+          \left\{
+          \left< 
+          \partial \vg(\vh_0), 
+          \vh_{1, n}
+          \right>
+          \right\}
+          \\
+          \{\vg_{2,n}\} = 
+          \left\{
+          \left<
+          \partial^2 \vg(\vh_0), 
+          \vh_{1, n} \otimes \vh_{1, n}\right>
+          + 
+          \left< \partial \vg(\vh_0),
+          \vh_{2, n}
+          \right>
+          \right\}
+          \\
+          \vdots
+          \\
+          \mathemph{\displaystyle\sum_{n=1}^N\vg_{K,n}} =
+          \displaystyle \sum_{n=1}^N \sum_{
+          \sigma \in \partitioning(K) \setminus \{\sigma_t\}
+          } 
+          \nu(\sigma) \left<
+          \partial^{|\sigma|} \vg(\vh_0),
+          \tensorprod{s \in \sigma} \vh_{s, n}
+          \right>
+          +
+          \left<
+          \partial \vg(\vh_0),
+          \mathemph{\displaystyle \sum_{n=1}^N\vh_{K, n}}
+          \right>
+        \end{pmatrix*}
+        \\
+        &\overset{\text{(\ref{eq:faa-di-bruno})}}{=}
+        \begin{pmatrix*}[l]
+          \vf_0 =  \vf(\vx_0)
+          \\
+          \{\vf_{1,n}\} = \left\{
+          \left<
+          \partial \vf(\vx_0), 
+          \vx_{1, n}
+          \right>
+          \right\}
+          \\
+          \{\vf_{2,n}\} = \left\{
+          \left<
+          \partial^2 \vf(\vx_0), 
+          \vx_{1, n} \otimes \vx_{1, n}
+          \right>
+          + 
+          \left< \partial \vf(\vx_0),
+          \vx_{2, n}
+          \right>
+          \right\}
+          \\
+          \vdots
+          \\
+          \mathemph{\displaystyle \sum_{n=1}^N \vf_{K, n}} =
+          \displaystyle \sum_{n=1}^N\sum_{
+          \sigma \in \partitioning(K) \setminus \{ \sigma_t \}
+          }
+          \nu(\sigma) \left< 
+          \partial^{|\sigma|} \vf(\vx_0),
+          \tensorprod{s \in \sigma} \vx_{s, n}
+          \right>
+          +
+          \left<
+          \partial \vf(\vx_0),
+          \mathemph{\displaystyle \sum_{n=1}^N\vx_{K, n}}
+          \right>
+        \end{pmatrix*}
+        \\
+        &\overset{\text{slice}}{\to} \mathemph{\sum_{n=1}^N \vg_{K,n}}
+          \overset{\{\vx_{1,n} = \vv_n, \vx_{2,n} = \vzero, \dots, \vx_{K, n} = \vzero \}_n}{=} 
+          \sum_{n=1}^N \left<
+          \partial^K \vf(\vx_0), 
+          \otimes_{k=1}^K \vv_n
+          \right>
+    \end{split}
+\end{align}
+
+\subsection{Examples -- Laplace Operator}
+
+\paragraph{Naive Laplacian}
+\begin{align}\label{eq:laplacian-naive}
+  \begin{split}
+    \begin{pmatrix*}
+      \vx_0
+      \\
+      \{\vx_{1,d} \}
+      \\
+      \{\vx_{2,d} \}
+    \end{pmatrix*}
+    &\overset{\text{(\ref{eq:taylor-mode-scalar})}}{\to}
+      \begin{pmatrix*}[l]
+        \vh_0 =  \vh(\vx_0)
+        \\
+        \{\vh_{1,d}\} = \{
+        \left<
+        \partial \vh(\vx_0),
+        \vx_{1,d}
+        \right>
+        \}
+        \\
+        \{\vh_{2,d}\} = 
+        \{
+        \left<
+        \partial^2 \vh(\vx_0),
+        \vx_{1,d} \otimes \vx_{1,d} 
+        \right>
+        + 
+        \left<
+        \partial \vh(\vx_0),
+        \vx_{2,d}
+        \right>
+        \}
+      \end{pmatrix*}
+    \\
+    &\overset{\text{(\ref{eq:taylor-mode-scalar})}}{\to}
+      \begin{pmatrix*}[l]
+        g_0 =  g(\vh_0)
+        \\
+        \{g_{1,d}\} = \{
+        \left<\partial g(\vh_0), 
+        \vh_{1,d}
+        \right>
+        \}
+        \\
+        \{g_{2,d}\} = \{
+        \left< 
+        \partial^2 g(\vh_0),
+        \vh_{1,d} \otimes \vh_{1,d} 
+        \right>
+        + 
+        \left<
+        \partial g(\vh_0), 
+        \vh_{2,d}
+        \right>
+        \}
+      \end{pmatrix*}
+      \\
+      &\overset{\text{(\ref{eq:taylor-mode-scalar})}}{=}
+      \begin{pmatrix*}[l]
+        f_0 =  \vf(\vx_0)
+        \\
+        \{f_{1,d} \} = \{
+        \left<
+        \partial f(\vx_0),
+        \vx_{1,d}
+        \right>
+        \}
+        \\
+        \{ f_{2,d} \} = \{
+        \left<
+        \partial^2 f(\vx_0),
+        \vx_{1,d} \otimes \vx_{1,d}
+        \right>
+        + 
+        \left<
+        \partial f(\vx_0), 
+        \vx_{2,d}
+        \right>
+        \}
+      \end{pmatrix*}
+    \\
+    &\overset{\text{slice}}{\to} \{ g_{2,d} \}
+    \\
+    &\overset{\text{sum}}{\to} \sum_{d=1}^D \{ g_{2,d} \}
+      \overset{\{\vx_{1,d} = \ve_d, \vx_{2,d} = \vzero\}_d}{=} \Delta f(\vx_0)
+  \end{split}
+\end{align}
+
+
+\paragraph{Efficient Laplacian}
+\begin{align}\label{eq:laplacian-efficient}
+  \begin{split}
+    \begin{pmatrix*}
+      \vx_0
+      \\
+      \{\vx_{1,d} \}
+      \\
+      \mathemph{\displaystyle\sum_{d=1}^D \vx_{2,d}}
+    \end{pmatrix*}
+    &\overset{\text{(\ref{eq:taylor-mode-scalar})}}{\to}
+      \begin{pmatrix*}[l]
+        \vh_0 =  \vh(\vx_0)
+        \\
+        \{\vh_{1,d}\} = \{
+        \left<
+        \partial \vh(\vx_0),
+        \vx_{1,d}
+        \right>
+        \}
+        \\
+        \mathemph{\displaystyle\sum_{d=1}^D \vh_{2,d}} = \displaystyle\sum_{d=1}^D 
+        \left< \partial^2 \vh(\vx_0), 
+        \vx_{1,d} \otimes \vx_{1,d} 
+        \right> 
+        + 
+        \left<
+        \partial \vh(\vx_0),
+        \mathemph{\displaystyle\sum_{d=1}^D\vx_{2,d}}
+        \right>
+      \end{pmatrix*}
+    \\
+    &\overset{\text{(\ref{eq:taylor-mode-scalar})}}{\to}
+      \begin{pmatrix*}[l]
+        \vg_0 =  \vg(\vh_0)
+        \\
+        \{\vg_{1,d}\} = \{
+        \left<
+        \partial \vg(\vh_0), 
+        \vh_{1,d}
+        \right>
+        \}
+        \\
+        \mathemph{\displaystyle\sum_{d=1}^D\vg_{2,d}} 
+        = 
+        \displaystyle\sum_{d=1}^D
+        \left< 
+        \partial^2 \vg(\vh_0),
+        \vh_{1,d} \otimes \vh_{1,d}
+        \right>
+        + 
+        \left< 
+        \partial \vg(\vh_0), 
+        \mathemph{\displaystyle\sum_{d=1}^D\vh_{2,d}}
+        \right>
+      \end{pmatrix*} 
+      \\
+      &\overset{\text{(\ref{eq:taylor-mode-scalar})}}{=}
+      \begin{pmatrix*}[l]
+        \vf_0 =  \vf(\vx_0)
+        \\
+        \{\vf_{1,d} \} = \{ 
+        \left<
+        \partial \vf(\vx_0),
+        \vx_{1,d}
+        \right>
+        \}
+        \\
+        \mathemph{\displaystyle\sum_{d=1}^D \vf_{2,d}}
+        =
+        \displaystyle\sum_{d=1}^D 
+        \left<
+        \partial^2 \vf(\vx_0),
+        \vx_{1,d} \otimes \vx_{1,d}
+        \right>
+        +
+        \left<
+        \partial \vf(\vx_0),
+        \mathemph{\displaystyle\sum_{i=1}^D\vx_{2,d}}
+        \right>
+      \end{pmatrix*}
+    \\
+    &\overset{\text{slice}}{\to} \mathemph{\sum_{d=1}^D \{ \vg_{2,d} \}}
+      \overset{\{(\vx_{1,d} = \ve_d, \vx_{2,d} = \vzero)\}_d}{=}
+      \Delta f(\vx_0)
+  \end{split}
+\end{align}

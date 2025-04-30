@@ -1,0 +1,327 @@
+\todo{improve intro text}
+
+We introduce a unified framework for handling differential operators efficiently. In the next subsection, a linearity trick is applied to sums of Jets. Those jets already unify the settings of Forward-Laplace \cite{li2023forward}, Randomized Taylor-Mode ~\cite{shi2024stochastic, hu2023hutchinson} and the generalized trace operator. Afterwards, we show that all differential operators, including those not directly representable through jets because of mixed-partial derivatives, can be computed via a suitable combination of Jets. This is based on a classical AD result of Griewank et al. \cite{griewank_evaluating_1999}. The result will also include the approach of \cite{shi2024stochastic} for computing arbitrary differential operators. However, our approach only needs Jets of the highest derivative degree. In addition, it has to be emphasized, our proposed method is purely automatic, meaning it can be implemented as part of a JIT-toolchain.
+
+
+\subsection{Linearity for Taylor-mode AD}
+The aim is to compute the $K$-Jet 
+\begin{align}\label{eq:sum-k-jet}
+  \sum_{n=1}^N\left< 
+  \partial^{K} f(\vx_0),
+  \otimes_{k=1}^K \vv_n
+  \right>.
+\end{align}
+Inserting this into the propagation scheme \cref{eq:taylor-mode-composition} gives the Taylor-mode presented in \cref{eq:sum-taylor-mode-naive}, which would propagate $1 + KN$ vectors. 
+
+Our efficient approach is based on the observation that there is a special element in $\partitioning(K)$, namely the trivial partition $\sigma_{t} = \{K\}$. This partition corresponds to the term 
+\begin{equation}
+    \nu(\sigma_{t}) \left<
+    \partial \vg(\vh),
+    \vh_{K, n}
+    \right>, 
+\end{equation}
+of the Faà di Bruno formula. Using the definitions of \cite{hardy2006combinatorics} it is $\nu(\sigma_{t}) = 1$. 
+Therefore,
+\begin{align}
+\label{eq:faa-di-bruno-expanded}
+     \vf_{K, n} 
+     = 
+     \vg_{K,n} 
+     &= 
+     \displaystyle\sum_{
+      \sigma \in \partitioning(K) \setminus \{\sigma_t\}
+     } 
+     \nu(\sigma) \left<
+     \partial^{|\sigma|} \vg(\vh_0),
+     \tensorprod{s \in \sigma} \vh_{K, n}
+     \right>
+     \\
+     &+
+     \left<
+     \partial \vg(\vh),
+     \vh_{K, n}
+     \right>.
+\end{align}
+
+
+Looking at \cref{eq:faa-di-bruno-expanded} together with \cref{eq:sum-taylor-mode-naive}, it can be seen that it is not necessary to propagate the $K$-th Taylor coefficients $\vx_{K,n}, \{\vh_{K,n}\}_n, \{\vg_{K, n}\}_n$ to compute the $K$-Jet \cref{eq:sum-k-jet}. Instead, it is sufficient to propagate the sums of these coefficients directly by using linearity of $\left<\partial \vh, \bullet \right>$ and $\left< \partial g, \bullet \right>$. \Cref{eq:sum-taylor-mode-efficient} shows this scheme (changes highlighted in \textcolor{maincolor}{color}. This scheme \cref{eq:sum-taylor-mode-efficient}, only propagates $1 + (K-1)N + 1$ vectors. 
+
+To emphasize that the saving of $N-1$ vectors in the propagation scheme is indeed significant for common applications, important operators are discussed below. 
+
+
+\subsection{Examples}
+A highlight of our general approach \cref{eq:sum-k-jet} is that it naturally includes common important differential operators or their approximation.
+
+\paragraph{Laplace Operator} The Laplace Operator occurs in a variety of differential equations and is thus a worthwhile goal for PINNs.  \todo{need citations here}
+For a function $f: \sR^D \to \sR$ the Laplacian is given as
+\begin{align}\label{eq:laplacian}
+  \Delta f(\vx_0)
+  :=
+  \sum_{d=1}^D \frac{\partial^2 f(\vx_0)}{\partial x_d^2}
+  =
+  \sum_{d=1}^D \left< 
+  \partial^2 f(\vx_0),
+  \ve_d \otimes \ve_d
+  \right>
+\end{align}
+Assume that $f$ is again decomposed into $g \circ \vh$, where $\vh$ could have potentially multiple output dimensions is it is for a hidden layer. Selecting $K = 2$, $N=D$ and $\vv_n = \ve_n$ lifts \cref{eq:laplacian} into the setting of \cref{eq:sum-k-jet}.
+Naively applying the scheme \cref{eq:sum-taylor-mode-efficient} would lead to $1 + 2D$ (see \cref{eq:laplacian-naive}). If we instead apply our proposed efficient scheme \cref{eq:sum-taylor-mode-efficient}, only $1 + D + 1$ vectors are propagated. The scheme is presented in \cref{eq:laplacian-efficient} (changes highlighted in \textcolor{maincolor}{color})
+
+Note that this scheme is aligned with the findings of \cite{li2023forward}, but here it is embedded into a general framework.
+
+
+
+\paragraph{Weighted sums of second-order derivatives.} \todo{We can make the connection \cite{hu2023hutchinson} equation (5) clear and discuss the case of $\mC$ being a function of the input} Another important differential operator is represented by a symmetric positive semi-definite (PSD) matrix $\boldsymbol{C} \in \left(\mathbb{R}^D\right)^{\otimes 2}$:
+\begin{align}\label{eq:weighted-laplacian}
+  \sum_{i,j} \boldsymbol{C}_{i,j} \frac{\partial^2 \vf(\vx_0)}{\partial x_i \partial x_j}.
+\end{align}
+Those operators occur, for example, as 
+\begin{equation*}
+    \Tr (\msigma \msigma^\top \partial^2 \vf(\vx_0)
+\end{equation*}
+in Fokker-Planck and Hamiltonian-Jacobi Bellmann equations. \todo{need citations} Since $\boldsymbol{C}$ is PSD it can be expressed as $\mC = \sum_{n=1}^{\rank(\mC)} \vc_n \vc_n^\top$ for suitable $\vc_n \in \sR^D$. Therefore, it fits the setting of \cref{eq:sum-k-jet} with $K = 2, N = \rank(\mC)$ and $\vv_n = \vc_n$, and can be compute using \cref{eq:sum-taylor-mode-efficient}. This requires the propagation of $1 + \rank(\mC) + 1$ vectors instead of $1 + 2\rank(\mC)$.
+
+\todo{mention randomized laplacians!}
+
+
+\paragraph{Traces of higher-order derivative tensors}
+\todo{cite papers that consider this} The higher-order Laplacian, an often theoretically considered example, is also easily expressible in our framework:
+\begin{align}\label{eq:trace-differential-operator}
+    \Tr( \partial^K f(\vx) )
+    \coloneqq
+    \sum_{d=1}^D
+    \frac{\partial^K f(\vx_0)}{\partial \evx_d^K}
+    =
+    \sum_{d=1}^D
+    \left< 
+    \partial^K f(\vx_0),
+    \otimes_{i=1}^K \ve_d
+    \right>,
+\end{align}
+with $N = D$ and $\vv_n = \ve_n$.
+
+\subsection{Operators with mixed-partial Derivative}
+Despite being already powerful enough to unify various approaches for the computation of important differential operators, our framework cannot handle operators that include arbitrary mixed-partial derivatives.
+In the following, we explain how to transform a differential operator containing arbitrary mixed-partial derivatives into a combination of Jets using a well-known result from the AD community.
+
+
+Consider the operator
+\begin{equation}
+   \mA = \sum_{n=1}^{N} \frac{\partial^{\vk_n}}{\partial \vx^{\vk_n}},
+\end{equation}
+where $\vk_n = (k_1, \dots, k_D) \in \mathbb{N}^D$ is a multi-index. Further information about the multi-index notation can be found in \cref{sec:appendix_ttc}.
+
+A technique to reconstruct mixed-partials of arbitrary order from jets has already been proposed in 1999 by Griewank et al. in \cite{griewank_evaluating_1999}. The authors summarized their method in the following formula
+\begin{equation}
+\label{eq:ttc_general}
+    \frac{\partial^{\vk}}{\partial \vz^\vk} \vf(\vx + \boldsymbol{S} \vz)\Big|_{\vz = \boldsymbol{0}} 
+    = 
+    \sum_{\underset{\vl \in \mathbb{N}^p}{|\vl| = |\vk|}}
+    \gamma_{\vk \vl}
+    \frac{1}{\vk!}
+    \left<
+    \partial^{K}\vf,
+    \otimes_{k=1}^K
+    \boldsymbol{S}\vl
+    \right>.
+\end{equation}
+\cref{sec:appendix_ttc} provides supplementary details to the formula. From \cref{eq:ttc_general} we conclude
+\begin{align} \label{eq:ttc_general_operator}
+    \mA \vf(\vx_0) =  \sum_{n=1}^N \sum_{\underset{\vl \in \mathbb{N}^p}{|\vl| = |\vk_n|}}
+    \gamma_{\vk_n \vl}
+    \frac{1}{\vk_n!}
+    \left<
+    \partial^{|\vk_n|}\vf,
+    \otimes_{l=1}^{|\vk_n|}
+    \boldsymbol{S}\vl
+    \right>.
+\end{align}
+Therefore, a general differential operator with arbitrary mixed-partial derivatives $\mA\vf(\vx_0)$ is expressible in our setting \cref{eq:sum-k-jet}. Thus, for every $\mA$ we can apply our efficient propagation scheme and have to propagate the different $|\vk_n|$-Jets with directions $\mS \vl$ \todo{maybe be a bit more precise here} instead of depending on expensive nested derivative calls. 
+
+As the inventors of the formula already recognized, the coefficients $\gamma_{\vk\vl}$ only depend on the problem structure and are independent of the function $\vf$. As we will show, this allows to exploit symmetry that is often inherent to differential operators.
+\todo{are there symmetries directly exploitable?}
+
+\subsection{Examples}
+
+\paragraph{Biharmonic Operator}
+The Biharmonic Operator is a fourth-order differential operator with mixed-partial derivatives that is interesting for some practitioners. \todo{cite}
+It is defined as
+\begin{align}
+\label{eq:biharm}
+    \Delta^2 \vf(\vx)
+    \coloneqq
+    \sum_{i=1}^D \sum_{j=1}^D
+    \frac{\partial^4 \vf(\vx)}{\partial \evx_i^2 \partial \evx_j^2}
+    =
+    \sum_{i=1}^D \sum_{j=1}^D
+    \left<
+    \partial^4 \vf(\vx),
+    \ve_i \otimes \ve_i \otimes \ve_j \otimes \ve_j
+    \right>.
+\end{align}
+
+The classical way to compute such derivatives is to nest all four derivatives, which grows exponentially in run-time and memory with the derivative order. A comparison with this approach is given in \cref{sec:experiments}.
+
+Another way is naturally given by considering the Biharmonic Operator as the second-order Laplacian. Then, \cref{eq:laplacian-naive} could be applied twice. Instead of propagating fourth-order derivative tensors, holding $\left( \begin{matrix} D + 3 \\ 4 \end{matrix} \right) \in O(D^4)$ distinct elements, the twice-applied Laplacian would have to push $(2 + D) + D * (2 + D) + D * (2 + D) = 2D^2 + 5D + 2$ vectors.
+Using \cref{eq:laplacian-efficient} we reduce this further to $(2 + D) + D * (2 + D) + 1 * (2 + D) = D^2 + 4D + 5$ vectors. 
+
+A different approach was proposed in \cite{shi2024stochastic}, which relies on the hand-selection of $6$-Jets to extract the searched derivatives. See the appendix for more details: \cref{sec:biharm_felix_approach}. 
+
+\todo{compare with \cite{hu2023hutchinson}}
+
+Our approach first applies \cref{eq:ttc_general} to the Biharmonic Operator \cref{eq:biharm}. To this end, parameters $\vk, p$, auxiliary variables $\vz$, and matrices $\boldsymbol{S}_{ij}$ have to be selected for all occurring mixed-partial derivatives. The parameters are grouped into the case where all four derivatives directions coincide, i.e, $i = j$ and the case where $i \neq j$. The selected parameters are depicted in \cref{tab:params_ttc_biharm}. 
+
+\begin{table}[]
+    \centering
+    \begin{tabular}{|c|c|c|c|c|}
+\toprule
+             & $p$ & $\vk$    & $\vz$        & $\boldsymbol{S}_{ij}$  \\
+\midrule
+     $i = j$ & $1$ & $(4)$    & $(z_1)$      & $(\ve_i)$                \\
+\midrule
+  $i \neq j$ & $2$ & $(2, 2)$ & $(z_1, z_2)$ & $\left( \ve_i \; \ve_j \right)$ \\
+\bottomrule
+    \end{tabular}
+    \caption{Parameters to apply \cref{eq:ttc_general} to the Biharmonic Operator \cref{eq:biharm}.}
+    \label{tab:params_ttc_biharm}
+\end{table}
+
+
+Having defined the parameters, \cref{eq:ttc_general} is utilized to map the Biharmonic Operator \cref{eq:biharm} of a function $\vf$ to a collection of fourth-order jets: \todo{check coefficients} 
+\begin{align}
+    \Delta^2 \vf(\vx)
+    &=
+    \sum_{i=1}^D
+    \gamma_{(4)(4)}
+    \frac{1}{4!}
+    \left<
+    \partial^{4}\vf(\vx_0),
+    \otimes_{i=1}^4 4 \ve_i
+    \right>
+    \\
+    &+
+    \sum_{i=1}^D \sum_{\underset{j \neq i}{j=1}}^D
+    \sum_{\underset{\vl \in \mathbb{N}^2}{|\vl| = 4}}
+    \gamma_{(2, 2) \vl}
+    \frac{1}{(2, 2)!}
+    \left<
+    \partial^{4} \vf(\vx_0),
+    \otimes_{i=1}^4
+    \boldsymbol{S}_{ij} \vl
+    \right>.
+\end{align}
+As mentioned before, the coefficients $\gamma_{\vk \vl}$ capture the symmetric structure of the differential operator. A close look into the definition \cref{eq:ttc_coeff} shows the equality of $\vl = (4,0)$ with $\vl=(0, 4)$ and $\vl = (3, 1)$ with $\vl = (3, 1)$. Exploiting those symmetries the formula boils down to \todo{think we need 1/4!}
+\begin{align}
+   \Delta^2 \vf(\vx)
+   &=
+    \left(
+   \gamma_{(4)(4)} + 2 (D - 1) \gamma_{(2,2)(4, 0)}
+   \right)
+   \sum_{i=1}^D
+    \left< \partial^4 \vf(\vx_0),
+    \otimes_{i=1}^4
+    4\ve_i
+    \right>
+    \\
+    &+
+    2 \gamma_{(2, 2)(3, 1)} 
+    \sum_{i=1}^D 
+    \sum_{\underset{j \neq i}{j=1}}^D
+    \left< \partial^4 \vf(\vx_0),
+    \otimes_{i=1}^4 3 \ve_i+ \ve_j
+    \right>
+    \\
+    &+ 
+    \gamma_{(2, 2)(2, 2)}
+    \sum_{i=1}^D 
+    \sum_{\underset{j \neq i}{j=1}}^D
+    \left< \partial^4 \vf(\vx_0),
+    \otimes_{i=1}^4
+    2 \ve_i + 2 \ve_j
+    \right>.
+\end{align}
+\Cref{tab:ttc_biharm_coeffs} lists the required coefficients.
+
+\begin{table}[]
+    \centering
+    \begin{tabular}{|c|c|c|c|}
+        \toprule
+        $\gamma_{(4)(4)}$ & $\gamma_{(2, 2) (4, 0)}$ & $\gamma_{(2, 2) (3, 1)}$ & $\gamma_{(2, 2) (2, 2)}$ \\
+        \midrule
+        $\frac{3}{32}$ & $\frac{13}{192}$ &  -$\frac{1}{3}$ & $\frac{5}{8}$  \\
+        \bottomrule
+    \end{tabular}
+    \caption{Coefficients to compute the Biharmonic Operator by \Crefrange{eq:ttc_biharm_full1}{eq:ttc_biharm_full3}.}
+    \label{tab:ttc_biharm_coeffs}
+\end{table}
+
+The last term can be further simplified by leveraging the symmetry of the direction $2 \ve_i + 2 \ve_j$. This simplification leads to the following efficient propagation scheme for \cref{eq:biharm}:
+\begin{align}
+   \Delta^2 \vf(\vx)
+   &= \label{eq:ttc_biharm_full1}
+    \left(
+   \gamma_{(4)(4)} + 2 (D - 1) \gamma_{(2,2)(4, 0)}
+   \right)
+   \sum_{i=1}^D
+    \left<\partial^4 \vf(\vx_0),
+    \otimes_{i=1}^4 4\ve_i
+    \right>
+    \\
+    &+ \label{eq:ttc_biharm_full2}
+    2 \gamma_{(2, 2)(3, 1)} 
+    \sum_{i=1}^D 
+    \sum_{\underset{j \neq i}{j=1}}^D
+    \left< \partial^4 \vf(\vx_0), 
+    \otimes_{i=1}^4 3 \ve_i + \ve_j
+    \right>
+    \\
+    &+ \label{eq:ttc_biharm_full3}
+    2 \gamma_{(2, 2)(2, 2)}
+    \sum_{i=1}^{D-1} 
+    \sum_{j=i+1}^D
+    \left< \partial^4 \vf(\vx_0),
+    \otimes_{i=1}^4 2 \ve_i + 2 \ve_j
+    \right>.
+\end{align} 
+
+The \Crefrange{eq:ttc_biharm_full1}{eq:ttc_biharm_full3} are computed through $D + D(D-1) + \frac{D(D-1)}{2}$ fourth-order jets. These fourth-order jets exhibit the structure required to apply our proposed graph simplifications, which makes the computations even more efficient. \todo{align with higher order laplacian} Thus, the summation can be pulled inside the highest coefficients in the propagation scheme, like for the Laplacian. From this we conclude that our propagation scheme for the Biharmonic Operator has the effort of propagating $1 + 3D + 1 + 1 + 3 \cdot D(D-1) + 1 + 1 + 3 \frac{D(D-1)}{2} + 1 = 9\frac{D^2}{2} - 3\frac{D}{2} + 6$ vectors. It should be noted, that all jets are independent and can be computed in parallel, which provides further benefits for the run-time complexity.
+
+\todo{in comparison to laplace over laplace, we are worse in theory?}
+
+
+
+
+\paragraph{[Not done] Stochastic Taylor Derivative Estimator}
+\todo{consider this for mixed-partials, like estimator of biharmonic, maybe mention this also in weighted sum of derivatives}
+The approach of \citep{shi2024stochastic} lacks the possibility to handle differential operators with arbitrary mixed-partials. With our framework however, it is easy to transform a differential operator with mixed-partials into a collection of Jets. Therefore, the randomization approach of their work is automatically applicable in our framework. 
+
+The sampled directions to approximate a differential operator 
+This lowers the computational cost when $D$ is prohibitively large for exact evaluation of differential operators like the Laplacian.
+Take the weighted Laplacian from \Cref{eq:weighted-laplacian} and assume we have access to random vectors $\rvv$ with and $\E[\vv \vv^{\top}] = \mC$.
+Then we can draw $S \ll D$ random vectors $\vv_1, \vv_2, \dots, \vv_S \overset{\text{i.i.d.}}{\sim} \rvv$ and compute
+\begin{align}
+  \begin{split}
+    \E[\partial^2f[\rvv, \rvv]]
+    &=
+      \E \left[
+      \rvv^{\top} \frac{\partial^2 f}{\partial \vx \partial \vx} \rvv
+      \right]
+      =
+      % \E \left[
+      %   \sum_{i,j} \ervv_i \frac{\partial^2 f}{\partial x_i \partial x_j} \ervv_j
+      % \right]
+      % =
+      \sum_{i,j} \frac{\partial^2 f}{\partial x_i \partial x_j}
+      \E \left[
+      \ervv_i  \ervv_j
+      \right]
+      =
+      \sum_{i,j} \frac{\partial^2 f}{\partial x_i \partial x_j} C_{i,j}
+    \\
+    &\approx
+      \frac{1}{S}
+      \sum_{s=1}^S
+      \partial^2 f[\vv_s, \vv_s]\,.
+  \end{split}
+\end{align}
+Again, we see that the second-order coefficients can be collapsed when setting $\vx_{1,d} = \vv_d, \vx_{2,d} = \vzero$ in \cref{eq:laplacian-naive,eq:laplacian-efficient}.

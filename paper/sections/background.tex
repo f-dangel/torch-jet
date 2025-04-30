@@ -1,718 +1,242 @@
-We start with a self-contained introduction of Taylor-mode automatic differentiation~\citep[][Chapter 13]{griewank2008evaluating}.
+\todo{Check if all bold notations are correct}
 
-\paragraph{Taylor mode automatic differentiation (scalar case).}
-For simplicity, consider a scalar-valued function $f: \sR \to \sR, x \mapsto f(x)$, and a path $x(t): [-\tau, \tau] \to \sR$.
-We will later introduce notation to seamlessly handle tensor-valued functions.
-Assume we Taylor-expand the path in input space up to order $K$, i.e.\,$x(t) \approx \sum_{k=0}^K\nicefrac{t^k}{k!}
-\left.\nicefrac{\partial^k x(t)}{\partial t^k}\right|_{t=0} \coloneqq \sum_{k=0}^K \nicefrac{t^k}{k!}
-x_k$ with $x_k \coloneqq \left.\nicefrac{\partial^k x(t)}{\partial t^k}\right|_{t=0}$. This operation of creating a truncated Taylor approximation is called a \emph{$K$-jet}.
-Our goal is to compute the $K$-jet of $f(x(t))$, given the $K$-jet of $x(t)$.
-In notation, we want to compute $f_k \coloneqq \left.\nicefrac{\partial f(x(t))}{\partial t^k}\right|_{t=0}$ so that $f(x(t)) \approx \sum_{k=0}^K \nicefrac{t^k}{k!} f_k$:
-\begin{center}
-  \begin{tikzpicture}
-    \node[align=center] (topleft) {Path in input space \\
-      $x(t)$, $t \in [-\tau, \tau]$};
 
-    \node[align=center, right=4cm of topleft] (topright) {Path in output space \\ $f(x(t))$};
-    \draw [-Latex] (topleft.east) to node [midway, above] {$f$} (topright.west);
-
-    \node[align=center, below=1cm of topright] (bottomright) {Truncated Taylor series
-      \\
-      $f(x(t)) \approx \sum_{k=0}^K \frac{t^k}{k!} f_k$
-      \\
-      {\color{maincolor}$(f_0, \dots, f_K)$}
-    };
-    \draw [-Latex] (topright.south) to node [midway, right] {$K$-jet} (bottomright.north);
-
-    \node[align=center, below=1cm of topleft] (bottomleft) {Truncated Taylor series
-      \\
-      $x(t) \approx \sum_{k=0}^K \frac{t^k}{k!} x_k$
-      \\
-      {\color{maincolor} $(x_0, \dots, x_K)$}};
-    \draw [-Latex] (topleft.south) to node [midway, left] {$K$-jet} (bottomleft.north);
-
-    \draw [-Latex, maincolor] (bottomleft.east) to node [midway, above, maincolor] {Taylor mode} (bottomright.west);
-  \end{tikzpicture}
-\end{center}
-
-Let's start by writing out the first two derivatives, for which we need the chain and product rules (for notational convenience, we omit the derivative evaluations at $t=0$):
-\begin{subequations}\label{eq:taylor-mode-scalar}
-  \begin{align}
+To motivate our approach, consider the one-dimensional case $f: \mathbb{R} \to \mathbb{R}$. To evaluate the 3-Jet $(J^3f)(t) = \sum_{k=1}^3 \frac{t^k}{k!} f_k$ at some $x_0$, we can expand the input variable $x_0$ to a path and build its 3-Jet $(J^3x)(t) = \sum_{k=1}^3 \frac{t^k}{k!} x_k$. Applying the chain rule \cref{eq:faa-di-bruno} provides the coefficients of $f$'s 3-Jet:
+\begin{align}
+\label{eq:taylor-mode-scalar}
+\begin{split}
     f_0
     &=
-      f(x_0)
+    f(x_0)
     \\
     f_1
     &=
-      \frac{\partial f}{\partial x} \frac{\partial x}{\partial t}
-      =
-      \frac{\partial f}{\partial x} x_1
+    \partial f(x_0) x_1
     \\
     f_2
     &=
-      \frac{\partial^2 f}{\partial x^2} \left( \frac{\partial x}{\partial t} \right)^2
-      +
-      \frac{\partial f}{\partial x} \frac{\partial^2 x}{\partial t^2}
-      =
-      \frac{\partial^2 f}{\partial x^2} x_1^2
-      +
-      \frac{\partial f}{\partial x} x_2
+    \partial^2 f(x_0)x_1^2
+    +
+    \partial f(x_0) x_2
     \\
     f_3
     &=
-      \frac{\partial^3 f}{\partial x^3} \left( \frac{\partial x}{\partial t} \right)^3
-      +
-      3 \frac{\partial f^2}{\partial x^2} \frac{\partial x}{\partial t}
-      \frac{\partial^2 x}{\partial t^2}
-      +
-      \frac{\partial f}{\partial x} \frac{\partial^3 x}{\partial t^3}
-      =
-      \frac{\partial^3 f}{\partial x^3} x_1^3
-      +
-      3 \frac{\partial^2 f}{\partial x^2} x_1 x_2
-      +
-      \frac{\partial f}{\partial x} \frac{\partial^3 x}{\partial t^3}
-      \intertext{At this point, we can start to see a pattern.
-      The incoming Taylor coefficients $\{x_k\}$ are processed into the outgoing Taylor coefficients $\{f_k\}$ using derivatives of $f$.
-      And the coefficient $f_k$ use only incoming derivatives up to that order, $\{x_{k'<k}\}$.
-      The number of terms grows with $k$, and we can see that the incoming Taylor coefficients are chosen from the \emph{integer partitioning of $k$}, for instance $\partitioning(3) = \{ \{1,1,1\}, \{1, 2\}, \{3\} \}$.
-      Finally, there is a also a multiplicity term that depends on the set of from the integer partitioning.
-      In total, this gives the well-known Fa\`a di Bruno formula~\cite{arbogast1800calcul,hardy2006combinatorics,faa1857note}
-      }
-      \label{eq:faa-di-bruno}
-      f_k
-    &=
-      \sum_{\sigma \in \partitioning(k)}
-      \nu(\sigma) \frac{\partial^{|\sigma|} f}{\partial x^{|\sigma|}}
-      \prod_{s \in \sigma} x_s
-      \quad
-      \text{with multiplicity}
-      \quad
-      \nu(\sigma)
-      =
-      \frac{k!}{
-      \left(\prod_{s \in \sigma} n_s!\right)
-      \left(\prod_{s \in \sigma} s!\right)
-      }
-  \end{align}
-\end{subequations}
-where $n_s$ counts the occurrences of $s$ in an integer partitioning $\sigma$, for instance $n_1(\{1,1,3\}) = 2$.
-
-\paragraph{The vector/matrix/tensor-valued case.}
-So far, we assumed a scalar-to-scalar function.
-To generalize of \cref{eq:faa-di-bruno} to higher dimensions, we will introduce the notation $\partial^kf[\vx_{i_1}, \dots, \vx_{i_k}]$ to indicate the contraction of the tensor containing the $k$-th order partial derivatives with the vectors $\vx_{i_1}, \dots \vx_{i_k}$.
-With this notation, we can seamlessly write (with $\vx$ and $f(\vx)$ being vectors now)
-\begin{align}
-  \vf_k
-  &=
-    \sum_{\sigma \in \partitioning(k)} \nu(\sigma) \partial^{|\sigma|} f[\tensorprod{s \in \sigma} \vx_s]
+    \partial^3 f(x_0)x_1^3
+    +
+    3 \partial^2 f(x_0) x_1 x_2
+    +
+    \partial f(x_0) x_3.
+    \end{split}
 \end{align}
-
-\paragraph{Function composition.} Assume now that $f = g \circ h$. Then, Taylor mode proceeds as follows
-\begin{align}\label{eq:taylor-mode-composition}
-  \begin{pmatrix*}
-    \vx_0
-    \\
-    \vx_1
-    \\
-    \vx_2
-    \\
-    \vdots
-    \\
-    \vx_K
-  \end{pmatrix*}
-  &\overset{\text{(\ref{eq:taylor-mode-scalar})}}{\to}
-    \begin{pmatrix*}[l]
-      \vh_0 =  h(\vx_0)
-      \\
-      \vh_1 = \partial h[\vx_1]
-      \\
-      \vh_2 = \partial^2 h[\vx_1, \vx_1] + \partial h[\vx_2]
-      \\
-      \vdots
-      \\
-      \vh_K =
-      \displaystyle\sum_{\mathclap{\sigma \in \partitioning(K)}} \nu(\sigma) \partial^{|\sigma|} h[\tensorprod{s \in \sigma} \vx_s]
-    \end{pmatrix*}
-    \overset{\text{(\ref{eq:taylor-mode-scalar})}}{\to}
-    \begin{pmatrix*}[l]
-      \vg_0 =  g(\vh_0)
-      \\
-      \vg_1 = \partial g[\vh_1]
-      \\
-      \vg_2 = \partial^2 g[\vh_1, \vh_1] + \partial g[\vh_2]
-      \\
-      \vdots
-      \\
-      \vg_K =
-      \displaystyle\sum_{\mathclap{\sigma \in \partitioning(K)}} \nu(\sigma) \partial^{|\sigma|} g[\otimes_{s \in \sigma} \vh_s]
-    \end{pmatrix*}
-    \overset{\text{(\ref{eq:taylor-mode-scalar})}}{=}
-    \begin{pmatrix*}[l]
-      \vf_0 =  f(\vx_0)
-      \\
-      \vf_1 = \partial f[\vx_1]
-      \\
-      \vf_2 = \partial^2 f[\vx_1, \vx_1] + \partial f[\vx_2]
-      \\
-      \vdots
-      \\
-      \vf_K =
-      \displaystyle\sum_{\mathclap{\sigma \in \partitioning(K)}} \nu(\sigma) \partial^{|\sigma|} f[\tensorprod{s \in \sigma} \vx_s]
-    \end{pmatrix*}
-\end{align}
-This equation tells us how to (i) propagate forward Taylor coefficients through a directed acyclic compute graph (DAG) that represents a chain of function compositions, and (ii) how the results relate to the composition's derivative \wrt the input space.
-
-
-\subsection{Computing Laplacians}
-Taylor mode from the previous sub-section serves as backbone for computing many differential operators like the Laplacian.
-The fundamental problem is to figure out how to set the jet degrees $K$ and the Taylor coefficients $x_k$.
-
-As an example, let's consider computing the Laplacian of a function $f: \sR^D \to \sR$,
-\begin{align}\label{eq:laplacian}
-  \Delta f(\vx)
-  =
-  \sum_{d=1}^D \frac{\partial^2f(\vx)}{\partial x_d^2}
-  =
-  \sum_{d=1}^D \partial^2f[\ve_d, \ve_d]
-\end{align}
-Pattern matching with \cref{eq:taylor-mode-composition}, we see that one way to compute the Laplacian is to set $K=2$, $\vx_0 = \vx$, and then compute the forward-propagated coefficients of $\{(\vx_{1,d} = \ve_d, \vx_{2,d} = \vzero)\}_d$.
-\begin{align}\label{eq:laplacian-naive}
-  \begin{split}
-    \begin{pmatrix*}
-      \vx_0
-      \\
-      \{\vx_{1,d} \}
-      \\
-      \{\vx_{2,d} \}
-    \end{pmatrix*}
-    &\overset{\text{(\ref{eq:taylor-mode-scalar})}}{\to}
-      \begin{pmatrix*}[l]
-        \vh_0 =  h(\vx_0)
-        \\
-        \{\vh_{1,d}\} = \{\partial h[\vx_{1,d}]\}
-        \\
-        \{\vh_{2,d}\} = \{\partial^2 h[\vx_{1,d}, \vx_{1,d}] + \partial h[\vx_{2,d}]\}
-      \end{pmatrix*}
-    \\
-    &\overset{\text{(\ref{eq:taylor-mode-scalar})}}{\to}
-      \begin{pmatrix*}[l]
-        \vg_0 =  g(\vh_0)
-        \\
-        \{\vg_{1,d}\} = \{\partial g[\vh_{1,d}]\}
-        \\
-        \{\vg_{2,d}\} = \{ \partial^2 g[\vh_{1,d}, \vh_{1,d}] + \partial g[\vh_{2,d}] \}
-      \end{pmatrix*}
-      \overset{\text{(\ref{eq:taylor-mode-scalar})}}{=}
-      \begin{pmatrix*}[l]
-        \vf_0 =  f(\vx_0)
-        \\
-        \{\vf_{1,d} \} = \{ \partial f[\vx_{1,d}] \}
-        \\
-        \{ \vf_{2,d} \} = \{ \partial^2 f[\vx_{1,d}, \vx_{1,d}] + \partial f[\vx_{2,d}] \}
-      \end{pmatrix*}
-    \\
-    &\overset{\text{slice}}{\to} \{ \vg_{2,d} \}
-    \\
-    &\overset{\text{sum}}{\to} \sum_{d=1}^D \{ \vg_{2,d} \}
-      \overset{\{(\vx_{1,d} = \ve_d, \vx_{2,d} = \vzero)\}_d}{=} \Delta f(\vx_0)
-  \end{split}
-\end{align}
-In this scheme, we push forward $1 + D + D$ coefficients.
-Can we do better?
-
-\subsection{Using Linearity---Recovering the Forward Laplacian}
-Looking at the scheme in \cref{eq:laplacian-naive}, we can realize that we can propagate the summation up the computation graph. To do that, we can use the linearity of $\partial g[\bullet]$.
-Propagating the summation up the computation graph, we obtain (changes highlighted in \textcolor{maincolor}{color}):
-\begin{align}\label{eq:laplacian-efficient}
-  \begin{split}
-    \begin{pmatrix*}
-      \vx_0
-      \\
-      \{\vx_{1,d} \}
-      \\
-      \mathemph{\displaystyle\sum_{d=1}^D \vx_{2,d}}
-    \end{pmatrix*}
-    &\overset{\text{(\ref{eq:taylor-mode-scalar})}}{\to}
-      \begin{pmatrix*}[l]
-        \vh_0 =  h(\vx_0)
-        \\
-        \{\vh_{1,d}\} = \{\partial h[\vx_{1,d}]\}
-        \\
-        \mathemph{\displaystyle\sum_{d=1}^D \vh_{2,d}} = \displaystyle\sum_{d=1}^D \partial^2 h[\vx_{1,d}, \vx_{1,d}] + \partial h[\mathemph{\displaystyle\sum_{d=1}^D\vx_{2,d}}]
-      \end{pmatrix*}
-    \\
-    &\overset{\text{(\ref{eq:taylor-mode-scalar})}}{\to}
-      \begin{pmatrix*}[l]
-        \vg_0 =  g(\vh_0)
-        \\
-        \{\vg_{1,d}\} = \{\partial g[\vh_{1,d}]\}
-        \\
-        \mathemph{\displaystyle\sum_{d=1}^D\{\vg_{2,d}\}} = \displaystyle\sum_{d=1}^D \partial^2 g[\vh_{1,d}, \vh_{1,d}] + \partial g[\mathemph{\displaystyle\sum_{d=1}^D\vh_{2,d}}]
-      \end{pmatrix*}
-      \overset{\text{(\ref{eq:taylor-mode-scalar})}}{=}
-      \begin{pmatrix*}[l]
-        \vf_0 =  f(\vx_0)
-        \\
-        \{\vf_{1,d} \} = \{ \partial f[\vx_{1,d}] \}
-        \\
-        \displaystyle\sum_{d=1}^D \vf_{2,d} = \displaystyle\sum_{d=1}^D \partial^2 f[\vx_{1,d}, \vx_{1,d}] + \partial f[\vx_{2,d}]
-      \end{pmatrix*}
-    \\
-    &\overset{\text{slice}}{\to} \mathemph{\sum_{d=1}^D \{ \vg_{2,d} \}}
-      \overset{\{(\vx_{1,d} = \ve_d, \vx_{2,d} = \vzero)\}_d}{=}
-      \Delta f(\vx_0)
-  \end{split}
-\end{align}
-In this scheme, the second-order coefficients are \emph{first summed, then propagated}, \ie we push forward $1 + D + 1$ vectors instead of $1 + D + D$.
-In fact, this scheme in \cref{eq:laplacian-efficient} corresponds to the \emph{forward Laplacian} framework from \citet{li2023forward}.
-However, we recovered it from a different starting point: by using Taylor mode in combination with sum propagations.
-
-\begin{table}[h]
-    \centering
-    \begin{tabular}{lcc|cc}
-        \toprule
-        \multirow{2}{*}{Operation} & \multicolumn{2}{c|}{Taylor arithmetic (TA)} & \multicolumn{2}{c}{Laplacian arithmetic (LA)} \\
-        & Multiplications & Additions & Multiplications & Additions \\
-        \midrule
-        $\cos$  & $4D$  & $D$   & $3D + 1$  & $D + 1$ \\
-        $\sin$  & $4D$  & $D$   & $3D + 1$  & $D + 1$ \\
-        $\exp$  & $3D$  & $D$   & $2D + 1$  & $D + 1$ \\
-        \midrule
-        $\text{mult}$ & $5D$  & $3D$  & $3D + 2$  & $D + 2$ \\
-        $\text{add}$  & $0$   & $2D$  & $D (0?)$  & $1$ \\
-        \bottomrule
-    \end{tabular}
-    \caption{Number of multiplications and additions for atomic operations in Taylor Arithmetic (TA) and Laplacian Arithmetic (LA).}
-    \label{tab:arithmetics}
-\end{table}
-
-
-\paragraph{Weighted sums of second-order derivatives.}
-We can generalize the scheme \cref{eq:laplacian-efficient} to weighted sums of second-order derivatives, more precisely to PDE operators of the form 
-\begin{equation*}
-    \Tr (\msigma \msigma^\top \partial^2 f),
-\end{equation*}
-where $\msigma\in\mathbb R^{D\times D}$ is a matrix or even a matrix valued function. These operators in Fokker-Planck equations, where the matrix $\msigma$ plays the role of a diffusivity, in Hamiltonian-Jacobi Bellmann equations and, choosing $\msigma = \mI$ they reduce to the Laplace operator. In all cases one is interested in high 
-
-We can generalize the scheme in \cref{eq:laplacian-efficient} to computing differential operators of the form $\sum_{i,j} C_{i,j} \nicefrac{\partial^2f}{\partial \evx_i \evx_j}$ with a symmetric coefficient matrix $\mC \in \sR^{D\times D}$. For simplicity, let's first assume that $\mC$ is positive semi-definite, which means we can express it as $\mC = \sum_{d=1}^{\rank(\mC)} \vv_d \vv_d^\top$ with real-valued $\vv_d \in \sR^D$, and therefore
-\begin{align}\label{eq:weighted-laplacian}
-  \sum_{i,j} C_{i,j} \frac{\partial^2f}{\partial x_i \partial x_j}
-  =
-  \sum_{d=1}^{\rank(\mC)} \partial^2f[\vv_d, \vv_d]\,.
-\end{align}
-This can be computed using \cref{eq:laplacian-naive}, and the simplified version in \cref{eq:laplacian-efficient}, by setting $\vx_{1,d} = \vv_d, \vx_{2,d} = \vzero$.
-Also here, the second-order coefficients can be collapsed, and instead of pushing forward $1 + 2 \rank(\mC)$ vectors, we are left with $2 + \rank(\mC)$ vectors.
-
-If $\mC$ is in-definite, then some $\vv_d$ will be purely complex, \ie have non-zero imaginary but zero real part, and some will be purely real (alternatively, we can stick to real-valued arithmetic, but incorporate a minus sign for the vectors associated with negative eigenvalues of $\mC$; it is currently unclear if we even need this: there might not be relevant use cases for $\mC$ indefinite).
-We can either compute the differential operator in complex-valued arithmetic, or split the positive and negative parts of the spectrum into two separate collapsed jets.
-
-\todo{We can make the connection to \cite{hu2023hutchinson} equation (5) clear and discuss the case of $\mC$ being a function of the input}
-
-\paragraph{Example for weighted sum of second-order derivatives.}
-Let's consider the Fokker-Planck equation for the evolution of a probability density $p(\vx, t)$ with $\vx \in \sR^D$ and $t \in \sR_{\le 0}$ given by
-\begin{align}
-  \frac{\partial p(\vx, t)}{\partial t}
-  =
-  - \sum_{d=1}^D
-  \frac{\partial}{\partial [\vx]_d} \left( [\vmu(\vx, t)]_d p(\vx, t) \right)
-  +
-  \sum_{i,j=1}^D
-  \frac{\partial^2}{\partial [\vx]_i \partial [\vx]_j}
-  \left[ \mD_{i,j}(\vx, t) p(\vx, t) \right]
-\end{align}
-with positive definite diffusion tensor $\mD(\vx, t) = \nicefrac{1}{2} \mS(\vx, t) \mS(\vx, t)^{\top}$ where $\mS(\vx, t) \in \sR^{D \times M}$ with some $M \le D$.
-After application of the product rule, we find that this term requires computing weighted sum of second-order derivative $\sum_{i,j} \mD_{i,j}  \nicefrac{\partial^2 p(\vx, t)}{\partial [\vx]_i \partial [\vx]_j}$.
-By denoting $\vs_m$ the $m$-th column of $\mS$, we find that this expression can be expressed as $\sum_{m=1}^M \partial^2 p[\nicefrac{\vs_m}{\sqrt{2}}, \nicefrac{\vs_m}{\sqrt{2}}]$ and hence we can use compute this quantity with a second-order jet whose quadratic coefficients can be collapsed into a single one.
-
-
-\paragraph{Partially collapsed Taylor mode.}
-A use case for such partially collapsed jets is in \cite{hu2023hutchinson}, which uses randomized Taylor mode (see \cref{subsec:randomized-taylor-mode}) to estimate the Laplacian.
-In their application, the randomized Laplacian feeds into square loss.
-While the Laplacian estimator itself is unbiased, squaring it in the loss function introduces a bias. 
-Obtaining an unbiased estimator of the loss requires computing two randomized Laplacians using different sets of random vectors. 
-We could handle this partial collapse and its propagation up the computation graph with our graph simplifications.
-However, \cite{hu2023hutchinson} do not use this unbiased version in practice. 
-They argue it has too much variance.
-
-\subsection{Using Linearity in Randomization Taylor Mode}\label{subsec:randomized-taylor-mode}
-\citep{shi2024stochastic} introduce randomization into Taylor mode, similar to stochastic backpropagation~\cite{oktay2021randomized}.
-This lowers the computational cost when $D$ is prohibitively large for exact evaluation of differential operators.
-Take the weighted Laplacian from \Cref{eq:weighted-laplacian} and assume we have access to random vectors $\rvv$ with and $\E[\vv \vv^{\top}] = \mC$.
-Then we can draw $S \ll D$ random vectors $\vv_1, \vv_2, \dots, \vv_S \overset{\text{i.i.d.}}{\sim} \rvv$ and compute
-\begin{align}
-  \begin{split}
-    \E[\partial^2f[\rvv, \rvv]]
-    &=
-      \E \left[
-      \rvv^{\top} \frac{\partial^2 f}{\partial \vx \partial \vx} \rvv
-      \right]
-      =
-      % \E \left[
-      %   \sum_{i,j} \ervv_i \frac{\partial^2 f}{\partial x_i \partial x_j} \ervv_j
-      % \right]
-      % =
-      \sum_{i,j} \frac{\partial^2 f}{\partial x_i \partial x_j}
-      \E \left[
-      \ervv_i  \ervv_j
-      \right]
-      =
-      \sum_{i,j} \frac{\partial^2 f}{\partial x_i \partial x_j} C_{i,j}
-    \\
-    &\approx
-      \frac{1}{S}
-      \sum_{s=1}^S
-      \partial^2 f[\vv_s, \vv_s]\,.
-  \end{split}
-\end{align}
-Again, we see that the second-order coefficients can be collapsed when setting $\vx_{1,d} = \vv_d, \vx_{2,d} = \vzero$ in \cref{eq:laplacian-naive,eq:laplacian-efficient}.
-
-\subsection{Using Linearity in Higher-Order Operators}
-\paragraph{Traces of higher-order derivative tensors}
-We can view the Laplacian as trace of the Hessian (the tensor of second-order derivatives).
-A natural generalization to higher-order derivatives would be the tensor trace operator
-\begin{align}\label{eq:trace-differential-operator}
-    \Tr( \partial^K f(\vx) )
-    \coloneqq
-    \sum_{d=1}^D
-    \frac{\partial^K f(\vx)}{\partial \evx_d^K}
-    =
-    \sum_{d=1}^D
-    \partial^K f(\vx) [\ve_d, \ve_d, \dots, \ve_d]
-\end{align}
-which reduces to the Laplacian for $K=2$.
-To compute this operator naively with Taylor mode, we have to propagate $1 + D K$ coefficients, then sum the coefficients of order $K$.
-This sum can be pulled inside the forward propagation, similar to the forward Laplacian, resulting in $1 + D (K - 1) + 1$ coefficients.
-While the improvements of this trick diminish as $K$ grows, the savings can still be significant for $K = 3, 4$.
-At the moment, I do not know a relevant application for operators of the form \cref{eq:trace-differential-operator}.
-
-\paragraph{An attempt to generalize what we did so far.}
-Let's try to summarize what we did so far.
-Our goal was to compute a differential operator.
-This differential operator resulted from a dot product in the following sense. Given a coefficient tensor $\tC \in (\sR^D)^{\otimes K}$ and the $K$-th order derivative tensor $\partial^K f(\vx) \in (\sR^D)^{\otimes K}$, our differential operator was of the form
+The general formula was originally given by Faa
+di Bruno in 1856 and has since been extended to the multivariate case by Fraenkel in 1978 which serves as foundation for the Taylor-mode AD. Choosing $x_1 = 1, x_2 = x_3 = 0$ results in $f_1 = \partial f(x_0), f_2 = \partial^2 f(x_0)$ and $f_3 = \partial^3 f(x_0)$. Here, the key observation is that one obtains the identity $f_3 = \partial^3 f(x_0)$ with this initialization of the direction $(x_0,x_1,x_2)$.  To exploit this fact also in more general cases, we have to introduce some notation. We denote vectors, matrices, and tensors using boldface. Given $K$ vectors $\vv_1, \dots, \vv_K \in \mathbb{R}^D$, their tensor product is written as
+\begin{equation}
+    \otimes_{k=1}^K \vv_k = \vv_1 \otimes \ldots \otimes \vv_K 
+    \in \left( \mathbb{R}^D \right)^{\otimes K},
+\end{equation}
+with components given by
+\begin{equation}
+     \left(\otimes_{k=1}^K \vv_k\right)_{d_1, \dots, d_K}
+    = (\vv_1)_{d_1} \cdot \ldots \cdot (\vv_K)_{d_K}
+    \quad \text{for } d_1, \dots, d_K \in \{1, \dots, D\}.
+\end{equation}
+There will be extensive use of the inner product
 \begin{align}\label{eq:derivative-tensor-scalar-product}
     \left\langle
-    \tC, \partial^K f(\vx)
+    \tA, \tB
     \right\rangle
     \coloneqq
     \sum_{d_1}
     \sum_{d_2}
     \dots
     \sum_{d_K}
-    [\tC]_{d_1, d_2, \dots, d_K}
-    [\partial^K f(\vx)]_{d_1, d_2, \dots, d_K}
+    \tA_{d_1, d_2, \dots, d_K}
+    \tB_{d_1, d_2, \dots, d_K},
 \end{align}
-where $[\partial^K f(\vx)]_{d_1, d_2, \dots, d_K} = \partial^K f(\vx)[\ve_{d_1}, \ve_{d_2}, \dots, \ve_{d_K}]$.
-Let's show that this formulation indeed contains everything we discussed so far:
-\begin{itemize}
-    \item For the Laplacian (\Cref{eq:laplacian}), we have
-    $K = 2$ and $\tC$ a rank-2 tensor with $[\tC]_{i,j} = \delta_{i,j}$, or simply $\tC = \mI$.
-    In other words, we take the dot product of the second-order derivative tensor with the identity matrix.
+where $\tA, \tB \in \left(\mathbb{R}^{D}\right)^{\otimes K}$. The $k$-th derivative of a function $\vf$ is denoted by $\partial^k \vf$.
 
-    \item For the weighted sum of second-order derivatives (\Cref{eq:weighted-laplacian}), we had $K=2$ and $\tC = \mC$.
+One way to compute higher-order derivatives up to degree $K$ of a function $\vf : \mathbb{R}^D \to \mathbb{R}^m$ is to consider its (univariate) Taylor polynomial also called \emph{$K$-Jet}. To derive our approach, we provide an introduction of Taylor-mode AD ~\citep[][Chapter 13]{griewank2008evaluating}, which is the basis to compute $K$-Jets.
 
-    \item For the generalized trace operator (\Cref{eq:trace-differential-operator}), we have $K$ arbitrary and $\tC$ such that $[\tC]_{d_1, d_2, \dots, d_K} = \delta_{d_1, d_2, \dots, d_K}$.
-\end{itemize}
+The evaluation of $\vf$'s $K$-Jet at an initial point $\vx_0 \in \mathbb{R}^n$ starts with the extension of $\vx_0$ to a smooth path $\vx: \mathbb{R} \to \mathbb{R}^D$ such that $\vx(0) = \vx_0$. Then, the $K$-Jet of $\vf$ is defined as $J^K \vf : \mathbb{R} \to \mathbb{R}^m$, $(J^K \vf)(t) := \sum_{k=0}^K \frac{t^k}{k!} \vf_k$ with $\vf_k := \left. \frac{d^k}{dt^k} \vf(\vx(t)) \right|_{t=0} $. The evaluation of $\vf_k$ requires the input $K$-Jet $(J^K \vx)(t) = \sum_{k=0}^K \frac{t^k}{k!} \vx_k$ as can be seen also in the simple example \eqref{eq:taylor-mode-scalar} above. The coefficients $\vx_1, \dots, \vx_K$ are selected problem specific as described later in detail. Hence, Taylor-mode AD maps $J^K\vx$ to $J^K\vf$ to compute all coefficients of $\vf$ as depicted below.
 
-Note that the differential operator in \Cref{eq:derivative-tensor-scalar-product} requires computing $\partial^K f(\vx)[\ve_{d_1}, \ve_{d_2}, \dots, \ve_{d_K}]$ in general.
-If we want to use $K$-th order Taylor mode, we have to re-write the computation, because it can only compute
-$\partial^K f(\vx)[\vv, \vv, \dots, \vv]$.
-(The other alternative would be to increase the order of the Taylor mode, but then I don't know how to apply the collapsing trick.)
-Here is how we achieved this for the examples above:
-\begin{itemize}
-    \item For the Laplacian, we wrote $\mC = \mI = \sum_{d} \ve_d \otimes \ve_d = \sum_d (\ve_d)^{\otimes 2}$ (I am slightly abusing notation here and mean that the Kronecker product is a tensor outer product, \ie applying it between two vectors (rank-1 tensors) yields a matrix (rank-2 tensor).)
-    
-    \item For the weighted sum of second-order derivatives, we assumed $\tC = \mC$ is PSD and wrote $\mC = \sum_d \vv_d \otimes \vv_d = \sum_d (\vv_d)^{\otimes 2}$
+\begin{center}
+  \begin{tikzpicture}
+    \node[align=center] (topleft) {Extent input to smooth path \\
+      $\vx(t)$};
 
-    \item For the generalized trace operator, we decomposed $\tC = \sum_d \ve_d \otimes \ve_d \otimes \dots \otimes \ve_d = \sum_d (\ve_d)^{\otimes K}$.
-\end{itemize}
-The crucial part here is that whenever we can factorize the coefficient tensor $\tC$ into a sum of rank-1 tensor products, then we can use Taylor-mode to efficiently compute each term, while collapsing the sum.
-This, of course, limits us to coefficient tensors that can be written as $\tC = \sum_d (\vv_d)^{\otimes K}$.
+    \node[align=center, right=4cm of topleft] (topright) {Path in output space \\ $\vf(\vx(t))$};
+    \draw [-Latex] (topleft.east) to node [midway, above] {$f$} (topright.west);
+
+    \node[align=center, below=1cm of topright] (bottomright) {Taylor polynomial of degree $K$
+      \\
+      $\sum_{k=0}^K \frac{t^k}{k!} \vf_k$
+      \\
+      {\color{maincolor}$(\vf_0, \dots, \vf_K)$}
+    };
+    \draw [-Latex] (topright.south) to node [midway, right] {$K$-jet} (bottomright.north);
+
+    \node[align=center, below=1cm of topleft] (bottomleft) {Taylor polynomial of degree $K$
+      \\
+      $\sum_{k=0}^K \frac{t^k}{k!} \vx_k$
+      \\
+      {\color{maincolor} $(\vx_0, \dots, \vx_K)$}};
+    \draw [-Latex] (topleft.south) to node [midway, left] {$K$-jet} (bottomleft.north);
+
+    \draw [-Latex, maincolor] (bottomleft.east) to node [midway, above, maincolor] {Taylor mode} (bottomright.west);
+  \end{tikzpicture}
+\end{center}
 
 
-\paragraph{Biharmonic Operator}
-The Biharmonic Operator is a fourth-order differential operator that is interesting for some practitioners.
-It is defined as
+
+As is common for AD methods, the main principles to obtain $J^K\vf$ rely on a decomposition of $\vf$ into elemental or primal functions and the application of the chain rule. For example, $\vf$ might be computed through an evaluation procedure or primal program that leverages the decomposition $\vf = \vg \circ \vh$. Having defined $J^K\vx$ and the decomposition of $\vf$, Taylor-mode AD calculates the $K$-Jet $\vf$ by successively evaluating all $\vf_k$ through the chain rule. 
+For higher-order derivatives of multivariate functions, the chain rule is known as Faà di Bruno Formula ~\cite{arbogast1800calcul,hardy2006combinatorics,faa1857note}. The formula reads for $\vf = \vg \circ \vh$: 
 \begin{align}
-\label{eq:biharm}
-    \Delta^2 f(\vx)
-    \coloneqq
-    \sum_{i=1}^D \sum_{j=1}^D
-    \frac{\partial^4 f(\vx)}{\partial \evx_i^2 \partial \evx_j^2}
-    =
-    \sum_{i=1}^D \sum_{j=1}^D
-    \partial^4 f(\vx) [\ve_i, \ve_i, \ve_j, \ve_j]
+\label{eq:faa-di-bruno}
+  \vf_k = \vg_k
+  =
+    \sum_{\sigma \in \partitioning(k)}
+    \nu(\sigma)
+    \left< 
+    \partial^{|\sigma|} \vg,
+    \tensorprod{s \in \sigma} \vh_s
+    \right>,
 \end{align}
-\citet{hu2023hutchinson} propose to approximate it in an unbiased fashion via
-\begin{align}
-    \Delta^2 f(\vx)
-    \coloneqq
-    \frac{1}{3}
-    \E_{\rvv \sim \gN(\vzero, \mI)} \left[
-    \partial^4 f(\vx) [\rvv, \rvv, \rvv, \rvv]
-    \right]
-    \qquad 
-\end{align}
-If we want to estimate this quantity using multiple samples, we can again pull the summation (from averaging over examples) into the Taylor mode propagation, resulting in collapsed Taylor mode.
-I think we can improve their results from Table 3 in terms of memory and run time.
-
-
-\paragraph{Felix's approach to computing the biharmonic operator.}
-In the paragraph above, we learned that if we can write our coefficient tensor as $\tC = \sum_d (\vv_d)^{\otimes K}$, then we can use $K$-th order Taylor mode to efficiently compute it, while collapsing the sum.
-Let's look at the biharmonic operator now.
-It reads $\Delta^2 f(\vx) =\sum_{i=1}^D \sum_{j=1}^D \partial^4 f(\vx) [\ve_i, \ve_i, \ve_j, \ve_j]$. 
-Let's write down the coefficient tensor for the biharmonic.
-It is $\tC = \sum_d \sum_{d'} (\ve_d)^{\otimes 2} (\ve_{d'})^{\otimes 2}$.
-What do we see? This coefficient cannot be written in our desired form; it is slightly more general: We have a sum, but instead of a 4-th tensor power of the same vector, we get the product of two 2-nd tensor powers (note that in the most general case we have four different vectors). Since we now have to collapse the fourth derivative tensor along \emph{different} dimensions, we cannot use 4-th order Taylor mode to compute it!
-
-Since we cannot use 4-th order Taylor mode, let's increase $K$ to $>4$ and look for terms of the form $\partial^4 f(\vx) [\bullet, \bullet, \blacktriangle, \blacktriangle]$.
-After starring at the Faa di Bruno cheatsheet (\Cref{sec:faa-di-bruno-cheatsheet}) for a bit, we can see that these terms show up in the $K=6$-th order Taylor mode.
-Let's write down how the 6-th derivative looks like if we set the Taylor coefficients to $\vx_3 = \vx_4 = \vx_5 = \vx_6 = \vzero$.
-The output of Taylor mode is then
-\begin{subequations}
-\begin{align}\label{eq:felix-biharmonic-jet1}
-    \vf_6
-    =
-    \partial^{6} f[\vx_1, \vx_1, \vx_1, \vx_1, \vx_1, \vx_1]
-    +
-    15 \partial^5 f[\vx_1, \vx_1, \vx_1, \vx_1, \vx_2]
-    +
-    {\color{blue}
-    45 \partial^4 f[\vx_1, \vx_1, \vx_2, \vx_2]
-    }
-    +
-    15 \partial^3 f[\vx_2, \vx_2, \vx_2]
-\end{align}
-Notice the \textcolor{blue}{blue term}, which has the same structure as the summands we want to compute for the biharmonic.
-Now we have to find a way to kill the other terms.
-We can kill the $\partial^5$ and $\partial^3$ term by noting that they contain $\vx_2$ an odd number of times.
-We can use this to evaluate the negative of those terms by evaluating the Taylor mode from \Cref{eq:felix-biharmonic-jet1}, but using $-\vx_2$ instead of $\vx_2$.
-This gives
-\begin{align}\label{eq:felix-biharmonic-jet2}
-    \vf_6
-    =
-    \partial^{6} f[\vx_1, \vx_1, \vx_1, \vx_1, \vx_1, \vx_1]
-    -
-    15 \partial^5 f[\vx_1, \vx_1, \vx_1, \vx_1, \vx_2]
-    +
-    {\color{blue}
-    45 \partial^4 f[\vx_1, \vx_1, \vx_2, \vx_2]
-    }
-    -
-    15 \partial^3 f[\vx_2, \vx_2, \vx_2]
-\end{align}
-To kill the $\partial^6$ term, we evaluate the same jet as in \Cref{eq:felix-biharmonic-jet1}, but set $\vx_2 = \vzero$. This gives
-\begin{align}\label{eq:felix-biharmonic-jet3}
-    \vf_6
-    =
-    \partial^{6} f[\vx_1, \vx_1, \vx_1, \vx_1, \vx_1, \vx_1]
-\end{align}
-Now, let's put things together.
-Let's evaluate  \Cref{eq:felix-biharmonic-jet1} $+$ \Cref{eq:felix-biharmonic-jet2} $- 2 $ \Cref{eq:felix-biharmonic-jet3}, which gives
-\begin{align}
-    {\color{blue}
-    90 \partial^4 f[\vx_1, \vx_1, \vx_2, \vx_2]
-    }
-\end{align}
-\end{subequations}
-Cool! \textbf{We now found a way to compute one summand of the biharmonic operator by computing three $6$-jets and then linearly combining their outputs.}
-(NOTE: I think this is somewhat similar to Chapter 13.3 in Andrea's book). These jets only differ in how we set the second-order Taylor coefficient: $+1 \vx_2, -1 \vx_2, 0 \vx_2$.
-We should see plenty of cancellations from the $\pm \vx_2$ in the compute graph.
-It might be a headache to write the simplifications that take care of this.
-
-Let's do a quick analysis of this approach: For each jet, we have to forward-propagate $1 + 6$ vectors.
-That's $3 + 18$ vectors in total.
-With a fully-naive approach, we can now compute the biharmonic by repeating this procedure $D^2$ times (once per element). 
-That would be $21 D^2$ vectors in total.
-
-However, we may hope to reduce this by removing some redundancies and collapsing sums.
-
-First, note that all three jets share the same $\vx_0$.
-Hence, we actually need $1 + 18$ rather than $3 + 18$ vectors for one element of the biharmonic; and we can also share this computation over all summands.
-This gets us down to $1 + 18 D^2$ vectors total.
-
-Second, note that we can pull the sum from the biharmonic inside each of the three jets.
-This brings us down from $1 + 18$ to $1 + 3 + 15$ where only the $15$ scales with $D^2$.
-Overall, collapsing the sum brings us down to $1 + 3 + 15D^2$.
-
-I think there is more to collapse, but for that we need to write out all sums.
-I believe we could get something that looks very similar to what Tim wrote down below.
-
-\paragraph{[Needs double-checking] Biharmonic operator = Laplacian(Laplacian).}
-A very intuitive way to understand that the collapsing of terms can also be done for the biharmonic operator, is that it corresponds to applying the Laplacian twice.
-Hence, we can collapse coefficients in the inner Laplacian, as well as the outer Laplacian.
-Suppose we start with a collapsed interior Laplacian $\Delta f: \vx \in \sR^D \mapsto \Delta f(x) \in \sR$ where function $f$ propagates forward one vector.
-We know from previous explanations that this requires propagating $2 + D$ vectors.
-Now, let's apply the Laplacian a second time, i.e. $\Delta \tilde{f}$ where evaluating $\tilde{f} = \Delta f$ propagates $2 + D$ vectors. 
-Naively we get $(2 + D) + D * (2 + D) + D * (2 + D)$, but the second-order components can again be collapsed into a single vector, so we obtain \todo{Are you sure that we can contract $D(2 + D)$ into $1$? Shouldn't it be $2 + D$?}$(2 + D) + D * (2 + D) + 1 = D^2 + 3D + 3$ vectors that need to be pushed forward for the biharmonic.
-\textbf{We should expect Tim's $D^2 + 2D + 3$ from below though, so there is still a slight mismatch we need to understand.}
-\textbf{Tim: In general: I'm pretty sure you can not expect the same results as in the multitvariate-propatation case. In the multivariate case you can leverage the linearity in terms where different directions are propagated. In univariate you can not. This can be seen from the different chain-rules.}
-\\
-\textbf{
-Regarding the propagation scheme above, we can only leverage the trick for the second-order terms, but not for third-order, because the scheme can only see up to the second derivative. But in the multivariate case we can leverage the trick to safe $D$ third derivatives and $D^2-1$ forth. Instead we can not safe the third derivatives, but $D$ fourth derivatives, since we can apply the laplace trick here.}
-
-
-\paragraph{Leveraging TTC formula} \todo{Not done}\todo{Need better notation}
-A technique to reconstruct mixed-partials of arbitrary order from jets has already been proposed in 1999 by Griewank et al. in \cite{griewank_evaluating_1999}. The authors summarized their method in the following formula
+with $\partitioning(k)$ being the integer partitioning of $k$ and multiplicity
 \begin{equation}
-\label{eq:ttc_general}
-    \frac{\partial^{|\vk|}}{\partial \vz^\vk} \vf(\vx + \boldsymbol{S} \vz)\Big|_{\vz = 0} 
+    \nu(\sigma)
     = 
-    \sum_{\underset{\vl \in M^p}{|\vl| = |\vk|}}
-    \gamma_{\vk \vl}
-    \frac{1}{\vk!}
-    \partial^{|\vk|}\vf \left[
-    \underbrace{
-    \sum_{i=1}^p l_i \vs_i, \dots, \sum_{i=1}^p l_i \vs_i
-    }_k
-    \right].
-\end{equation}
-\cref{sec:appendix_ttc} provides supplementary details to the formula.
-As the authors of the formula already noted, the coefficients $\gamma$ only depend on the problem structure and are independent of the function $\vf$. As we will show, this allows to exploit symmetry that is often inherent to differential operators.
-
-To apply \cref{eq:ttc_general} to the Biharmonic Operator \cref{eq:biharm}, parameters $\vk, p$, auxiliary variables $\vz$ and matrices $\boldsymbol{S}_{ij}$ has to be selected for all mixed-partial derivatives. For the case where all four derivative directions coincides, i.e.,$i = j$, the parameters are given by $\vk = (4)$, $p = 1$, the auxiliary variable $\vz = (z_1)$ and $\boldsymbol{S}_{ii} = \ve_i$. If $i \neq j$ we have $\vk = (2, 2)$, $p = 2$, $\vz = (z_1, z_2)$ and $\boldsymbol{S}_{ij} = (\ve_i \; \ve_j)$. 
-
-Having defined the parameters, we utilize \cref{eq:ttc_general} to map the Biharmonic Operator \cref{eq:biharm} of a function $\vf$ to a collection of fourth-order jets: 
-\begin{align}
-    \Delta^2 \vf(\vx)
-    &=
-    \sum_{i=1}^D
-    \gamma_{(4)(4)}
-    \frac{1}{4!}
-    \partial^{4}\vf \left[
-    4 \ve_i, 4 \ve_i, 4 \ve_i, 4 \ve_i 
-    \right]
-    \\
-    &+
-    \sum_{i=1}^D \sum_{\underset{j \neq i}{j=1}}^D
-    \sum_{\underset{\vl \in M^2}{|\vl| = 4}}
-    \gamma_{(2, 2) \vl}
-    \frac{1}{(2, 2)!}
-    \partial^{4} \vf \left[
-    \boldsymbol{S}_{ij} \vl, \boldsymbol{S}_{ij} \vl, \boldsymbol{S}_{ij} \vl, \boldsymbol{S}_{ij} \vl
-    \right].
-\end{align}
-As mentioned before, the coefficients $\gamma_{\vk \vl}$ capture the symmetric structure of the differential operator. A close look into the definition \cref{eq:ttc_coeff} shows the equality of $\vl = (4,0)$ with $\vl=(0, 4)$ and $\vl = (3, 1)$ with $\vl = (3, 1)$. Exploiting those symmetries the formula boils down to 
-\begin{align}
-   \Delta^2 \vf(\vx)
-   &=
+    \frac{k!}{
     \left(
-   \gamma_{(4)(4)} + 2 (D - 1) \gamma_{(2,2)(4, 0)}
-   \right)
-   \sum_{i=1}^D
-    \partial^4 \vf [
-    4\ve_i, 4\ve_i, 4\ve_i, 4\ve_i
-    ]
-    \\
-    &+
-    2 \gamma_{(2, 2)(3, 1)} 
-    \sum_{i=1}^D 
-    \sum_{\underset{j \neq i}{j=1}}^D
-    \partial^4 \vf[
-    3 \ve_i+ \ve_j, 3 \ve_i+ \ve_j, 3 \ve_i+ \ve_j, 3 \ve_i+ \ve_j
-    ]
-    \\
-    &+ 
-    \gamma_{(2, 2)(2, 2)}
-    \sum_{i=1}^D 
-    \sum_{\underset{j \neq i}{j=1}}^D
-    \partial^4 \vf [
-    2 \ve_i+ 2 \ve_j, 2 \ve_i+ 2 \ve_j, 2 \ve_i+ 2 \ve_j, 2 \ve_i+ 2 \ve_j
-    ].
-\end{align}
-
-\todo{Then @Felix can implement and benchmark this approach. 
-This is probably better than the current approach which uses 6-jets.
-And it uses 4-jets, which are also used by the randomized variant.
-We should see a stronger performance impact when collapsing the highest-order coefficients, compared to the 6-jet approach.}
-
-\Cref{tab:ttc_biharm_coeffs} lists all required coefficients.
-
-\begin{table}[]
-    \centering
-    \begin{tabular}{|c|c|c|c|}
-        \toprule
-        $\gamma_{(4)(4)}$ & $\gamma_{(2, 2) (4, 0)}$ & $\gamma_{(2, 2) (3, 1)}$ & $\gamma_{(2, 2) (2, 2)}$ \\
-        \midrule
-        $\frac{3}{32}$ & $\frac{13}{192}$ & $\frac{5}{8}$ & -$\frac{1}{3}$ \\
-        \bottomrule
-    \end{tabular}
-    \caption{Coefficients to compute the Biharmonic Operator by \Crefrange{eq:ttc_biharm_full1}{eq:ttc_biharm_full3}.}
-    \label{tab:ttc_biharm_coeffs}
-\end{table}
-
-Leveraging the symmetry of the direction $2 \ve_i + 2 \ve_j$, the last term can be further simplified. This simplification leads to the following efficient propagation scheme for \cref{eq:biharm}:
-\begin{align}
-   \Delta^2 \vf(\vx)
-   &= \label{eq:ttc_biharm_full1}
+    \prod_{s \in \sigma
+    }
+    n_s!
+    \right) 
     \left(
-   \gamma_{(4)(4)} + 2 (D - 1) \gamma_{(2,2)(4, 0)}
-   \right)
-   \sum_{i=1}^D
-    \partial^4 \vf [
-    4\ve_i, 4\ve_i, 4\ve_i, 4\ve_i
-    ]
-    \\
-    &+ \label{eq:ttc_biharm_full2}
-    2 \gamma_{(2, 2)(3, 1)} 
-    \sum_{i=1}^D 
-    \sum_{\underset{j \neq i}{j=1}}^D
-    \partial^4 \vf[
-    3 \ve_i+ \ve_j, 3 \ve_i+ \ve_j, 3 \ve_i+ \ve_j, 3 \ve_i+ \ve_j
-    ]
-    \\
-    &+ \label{eq:ttc_biharm_full3}
-    2 \gamma_{(2, 2)(2, 2)}
-    \sum_{i=1}^{D-1} 
-    \sum_{j=i+1}^D
-    \partial^4 \vf [
-    2 \ve_i+ 2 \ve_j, 2 \ve_i+ 2 \ve_j, 2 \ve_i+ 2 \ve_j, 2 \ve_i+ 2 \ve_j
-    ].
-\end{align} 
-
-The \Crefrange{eq:ttc_biharm_full1}{eq:ttc_biharm_full3} are computed through $D + D(D-1) + \frac{D(D-1)}{2}$ fourth-order jets. All these fourth-order jets expose the same structure as need for our proposed propagation trick. Thus, the summation can be pulled inside the highest coefficients in the propagation scheme, like for the Laplacian. From this we conclude that this propagation scheme has the effort of propagating $1 + 3D + 1 + 1 + 3 \cdot D(D-1) + 1 + 1 + 3 \frac{D(D-1)}{2} + 1 = 9\frac{D^2}{2} - 3\frac{D}{2} + 6$ vectors. It should be noted, that all jets can be computed in parallel, which provides further benefits for the run-time complexity.
-
-
-
-\paragraph{Biharmonic operator --- Revisited}
-Up to now, the derivative computation method is based on the propagation of univariate Taylor polynomials. Although the propagated coefficients of these polynomials contain all the required derivative information, the direct access to arbitrary mixed-partial derivatives by propagating certain directions is not possible. This fact led to rather complicated schemes in the case of the Biharmonic Operator. In contrast, multi-variate Taylor polynomial propagation allows a fine-grained access to all partial derivatives, which usually results in a higher memory consumption in comparison to the univariate approach. For a comparison of both approaches see e.g., \cite{griewank_evaluating_1999}. However, in the following, we show that fined-grained access to mixed-partials is beneficial to derive efficient propagation schemes for the Biharmonic Operator. 
-
-During this paragraph, the notation $g^{i}$ is used to denote the derivative with respect to $g$'s $i$-th input, $g^{ij}$ the derivative of $g$ with respect to the $i$-th and the $j$-th component, and so on. In \cref{eq:biharm-multi} the multivariate chain-rule (\cite{hardy2006combinatorics}) is leveraged to investigate the multivariate propagation pattern. There various additional simplification possible, which result in the multivariate propagation scheme \cref{eq:biharm-efficient}. This scheme has the cost of propagating $3 + 2D + D^2$ vectors.
-
-
-\paragraph{Using Linearity --- General Differential Operators}
-
-Let a general differential operator be given as 
-\begin{equation}
-    D = \sum_{i = 1}^N D_i
+    \prod_{s \in \sigma}
+    s!
+    \right)
+     }.
 \end{equation}
-where every $D_i$ is itself
-\begin{equation}
-    D_i = \sum_{j=1}^{N_i} \frac{\partial^{k^j}}{\partial x_1^{k_1^j} \dots \partial x_d^{k_d^j}}
-\end{equation}
-and $k^j = \sum_{l = 1}^{d} k_l^j$.
-Consider $D_i$ applied to $g \circ h$ 
-\begin{equation}
-    D_i(g \circ h) =  \sum_{j=1}^{N_i} \frac{\partial^{k^j}}{\partial x_1^{k_1^j} \dots \partial x_d^{k_d^j}} (g \circ h).
-\end{equation}
-Following the explanations of \cite{hardy2006combinatorics}, and using the set $K^j := \{\underbrace{1, \dots 1}_{k_1^j}, \dots, \underbrace{d, \dots, d}_{k_d^j}\}$ we get
-\begin{equation}
-    \sum_{j=1}^{N_i} \frac{\partial^{k^j}}{\partial x_1^{k_1^j} \dots \partial x_d^{k_d^j}} (g \circ h) =
-    \sum_{j=1}^{N_i}  \sum_{\sigma \in \partitioning(K^j)} \nu(\sigma) \partial^{|\sigma|} g(h) \prod_{s \in \sigma} \frac{\partial^{|s|} h}{\prod_{l \in s} \partial x_l} 
-\end{equation}
-Among $K^j$s partitions there are the trivial partition $\sigma_{trivial} = \{\{\underbrace{1, \dots 1}_{k_1^j}, \dots, \underbrace{d, \dots, d}_{k_d^j}\}\}$ and the atomic partition $\sigma_{atomic} = \{\underbrace{\{1\}, \dots, \{1\}}_{k_1^j}, \dots, \underbrace{\{d\}, \dots, \{d\}}_{k_d^j}\}$. The corresponding terms are
-\begin{align}
-    &\nu(\sigma_{atomic}) \partial^{k^j} g(h) \prod_{l \in K^j} \frac{\partial h}{\partial x_l}\\
-    &\nu(\sigma_{trivial}) \partial g(h)\frac{\partial^{k^j} h}{\partial x_1^{k_1^j} \dots \partial x_d^{k_d^j}}.
+The parameter $n_s$ counts occurrences of $s$ in an integer partitioning $\sigma$, for instance $n_1(\{1,1,3\}) = 2$ and $n_3 = 1$.
+
+There are explicit formulas (recurrence relations) for common primal functions that specify how to calculate the coefficients given an input polynomial (see ~\citep[][Chapter 13]{griewank2008evaluating}).
+
+
+\paragraph{A Simple Propagation Scheme.}
+Our contribution modifies Taylor-mode AD to incorporate structure of common differential operators used to train PINNs. 
+To explain our approach systematically, we will use the following Taylor-mode AD scheme, which derives the $K$-Jet for a decomposed $\vf = \vg \circ \vh$ given $J^K\vx$:
+\begin{align}\label{eq:taylor-mode-composition}
+  \begin{split}
+      \begin{pmatrix*}
+        \vx_0
+        \\
+        \vx_1
+        \\
+        \vx_2
+        \\
+        \vdots
+        \\
+        \vx_K
+      \end{pmatrix*}
+      &\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
+        \begin{pmatrix*}[l]
+          \vh_0 =  \vh(\vx_0)
+          \\
+          \vh_1 =  \left< 
+          \partial \vh(\vx_0),
+          \vx_1 
+          \right>
+          \\
+          \vh_2 = \left< 
+          \partial^2 \vh(\vx_0),
+          \vx_1 \otimes \vx_1 
+          \right> 
+          +
+          \left <
+          \partial \vh(\vx_0),
+          \vx_2
+          \right>
+          \\
+          \vdots
+          \\
+          \vh_K =
+          \displaystyle \sum_{
+          \mathclap{
+          \sigma \in \partitioning(K)
+          }
+          }
+          \nu(\sigma) \left<
+          \partial^{|\sigma|} \vh(\vx_0),
+          \tensorprod{s \in \sigma} \vx_s
+          \right>
+        \end{pmatrix*} 
+        \\
+        &\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
+        \begin{pmatrix*}[l]
+          \vg_0 =  \vg(\vh_0)
+          \\
+          \vg_1 = \left< 
+          \partial \vg(\vh_0), 
+          \vh_1
+          \right>
+          \\
+          \vg_2 = \left<
+          \partial^2 \vg(\vh_0), 
+          \vh_1 \otimes \vh_1\right>
+          + 
+          \left< \partial \vg(\vh_0),
+          \vh_2
+          \right>
+          \\
+          \vdots
+          \\
+          \vg_K =
+          \displaystyle\sum_{
+          \mathclap{
+          \sigma \in \partitioning(K)
+          }
+          } 
+          \nu(\sigma) \left<
+          \partial^{|\sigma|} \vg(\vh_0),
+          \tensorprod{s \in \sigma} \vh_s
+          \right>
+        \end{pmatrix*}
+        \\
+        &\overset{\text{(\ref{eq:faa-di-bruno})}}{=}
+        \begin{pmatrix*}[l]
+          \vf_0 =  \vf(\vx_0)
+          \\
+          \vf_1 = \left<
+          \partial \vf(\vx_0), 
+          \vx_1
+          \right>
+          \\
+          \vf_2 = \left<
+          \partial^2 \vf(\vx_0), 
+          \vx_1 \otimes \vx_1
+          \right>
+          + 
+          \left< \partial \vf(\vx_0),
+          \vx_2
+          \right>
+          \\
+          \vdots
+          \\
+          \vf_K =
+          \displaystyle\sum_{
+          \mathclap{
+          \sigma \in \partitioning(K)
+          }
+          }
+          \nu(\sigma) \left< 
+          \partial^{|\sigma|} \vf(\vx_0),
+          \tensorprod{s \in \sigma} \vx_s
+          \right>
+        \end{pmatrix*}
+    \end{split}
 \end{align}
-The first term is $(D_i g) \circ h$. The latter is the term that corresponds to $D_i h$, which is the result of the previous propagation step in the setting forward mode. The other mixed terms include derivatives of lower degrees that are required to compute the derivatives of higher degree. These lower degree derivatives do not directly contribute to the differential operators. Therefore we can leverage the linearity trick here too: 
-\begin{align}
-    D_i(g \circ h) &= \nu(\sigma_{atomic}) (D_i g)(h) \prod_{l \in K^j} \frac{\partial h}{\partial x_l} + 
-    \nu(\sigma_{trivial}) \partial g(h)D_i(h) \\
-    &+ \sum_{i=1}^{N_i} \sum_{\underset{\sigma \neq \sigma_{atomic}}{\underset{\sigma \neq \sigma_{trivial}}{\sigma \in \partitioning(K^j)}}} \nu(\sigma) \partial^{|\sigma|} g(h) \prod_{s \in \sigma} \frac{\partial^{|s|} h}{\prod_{l \in s} \partial x_l}  .
-\end{align}
+This procedure explains how to (i) propagate Taylor coefficients through the compute graph of $\vf$'s decomposition, and (ii) how the result relates to the input Jet.
 
-The generalization can be taken a step further by considering the additional optimizations that were possible in the Biharmonic Operator example: Whenever the maximal derivative order $k_i^j$ in an index $x_i$ is reached, all further computations, which are based on this partial derivative are summable over $i$. 
 
 
 

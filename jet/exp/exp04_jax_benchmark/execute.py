@@ -137,51 +137,66 @@ def laplacian_function(
             """
             return einsum(hess_f(params, x), tr_equation)
 
+        if is_batched:
+            laplacian = vmap(laplacian, in_axes=[None, 0])
+
+        # function that computes the Laplacian
+        func = lambda: laplacian(params, X)
+        # function that computes the Laplacian's gradient used as proxy for the computation
+        # graph's memory footprint
+        summed_laplacian = lambda params, X: laplacian(params, X).sum() ** 2
+        grad_func = lambda: grad(summed_laplacian, argnums=0)(params, X)
+
+        # jit the functions
+        func = jit(func)
+        grad_func = jit(grad_func)
+
+        # add a trailing statement to wait until the computations are done
+        return lambda: block_until_ready(func()), lambda: block_until_ready(grad_func())
+
     elif strategy == "jet_naive":
-        raise NotImplementedError
         shape = X.shape[1:] if is_batched else X.shape
         D = size(X[0] if is_batched else X)
+
+        f_fix_params = lambda x: f(params, x)
 
         def laplacian(x: ArrayLike) -> ArrayLike:
             v2 = zeros(shape, dtype=X.dtype, device=X.device)
 
             def d2(x, v1):
-                f0, (f1, f2) = jet(f, (x,), ((v1, v2),))
+                f0, (f1, f2) = jet(f_fix_params, (x,), ((v1, v2),))
                 return f2
 
             d2_vmap = vmap(lambda v1: d2(x, v1))
             v1 = eye(D, dtype=X.dtype, device=X.device).reshape(D, *shape)
             return d2_vmap(v1).sum(0)
 
+        if is_batched:
+            laplacian = vmap(laplacian)
+
+        laplacian = jit(laplacian)
+        func = lambda: block_until_ready(laplacian(X))
+        return func, func
+
     elif strategy == "jet_simplified":
-        raise NotImplementedError
+        f_fix_params = lambda x: f(params, x)
         # disable sparsity to remove its run time benefits
-        lap_f = ForwardLaplacianOperator(0)(f)
+        lap_f = ForwardLaplacianOperator(0)(f_fix_params)
 
         def laplacian(x: ArrayLike) -> ArrayLike:
             return lap_f(x)[0]
+
+        if is_batched:
+            laplacian = vmap(laplacian)
+
+        laplacian = jit(laplacian)
+        func = lambda: block_until_ready(laplacian(X))
+        return func, func
 
     else:
         raise ValueError(
             f"Unsupported strategy: {strategy}. Supported: {SUPPORTED_STRATEGIES}."
         )
-
-    if is_batched:
-        laplacian = vmap(laplacian, in_axes=[None, 0])
-
-    # function that computes the Laplacian
-    func = lambda: laplacian(params, X)
-    # function that computes the Laplacian's gradient used as proxy for the computation
-    # graph's memory footprint
-    summed_laplacian = lambda params, X: laplacian(params, X).sum() ** 2
-    grad_func = lambda: grad(summed_laplacian, argnums=0)(params, X)
-
-    # jit the functions
-    func = jit(func)
-    grad_func = jit(grad_func)
-
-    # add a trailing statement to wait until the computations are done
-    return lambda: block_until_ready(func()), lambda: block_until_ready(grad_func())
 
 
 def get_function_and_description(
@@ -274,6 +289,12 @@ if __name__ == "__main__":
     # no equivalent of torch's requires_grad in JAX, see the discussion in
     # https://github.com/jax-ml/jax/issues/1937)
     mem = measure_peak_memory(func, f"{op} ({description})", is_cuda, use_jax=True)
+    if (
+        args.operator != "laplacian"
+        and args.strategy != "hessian_trace"
+        and not is_cuda
+    ):
+        mem = float("nan")
 
     # 3) Run time
     mu, sigma, best = measure_time(func_no, f"{op} ({description})", is_cuda)
@@ -289,7 +310,7 @@ if __name__ == "__main__":
             BASELINE,
             args.distribution,
             args.num_samples,
-            net,
+            (params, net),
             X,
             is_batched,
         )

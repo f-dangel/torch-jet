@@ -538,7 +538,7 @@ def randomized_bilaplacian_function(
 
 def setup_architecture(
     architecture: str, dim: int, dev: device, dt: dtype, seed: int = 0
-):
+) -> Callable[[Tensor], Tensor]:
     """Set up a neural network architecture based on the specified configuration.
 
     Args:

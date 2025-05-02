@@ -10,7 +10,7 @@ from os import makedirs, path
 
 from torch import linspace
 
-from jet.exp.exp01_benchmark_laplacian.execute import RAWDIR, SUPPORTED_STRATEGIES
+from jet.exp.exp01_benchmark_laplacian.execute import SUPPORTED_STRATEGIES
 from jet.exp.exp01_benchmark_laplacian.run import measure
 from jet.exp.exp04_jax_benchmark.execute import HERE as SCRIPT
 from jet.exp.exp04_jax_benchmark.execute import RAWDIR

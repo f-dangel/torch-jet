@@ -1,33 +1,9 @@
 This section presents experiments that show that the graph simplifications we propose to collapse standard Taylor mode are currently not applied by the \texttt{jit} compiler in JAX.
 
-\paragraph{Setup.} TODO
-
-\paragraph{Results.} TODO
-
 \begin{figure*}[!t]
   \centering
-  % From https://tex.stackexchange.com/a/7318
-  \newcolumntype{C}{ >{\centering\arraybackslash} m{0.12\textwidth} }
-  \newcolumntype{D}{ >{\centering\arraybackslash} m{0.42\textwidth} }
-  \begin{tabular}{CDD}
-    & \textbf{Laplacian $(D=50)$}
-    & \textbf{Bi-harmonic $(D=5)$}
-    \\
-    \textbf{Exact}
-    & \includegraphics{../jet/exp/exp04_jax_benchmark/figures/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_jax_laplacian_vary_batch_size.pdf}
-    & TODO
-  \end{tabular}
-  \caption{\textbf{JAX's \texttt{jit} compiler does not apply our graph simplifications to standard Taylor mode.} Colors: \textcolor{tab:green}{Collapsed Taylor mode}, \textcolor{tab:orange}{standard Taylor mode}, and \textcolor{tab:blue}{nested first-order automatic differentiaion}, \textcolor{black!50!white}{opaque} memory consumptions are for non-differentiable computations.
-    Results are on GPU and we use a $D \to 768 \to 768 \to 512 \to 512 \to 1$ MLP with tanh activations with $D=50$ for the Laplacians and $D=5$ for the Bi-harmonic operator, varying the batch size.
-    For each approach, we fit a line to the data and report the slope in \Cref{tab:jax-benchmark}  to quantify the relative speedup and memory reduction.
-    \textbf{Why are there no solid memory consumptions for differentiable results?} TODO
-  }
-  \label{fig:jax-benchmark}
-\end{figure*}
 
-\begin{table}[!t]
-  \centering
-  \caption{\textbf{JAX Benchmark from \Cref{fig:jax-benchmark} in numbers.}
+  \captionof{table}{\textbf{JAX Benchmark from \Cref{fig:jax-benchmark} in numbers.}
     We fit linear functions and report their slopes, \ie how much run time and memory increase when incrementing the batch size.
     % Our collapsed Taylor mode is up to two times faster than nested first-order autodiff, while using 80\% of memory in the differentiable, and 70\% in the non-differentiable, setting.
     All numbers are shown with two significant digits and bold values are best according to parenthesized values.}
@@ -89,12 +65,12 @@ This section presents experiments that show that the graph simplifications we pr
     \\ \cmidrule{2-5}
     & \multirow{3}{*}{\makecell{Mem.\,[MiB] \\ (non-diff.)}}
     & \textcolor{tab:blue}{Nested first-order}
-    & \input{\datapathJAXLaplacianExact/hessian_trace_peakmem_nondifferentiable.txt}
+    & \textbf{\input{\datapathJAXLaplacianExact/hessian_trace_peakmem_nondifferentiable.txt}}
     & %\input{\datapathBilaplacianExact/hessian_trace_peakmem_nondifferentiable.txt}
     \\
     &
     & \textcolor{tab:orange}{Standard Taylor}
-    & \textbf{\input{\datapathJAXLaplacianExact/jet_naive_peakmem_nondifferentiable.txt}}
+    & \input{\datapathJAXLaplacianExact/jet_naive_peakmem_nondifferentiable.txt}
     & %\textbf{\input{\datapathBilaplacianExact/jet_naive_peakmem_nondifferentiable.txt}}
     \\
     &
@@ -106,7 +82,65 @@ This section presents experiments that show that the graph simplifications we pr
   \end{tabular}
   % Re-set the \num command to the original one
   \let\num\origsiunitxnum
-\end{table}
+
+  \vspace{4ex}
+
+  % From https://tex.stackexchange.com/a/7318
+  \newcolumntype{C}{ >{\centering\arraybackslash} m{0.12\textwidth} }
+  \newcolumntype{D}{ >{\centering\arraybackslash} m{0.42\textwidth} }
+  \begin{tabular}{CDD}
+    & \textbf{Laplacian $(D=50)$}
+    & \textbf{Bi-harmonic $(D=5)$}
+    \\
+    \textbf{Exact}
+    & \includegraphics{../jet/exp/exp04_jax_benchmark/figures/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_jax_laplacian_vary_batch_size.pdf}
+    & TODO
+  \end{tabular}
+  \caption{\textbf{JAX's \texttt{jit} compiler does not apply our graph simplifications to standard Taylor mode.} Colors: \textcolor{tab:green}{Collapsed Taylor mode}, \textcolor{tab:orange}{standard Taylor mode}, and \textcolor{tab:blue}{nested first-order automatic differentiaion}, \textcolor{black!50!white}{opaque} memory consumptions are for non-differentiable computations.
+    Results are on GPU and we use a $D \to 768 \to 768 \to 512 \to 512 \to 1$ MLP with tanh activations with $D=50$ for the Laplacians and $D=5$ for the Bi-harmonic operator, varying the batch size.
+    For each approach, we fit a line to the data and report the slope in \Cref{tab:jax-benchmark}  to quantify the relative speedup and memory reduction.
+  }
+  \label{fig:jax-benchmark}
+\end{figure*}
+
+\paragraph{Comparing Laplacian implementations in JAX.} Similar to our PyTorch experiment in \Cref{sec:experiments}, we compare three implementations of the Laplacian in JAX (all compiled with \texttt{jax.jit}):
+
+\begin{enumerate}
+\item \textbf{\textcolor{tab:blue}{Nested first-order autodiff}} computes the Hessian using \texttt{jax.hessian}, which relies on forward-over-reverse mode, then traces it.
+
+\item \textbf{\textcolor{tab:orange}{Standard Taylor mode}} propagates multiple uni-variate Taylor polynomials, each of which computes one element of the Hessian diagonal, then sums them to obtain the Laplacian.
+  This is implemented with \texttt{jax.experimental.jet.jet} and \texttt{jax.vmap}.
+
+\item \textbf{\textcolor{tab:green}{Collapsed Taylor mode}} relies on the forward Laplacian implementation in JAX provided by the \texttt{folx} library \cite{gao2023folx} and implements our proposed collapsed Taylor mode for the specific case of the Laplacian.
+  \texttt{folx} also enables leveraging sparsity in the tensors, which is beneficial for architectures in VMC.
+  To disentangle run time improvements from sparsity detection versus collapsing Taylor coefficient, we disable \texttt{folx}'s sparsity detection.
+\end{enumerate}
+
+We only investigate computing the exact Laplacian, as the forward Laplacian in \texttt{folx} currently does not support stochastic computation.
+We use the same neural network architecture as for our PyTorch experiments, fix the input dimension to $D=50$ and vary the batch size, recording the run time and peak memory with the same protocol as described in the main text.
+JAX is purely functional and therefore does not have a mechanism to build up a differentiable compute graph similar to evaluating a function in PyTorch where some leafs have \texttt{requires\_grad=True}.
+To approximate the peak memory of computing a differentiable Laplacian in JAX, we measure the peak memory of first computing the Laplacian, then evaluating the gradient \wrt the neural network's parameters which backpropagates through the same computation graph built by PyTorch.
+
+The left column of \Cref{fig:jax-benchmark} visualizes the performance of the three implementations.
+We fit linear functions to each of them and report the cost incurred by adding one more datum to the batch in \Cref{tab:jax-benchmark}.
+From them, we draw the following conclusions:
+
+\begin{enumerate}
+\item \textbf{Performance is consistent between PyTorch and JAX.} Although our PyTorch implementation does not leverage compilation, the values reported in \Cref{tab:benchmark,tab:jax-benchmark} are consistent and differ by at most a factor of two (in rare cases).
+  This confirms that our PyTorch-based implementation of Taylor mode is reasonably efficient, and that the presented performance results in the main text are transferable to other frameworks like JAX.
+
+\item \textbf{Our implementation of collapsed Taylor mode based on graph rewrites in PyTorch achieves consistent speed-up with the Laplacian-specific implementation in JAX.}
+  Specifically, we observe that \textcolor{tab:green}{collapsed Taylor mode/forward Laplacian} use roughly half the run time of \textcolor{tab:blue}{nested first-order autodiff} (compare \Cref{tab:benchmark,tab:jax-benchmark}).
+  This supports our argument that our collapsed Taylor is indeed a generalization of the forward Laplacian, \ie the latter does not employ additional tricks (leveraging sparsity could also be applied to our approach but are not aware of a drop-in implementation).
+  It also illustrates that the savings we report in PyTorch carry over to other frameworks like JAX.
+
+\item \textbf{JAX's \texttt{jit} compiler is unable to apply the graph rewrites we propose in this work.}
+  If the JAX compiler was able to perform our proposed graph rewrites, then the \texttt{jit}-compiled \textcolor{tab:orange}{standard Taylor mode} should yield similar performance than the \textcolor{tab:green}{forward Laplacian}.
+  However, we observe a clear performance gap in run time and memory, from which we conclude that the compilation did not collapse the Taylor coefficients.
+  Our contribution is to point out that such rewrites could easily be added to the compiler's ability to unlock these performance gains at zero user overhead.
+
+\end{enumerate}
+
 
 
 %%% Local Variables:

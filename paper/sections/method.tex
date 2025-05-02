@@ -4,6 +4,7 @@ We introduce a unified framework for handling differential operators efficiently
 
 
 \subsection{Linearity for Taylor-mode AD}
+\todo{M: Question: Are the vectors $\vv_n$ sufficiently motivated for a reader at this point of the manuscript?}
 The aim is to compute the $K$-Jet 
 \begin{align}\label{eq:sum-k-jet}
   \sum_{n=1}^N\left< 
@@ -52,8 +53,7 @@ To emphasize that the saving of $N-1$ vectors in the propagation scheme is indee
 \subsection{Examples}
 A highlight of our general approach \cref{eq:sum-k-jet} is that it naturally includes common important differential operators or their approximation.
 
-\paragraph{Laplace Operator} The Laplace Operator occurs in a variety of differential equations and is thus a worthwhile goal for PINNs.  \todo{need citations here}
-For a function $f: \sR^D \to \sR$ the Laplacian is given as
+\paragraph{Laplace Operator} The Laplace operator plays a central role in many physical and engineering applications, including electrostatics, fluid dynamics, and heat conduction. In the context of variational Monte Carlo simulations in quantum mechanics \cite{foulkes2001quantum, pfau2020ab}, the Laplacian of the wavefunction must be evaluated repeatedly as part of the wavefunction optimization process. For a function $f: \sR^D \to \sR$ the Laplacian is given as
 \begin{align}\label{eq:laplacian}
   \Delta f(\vx_0)
   :=
@@ -64,28 +64,36 @@ For a function $f: \sR^D \to \sR$ the Laplacian is given as
   \ve_d \otimes \ve_d
   \right>
 \end{align}
-Assume that $f$ is again decomposed into $g \circ \vh$, where $\vh$ could have potentially multiple output dimensions is it is for a hidden layer. Selecting $K = 2$, $N=D$ and $\vv_n = \ve_n$ lifts \cref{eq:laplacian} into the setting of \cref{eq:sum-k-jet}.
+Assume that $f$ is again decomposed into $g \circ \vh$, where $\vh$ is vector valued, as is the case if $\vh$ is a hidden layer of a neural network. Selecting $K = 2$, $N=D$ and $\vv_n = \ve_n$ lifts \cref{eq:laplacian} into the setting of \cref{eq:sum-k-jet}.
 Naively applying the scheme \cref{eq:sum-taylor-mode-efficient} would lead to $1 + 2D$ (see \cref{eq:laplacian-naive}). If we instead apply our proposed efficient scheme \cref{eq:sum-taylor-mode-efficient}, only $1 + D + 1$ vectors are propagated. The scheme is presented in \cref{eq:laplacian-efficient} (changes highlighted in \textcolor{maincolor}{color})
 
 Note that this scheme is aligned with the findings of \cite{li2023forward}, but here it is embedded into a general framework.
 
 
 
-\paragraph{Weighted sums of second-order derivatives.} \todo{We can make the connection \cite{hu2023hutchinson} equation (5) clear and discuss the case of $\mC$ being a function of the input} Another important differential operator is represented by a symmetric positive semi-definite (PSD) matrix $\boldsymbol{C} \in \left(\mathbb{R}^D\right)^{\otimes 2}$:
+\paragraph{Weighted sums of second-order derivatives.} %\todo{We can make the connection \cite{hu2023hutchinson} equation (5) clear and discuss the case of $\mC$ being a function of the input} 
+
+A natural generalization of the Laplace operator involves forming weighted sums of second derivatives. Given a positive semi-definite matrix $\boldsymbol{C}\in\mathbb R^{D\times D}$,  we consider the operator
 \begin{align}\label{eq:weighted-laplacian}
   \sum_{i,j} \boldsymbol{C}_{i,j} \frac{\partial^2 \vf(\vx_0)}{\partial x_i \partial x_j}.
 \end{align}
-Those operators occur, for example, as 
-\begin{equation*}
-    \Tr (\msigma \msigma^\top \partial^2 \vf(\vx_0)
-\end{equation*}
-in Fokker-Planck and Hamiltonian-Jacobi Bellmann equations. \todo{need citations} Since $\boldsymbol{C}$ is PSD it can be expressed as $\mC = \sum_{n=1}^{\rank(\mC)} \vc_n \vc_n^\top$ for suitable $\vc_n \in \sR^D$. Therefore, it fits the setting of \cref{eq:sum-k-jet} with $K = 2, N = \rank(\mC)$ and $\vv_n = \vc_n$, and can be compute using \cref{eq:sum-taylor-mode-efficient}. This requires the propagation of $1 + \rank(\mC) + 1$ vectors instead of $1 + 2\rank(\mC)$.
+This expression represents the diffusion term in a Kolmogorov-type partial differential equation \cite{hu2023hutchinson}. It is often equivalently written as $\Tr (\langle \msigma \msigma^\top, \partial^2 \vf(\vx_0))\rangle$, where $\msigma$ may be a function $\msigma:\mathbb R^{D}\to \mathbb R^{D\times D}$. Since $\boldsymbol{C}$ is positive semi-definite it can be expressed as $\mC = \sum_{n=1}^{\rank(\mC)} \vc_n \vc_n^\top$ for suitable $\vc_n \in \sR^D$. This matches the setting of \cref{eq:sum-k-jet} with $K = 2, N = \rank(\mC)$ and $\vv_n = \vc_n$, and can be computed using \cref{eq:sum-taylor-mode-efficient}. This requires the propagation of $1 + \rank(\mC) + 1$ vectors instead of $1 + 2\rank(\mC)$.
+
+%Another important differential operator is represented by a symmetric positive semi-definite (PSD) matrix $\boldsymbol{C} \in \left(\mathbb{R}^D\right)^{\otimes 2}$:
+%\begin{align}\label{eq:weighted-laplacian}
+%  \sum_{i,j} \boldsymbol{C}_{i,j} \frac{\partial^2 \vf(\vx_0)}{\partial x_i \partial x_j}.
+%\end{align}
+%Those operators occur, for example, as 
+%\begin{equation*}
+%    \Tr (\msigma \msigma^\top \partial^2 \vf(\vx_0)
+%\end{equation*}
+%in Fokker-Planck and Hamiltonian-Jacobi Bellmann equations. \todo{need citations} Since $\boldsymbol{C}$ is PSD it can be expressed as $\mC = \sum_{n=1}^{\rank(\mC)} \vc_n \vc_n^\top$ for suitable $\vc_n \in \sR^D$. Therefore, it fits the setting of \cref{eq:sum-k-jet} with $K = 2, N = \rank(\mC)$ and $\vv_n = \vc_n$, and can be compute using \cref{eq:sum-taylor-mode-efficient}. This requires the propagation of $1 + \rank(\mC) + 1$ vectors instead of $1 + 2\rank(\mC)$.
 
 \todo{mention randomized laplacians!}
 
 
 \paragraph{Traces of higher-order derivative tensors}
-\todo{cite papers that consider this} The higher-order Laplacian, an often theoretically considered example, is also easily expressible in our framework:
+\todo{cite papers that consider this. M: I am not so sure where this opeartor appears naturally} The higher-order Laplacian, an often theoretically considered example, is also easily expressible in our framework:
 \begin{align}\label{eq:trace-differential-operator}
     \Tr( \partial^K f(\vx) )
     \coloneqq

@@ -37,14 +37,11 @@ Our contributions comprise the following topics:
 
 Next tasks:
 \begin{enumerate}
-\item @Felix: Compare Laplacian and Bi-Laplacian in JAX. 
+\item @Felix: Compare Bi-Laplacian in JAX. 
 We expect the same performance behaviors as our PyTorch results.
 \item @Felix: We should say that our trick applies to computing traces of higher-order derivative tensors.
   However, we don't empirically investigate this as we do not know any use cases for such operators (yet).
 
-\item @Tim Experiment with JAX, compare Laplacian with nested versus forward Laplacian versus using JAX.jets.experimental.
-  The goal is to show that JAX's compiler is currently not capable to apply the simplifications we propose.
-  @Felix push the code for preliminary experiments with JAX to the repository.
 \item @Felix: Move `pedagogical' computation of the Bi-Laplacian to the appendix once we have successfully implemented the version based on Chapter 13.
 \end{enumerate}
 

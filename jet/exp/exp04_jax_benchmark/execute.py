@@ -157,33 +157,15 @@ def laplacian_function(  # noqa: C901
             """
             return einsum(hess_f(params, x), tr_equation)
 
-        if is_batched:
-            laplacian = vmap(laplacian, in_axes=[None, 0])
-
-        # function that computes the Laplacian
-        func = lambda: laplacian(params, X)  # noqa: E731
-        # function that computes the Laplacian's gradient used as proxy for the
-        # computation graph's memory footprint
-        summed_laplacian = lambda params, X: laplacian(params, X).sum()  # noqa: E731
-        grad_func = lambda: grad(summed_laplacian, argnums=0)(params, X)  # noqa: E731
-
-        # jit the functions
-        func = jit(func)
-        grad_func = jit(grad_func)
-
-        # add a trailing statement to wait until the computations are done
-        return lambda: block_until_ready(func()), lambda: block_until_ready(grad_func())
-
     elif strategy == "jet_naive":
         shape = X.shape[1:] if is_batched else X.shape
         D = size(X[0] if is_batched else X)
 
-        f_fix_params = lambda x: f(params, x)  # noqa: E731
-
-        def laplacian(x: ArrayLike) -> ArrayLike:
+        def laplacian(params: list[ArrayLike], x: ArrayLike) -> ArrayLike:
             """Compute the Laplacian of f on an un-batched input.
 
             Args:
+                params: The parameters of the neural network.
                 x: The un-batched input tensor.
 
             Returns:
@@ -192,57 +174,57 @@ def laplacian_function(  # noqa: C901
             v2 = zeros(shape, dtype=X.dtype, device=X.device)
 
             def d2(x, v1):
-                f0, (f1, f2) = jet(f_fix_params, (x,), ((v1, v2),))
+                _, (_, f2) = jet(lambda x: f(params, x), (x,), ((v1, v2),))
                 return f2
 
             d2_vmap = vmap(lambda v1: d2(x, v1))
             v1 = eye(D, dtype=X.dtype, device=X.device).reshape(D, *shape)
             return d2_vmap(v1).sum(0)
 
-        if is_batched:
-            laplacian = vmap(laplacian)
-
-        laplacian = jit(laplacian)
-        func = lambda: block_until_ready(laplacian(X))  # noqa: E731
-
-        # NOTE JAX's jet does not support the gradient of the Laplacian,
-        # because we cannot compute Taylor-mode w.r.t. x, followed by the
-        # gradient w.r.t. params (we could do the opposite order, but that
-        # would not be a meaningful proxy for the compute graph size of the
-        # Laplacian when using PyTorch with requires_grad=True). Hence we
-        # simply return the same function twice and ignore one of the
-        # measurements.
-        return func, func
-
     elif strategy == "jet_simplified":
-        f_fix_params = lambda x: f(params, x)  # noqa: E731
         # disable sparsity to remove its run time benefits
-        lap_f = ForwardLaplacianOperator(0)(f_fix_params)
+        fwd_lap = ForwardLaplacianOperator(0)
 
-        def laplacian(x: ArrayLike) -> ArrayLike:
+        def laplacian(params: list[ArrayLike], x: ArrayLike) -> ArrayLike:
             """Compute the Laplacian of f on an un-batched input.
 
             Args:
+                params: The parameters of the neural network.
                 x: The un-batched input tensor.
 
             Returns:
                 The Laplacian of f at x. Has the same shape as f(x).
             """
+            lap_f = fwd_lap(lambda x: f(params, x))
             return lap_f(x)[0]
-
-        if is_batched:
-            laplacian = vmap(laplacian)
-
-        laplacian = jit(laplacian)
-        func = lambda: block_until_ready(laplacian(X))  # noqa: E731
-
-        # NOTE See the comment for `jet_naive` from above
-        return func, func
 
     else:
         raise ValueError(
             f"Unsupported strategy: {strategy}. Supported: {SUPPORTED_STRATEGIES}."
         )
+
+    if is_batched:
+        laplacian = vmap(laplacian, in_axes=[None, 0])
+    laplacian = jit(laplacian)
+
+    # function that computes the Laplacian
+    func = lambda: laplacian(params, X)  # noqa: E731
+    # function that computes the Laplacian's gradient used as proxy for the
+    # computation graph's memory footprint
+    summed_laplacian = lambda params, X: laplacian(params, X).sum()  # noqa: E731
+    grad_func = lambda: grad(summed_laplacian, argnums=0)(params, X)  # noqa: E731
+
+    # jit the functions
+    # NOTE For unknown reasons, we cannot jit these functions when using the folx
+    # package. They give an error inside the forward Laplacian. Therefore we do not
+    # apply jit for this strategy.
+    # TODO Report this bug on the folx repository
+    if strategy != "jet_simplified":
+        func = jit(func)
+        grad_func = jit(grad_func)
+
+    # add a trailing statement to wait until the computations are done
+    return lambda: block_until_ready(func()), lambda: block_until_ready(grad_func())
 
 
 def get_function_and_description(
@@ -331,12 +313,9 @@ if __name__ == "__main__":
         use_jax=True,
     )
 
-    # 2) Peak memory with differentiable result (NOTE we can not always build a
-    # good proxy function to measure the equivalent of PyTorch's peak memory
-    # with requires_grad=True in JAX because it does not have an equivalent,
-    # see the discussion in https://github.com/jax-ml/jax/issues/1937)
+    # 2) On CPU, measuring peak memory does not seem to work
     mem = measure_peak_memory(func, f"{op} ({description})", is_cuda, use_jax=True)
-    if args.strategy != "hessian_trace" and not is_cuda:
+    if not is_cuda:
         mem = float("nan")
 
     # 3) Run time

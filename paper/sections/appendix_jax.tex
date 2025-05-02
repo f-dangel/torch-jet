@@ -118,6 +118,8 @@ This section presents experiments that show that the graph simplifications we pr
 
 We only investigate computing the exact Laplacian, as the forward Laplacian in \texttt{folx} currently does not support stochastic computation.
 We use the same neural network architecture as for our PyTorch experiments, fix the input dimension to $D=50$ and vary the batch size, recording the run time and peak memory with the same protocol as described in the main text.
+JAX is purely functional and therefore does not have a mechanism to build up a differentiable compute graph similar to evaluating a function in PyTorch where some leafs have \texttt{requires\_grad=True}.
+To approximate the peak memory of computing a differentiable Laplacian in JAX, we measure the peak memory of first computing the Laplacian, then evaluating the gradient \wrt the neural network's parameters which backpropagates through the same computation graph built by PyTorch.
 
 The left column of \Cref{fig:jax-benchmark} visualizes the performance of the three implementations.
 We fit linear functions to each of them and report the cost incurred by adding one more datum to the batch in \Cref{tab:jax-benchmark}.

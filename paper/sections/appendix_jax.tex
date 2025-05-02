@@ -24,13 +24,14 @@ This section presents experiments that show that the graph simplifications we pr
   \let\origsiunitxnum\num
   % Redefine \num to check for non-numeric strings
   \renewcommand{\num}[1]{\IfStrEq{#1}{nan}{\text{n/a} }{\origsiunitxnum{#1}}}
-  \begin{tabular}{ccc|cc}
+  \begin{tabular}{ccc|ccc}
     \toprule
     \textbf{Mode}
     & \textbf{Per-datum cost}
     & \textbf{Implementation}
     & \textbf{Laplacian}
     & \textbf{Bi-harmonic}
+    & \textbf{\texttt{jit}}
     \\
     \midrule
     \multirow{9}{*}{\textbf{Exact}}
@@ -38,46 +39,55 @@ This section presents experiments that show that the graph simplifications we pr
     & \textcolor{tab:blue}{Nested first-order}
     & \input{\datapathJAXLaplacianExact/hessian_trace_best.txt}
     & \input{\datapathJAXBilaplacianExact/hessian_trace_best.txt}
+    & \checkmark
     \\
     &
     & \textcolor{tab:orange}{Standard Taylor}
     & \input{\datapathJAXLaplacianExact/jet_naive_best.txt}
     & \input{\datapathJAXBilaplacianExact/jet_naive_best.txt}
+    & \checkmark
     \\
     &
     & \textcolor{tab:green}{Collapsed (ours)}
     & \textbf{\input{\datapathJAXLaplacianExact/jet_simplified_best.txt}}
     & \textbf{\input{\datapathJAXBilaplacianExact/jet_simplified_best.txt}}
-    \\ \cmidrule{2-5}
+    & \checkmark
+    \\ \cmidrule{2-6}
     & \multirow{3}{*}{\makecell{Mem.\,[MiB] \\ (differentiable)}}
     & \textcolor{tab:blue}{Nested first-order}
     & \input{\datapathJAXLaplacianExact/hessian_trace_peakmem.txt}
     & \textbf{\input{\datapathJAXBilaplacianExact/hessian_trace_peakmem.txt}}
+    & \checkmark
     \\
     &
     & \textcolor{tab:orange}{Standard Taylor}
     & \input{\datapathJAXLaplacianExact/jet_naive_peakmem.txt}
     & \input{\datapathJAXBilaplacianExact/jet_naive_peakmem.txt}
+    & \checkmark
     \\
     &
     & \textcolor{tab:green}{Collapsed (ours)}
     & \textbf{\input{\datapathJAXLaplacianExact/jet_simplified_peakmem.txt}}
     & \input{\datapathJAXBilaplacianExact/jet_simplified_peakmem.txt}
-    \\ \cmidrule{2-5}
+    & \ding{55}
+    \\ \cmidrule{2-6}
     & \multirow{3}{*}{\makecell{Mem.\,[MiB] \\ (non-diff.)}}
     & \textcolor{tab:blue}{Nested first-order}
     & \textbf{\input{\datapathJAXLaplacianExact/hessian_trace_peakmem_nondifferentiable.txt}}
     & \input{\datapathJAXBilaplacianExact/hessian_trace_peakmem_nondifferentiable.txt}
+    & \checkmark
     \\
     &
     & \textcolor{tab:orange}{Standard Taylor}
-    & \textbf{\input{\datapathJAXLaplacianExact/jet_naive_peakmem_nondifferentiable.txt}}
+    & \input{\datapathJAXLaplacianExact/jet_naive_peakmem_nondifferentiable.txt}
     & \input{\datapathJAXBilaplacianExact/jet_naive_peakmem_nondifferentiable.txt}
+    & \checkmark
     \\
     &
     & \textcolor{tab:green}{Collapsed (ours)}
-    & \input{\datapathJAXLaplacianExact/jet_simplified_peakmem_nondifferentiable.txt}
+    & \textbf{\input{\datapathJAXLaplacianExact/jet_simplified_peakmem_nondifferentiable.txt}}
     & \textbf{\input{\datapathJAXBilaplacianExact/jet_simplified_peakmem_nondifferentiable.txt}}
+    & \checkmark
     \\
     \bottomrule
   \end{tabular}
@@ -87,8 +97,8 @@ This section presents experiments that show that the graph simplifications we pr
   \vspace{4ex}
 
   % From https://tex.stackexchange.com/a/7318
-  \newcolumntype{C}{ >{\centering\arraybackslash} m{0.12\textwidth} }
-  \newcolumntype{D}{ >{\centering\arraybackslash} m{0.42\textwidth} }
+  \newcolumntype{C}{ >{\centering\arraybackslash} m{0.11\textwidth} }
+  \newcolumntype{D}{ >{\centering\arraybackslash} m{0.4\textwidth} }
   \begin{tabular}{CDD}
     & \textbf{Laplacian $(D=50)$}
     & \textbf{Bi-harmonic $(D=5)$}
@@ -121,7 +131,7 @@ We only investigate computing the exact Laplacian, as the forward Laplacian in \
 We use the same neural network architecture as for our PyTorch experiments, fix the input dimension to $D=50$ and vary the batch size, recording the run time and peak memory with the same protocol as described in the main text.
 JAX is purely functional and therefore does not have a mechanism to build up a differentiable compute graph similar to evaluating a function in PyTorch where some leafs have \texttt{requires\_grad=True}.
 To approximate the peak memory of computing a differentiable Laplacian in JAX, we measure the peak memory of first computing the Laplacian, then evaluating the gradient \wrt the neural network's parameters which backpropagates through the same computation graph built by PyTorch.
-Doing so, we encountered a bug when trying to \texttt{jit}-compile the \texttt{folx} implementation.
+Doing so, we encountered a bug when trying to \texttt{jit}-compile the \texttt{folx} implementation (indicated by the \texttt{jit} column in \Cref{tab:jax-benchmark}).
 We believe the solid \textcolor{tab:green}{green} lines in the memory consumption, \ie peak memory of differentiating through differentiable operators, could further be improved by making the computation compile-able.
 
 The left column of \Cref{fig:jax-benchmark} visualizes the performance of the three implementations.

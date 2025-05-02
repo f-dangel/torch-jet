@@ -25,12 +25,7 @@ from jax.random import PRNGKey, uniform
 from jax.tree_util import tree_map
 from jax.typing import ArrayLike, DTypeLike
 
-from jet.exp.exp01_benchmark_laplacian.execute import (
-    BASELINE,
-    SUPPORTED_STRATEGIES,
-    parse_args,
-    savepath,
-)
+from jet.exp.exp01_benchmark_laplacian.execute import BASELINE, parse_args, savepath
 from jet.exp.utils import measure_peak_memory, measure_time
 
 HERE = path.abspath(__file__)
@@ -280,7 +275,7 @@ def laplacian_function(
     return lambda: block_until_ready(func()), lambda: block_until_ready(grad_func())
 
 
-def bilaplacian_function(  # noqa: C901
+def bilaplacian_function(
     params_and_f: tuple[
         list[ArrayLike], Callable[[list[ArrayLike], ArrayLike], ArrayLike]
     ],
@@ -289,6 +284,8 @@ def bilaplacian_function(  # noqa: C901
     strategy: str,
 ) -> tuple[Callable[[], ArrayLike], Callable[[], list[ArrayLike]]]:
     """Construct function to compute the Bi-Laplacian in JAX using different strategies.
+
+    The Bi-Laplacian is computed by taking the Laplacian of the Laplacian.
 
     Args:
         params_and_f: The neural net's parameters and the unbatched forward function
@@ -308,164 +305,40 @@ def bilaplacian_function(  # noqa: C901
     Returns:
         A function that computes the Bi-Laplacian of the function f at the input tensor
         X. The function is expected to be called with no arguments and is jitted.
-
-    Raises:
-        ValueError: If the strategy is not supported.
     """
     params, f = params_and_f
-    if strategy == "hessian_trace":
-        hess_f = hessian(f, argnums=1)
+    dummy_X = X[0] if is_batched else X
 
-        # trace with einsum to support Laplacians of functions with non-scalar output
-        dims = " ".join([f"d{i}" for i in range(X.ndim - 1 if is_batched else X.ndim)])
-        tr_equation = f"... {dims} {dims} -> ..."
+    transform = {
+        "hessian_trace": hessian_trace_laplacian,
+        "jet_naive": jet_naive_laplacian,
+        "jet_simplified": jet_simplified_laplacian,
+    }[strategy]
+    laplacian = transform(f, dummy_X)
+    bilaplacian = transform(laplacian, dummy_X)
 
-        def laplacian(params: list[ArrayLike], x: ArrayLike) -> ArrayLike:
-            """Compute the Laplacian of f on an un-batched input.
+    if is_batched:
+        bilaplacian = vmap(bilaplacian, in_axes=[None, 0])
+    bilaplacian = jit(bilaplacian)
 
-            Args:
-                params: The parameters of the neural network.
-                x: The input tensor.
+    # function that computes the Laplacian
+    func = lambda: bilaplacian(params, X)  # noqa: E731
+    # function that computes the Laplacian's gradient used as proxy for the
+    # computation graph's memory footprint
+    summed_bilaplacian = lambda params, X: bilaplacian(params, X).sum()  # noqa: E731
+    grad_func = lambda: grad(summed_bilaplacian, argnums=0)(params, X)  # noqa: E731
 
-            Returns:
-                The Laplacian of f at x. Has the same shape as f(x).
-            """
-            return einsum(hess_f(params, x), tr_equation)
-
-        hess_laplacian = hessian(laplacian, argnums=1)
-
-        def bilaplacian(params: list[ArrayLike], x: ArrayLike) -> ArrayLike:
-            """Compute the Bi-Laplacian of f on an un-batched input.
-
-            Args:
-                params: The parameters of the neural network.
-                x: The input tensor.
-
-            Returns:
-                The Bi-Laplacian of f at x. Has the same shape as f(x).
-            """
-            return einsum(hess_laplacian(params, x), tr_equation)
-
-        if is_batched:
-            bilaplacian = vmap(bilaplacian, in_axes=[None, 0])
-
-        # function that computes the Bi-Laplacian
-        func = lambda: bilaplacian(params, X)  # noqa: E731
-        # function that computes the Bi-Laplacian's gradient used as proxy for the
-        # computation graph's memory footprint
-        summed_bilaplacian = lambda params, X: bilaplacian(
-            params, X
-        ).sum()  # noqa: E731
-        grad_func = lambda: grad(summed_bilaplacian, argnums=0)(params, X)  # noqa: E731
-
-        # jit the functions
+    # jit the functions
+    # NOTE For unknown reasons, we cannot jit these functions when using the folx
+    # package. They give an error inside the forward Laplacian. Therefore we do not
+    # apply jit for this strategy.
+    # TODO Report this bug on the folx repository
+    if strategy != "jet_simplified":
         func = jit(func)
         grad_func = jit(grad_func)
 
-        # add a trailing statement to wait until the computations are done
-        return lambda: block_until_ready(func()), lambda: block_until_ready(grad_func())
-
-    elif strategy == "jet_naive":
-        shape = X.shape[1:] if is_batched else X.shape
-        D = size(X[0] if is_batched else X)
-
-        f_fix_params = lambda x: f(params, x)  # noqa: E731
-
-        def laplacian(x: ArrayLike) -> ArrayLike:
-            """Compute the Laplacian of f on an un-batched input.
-
-            Args:
-                x: The un-batched input tensor.
-
-            Returns:
-                The Laplacian of f at x. Has the same shape as f(x).
-            """
-            v2 = zeros(shape, dtype=X.dtype, device=X.device)
-
-            def d2(x, v1):
-                f0, (f1, f2) = jet(f_fix_params, (x,), ((v1, v2),))
-                return f2
-
-            d2_vmap = vmap(lambda v1: d2(x, v1))
-            v1 = eye(D, dtype=X.dtype, device=X.device).reshape(D, *shape)
-            return d2_vmap(v1).sum(0)
-
-        def bilaplacian(x: ArrayLike) -> ArrayLike:
-            """Compute the Bi-Laplacian of f on an un-batched input.
-
-            Args:
-                x: The un-batched input tensor.
-
-            Returns:
-                The Bi-Laplacian of f at x. Has the same shape as f(x).
-            """
-            v2 = zeros(shape, dtype=X.dtype, device=X.device)
-
-            def d2(x, v1):
-                f0, (f1, f2) = jet(laplacian, (x,), ((v1, v2),))
-                return f2
-
-            d2_vmap = vmap(lambda v1: d2(x, v1))
-            v1 = eye(D, dtype=X.dtype, device=X.device).reshape(D, *shape)
-            return d2_vmap(v1).sum(0)
-
-        if is_batched:
-            bilaplacian = vmap(bilaplacian)
-
-        bilaplacian = jit(bilaplacian)
-        func = lambda: block_until_ready(bilaplacian(X))  # noqa: E731
-
-        # NOTE JAX's jet does not support the gradient of the Bi-Laplacian,
-        # because we cannot compute Taylor-mode w.r.t. x, followed by the
-        # gradient w.r.t. params (we could do the opposite order, but that
-        # would not be a meaningful proxy for the compute graph size of the
-        # Laplacian when using PyTorch with requires_grad=True). Hence we
-        # simply return the same function twice and ignore one of the
-        # measurements.
-        return func, func
-
-    elif strategy == "jet_simplified":
-        f_fix_params = lambda x: f(params, x)  # noqa: E731
-        # disable sparsity to remove its run time benefits
-        lap_f = ForwardLaplacianOperator(0)(f_fix_params)
-
-        def laplacian(x: ArrayLike) -> ArrayLike:
-            """Compute the Laplacian of f on an un-batched input.
-
-            Args:
-                x: The un-batched input tensor.
-
-            Returns:
-                The Laplacian of f at x. Has the same shape as f(x).
-            """
-            return lap_f(x)[0]
-
-        bilap_f = ForwardLaplacianOperator(0)(laplacian)
-
-        def bilaplacian(x: ArrayLike) -> ArrayLike:
-            """Compute the Laplacian of f on an un-batched input.
-
-            Args:
-                x: The un-batched input tensor.
-
-            Returns:
-                The Laplacian of f at x. Has the same shape as f(x).
-            """
-            return bilap_f(x)[0]
-
-        if is_batched:
-            bilaplacian = vmap(bilaplacian)
-
-        bilaplacian = jit(bilaplacian)
-        func = lambda: block_until_ready(bilaplacian(X))  # noqa: E731
-
-        # NOTE See the comment for `jet_naive` from above
-        return func, func
-
-    else:
-        raise ValueError(
-            f"Unsupported strategy: {strategy}. Supported: {SUPPORTED_STRATEGIES}."
-        )
+    # add a trailing statement to wait until the computations are done
+    return lambda: block_until_ready(func()), lambda: block_until_ready(grad_func())
 
 
 def get_function_and_description(

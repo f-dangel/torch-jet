@@ -106,7 +106,119 @@ def setup_input(
     return device_put(uniform(key, shape=shape, dtype=dt), dev)
 
 
-def laplacian_function(  # noqa: C901
+def hessian_trace_laplacian(
+    f: Callable[[list[ArrayLike], ArrayLike], ArrayLike], dummy_x: ArrayLike
+) -> Callable[[list[ArrayLike], ArrayLike], ArrayLike]:
+    """Generate a function that computes the Laplacian of f by tracing the Hessian.
+
+    Args:
+        f: The function whose Laplacian we want to compute.
+            The function should take the parameters and the input tensor as arguments
+            and return the output tensor.
+        dummy_x: A dummy input tensor to determine the input dimensions.
+
+    Returns:
+        A function that computes the Laplacian of f at the input tensor X given the
+        parameters and X.
+    """
+    hess_f = hessian(f, argnums=1)
+
+    # trace with einsum to support Laplacians of functions with non-scalar output
+    dims = " ".join([f"d{i}" for i in range(dummy_x.ndim)])
+    tr_equation = f"... {dims} {dims} -> ..."
+
+    def laplacian(params: list[ArrayLike], x: ArrayLike) -> ArrayLike:
+        """Compute the Laplacian of f on an un-batched input.
+
+        Args:
+            params: The parameters of the neural network.
+            x: The input tensor.
+
+        Returns:
+            The Laplacian of f at x. Has the same shape as f(x).
+        """
+        return einsum(hess_f(params, x), tr_equation)
+
+    return laplacian
+
+
+def jet_naive_laplacian(
+    f: Callable[[list[ArrayLike], ArrayLike], ArrayLike], dummy_x: ArrayLike
+) -> Callable[[list[ArrayLike], ArrayLike], ArrayLike]:
+    """Generate a function that computes the Laplacian of f using jets.
+
+    Args:
+        f: The function whose Laplacian we want to compute.
+            The function should take the parameters and the input tensor as arguments
+            and return the output tensor.
+        dummy_x: A dummy input tensor to determine the input dimensions.
+
+    Returns:
+        A function that computes the Laplacian of f at the input tensor X given the
+        parameters and X.
+    """
+    D = size(dummy_x)
+
+    def laplacian(params: list[ArrayLike], x: ArrayLike) -> ArrayLike:
+        """Compute the Laplacian of f on an un-batched input.
+
+        Args:
+            params: The parameters of the neural network.
+            x: The un-batched input tensor.
+
+        Returns:
+            The Laplacian of f at x. Has the same shape as f(x).
+        """
+        v2 = zeros(dummy_x.shape, dtype=dummy_x.dtype, device=dummy_x.device)
+
+        def d2(x, v1):
+            _, (_, f2) = jet(lambda x: f(params, x), (x,), ((v1, v2),))
+            return f2
+
+        d2_vmap = vmap(lambda v1: d2(x, v1))
+        v1 = eye(D, dtype=dummy_x.dtype, device=dummy_x.device).reshape(
+            D, *dummy_x.shape
+        )
+        return d2_vmap(v1).sum(0)
+
+    return laplacian
+
+
+def jet_simplified_laplacian(
+    f: Callable[[list[ArrayLike], ArrayLike], ArrayLike], dummy_x: ArrayLike
+) -> Callable[[list[ArrayLike], ArrayLike], ArrayLike]:
+    """Generate a function that computes the Laplacian of forward Laplacian of f.
+
+    Args:
+        f: The function whose Laplacian we want to compute.
+            The function should take the parameters and the input tensor as arguments
+            and return the output tensor.
+        dummy_x: A dummy input tensor to determine the input dimensions.
+
+    Returns:
+        A function that computes the Laplacian of f at the input tensor X given the
+        parameters and X.
+    """
+    # disable sparsity to remove its run time benefits
+    fwd_lap = ForwardLaplacianOperator(0)
+
+    def laplacian(params: list[ArrayLike], x: ArrayLike) -> ArrayLike:
+        """Compute the Laplacian of f on an un-batched input.
+
+        Args:
+            params: The parameters of the neural network.
+            x: The un-batched input tensor.
+
+        Returns:
+            The Laplacian of f at x. Has the same shape as f(x).
+        """
+        lap_f = fwd_lap(lambda x: f(params, x))
+        return lap_f(x)[0]
+
+    return laplacian
+
+
+def laplacian_function(
     params_and_f: tuple[
         list[ArrayLike], Callable[[list[ArrayLike], ArrayLike], ArrayLike]
     ],
@@ -133,75 +245,16 @@ def laplacian_function(  # noqa: C901
     Returns:
         A function that computes the Laplacian of the function f at the input tensor X.
         The function is expected to be called with no arguments and is jitted.
-
-    Raises:
-        ValueError: If the strategy is not supported.
     """
     params, f = params_and_f
-    if strategy == "hessian_trace":
-        hess_f = hessian(f, argnums=1)
+    dummy_X = X[0] if is_batched else X
 
-        # trace with einsum to support Laplacians of functions with non-scalar output
-        dims = " ".join([f"d{i}" for i in range(X.ndim - 1 if is_batched else X.ndim)])
-        tr_equation = f"... {dims} {dims} -> ..."
-
-        def laplacian(params: list[ArrayLike], x: ArrayLike) -> ArrayLike:
-            """Compute the Laplacian of f on an un-batched input.
-
-            Args:
-                params: The parameters of the neural network.
-                x: The input tensor.
-
-            Returns:
-                The Laplacian of f at x. Has the same shape as f(x).
-            """
-            return einsum(hess_f(params, x), tr_equation)
-
-    elif strategy == "jet_naive":
-        shape = X.shape[1:] if is_batched else X.shape
-        D = size(X[0] if is_batched else X)
-
-        def laplacian(params: list[ArrayLike], x: ArrayLike) -> ArrayLike:
-            """Compute the Laplacian of f on an un-batched input.
-
-            Args:
-                params: The parameters of the neural network.
-                x: The un-batched input tensor.
-
-            Returns:
-                The Laplacian of f at x. Has the same shape as f(x).
-            """
-            v2 = zeros(shape, dtype=X.dtype, device=X.device)
-
-            def d2(x, v1):
-                _, (_, f2) = jet(lambda x: f(params, x), (x,), ((v1, v2),))
-                return f2
-
-            d2_vmap = vmap(lambda v1: d2(x, v1))
-            v1 = eye(D, dtype=X.dtype, device=X.device).reshape(D, *shape)
-            return d2_vmap(v1).sum(0)
-
-    elif strategy == "jet_simplified":
-        # disable sparsity to remove its run time benefits
-        fwd_lap = ForwardLaplacianOperator(0)
-
-        def laplacian(params: list[ArrayLike], x: ArrayLike) -> ArrayLike:
-            """Compute the Laplacian of f on an un-batched input.
-
-            Args:
-                params: The parameters of the neural network.
-                x: The un-batched input tensor.
-
-            Returns:
-                The Laplacian of f at x. Has the same shape as f(x).
-            """
-            lap_f = fwd_lap(lambda x: f(params, x))
-            return lap_f(x)[0]
-
-    else:
-        raise ValueError(
-            f"Unsupported strategy: {strategy}. Supported: {SUPPORTED_STRATEGIES}."
-        )
+    transforms = {
+        "hessian_trace": hessian_trace_laplacian,
+        "jet_naive": jet_naive_laplacian,
+        "jet_simplified": jet_simplified_laplacian,
+    }
+    laplacian = transforms[strategy](f, dummy_X)
 
     if is_batched:
         laplacian = vmap(laplacian, in_axes=[None, 0])

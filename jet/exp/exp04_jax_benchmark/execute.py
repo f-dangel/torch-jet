@@ -25,12 +25,7 @@ from jax.random import PRNGKey, uniform
 from jax.tree_util import tree_map
 from jax.typing import ArrayLike, DTypeLike
 
-from jet.exp.exp01_benchmark_laplacian.execute import (
-    BASELINE,
-    SUPPORTED_STRATEGIES,
-    parse_args,
-    savepath,
-)
+from jet.exp.exp01_benchmark_laplacian.execute import BASELINE, parse_args, savepath
 from jet.exp.utils import measure_peak_memory, measure_time
 
 HERE = path.abspath(__file__)

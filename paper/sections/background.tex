@@ -1,6 +1,7 @@
 \todo{Check if all bold notations are correct}
+\todo{We need mention differential operators here, \AW{I would introduce the differential operators at the end of this section. I think that for readers not familar with the Taylor mode, the example in the current form is very usefull}}
 To motivate our approach, consider the one-dimensional case $f: \mathbb{R} \to \mathbb{R}$. When the input variable $x$ is interpreted as a univariate Taylor polynomial 
-of a certain degree, i.e., $x(t) = \sum_{k=1}^K \frac{t^k}{k!} x_k$ and $f$ is smooth enough, one can also evaluate  higher order derivatives of the path $f(x(t))$ that yield a corresponding Taylor polynomial of $f$, i.e., $\sum_{k=0}^K \frac{t^k}{k!} f_k$  with $f_k := \left. \frac{d^k}{dt^k} f(x(t)) \right|_{t=0}$. Using the chain rule, one obtains for the simple example considered here and $K=3$ the coefficients
+of degree $K$, i.e., $x(t) = \sum_{k=1}^K \frac{t^k}{k!} x_k$ and $f$ is smooth enough, one can also evaluate higher order derivatives of the path $f(x(t))$ that yield a corresponding Taylor polynomial of $f$, i.e., $\sum_{k=0}^K \frac{t^k}{k!} f_k$  with $f_k := \left. \frac{d^k}{dt^k} f(x(t)) \right|_{t=0}$. Using the chain rule, one obtains for the simple example considered here and $K=3$ the coefficients 
 \begin{align}
 \label{eq:taylor-mode-scalar}
 \begin{split}
@@ -27,10 +28,9 @@ of a certain degree, i.e., $x(t) = \sum_{k=1}^K \frac{t^k}{k!} x_k$ and $f$ is s
     \partial f(x_0) x_3.
     \end{split}
 \end{align}
- The general formula was originally given by Faà di Bruno already in 1856 and has since been extended to the multivariate case by Fraenkel in 1978, see, e.g., \cite{arbogast1800calcul,hardy2006combinatorics,faa1857note}. These formulas  serve as foundation for the so-called Taylor-mode AD to compute derivative of higher order, see, e.g., \citep[][Chapter 13]{griewank2008evaluating}. Choosing $x_1 = 1, x_2 = x_3 = 0$ results in $f_1 = \partial f(x_0), f_2 = \partial^2 f(x_0)$ and $f_3 = \partial^3 f(x_0)$. The key observation for this paper is that $f_3 = \partial^3 f(x_0)$, i.e., equals the third derivative of $f$ at $x_0$. To exploit this fact also in more general cases, now we introduce some notation. 
+ The general formula for $f_k$ was originally given by Faà di Bruno already in 1856 and has since been extended to the multivariate case by Fraenkel in 1978, see, e.g., \cite{arbogast1800calcul,hardy2006combinatorics,faa1857note}. These formulas  serve as foundation for the so-called Taylor-mode AD to compute derivative of higher order, see, e.g., \citep[][Chapter 13]{griewank2008evaluating}. Choosing in our example, $x_1 = 1, x_2 = x_3 = 0$ results in $f_1 = \partial f(x_0), f_2 = \partial^2 f(x_0)$ and $f_3 = \partial^3 f(x_0)$. The key observation for this paper is that $f_3 = \partial^3 f(x_0)$, i.e., equals the third derivative of $f$ at $x_0$. \todo{Actually not sure if the simple example is useful outside a Taylor-mode explanation. The fact, that the last coefficient can be used to compute a single higher-derivative is not really important, because the decomposition of the chain-rule such that we can propagate the linear structure through it, is the key idea.}To exploit this fact of calculating certain derivatives of a function leveraging an input Taylor polynomial, also in more general cases, we now introduce some notation. 
  
- First, one has to note that 
-the univariate Taylor polynomials of degree $K$ are frequently called $K$-jets in the machine learning community. Therefore, we will use this notation from now on. Furthermore, we denote vectors, matrices, and tensors using boldface. Given $K$ vectors $\vv_1, \dots, \vv_K \in \mathbb{R}^D$, their tensor product is written as
+ First, one has to note that the univariate Taylor polynomials of degree $K$ are frequently called $K$-jets in the machine learning community. Therefore, we will use this notation from now on. Furthermore, we denote vectors, matrices, and tensors using boldface. Given $K$ vectors $\vv_1, \dots, \vv_K \in \mathbb{R}^D$, their tensor product is written as
 \begin{equation}
     \otimes_{k=1}^K \vv_k = \vv_1 \otimes \ldots \otimes \vv_K 
     \in \left( \mathbb{R}^D \right)^{\otimes K},
@@ -57,7 +57,7 @@ There will be extensive use of the inner product
 where $\tA, \tB \in \left(\mathbb{R}^{D}\right)^{\otimes K}$. The $k$-th derivative of a function $\vf: \mathbb{R}^D \to \mathbb{R}^m$ is denoted by $\partial^k \vf$. 
 
 Also in the more general vector-valued case, the evaluation of $\vf$'s $K$-jet at an argument $\vx_0 \in \mathbb{R}^n$ starts with the extension of $\vx_0$ to a smooth path $\vx: \mathbb{R} \to \mathbb{R}^D$ such that $\vx(0) = \vx_0$. Then, the $K$-jet of $\vf$ is defined as $J^K \vf : \mathbb{R} \to \mathbb{R}^m$, $(J^K \vf)(t) := \sum_{k=0}^K \frac{t^k}{k!} \vf_k$ with $\vf_k := \left. \frac{d^k}{dt^k} \vf(\vx(t)) \right|_{t=0} $, where the evaluation of $\vf_k$ requires the $K$-jet $(J^K \vx)(t) := \sum_{k=0}^K \frac{t^k}{k!} \vx_k$ as can be seen in the simple example \eqref{eq:taylor-mode-scalar} above and illustrated in Figure~\ref{fig:utp}
-
+\todo{I would like a $J^K$ at the arrows.}
 \begin{figure}[h]
 \begin{center}
   \begin{tikzpicture}
@@ -122,7 +122,7 @@ with $\partitioning(k)$ being the integer partitioning of $k$ and multiplicity
     \right)
      }.
 \end{equation}
-Here, $n_s$ counts occurrences of $s$ in an integer partitioning $\sigma$, e.g., $n_1(\{1,1,3\}) = 2$ and $n_3 = 1$. There are explicit formulas for common elemental functions that yield the derivative for given Taylor polynomials of the inputs with a quadratic complexity in the degree $K$, see~\citep[][Chapter 13]{griewank2008evaluating}.
+Here, $n_s$ counts occurrences of $s$ in an integer partitioning $\sigma$, e.g., $n_1(\{1,1,3\}) = 2$ and $n_3 = 1$. There are explicit formulas for common elemental functions that yield the derivative for given $K$-Jets of the inputs with a quadratic complexity in the degree $K$, see~\citep[][Chapter 13]{griewank2008evaluating}.
 
 Our contribution modifies Taylor-mode AD to incorporate structure of common differential operators. 
 To explain our approach systematically, we will use the following Taylor-mode AD scheme, which derives the $K$-Jet for a decomposed $\vf = \vg \circ \vh$ given $J^K\vx$:
@@ -235,10 +235,17 @@ To explain our approach systematically, we will use the following Taylor-mode AD
         \end{pmatrix*}
    % \end{split}
 \end{align*}
-This procedure explains how to compute the derivatives that occur in the $K$-jets of nodes in the computational graph of $\vf$'s decomposition, and how the result relates to the input Jet. Now, we can extend the observtion made for the simple example above regarding the derivative of the highest degree.
-As can be seen, the coefficient with the index $K$ of all $K$-jets is computed as the sum of a weighted inner product of a partial derivative with this degree and the corresponding coefficients of the input $K$-jets. Hence, this is a linear operation, a fact that we will exploit intensively to reduce the computational complexity to compute differential operators.
+This procedure explains how to compute the derivatives that occur in the $K$-jets of nodes in the computational graph of $\vf$'s decomposition, and how the result relates to the input Jet.
 
-To actually compute or approximate a whole derivative tensor, one has to propagate a suitable collection of K-jets through the computational graph, a task that was analysed in \cite{griewank_evaluating_1999} including also an analysis of the computational complexity. One has to propagate at least at many $K$-jets as there are different entries in the derivative tensor. It was shown in \cite{griewank_evaluating_1999} that this number also suffices if the $K$-jets are chosen properly. \AW{Here now the picture and explanation}. 
+
+
+\todo{bring in somehow the differential operator to motivate the propagation of sums for which we need linearity in the last summand}
+Instead of considering the $K$-Jet of a function $\vf$ the goal is to find efficient propagation schemes for a differential operator of $\vf$.
+
+\todo{update this paragraph}
+As can be seen for all $K$-Jets, the $K$-th coefficient is computed as the sum of weighted inner products over all derivative degrees $|\sigma|$ and the tensor product of corresponding input coefficients. This tensor product is highly non-linear in general and we can not pull in a sum somewhere. However, in the following we show that our proposed method makes use of a certain partition allowing the exploitation of a linear structure in the input coefficients to be propagated through the computational graph. Such a linear structure is often exposed by differential operators. 
+
+To be able to apply our method to differential operators including mixed-partial derivatives (i.e., not directly computable using a single $K$-Jet) we leverage the work of Griewank et al. \cite{griewank_evaluating_1999}. They showed that to actually compute the whole $K$-th derivative tensor it is enough to use suitable $K$-Jets. \AW{Here now the picture and explanation}. 
 
 
 

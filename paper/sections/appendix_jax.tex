@@ -153,6 +153,25 @@ From them, we draw the following conclusions:
   Our contribution is to point out that such rewrites could easily be added to the compiler's ability to unlock these performance gains at zero user overhead.
 
 \end{enumerate}
+\begin{figure*}[!t]
+  \centering
+  % From https://tex.stackexchange.com/a/7318
+  \newcolumntype{C}{ >{\centering\arraybackslash} m{0.11\textwidth} }
+  \newcolumntype{D}{ >{\centering\arraybackslash} m{0.4\textwidth} }
+  \begin{tabular}{CDD}
+    & \textbf{PyTorch}
+    & \textbf{JAX}
+    \\
+    \textbf{Exact}
+    & \includegraphics{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_256_device_cuda_name_bilaplacian_vary_dim.pdf}
+    & \includegraphics{../jet/exp/exp04_jax_benchmark/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_256_device_cuda_name_jax_bilaplacian_vary_dim.pdf}
+  \end{tabular}
+  \caption{\textbf{Comparison of our proposed approach for computing the Laplacian in PyTorch (left) and by nesting Laplacians in JAX (right).}
+    The net is the same as before, but we fix the batch size to be $256$ and vary the net's input dimension.
+  }
+  \label{fig:benchmark-bilaplacians}
+\end{figure*}
+
 
 
 

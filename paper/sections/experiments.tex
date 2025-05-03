@@ -114,7 +114,7 @@ They argue it has too much variance.
       & \textcolor{tab:blue}{Nested first-order}
       & \input{\datapathLaplacianExact/hessian_trace_peakmem.txt}
       & \input{\datapathWeightedLaplacianExact/hessian_trace_peakmem.txt}
-      & \input{\datapathBilaplacianExact/hessian_trace_peakmem.txt}
+      & \textbf{\input{\datapathBilaplacianExact/hessian_trace_peakmem.txt}}
       \\
       &
       & \textcolor{tab:orange}{Standard Taylor}
@@ -126,7 +126,7 @@ They argue it has too much variance.
       & \textcolor{tab:green}{Collapsed (ours)}
       & \textbf{\input{\datapathLaplacianExact/jet_simplified_peakmem.txt}}
       & \textbf{\input{\datapathWeightedLaplacianExact/jet_simplified_peakmem.txt}}
-      & \textbf{\input{\datapathBilaplacianExact/jet_simplified_peakmem.txt}}
+      & \input{\datapathBilaplacianExact/jet_simplified_peakmem.txt}
       \\ \cmidrule{2-6}
       & \multirow{3}{*}{\makecell{Mem.\,[MiB] \\ (non-diff.)}}
       & \textcolor{tab:blue}{Nested first-order}
@@ -138,7 +138,7 @@ They argue it has too much variance.
       & \textcolor{tab:orange}{Standard Taylor}
       & \textbf{\input{\datapathLaplacianExact/jet_naive_peakmem_nondifferentiable.txt}}
       & \textbf{\input{\datapathWeightedLaplacianExact/jet_naive_peakmem_nondifferentiable.txt}}
-      & \textbf{\input{\datapathBilaplacianExact/jet_naive_peakmem_nondifferentiable.txt}}
+      & \input{\datapathBilaplacianExact/jet_naive_peakmem_nondifferentiable.txt}
       \\
       &
       & \textcolor{tab:green}{Collapsed (ours)}
@@ -209,11 +209,11 @@ They argue it has too much variance.
 
 \begin{figure}
   \centering
-  \includegraphics*{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_16_device_cuda_name_bilaplacian_vary_dim.pdf}
+  \includegraphics*{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_256_device_cuda_name_bilaplacian_vary_dim.pdf}
   \caption{\textbf{Collapsed Taylor mode applied to the Bi-Laplacian.}
-    The net is the same as before, but we fix the batch size to be $16$ and vary the net's input dimension.
+    The net is the same as before, but we fix the batch size to be $256$ and vary the net's input dimension.
     Note that nesting first-order AD scales worse.
-  }\label{fig:benchmark-randomized-laplacians}
+  }\label{fig:benchmark-bilaplacians}
 \end{figure}
 
 %%% Local Variables:

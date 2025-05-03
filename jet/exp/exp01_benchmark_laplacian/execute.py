@@ -82,7 +82,6 @@ def hessian_trace_laplacian(
         """Compute the Laplacian of f on an un-batched input.
 
         Args:
-            params: The parameters of the neural network.
             x: The input tensor.
 
         Returns:
@@ -506,12 +505,26 @@ def randomized_bilaplacian_function(
             Returns:
                 The vector-derivative tensor product. Has the same shape as f(x).
             """
-            grad_func = jacrev(f)
-            d2f_v_func = lambda x: jvp(grad_func, (x,), (v,))[1]  # noqa: E731
-            d3f_vv_func = lambda x: jvp(d2f_v_func, (x,), (v,))[1]  # noqa: E731
-            _, d4f_vvv = jvp(d3f_vv_func, (x,), (v,))
 
-            return einsum(d4f_vvv, v, equation)
+            def vhv(f: Callable[[Tensor], Tensor]) -> Callable[[Tensor], Tensor]:
+                """Return a function that computes the vector-Hessian-vector product.
+
+                Args:
+                    f: The function whose vector-Hessian-vector product is computed.
+
+                Returns:
+                    A function that computes the vector-Hessian-vector product of f.
+                    The VHVP has the same shape as f(x).
+                """
+
+                def _vhv(x: Tensor) -> Tensor:
+                    grad_func = jacrev(f)
+                    _, hvp = jvp(grad_func, (x,), (v,))
+                    return einsum(hvp, v, equation)
+
+                return _vhv
+
+            return (vhv(vhv(f)))(x)
 
         # vmap over data points and fix data
         if is_batched:

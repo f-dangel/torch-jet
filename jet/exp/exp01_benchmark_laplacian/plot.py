@@ -150,7 +150,10 @@ if __name__ == "__main__":
         # go over all combinations and plot
         for fix in combinations:
             print(f"Processing combination: {fix}")
-            with plt.rc_context(bundles.neurips2024(rel_width=0.27, ncols=1, nrows=2)):
+            rel_width = 0.27 if name != "bilaplacian_vary_dim" else 0.42
+            with plt.rc_context(
+                bundles.neurips2024(rel_width=rel_width, ncols=1, nrows=2)
+            ):
                 fig, axs = plt.subplots(nrows=2, sharex=True)
                 # fix specific values, leaving only the data to be plotted
                 df_fix = fix_columns(df, fix)

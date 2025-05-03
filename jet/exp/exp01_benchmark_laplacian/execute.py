@@ -59,6 +59,39 @@ SUPPORTED_STRATEGIES = ["hessian_trace", "jet_naive", "jet_simplified"]
 BASELINE = "hessian_trace"
 
 
+def hessian_trace_laplacian(
+    f: Callable[[Tensor], Tensor], dummy_x: Tensor
+) -> Callable[[Tensor], Tensor]:
+    """Generate a function that computes the Laplacian of f by tracing the Hessian.
+
+    Args:
+        f: The function whose Laplacian we want to compute. The function should take
+            the input tensor as arguments and return the output tensor.
+        dummy_x: A dummy input tensor to determine the input dimensions.
+
+    Returns:
+        A function that computes the Laplacian of f at the input tensor X.
+    """
+    hess_f = hessian(f)
+
+    # trace with einsum to support Laplacians of functions with non-scalar output
+    dims = " ".join([f"d{i}" for i in range(dummy_x.ndim)])
+    tr_equation = f"... {dims} {dims} -> ..."
+
+    def laplacian(x: Tensor) -> Tensor:
+        """Compute the Laplacian of f on an un-batched input.
+
+        Args:
+            x: The input tensor.
+
+        Returns:
+            The Laplacian of f at x. Has the same shape as f(x).
+        """
+        return einsum(hess_f(x), tr_equation)
+
+    return laplacian
+
+
 def laplacian_function(
     f: Callable[[Tensor], Tensor], X: Tensor, is_batched: bool, strategy: str
 ) -> Callable[[], Tensor]:
@@ -86,22 +119,8 @@ def laplacian_function(
         ValueError: If the strategy is not supported.
     """
     if strategy == "hessian_trace":
-        hess_f = hessian(f)
-
-        # trace with einsum to support Laplacians of functions with non-scalar output
-        dims = " ".join([f"d{i}" for i in range(X.ndim - 1 if is_batched else X.ndim)])
-        tr_equation = f"... {dims} {dims} -> ..."
-
-        def laplacian(x: Tensor) -> Tensor:
-            """Compute the Laplacian of f on an un-batched input.
-
-            Args:
-                x: The input tensor.
-
-            Returns:
-                The Laplacian of f at x. Has the same shape as f(x).
-            """
-            return einsum(hess_f(x), tr_equation)
+        dummy_X = X[0] if is_batched else X
+        laplacian = hessian_trace_laplacian(f, dummy_X)
 
         if is_batched:
             laplacian = vmap(laplacian)
@@ -407,26 +426,9 @@ def bilaplacian_function(
         ValueError: If the strategy is not supported.
     """
     if strategy == "hessian_trace":
-        d4f = hessian(hessian(f))
-
-        # trace it using einsum to support functions with non-scalar outputs
-        num_summed_dims = X.ndim - 1 if is_batched else X.ndim
-        dims1 = " ".join([f"i{i}" for i in range(num_summed_dims)])
-        dims2 = " ".join([f"j{j}" for j in range(num_summed_dims)])
-        # if x is a vector, this is just '... i i j j -> ...' where '...' corresponds
-        # to the shape of f(x)
-        equation = f"... {dims1} {dims1} {dims2} {dims2} -> ..."
-
-        def bilaplacian(x: Tensor) -> Tensor:
-            """Compute the Bi-Laplacian of f on an un-batched input x.
-
-            Args:
-                x: The input tensor.
-
-            Returns:
-                The Laplacian of f at x. Has the same shape as f(x).
-            """
-            return einsum(d4f(x), equation)
+        dummy_x = X[0] if is_batched else X
+        laplacian = hessian_trace_laplacian(f, dummy_x)
+        bilaplacian = hessian_trace_laplacian(laplacian, dummy_x)
 
         if is_batched:
             bilaplacian = vmap(bilaplacian)
@@ -503,12 +505,26 @@ def randomized_bilaplacian_function(
             Returns:
                 The vector-derivative tensor product. Has the same shape as f(x).
             """
-            grad_func = jacrev(f)
-            d2f_v_func = lambda x: jvp(grad_func, (x,), (v,))[1]  # noqa: E731
-            d3f_vv_func = lambda x: jvp(d2f_v_func, (x,), (v,))[1]  # noqa: E731
-            _, d4f_vvv = jvp(d3f_vv_func, (x,), (v,))
 
-            return einsum(d4f_vvv, v, equation)
+            def vhv(f: Callable[[Tensor], Tensor]) -> Callable[[Tensor], Tensor]:
+                """Return a function that computes the vector-Hessian-vector product.
+
+                Args:
+                    f: The function whose vector-Hessian-vector product is computed.
+
+                Returns:
+                    A function that computes the vector-Hessian-vector product of f.
+                    The VHVP has the same shape as f(x).
+                """
+
+                def _vhv(x: Tensor) -> Tensor:
+                    grad_func = jacrev(f)
+                    _, hvp = jvp(grad_func, (x,), (v,))
+                    return einsum(hvp, v, equation)
+
+                return _vhv
+
+            return (vhv(vhv(f)))(x)
 
         # vmap over data points and fix data
         if is_batched:

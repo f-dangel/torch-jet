@@ -275,6 +275,72 @@ def laplacian_function(
     return lambda: block_until_ready(func()), lambda: block_until_ready(grad_func())
 
 
+def bilaplacian_function(
+    params_and_f: tuple[
+        list[ArrayLike], Callable[[list[ArrayLike], ArrayLike], ArrayLike]
+    ],
+    X: ArrayLike,
+    is_batched: bool,
+    strategy: str,
+) -> tuple[Callable[[], ArrayLike], Callable[[], list[ArrayLike]]]:
+    """Construct function to compute the Bi-Laplacian in JAX using different strategies.
+
+    The Bi-Laplacian is computed by taking the Laplacian of the Laplacian.
+
+    Args:
+        params_and_f: The neural net's parameters and the unbatched forward function
+            whose Bi-Laplacian we want to compute. The function should take the
+            parameters and the input tensor as arguments and return the output tensor.
+        X: The input tensor at which to compute the Laplacian.
+        is_batched: Whether the input is a batched tensor.
+        strategy: Which strategy will be used by the returned function to compute
+            the Bi-Laplacian. The following strategies are supported:
+            - `'hessian_trace'`: The Bi-Laplacian is computed by tracing the Hessian,
+              then again taking and tracing the Hessian of the result.
+              The Hessian is computed via forward-over-reverse mode autodiff.
+            - `'jet_naive'`: The Bi-Laplacian is computed using jets.
+            - `'jet_simplified'`: The Bi-Laplacian is computed using the forward
+              Laplacian library.
+
+    Returns:
+        A function that computes the Bi-Laplacian of the function f at the input tensor
+        X. The function is expected to be called with no arguments and is jitted.
+    """
+    params, f = params_and_f
+    dummy_X = X[0] if is_batched else X
+
+    transform = {
+        "hessian_trace": hessian_trace_laplacian,
+        "jet_naive": jet_naive_laplacian,
+        "jet_simplified": jet_simplified_laplacian,
+    }[strategy]
+    laplacian = transform(f, dummy_X)
+    bilaplacian = transform(laplacian, dummy_X)
+
+    if is_batched:
+        bilaplacian = vmap(bilaplacian, in_axes=[None, 0])
+    bilaplacian = jit(bilaplacian)
+
+    # function that computes the Laplacian
+    func = lambda: bilaplacian(params, X)  # noqa: E731
+    # function that computes the Laplacian's gradient used as proxy for the
+    # computation graph's memory footprint
+    summed_bilaplacian = lambda params, X: bilaplacian(params, X).sum()  # noqa: E731
+    grad_func = lambda: grad(summed_bilaplacian, argnums=0)(params, X)  # noqa: E731
+
+    # jit the functions
+    # NOTE For unknown reasons, we cannot jit these functions when using the folx
+    # package. They give an error inside the forward Laplacian. Therefore we do not
+    # apply jit for this strategy.
+    # TODO Report this bug on the folx repository
+    if strategy != "jet_simplified":
+        func = jit(func)
+        grad_func = jit(grad_func)
+
+    # add a trailing statement to wait until the computations are done
+    return lambda: block_until_ready(func()), lambda: block_until_ready(grad_func())
+
+
 def get_function_and_description(
     operator: str,
     strategy: str,
@@ -317,13 +383,15 @@ def get_function_and_description(
         else f"{strategy}"
     )
 
-    if operator != "laplacian":
-        raise ValueError(f"Unsupported operator: {operator}.")
-
     if is_stochastic:
         raise NotImplementedError("Stochastic operators are not implemented yet.")
 
-    func_no, func = laplacian_function(*args)
+    if operator == "laplacian":
+        func_no, func = laplacian_function(*args)
+    elif operator == "bilaplacian":
+        func_no, func = bilaplacian_function(*args)
+    else:
+        raise ValueError(f"Unsupported operator: {operator}.")
 
     return func_no, func, description
 

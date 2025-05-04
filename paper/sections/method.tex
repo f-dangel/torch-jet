@@ -1,10 +1,11 @@
-\todo{improve intro text}
+\todo{improve intro text \AW{I adapted the intro, I did not touch Sec 3.1 so far}}
 
-We introduce a unified framework for handling differential operators efficiently. In the next subsection, a linearity trick is applied to sums of Jets. Those jets already unify the settings of Forward-Laplace \cite{li2023forward}, Randomized Taylor-Mode ~\cite{shi2024stochastic, hu2023hutchinson} and the generalized trace operator. Afterwards, we show that all differential operators, including those not directly representable through jets because of mixed-partial derivatives, can be computed via a suitable combination of Jets. This is based on a classical AD result of Griewank et al. \cite{griewank_evaluating_1999}. The result will also include the approach of \cite{shi2024stochastic} for computing arbitrary differential operators. However, our approach only needs Jets of the highest derivative degree. In addition, it has to be emphasized, our proposed method is purely automatic, meaning it can be implemented as part of a JIT-toolchain.
+In this section, we exploit the linearity in the $K$th coefficient when propagating a family of $K$-jets through a computational graph. Such families of $K$-jets were already considered for the Forward-Laplace \cite{li2023forward}, Randomized Taylor-Mode ~\cite{shi2024stochastic, hu2023hutchinson} and the generalized trace operator. Afterwards, we show that all differential operators, including those not directly representable through jets because of mixed partial derivatives, can be computed via 
+the propagation of a suitable chosen family of jets using an algorithm of Griewank et al. \cite{griewank_evaluating_1999}. The result will also include the approach of \cite{shi2024stochastic} for computing arbitrary differential operators. However, our approach only needs jets of the highest derivative degree. In addition, it has to be emphasized that our proposed method can be completely automated, meaning that it can be implemented as part of a JIT-toolchain.
 
 
 \subsection{Linearity for Taylor-mode AD}
-\todo{M: Question: Are the vectors $\vv_n$ sufficiently motivated for a reader at this point of the manuscript?}
+\todo{M: Question: Are the vectors $\vv_n$ sufficiently motivated for a reader at this point of the manuscript? \AW{Ich glaube nicht, ich verstehe das auch noch nicht ganz, ist das ein $K$-jet oder eine Familie von $K$-jets? Oder eine Summe von $N$ $K$-jets? Dann müssen wir irgendwie die Beziehung zu den $\vx$ noch ziehen. Können wir die irgendwie geeignet durchnummerieren?}}
 The aim is to compute the $K$-Jet 
 \begin{align}\label{eq:sum-k-jet}
   \sum_{n=1}^N\left< 

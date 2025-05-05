@@ -1,4 +1,6 @@
 
+
+The following Taylor-mode AD scheme results from inserting \cref{eq:sum-k-jet} into the \cref{eq:taylor-mode-composition}.
 \begin{align}\label{eq:sum-taylor-mode-naive}
   \begin{split}
       \begin{pmatrix*}
@@ -127,7 +129,7 @@
         &\overset{\text{slice}}{\to} \{ \vg_{K,n} \}
         \\
         &\overset{\text{sum}}{\to} \sum_{n=1}^N \vg_{K,n} 
-          \overset{\{\vx_{1,n} = \vv_n, \vx_{2,n} = \vzero, \dots, \vx_{K, n} = \vzero \}_n}{=} 
+          \overset{\{\vx_{1,n} = \vv_n, \vx_{2,n} = \vzero, \dots, \vx_{K, n} = \vzero \}}{=} 
           \sum_{n=1}^N \left<
           \partial^K \vf(\vx_0), 
           \otimes_{k=1}^K \vv_n
@@ -153,9 +155,9 @@ Can we do better?
       \end{pmatrix*}
       &\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
         \begin{pmatrix*}[l]
-          \vh_0 =  \vh(\vx_0)
+          \vh_0 &=  \vh(\vx_0)
           \\
-          \{\vh_{1,n}\} =  
+          \{\vh_{1,n}\} &=  
           \left\{
           \left< 
           \partial \vh(\vx_0),
@@ -163,7 +165,7 @@ Can we do better?
           \right>
           \right\}
           \\
-          \{\vh_{2, n}\} = 
+          \{\vh_{2, n}\} &= 
           \left\{
           \left< 
           \partial^2 \vh(\vx_0),
@@ -178,7 +180,7 @@ Can we do better?
           \\
           \vdots
           \\
-          \mathemph{ \displaystyle \sum_{n = 1}^N \vh_{K, n}} =
+          \mathemph{ \displaystyle \sum_{n = 1}^N \vh_{K, n}} &=
           \displaystyle \sum_{n=1}^N \sum_{
           \sigma \in \partitioning(K) \setminus \{\sigma_t\}
           }
@@ -186,7 +188,8 @@ Can we do better?
           \partial^{|\sigma|} \vh(\vx_0),
           \tensorprod{s \in \sigma} \vx_{s, n}
           \right>
-          + 
+          \\
+          &+ 
           \left<
           \partial \vh(\vx_0),
           \mathemph{
@@ -197,9 +200,9 @@ Can we do better?
         \\
         &\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
         \begin{pmatrix*}[l]
-          \vg_0 =  \vg(\vh_0)
+          \vg_0 &=  \vg(\vh_0)
           \\
-          \{\vg_{1,n}\} = 
+          \{\vg_{1,n}\} &= 
           \left\{
           \left< 
           \partial \vg(\vh_0), 
@@ -207,7 +210,7 @@ Can we do better?
           \right>
           \right\}
           \\
-          \{\vg_{2,n}\} = 
+          \{\vg_{2,n}\} &= 
           \left\{
           \left<
           \partial^2 \vg(\vh_0), 
@@ -220,7 +223,7 @@ Can we do better?
           \\
           \vdots
           \\
-          \mathemph{\displaystyle\sum_{n=1}^N\vg_{K,n}} =
+          \mathemph{\displaystyle\sum_{n=1}^N\vg_{K,n}} &=
           \displaystyle \sum_{n=1}^N \sum_{
           \sigma \in \partitioning(K) \setminus \{\sigma_t\}
           } 
@@ -228,7 +231,8 @@ Can we do better?
           \partial^{|\sigma|} \vg(\vh_0),
           \tensorprod{s \in \sigma} \vh_{s, n}
           \right>
-          +
+          \\
+          &+
           \left<
           \partial \vg(\vh_0),
           \mathemph{\displaystyle \sum_{n=1}^N\vh_{K, n}}
@@ -237,16 +241,16 @@ Can we do better?
         \\
         &\overset{\text{(\ref{eq:faa-di-bruno})}}{=}
         \begin{pmatrix*}[l]
-          \vf_0 =  \vf(\vx_0)
+          \vf_0 &=  \vf(\vx_0)
           \\
-          \{\vf_{1,n}\} = \left\{
+          \{\vf_{1,n}\} &= \left\{
           \left<
           \partial \vf(\vx_0), 
           \vx_{1, n}
           \right>
           \right\}
           \\
-          \{\vf_{2,n}\} = \left\{
+          \{\vf_{2,n}\} &= \left\{
           \left<
           \partial^2 \vf(\vx_0), 
           \vx_{1, n} \otimes \vx_{1, n}
@@ -259,15 +263,16 @@ Can we do better?
           \\
           \vdots
           \\
-          \mathemph{\displaystyle \sum_{n=1}^N \vf_{K, n}} =
+          \mathemph{\displaystyle \sum_{n=1}^N \vf_{K, n}} &=
           \displaystyle \sum_{n=1}^N\sum_{
           \sigma \in \partitioning(K) \setminus \{ \sigma_t \}
           }
           \nu(\sigma) \left< 
           \partial^{|\sigma|} \vf(\vx_0),
           \tensorprod{s \in \sigma} \vx_{s, n}
-          \right>
-          +
+          \right> 
+          \\
+          &+
           \left<
           \partial \vf(\vx_0),
           \mathemph{\displaystyle \sum_{n=1}^N\vx_{K, n}}
@@ -275,7 +280,7 @@ Can we do better?
         \end{pmatrix*}
         \\
         &\overset{\text{slice}}{\to} \mathemph{\sum_{n=1}^N \vg_{K,n}}
-          \overset{\{\vx_{1,n} = \vv_n, \vx_{2,n} = \vzero, \dots, \vx_{K, n} = \vzero \}_n}{=} 
+          \overset{\{\vx_{1,n} = \vv_n, \vx_{2,n} = \vzero, \dots, \vx_{K, n} = \vzero \}}{=} 
           \sum_{n=1}^N \left<
           \partial^K \vf(\vx_0), 
           \otimes_{k=1}^K \vv_n
@@ -286,6 +291,7 @@ Can we do better?
 \subsection{Examples -- Laplace Operator}
 
 \paragraph{Naive Laplacian}
+The propagation scheme below is obtained, by applying \cref{eq:sum-taylor-mode-naive} to \cref{eq:laplacian}.
 \begin{align}\label{eq:laplacian-naive}
   \begin{split}
     \begin{pmatrix*}
@@ -370,12 +376,13 @@ Can we do better?
     &\overset{\text{slice}}{\to} \{ g_{2,d} \}
     \\
     &\overset{\text{sum}}{\to} \sum_{d=1}^D \{ g_{2,d} \}
-      \overset{\{\vx_{1,d} = \ve_d, \vx_{2,d} = \vzero\}_d}{=} \Delta f(\vx_0)
+      \overset{\{\vx_{1,d} = \ve_d, \vx_{2,d} = \vzero\}}{=} \Delta f(\vx_0)
   \end{split}
 \end{align}
 
 
 \paragraph{Efficient Laplacian}
+Instead of naively applying \cref{eq:sum-taylor-mode-naive}, \cref{eq:sum-taylor-mode-efficient} is used to obtain a efficient Laplacian propagation approach:
 \begin{align}\label{eq:laplacian-efficient}
   \begin{split}
     \begin{pmatrix*}
@@ -458,7 +465,7 @@ Can we do better?
       \end{pmatrix*}
     \\
     &\overset{\text{slice}}{\to} \mathemph{\sum_{d=1}^D \{ \vg_{2,d} \}}
-      \overset{\{(\vx_{1,d} = \ve_d, \vx_{2,d} = \vzero)\}_d}{=}
+      \overset{\{(\vx_{1,d} = \ve_d, \vx_{2,d} = \vzero)\}}{=}
       \Delta f(\vx_0)
   \end{split}
 \end{align}

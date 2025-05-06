@@ -39,6 +39,7 @@ with components given by
     = (\vv_1)_{d_1} \cdot \ldots \cdot (\vv_K)_{d_K}
     \quad \text{for } d_1, \dots, d_K \in \{1, \dots, D\}.
 \end{equation}
+To occasionally simplify the notation we will use $\vv_k^{\otimes K} = \otimes_{k=1}^K \vv_k$.
 There will be extensive use of the inner product
 \begin{align}\label{eq:derivative-tensor-scalar-product}
     \left\langle
@@ -123,7 +124,6 @@ Here, $n_s$ counts occurrences of $s$ in an integer partitioning $\sigma$, e.g.,
 
 Our contribution modifies Taylor-mode AD to incorporate structure of common differential operators. 
 To explain our approach systematically, we will use the following Taylor-mode AD scheme, which derives the $K$-jet for a decomposed $\vf = \vg \circ \vh$ given $J^K\vx$:
-\todo{AW: It is difficult to fit also the number of the equation ointo the line, therefore I deleted the number and will reformulate the reference to this equation}
 \begin{align}\label{eq:taylor-mode-composition}
 \begin{split}
       &\begin{pmatrix*}
@@ -137,7 +137,7 @@ To explain our approach systematically, we will use the following Taylor-mode AD
         \\
         \vx_K
       \end{pmatrix*}
-      \overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
+      \!\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}\!
         \begin{pmatrix*}[l]
           \vh_0 \!=\!  \vh(\vx_0)
           \\
@@ -170,7 +170,7 @@ To explain our approach systematically, we will use the following Taylor-mode AD
           \right>\!\!\!
         \end{pmatrix*} 
         \\
-        &\!\!\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}\!\!
+        &\!\!\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}\!
          \left(\!\!\!
           \begin{array}{l}   
           \vg_0 \!=\!  \vg(\vh_0)

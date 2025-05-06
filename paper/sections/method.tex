@@ -11,33 +11,27 @@ To derive the proposed method, the considerations start with a sum over $K$th-or
 \end{align}
 For the Laplacian, one has  $K = 2$, $N$ equals the dimension of $\vx$, i.e., $N= D$, and the vectors are chosen as the unit vectors $\vv_n = \ve_n$.
 Instead of nesting derivative calculations to compute the full $K$-th order derivative tensor, $K$-jets can be utilized to efficiently calculate those derivatives. To this end, one
-could propagate a family of $K$-jets as illustrated above for a simple example through the whole computational using the Taylor-mode of AD. %, see Equation~\cref{eq:sum-taylor-mode-naive}. 
-\todo{AW: Do we need Equation~\cref{eq:sum-taylor-mode-naive}? This is just one more step of propagation through the computation graph and the sum over the entries?
-T: I think it is helpful to exactly know what and how we want to compute something, but I'm open to discuss it} 
-Note, that it is crucial to select appropriate input coefficients $\vx_i$. For example, one could initialize the $n$-th $K$-jet with $\vx_{0, n} = \vv_n$ and $\vx_{k, n} = \vzero\in\R^D$ if the differential operator is given by the sum of the pure $K$-th derivatives with respect to the components of $\vx$. In \cref{eq:sum-taylor-mode-naive} we selected the $n$-th $K$-Jet with $\vx_{0, n} = \vv_n$ and $\vx_{k, n} = \vzero$.
+could propagate a family of $K$-jets through the whole computational graph using the Taylor-mode of AD as illustrated in the appendix for a simple example in \cref{eq:sum-taylor-mode-naive}.
+Note, that it is crucial to select appropriate input coefficients $\vx_i$. To compute \cref{eq:sum-k-directional}, one has to use as $n$-th $K$-jet $\vx_{0, n} = \vv_n$ and $\vx_{k, n} = \vzero\in\R^D$ as input for the Taylor-mode of AD. 
 
-Without further optimizations, the Taylor-mode of AD( \cref{eq:sum-taylor-mode-naive}) propagates $1 + KN$ through every node of the computational graph. Subsequently, one would 
-have to sum the corresponding highest derivatives. \todo{AW: I think we have to be careful to state the complexity precisely. Therefore, I would prefer the formulation as stated here, i.e., X vectors aof length Y, or we state the number of coefficients propagated. WIther way is fine for me, we should just clearly state is.
-T: From my perspective, it is already really clear. We propagate 1 + NK coefficients through every node. The size of the coefficients itself depends on the actual node. From my point of view it would not help to introduce a dimension for the nodes, it might even be to complicated then. But of course it only my point of view! Open to discuss.}
+Without further optimizations, the standard Taylor-mode of AD propagates $1 + KN$ vectors through every node of the computational graph, where the length of the vectors depend on the individual node.  Subsequently, one has to sum up the corresponding highest derivatives to obtain \cref{eq:sum-k-directional}. This is illustrated in the appendix, see \cref{eq:sum-taylor-mode-naive}, for our simple example
 
-The approach we propose here is based on the observation that there is a special element in the set of integer partitions $\partitioning(K)$, namely the trivial partition $\sigma_{t} = \{K\}$ corresponding, e.g., to the term
+The approach we propose here is based on the observation that there is a special element in the set of integer partitions $\partitioning(K)$, namely the trivial partition $\tilde{\sigma}= \{K\}$ corresponding, e.g., to the term
 \begin{equation}
-    \nu(\sigma_{t}) \left<
+    \nu(\tilde{\sigma}) \left<
     \partial \vg(\vh_0),
     \vh_{K, n}
     \right>, 
 \end{equation}
-of the Faà di Bruno formula. Using the definitions of \cite{hardy2006combinatorics}, one obtains $\nu(\sigma_{t}) = 1$. \todo{AW: I see the $t$ for trivial, however we also have $t$ as argument where the jet is evaluated, I would prefer a different notation here.
-T: What do you think about $\sigma_{tr}$? Since we use this sigma just here, its fine for me to even call it $\sigma_{trivial}$
-}
-Therefore, one has
+of the Faà di Bruno formula. Using the definitions of \cite{hardy2006combinatorics}, one obtains $\nu(\tilde{\sigma}) = 1$
+yielding
 \begin{equation}\label{eq:faa-di-bruno-expanded}
      \vf_{K, n} 
      = 
      \vg_{K,n} 
      = 
      \displaystyle\sum_{
-      \sigma \in \partitioning(K) \setminus \{\sigma_t\}
+      \sigma \in \partitioning(K) \setminus \{\tilde{\sigma}\}
      } 
      \nu(\sigma) \left<
      \partial^{|\sigma|} \vg(\vh_0),
@@ -47,15 +41,16 @@ Therefore, one has
      \left<
      \partial \vg(\vh_0),
      \vh_{K, n}
-     \right>.
+     \right>
 \end{equation}
-The last inner-product term on the right-hand side is linear in $\vh_{K,n}$, marking the key property for our method. Hence, to compute the sum of $\{\vg_{K, n}\}_n$ and thus \cref{eq:sum-k-directional}, instead of passing the highest coefficients, like $\{\vh_{K,n}\}_n$, separately along the nodes of the computational graph, it is possible to directly propagate their sum like $\sum_n \vh_{K,n}$, due to the linearity of $\left<\partial \vh, \bullet \right>$ and $\left< \partial \vg, \bullet \right>$. Combining this insight with the Taylor-mode of AD  yields our proposed collapsed Taylor-mode as detailed in the appendix, see \cref{eq:sum-taylor-mode-efficient}  where the changes are highlighted in \textcolor{maincolor}{color}. This scheme propagates only $1 + (K - 1)N + 1$ vectors at every node in the computational graph.
-To emphasize that the saving of $N-1$ coefficients at every node in the propagation scheme is indeed significant for common applications, important operators are discussed below. 
+for our simple example.
+The last inner-product term on the right-hand side is linear in $\vh_{K,n}$, marking the key property for our method. To compute the sum of $\{\vg_{K, n}\}_n$ and thus \cref{eq:sum-k-directional}, it is possible to directly propagate their sum, like $\sum_n \vh_{K,n}$, due to the linearity of $\left<\partial \vh, \bullet \right>$ and $\left< \partial \vg, \bullet \right>$ instead of passing the highest coefficients, like $\{\vh_{K,n}\}_n$, separately along the nodes of the computational graph. This observation also holds for more general functions $ \vf$. Combining this insight with the Taylor-mode of AD  yields our proposed {\em collapsed Taylor-mode of AD}. This scheme propagates only $1 + (K - 1)N + 1$ vectors at every node in the computational graph, where the length of the vectors varies according to the properties of each individual node in the same way as for the standard Taylor-mode of AD. For our simple example, the collapsed Taylor-mode of AD is detailed in the appendix, see \cref{eq:sum-taylor-mode-efficient},  where the changes are highlighted in \textcolor{maincolor}{\mycolor}.
+To emphasize that the saving of $N-1$ coefficients at every node in the computational graph is indeed significant for common applications, important operators are discussed below. 
 
 \subsection{Examples}
-A highlight of our general approach \cref{eq:sum-k-directional} is that it naturally includes common important differential operators or their approximation.
+A highlight of our general approach, i.e., the collapsed Taylor mode of AD for \cref{eq:sum-k-directional}, is that it naturally includes common important differential operators or their approximation.
 
-\paragraph{Laplace Operator} The Laplace operator plays a central role in many physical and engineering applications, including electrostatics, fluid dynamics, and heat conduction. In the context of variational Monte Carlo simulations in quantum mechanics \cite{foulkes2001quantum, pfau2020ab}, the Laplacian of the wavefunction must be evaluated repeatedly as part of the wavefunction optimization process. For a function $f: \sR^D \to \sR$ the Laplacian is given as
+\paragraph{Laplace Operator} The Laplace operator plays a central role in many physical and engineering applications, including electrostatics, fluid dynamics, and heat conduction. In the context of variational Monte Carlo simulations in quantum mechanics \cite{foulkes2001quantum, pfau2020ab}, the Laplacian of the wave function must be evaluated repeatedly as part of the wave function optimization process. For a function $f: \sR^D \to \sR$, the Laplacian is given as
 \begin{align}\label{eq:laplacian}
   \Delta f(\vx_0)
   :=
@@ -65,10 +60,9 @@ A highlight of our general approach \cref{eq:sum-k-directional} is that it natur
   \partial^2 f(\vx_0),
   \ve_d \otimes \ve_d
   \right>
-\end{align}
-Assume that $f$ is again decomposed into $g \circ \vh$, where $\vh$ is vector valued, as is the case if $\vh$ is a hidden layer of a neural network. Selecting $K = 2$, $N=D$ and $\vv_n = \ve_n$ lifts \cref{eq:laplacian} into the setting of \cref{eq:sum-k-directional}.
-Naively applying the scheme \cref{eq:sum-taylor-mode-efficient} would lead to $1 + 2D$ (see \cref{eq:laplacian-naive}). If we instead apply our proposed efficient scheme \cref{eq:sum-taylor-mode-efficient}, only $1 + D + 1$ vectors are propagated. The scheme is presented in \cref{eq:laplacian-efficient} (changes highlighted in \textcolor{maincolor}{color})
-
+\end{align} \todo{AW: I would like to avoid the word naive, since it might have a negative touch for some people, in our context naive means the standard Taylor mode of AD, right?}
+Assume that $f$ is again decomposed into $g \circ \vh$, where $\vh$ is vector-valued, as is the case if $\vh$ is a hidden layer of a neural network. Selecting $K = 2$, $N=D$ and $\vv_n = \ve_n$ lifts \cref{eq:laplacian} into the setting of \cref{eq:sum-k-directional}.
+When applying the standard Taylor mode of AD, one has to propagate $1 + 2D$ vectors through the computational graph, see \cref{eq:laplacian-naive}. If we apply the collapsed Taylor-mpre of Ad as proposed here, $1 + D + 1$ vectors are propagated. For our simple example, the resulting scheme is presented in \cref{eq:laplacian-efficient}, where changes are highlighted once more in \textcolor{maincolor}{\mycolor}).
 Note that this scheme is aligned with the findings of \cite{li2023forward}, but here it is embedded into a general framework.
 
 
@@ -113,80 +107,106 @@ with $N = D$ and $\vv_n = \ve_n$.
 Despite being already general enough to unify various approaches for the computation of important differential operators, up to now our framework cannot handle operators that include arbitrary mixed-partial derivatives.
 To tackle this problem, we extend our framework to transform a differential operator containing arbitrary mixed-partial derivatives into a combination of Jets using the result of Griewank et al. \cite{griewank_evaluating_1999}.
 
-\todo{T: Working on it.}
-To extend our method, we start with a generalized version of \cref{eq:sum-k-directional}. We assume there are $P$ different directions: \todo{T: I'm sorry, mir fällt gerade nichts besseres ein}
-\begin{align}\label{eq:sums-k-directional}
-  \sum_{n_1=1}^{N_1} \dots \sum_{n_P=1}^{N_P}\left< 
-  \partial^{K} f(\vx_0),
-  \otimes_{k=1}^{p_{n_1}}\vv_{n_1} \otimes \dots \otimes_{k=1}^{p_{n_P}}\vv_{n_P}
-  \right>,
-\end{align}
-where $\vp = (p_1, \dots, p_P)$ are defined by the differential operator such that $\sum_i p_i = K$. What seems complicated is indeed the framework of to handle operators like the Biharmonic Operator (see \cref{sec:example2}). In general, there are summands where some of the direction vectors $\vv_{n_k}$ do not coincide. Those summands are not directly representable by $K$-Jets and thus, not computable via collapsed Taylor-mode. However, instead of relying on nested derivative calls we are going to apply the technique of Griewank et al. to reconstruct a mixed-partial of degree $K$ from a family of $K$-Jets. In the next paragraph we transfer the notation of \cref{eq:sums-k-directional} into the setting of the work of Griewank et al.
-Let $P_{n_1 \dots n_K}$ be the number of distinct $\vv_{n_k}$ of the corresponding summand and $\vp = (p_1, \dots, p_P)$ the number of the occurrences of the vectors. Stacking the distinct vectors into a single matrix $\mV_{n_1 \dots n_K} \in \mathbb{R}^{D \times P_{n_1 \dots n_K}}$ allows the following reformulation of \cref{eq:sums-k-directional}:
-\begin{equation}
-    \left. 
-    \frac{d^K}{d\vz_{n_1 \dots n_K}^\vp }
-    \vf
-    \left(
-    \vx_0 + \mV_{n_1 \dots n_K} \vz_{n_1 \dots n_K}
-    \right)
-    \right|_{\vz_{n_1 \dots n_K} = \vzero}
-\end{equation}
-The equation above is formulated in multi-index notation, which is further specified in \cref{sec:appendix_ttc}. Note, apart from the alignment of the order of $\vv_{n_k}$ between $\vp$ and $\mV_{n_1 \dots n_K}$ the order is not relevant because of the symmetry of the tensor product.
-Griewank et al. found that this equation equals a certain sum of $K$-Jets
-\begin{equation}
-\label{eq:ttc_general}
-    \sum_{\underset{\vq \in \mathbb{N}^{P{n_1 \dots n_K}}}{|\vq| = |\vp|}}
-    \gamma_{\vp \vq}
-    \frac{1}{\vp!}
-    \left<
-    \partial^{K}\vf,
-    \otimes_{k=1}^K
-    \mV_{n_1 \dots n_K} \vq
-    \right>.
-\end{equation}
-
-
-\cref{sec:appendix_ttc} provides supplementary details to the multi-index notation of the formula. From \cref{eq:ttc_general} we conclude
-\begin{align} \label{eq:ttc_general_operator}
-  \sum_{n_1=1}^{N_1} \dots \sum_{n_K=1}^{N_K}\left< 
-  \partial^{K} f(\vx_0),
-  \otimes_{k=1}^K \vv_{n_k}
-  \right>
-  = 
-  \sum_{n_1=1}^{N_1} \dots \sum_{n_K=1}^{N_K} 
-  \sum_{\underset{\vq \in \mathbb{N}^{P{n_1 \dots n_K}}}{|\vq| = |\vp|}}
-    \gamma_{\vp \vq}
-    \frac{1}{\vp!}
-    \left<
-    \partial^{K}\vf,
-    \otimes_{k=1}^K
-    \mV_{n_1 \dots n_K} \vq
-    \right>.
-\end{align}
-Therefore, a general differential operator with arbitrary mixed-partial derivatives is representable through a family of $K$-Jets. Thus, every operator in the form of $\cref{eq:ttc_general}$ can be computed via our collapsed Taylor-mode by propagating the different $K$-Jets with directions $\mV_{n_1 \dots n_K}\vq$ instead of depending on expensive nested derivative calls. 
-
-As the inventors of the formula already recognized, the coefficients $\gamma_{\vp\vq}$ only depend on the problem structure \cref{eq:ttc_general} and are independent of the function $\vf$. As we will show, this allows us to exploit symmetry that is often inherent to differential operators.
-
-\subsection{Examples} \label{sec:example2}
-
-\paragraph{Biharmonic Operator}
-The Biharmonic Operator is a fourth-order differential operator with mixed-partial derivatives that is interesting for some practitioners. \todo{cite}
-It is defined as
+Before we extend our method to work on the generalized version of \cref{eq:sum-k-directional}, we consider the Biharmonic Operator:
 \begin{align}
 \label{eq:biharm}
     \Delta^2 \vf(\vx)
     \coloneqq
-    \sum_{i=1}^D \sum_{j=1}^D
-    \frac{\partial^4 \vf(\vx)}{\partial \evx_i^2 \partial \evx_j^2}
+    \sum_{n_1=1}^D \sum_{n_2=1}^D
+    \frac{\partial^4 \vf(\vx)}{\partial \evx_{n_1}^2 \partial \evx_{n_2}^2}
     =
-    \sum_{i=1}^D \sum_{j=1}^D
+    \sum_{n_1=1}^D \sum_{n_2=1}^D
     \left<
     \partial^4 \vf(\vx),
-    \ve_i \otimes \ve_i \otimes \ve_j \otimes \ve_j
-    \right>,
+    \left(\ve_{n_1}\right)^{\otimes 2} \otimes \left(\ve_{n_2}\right)^{\otimes 2}
+    \right>.
 \end{align}
-and therefore a special case of \cref{eq:sums-k-directional} if we select $K = 4, P = 2, N_1 = N_2 = D$, $\vv_{n_1} = \ve_{n_1}$ and $\vv_{n_2} = \ve_{n_2}$.
+For $P$ different sums and arbitrary directions $\vv_{n_k}$, we can write this as
+\begin{align}\label{eq:sums-k-directional}
+  \sum_{n_1=1}^{N_1} \dots \sum_{n_P=1}^{N_P}\left< 
+  \partial^{K} f(\vx_0),
+  \left(\vv_{n_1}\right)^{\otimes p_1} 
+  \otimes \ldots \otimes 
+  \left(\vv_{n_P}\right)^{\otimes p_P}
+  \right>,
+\end{align}
+where $\vp = (p_1, \dots, p_P)$ such that $\sum_i p_i = K$. What seems complicated is indeed a framework to handle operators like the Biharmonic Operator, to see this select $K = 4, P = 2, N_1 = N_2 = D$, $\vv_{n_1} = \ve_{n_1}$ and $\vv_{n_2} = \ve_{n_2}$.
+
+In general, \cref{eq:sums-k-directional} includes summands where not all directions coincide as it is the case for \cref{eq:sum-k-directional}. Those summands are not directly representable by $K$-Jets and thus, not computable via collapsed Taylor-mode. However, Griewank et al. found that it is possible to reconstruct linear combinations of mixed-partial derivatives of degree $K$ from a family of $K$-Jets, which corresponds exactly to our situation. In our context the reconstruction reads:
+\begin{equation}
+\label{eq:ttc_general}
+    \left< 
+  \partial^{K} f(\vx_0),
+  \left(\vv_{n_1}\right)^{\otimes p_1} 
+  \otimes \ldots \otimes 
+  \left(\vv_{n_P}\right)^{\otimes p_P}
+  \right> 
+  = \sum_{\underset{\vq \in \mathbb{N}^P}{|\vq| = |\vp|}}
+    \gamma_{\vp \vq}
+    \frac{1}{\vp!}
+    \left<
+    \partial^{K}\vf,
+    \otimes_{k=1}^K
+    \sum_{p=1}^P \vv_{n_p} q_p
+    \right>.
+\end{equation}
+
+
+\cref{sec:appendix_ttc} provides supplementary details for the multi-index notation used in the formula. From this reconstruction we conclude that \cref{eq:sums-k-directional} can be rewritten to
+\begin{align} \label{eq:ttc_general_operator}
+  \sum_{n_1=1}^{N_1} \dots \sum_{n_P=1}^{N_P} 
+  \sum_{\underset{\vq \in \mathbb{N}^P}{|\vq| = |\vp|}}
+    \gamma_{\vp \vq}
+    \frac{1}{\vp!}
+    \left<
+    \partial^{K}\vf,
+    \otimes_{k=1}^K
+    \sum_{p = 1}^P \vv_{n_p} q_p
+    \right>.
+\end{align}
+
+As the inventors of the formula already recognized, the coefficients  $\gamma_{\vp\vq} \frac{1}{\vp!}$ only depend on the problem structure (i.e., on $\vp$ and $\vq$) and are independent of the function $\vf$ and the directions $\vv_{n_k}$. Therefore, we can pull out the inner sum as well as the coefficients and end with the expression
+\begin{equation}
+    \sum_{\underset{\vq \in \mathbb{N}^P}{|\vq| = |\vp|}}
+    \gamma_{\vp \vq}
+    \frac{1}{\vp!}
+    \sum_{n_1=1}^{N_1} \dots \sum_{n_P=1}^{N_P} 
+    \left<
+    \partial^{K}\vf,
+    \otimes_{k=1}^K
+    \sum_{p = 1}^P \vv_{n_p} q_p
+    \right>.
+\end{equation}
+We can furthermore exploit symmetries in $\gamma_{\vp\vq}$ that are often inherent to the differential operators. We will show that below. \todo{t: Ich denke mit der notation können wir sogar beim allgemeinen Operator explizit sagen wie die Symmetrie genutzt wird, um die Koeffizieten zusammenzuziehen.} 
+
+To summarize, we have been able to express a general differential operator given by  \cref{eq:sums-k-directional} with arbitrary mixed-partial derivatives through a family of $K$-Jets. Thus, it can be efficiently computed via our collapsed Taylor-mode by propagating the different $K$-Jets with directions $\sum_{p=1} \vv_{n_p}q_p$ instead of depending on expensive nested derivative calls. It is important to emphasize that, in contrast to nesting derivative calls and other approaches\todo{cite}, our method allows for distributing the work of computing the derivative between parallel tasks, since all Jets are independent of each other. 
+
+\subsection{[Not done]Examples} \label{sec:example2}
+\todo{T: working on it}
+\paragraph{Biharmonic Operator}
+\todo{intro, where is it used and cite papers}
+
+
+
+\begin{align}
+    \Delta^2 \vf(\vx)
+    &=
+    \sum_{\underset{\vq \in \mathbb{N}^2}{|\vq| = |\vp|}}
+    \gamma_{\vp \vq}
+    \frac{1}{\vp!}
+    \sum_{n_1=1}^2 \sum_{n_2=1}^2 
+    \left<
+    \partial^4 \vf,
+    \otimes_{k=1}^4 \left(\ve_{n_1} q_1 + \ve_{n_2} q_2\right)
+    \right>
+    \\
+    &=
+    \gamma_{(2, 2)(4, 0)} 
+    \gamma_{(2, 2)(0, 4)}
+    \gamma_{(2, 2)(3, 1)}
+    \gamma_{(2, 2)(1, 3)}
+    \gamma_{(2, 2)(2, 2)}
+\end{align}
 
 
 Our approach first applies \cref{eq:ttc_general} to the Biharmonic Operator \cref{eq:biharm}. To this end, parameters $\vk, p$, auxiliary variables $\vz$, and matrices $\boldsymbol{S}_{ij}$ have to be selected for all occurring mixed-partial derivatives. The parameters are grouped into the case where all four derivatives directions coincide, i.e, $i = j$ and the case where $i \neq j$. The selected parameters are depicted in \cref{tab:params_ttc_biharm}. 

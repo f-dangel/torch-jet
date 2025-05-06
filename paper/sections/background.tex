@@ -124,7 +124,8 @@ Here, $n_s$ counts occurrences of $s$ in an integer partitioning $\sigma$, e.g.,
 Our contribution modifies Taylor-mode AD to incorporate structure of common differential operators. 
 To explain our approach systematically, we will use the following Taylor-mode AD scheme, which derives the $K$-jet for a decomposed $\vf = \vg \circ \vh$ given $J^K\vx$:
 \todo{AW: It is difficult to fit also the number of the equation ointo the line, therefore I deleted the number and will reformulate the reference to this equation}
-\begin{align*}%\label{eq:taylor-mode-composition}
+\begin{align}\label{eq:taylor-mode-composition}
+\begin{split}
       &\begin{pmatrix*}
         \vx_0
         \\
@@ -166,11 +167,12 @@ To explain our approach systematically, we will use the following Taylor-mode AD
           \nu(\sigma) \left<
           \partial^{|\sigma|} \vh(\vx_0),
           \tensorprod{s \in \sigma} \vx_s
-          \right>
+          \right>\!\!\!
         \end{pmatrix*} 
         \\
-        &\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
-        \begin{pmatrix*}[l]
+        &\!\!\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}\!\!
+         \left(\!\!\!
+          \begin{array}{l}   
           \vg_0 \!=\!  \vg(\vh_0)
           \\
           \vg_1 \!=\! \left< 
@@ -180,7 +182,7 @@ To explain our approach systematically, we will use the following Taylor-mode AD
           \\
           \vg_2 \!=\! \left<
           \partial^2 \vg(\vh_0), 
-          \vh_1 \otimes \vh_1\right>
+          \vh_1 \\otimes \vh_1\right>
           \!+\! 
           \left< \partial \vg(\vh_0),
           \vh_2
@@ -198,9 +200,12 @@ To explain our approach systematically, we will use the following Taylor-mode AD
           \partial^{|\sigma|} \vg(\vh_0),
           \tensorprod{s \in \sigma} \vh_s
           \right>
-        \end{pmatrix*}
-        \!=\!
-        \begin{pmatrix*}[l]
+          \end{array}
+          \!\!\!\!
+        \right)
+        \!\!=\!\!
+        \left(\!\!\!
+          \begin{array}{l}
           \vf_0 \!=\!  \vf(\vx_0)
           \\
           \vf_1 \!=\! \left<
@@ -228,10 +233,12 @@ To explain our approach systematically, we will use the following Taylor-mode AD
           \nu(\sigma) \left< 
           \partial^{|\sigma|} \vf(\vx_0),
           \tensorprod{s \in \sigma} \vx_s
-          \right>
-        \end{pmatrix*}
-   % \end{split}
-\end{align*}
+          \right> 
+          \end{array}
+          \!\!\!\!
+          \right)
+    \end{split}
+\end{align}
 This procedure explains how to compute the coefficients that occur in the $K$-jets of nodes in the computational graph of $\vf$'s decomposition, and how the result relates to the input $K$-jet.
 
 

@@ -107,69 +107,66 @@ An important special case of \cref{eq:weighted-laplacian} is the Hutchinson Trac
     \otimes_{i=1}^K \ve_d
     \right>,
 \end{align}
-with $N = D$ and $\vv_n = \ve_n$. t
+with $N = D$ and $\vv_n = \ve_n$. 
 
 \subsection{Operators with mixed-partial Derivative}
 Despite being already general enough to unify various approaches for the computation of important differential operators, up to now our framework cannot handle operators that include arbitrary mixed-partial derivatives.
 To tackle this problem, we extend our framework to transform a differential operator containing arbitrary mixed-partial derivatives into a combination of Jets using the result of Griewank et al. \cite{griewank_evaluating_1999}.
 
 \todo{T: Working on it.}
-To extend our method, we start with a generalized version of \cref{eq:sum-k-directional}:
+To extend our method, we start with a generalized version of \cref{eq:sum-k-directional}. We assume there are $P$ different directions: \todo{T: I'm sorry, mir fällt gerade nichts besseres ein}
 \begin{align}\label{eq:sums-k-directional}
-  \sum_{n_1=1}^{N_1} \dots \sum_{n_K=1}^{N_K}\left< 
+  \sum_{n_1=1}^{N_1} \dots \sum_{n_P=1}^{N_P}\left< 
   \partial^{K} f(\vx_0),
-  \otimes_{k=1}^K \vv_{n_k}
-  \right>
-  =
-  \sum_{k = 1}^K \left. \frac{d^K}{dz^K}
-  f(\vx_0 + \mV_k \vz) \right|_{\vz = \vzero}.
+  \otimes_{k=1}^{p_{n_1}}\vv_{n_1} \otimes \dots \otimes_{k=1}^{p_{n_P}}\vv_{n_P}
+  \right>,
 \end{align}
-The equation includes operators like the Biharmonic Operator (see \cref{sec:example2}). In general, the independent summation over the direction vectors $\vv_{n_k}$ is assumed. For distinct $\vv_{n_k}$, the summands are not directly representable by $K$-Jets and thus, not computable via collapsed Taylor-mode. 
-The technique of Griewank et al. to reconstruct a mixed-partial of degree $K$ from a family of $K$-Jets has been summarized in the formula
-
-$\vv_k$ coincide such that we have only $P \leq K$ different direction vectors
-
-$\vi = (p_1, \dots, p_P)$ numbers of how often every direction occur.
-
+where $\vp = (p_1, \dots, p_P)$ are defined by the differential operator such that $\sum_i p_i = K$. What seems complicated is indeed the framework of to handle operators like the Biharmonic Operator (see \cref{sec:example2}). In general, there are summands where some of the direction vectors $\vv_{n_k}$ do not coincide. Those summands are not directly representable by $K$-Jets and thus, not computable via collapsed Taylor-mode. However, instead of relying on nested derivative calls we are going to apply the technique of Griewank et al. to reconstruct a mixed-partial of degree $K$ from a family of $K$-Jets. In the next paragraph we transfer the notation of \cref{eq:sums-k-directional} into the setting of the work of Griewank et al.
+Let $P_{n_1 \dots n_K}$ be the number of distinct $\vv_{n_k}$ of the corresponding summand and $\vp = (p_1, \dots, p_P)$ the number of the occurrences of the vectors. Stacking the distinct vectors into a single matrix $\mV_{n_1 \dots n_K} \in \mathbb{R}^{D \times P_{n_1 \dots n_K}}$ allows the following reformulation of \cref{eq:sums-k-directional}:
+\begin{equation}
+    \left. 
+    \frac{d^K}{d\vz_{n_1 \dots n_K}^\vp }
+    \vf
+    \left(
+    \vx_0 + \mV_{n_1 \dots n_K} \vz_{n_1 \dots n_K}
+    \right)
+    \right|_{\vz_{n_1 \dots n_K} = \vzero}
+\end{equation}
+The equation above is formulated in multi-index notation, which is further specified in \cref{sec:appendix_ttc}. Note, apart from the alignment of the order of $\vv_{n_k}$ between $\vp$ and $\mV_{n_1 \dots n_K}$ the order is not relevant because of the symmetry of the tensor product.
+Griewank et al. found that this equation equals a certain sum of $K$-Jets
 \begin{equation}
 \label{eq:ttc_general}
-    \left< 
-    \partial^{K} f(\vx_0),
-    \otimes_{k=1}^K \vv_{k}
-    \right>    
-    = 
-    \sum_{\underset{\vl \in \mathbb{N}^P}{|\vl| = |\vi|}}
-    \gamma_{\vi \vl}
-    \frac{1}{\vi!}
+    \sum_{\underset{\vq \in \mathbb{N}^{P{n_1 \dots n_K}}}{|\vq| = |\vp|}}
+    \gamma_{\vp \vq}
+    \frac{1}{\vp!}
     \left<
     \partial^{K}\vf,
     \otimes_{k=1}^K
-    \sum_{p=1}^P\vv_p l_p
+    \mV_{n_1 \dots n_K} \vq
     \right>.
 \end{equation}
 
 
-\cref{sec:appendix_ttc} provides supplementary details to the formula. From \cref{eq:ttc_general} we conclude
+\cref{sec:appendix_ttc} provides supplementary details to the multi-index notation of the formula. From \cref{eq:ttc_general} we conclude
 \begin{align} \label{eq:ttc_general_operator}
   \sum_{n_1=1}^{N_1} \dots \sum_{n_K=1}^{N_K}\left< 
   \partial^{K} f(\vx_0),
   \otimes_{k=1}^K \vv_{n_k}
   \right>
   = 
-  
-  \sum_{n=1}^N \sum_{\underset{\vl \in \mathbb{N}^p}{|\vl| = |\vk_n|}}
-    \gamma_{\vk_n \vl}
-    \frac{1}{\vk_n!}
+  \sum_{n_1=1}^{N_1} \dots \sum_{n_K=1}^{N_K} 
+  \sum_{\underset{\vq \in \mathbb{N}^{P{n_1 \dots n_K}}}{|\vq| = |\vp|}}
+    \gamma_{\vp \vq}
+    \frac{1}{\vp!}
     \left<
-    \partial^{|\vk_n|}\vf,
-    \otimes_{l=1}^{|\vk_n|}
-    \boldsymbol{S}\vl
+    \partial^{K}\vf,
+    \otimes_{k=1}^K
+    \mV_{n_1 \dots n_K} \vq
     \right>.
 \end{align}
-Therefore, a general differential operator with arbitrary mixed-partial derivatives $\mA\vf(\vx_0)$ is expressible in our setting \cref{eq:sum-k-directional}. Thus, for every $\mA$ we can apply our efficient propagation scheme and have to propagate the different $|\vk_n|$-Jets with directions $\mS \vl$ \todo{maybe be a bit more precise here} instead of depending on expensive nested derivative calls. 
+Therefore, a general differential operator with arbitrary mixed-partial derivatives is representable through a family of $K$-Jets. Thus, every operator in the form of $\cref{eq:ttc_general}$ can be computed via our collapsed Taylor-mode by propagating the different $K$-Jets with directions $\mV_{n_1 \dots n_K}\vq$ instead of depending on expensive nested derivative calls. 
 
-As the inventors of the formula already recognized, the coefficients $\gamma_{\vk\vl}$ only depend on the problem structure and are independent of the function $\vf$. As we will show, this allows to exploit symmetry that is often inherent to differential operators.
-\todo{are there symmetries directly exploitable?}
+As the inventors of the formula already recognized, the coefficients $\gamma_{\vp\vq}$ only depend on the problem structure \cref{eq:ttc_general} and are independent of the function $\vf$. As we will show, this allows us to exploit symmetry that is often inherent to differential operators.
 
 \subsection{Examples} \label{sec:example2}
 
@@ -187,17 +184,10 @@ It is defined as
     \left<
     \partial^4 \vf(\vx),
     \ve_i \otimes \ve_i \otimes \ve_j \otimes \ve_j
-    \right>.
+    \right>,
 \end{align}
+and therefore a special case of \cref{eq:sums-k-directional} if we select $K = 4, P = 2, N_1 = N_2 = D$, $\vv_{n_1} = \ve_{n_1}$ and $\vv_{n_2} = \ve_{n_2}$.
 
-The classical way to compute such derivatives is to nest all four derivatives, which grows exponentially in run-time and memory with the derivative order. A comparison with this approach is given in \cref{sec:experiments}.
-
-Another way is naturally given by considering the Biharmonic Operator as the second-order Laplacian. Then, \cref{eq:laplacian-naive} could be applied twice. Instead of propagating fourth-order derivative tensors, holding $\left( \begin{matrix} D + 3 \\ 4 \end{matrix} \right) \in O(D^4)$ distinct elements, the twice-applied Laplacian would have to push $(2 + D) + D * (2 + D) + D * (2 + D) = 2D^2 + 5D + 2$ vectors.
-Using \cref{eq:laplacian-efficient} we reduce this further to $(2 + D) + D * (2 + D) + 1 * (2 + D) = D^2 + 4D + 5$ vectors. 
-
-A different approach was proposed in \cite{shi2024stochastic}, which relies on the hand-selection of $6$-Jets to extract the searched derivatives. See the appendix for more details: \cref{sec:biharm_felix_approach}. 
-
-\todo{compare with \cite{hu2023hutchinson}}
 
 Our approach first applies \cref{eq:ttc_general} to the Biharmonic Operator \cref{eq:biharm}. To this end, parameters $\vk, p$, auxiliary variables $\vz$, and matrices $\boldsymbol{S}_{ij}$ have to be selected for all occurring mixed-partial derivatives. The parameters are grouped into the case where all four derivatives directions coincide, i.e, $i = j$ and the case where $i \neq j$. The selected parameters are depicted in \cref{tab:params_ttc_biharm}. 
 
@@ -321,6 +311,32 @@ The \Crefrange{eq:ttc_biharm_full1}{eq:ttc_biharm_full3} are computed through $D
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+The classical way to compute such derivatives is to nest all four derivatives, which grows exponentially in run-time and memory with the derivative order. A comparison with this approach is given in \cref{sec:experiments}. 
+
+
+
+
+
+
+
+
+Another way is naturally given by considering the Biharmonic Operator as the second-order Laplacian. Then, \cref{eq:laplacian-naive} could be applied twice. Instead of propagating fourth-order derivative tensors, holding $\left( \begin{matrix} D + 3 \\ 4 \end{matrix} \right) \in O(D^4)$ distinct elements, the twice-applied Laplacian would have to push $(2 + D) + D * (2 + D) + D * (2 + D) = 2D^2 + 5D + 2$ vectors.
+Using \cref{eq:laplacian-efficient} we reduce this further to $(2 + D) + D * (2 + D) + 1 * (2 + D) = D^2 + 4D + 5$ vectors. 
+
+A different approach was proposed in \cite{shi2024stochastic}, which relies on the hand-selection of $6$-Jets to extract the searched derivatives. See the appendix for more details: \cref{sec:biharm_felix_approach}. 
+
+\todo{compare with \cite{hu2023hutchinson}}
 \paragraph{[Not done] Stochastic Taylor Derivative Estimator}
 \todo{consider this for mixed-partials, like estimator of biharmonic, maybe mention this also in weighted sum of derivatives}
 \cite{hu2023hutchinson} also considered biharmonic!

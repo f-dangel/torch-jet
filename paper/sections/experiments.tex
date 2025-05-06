@@ -1,6 +1,21 @@
-\todo{the example below could be used as benchmark? Otherwise we can remove it.}
+\paragraph{Implementation design, decisions, and limitations.} Although JAX already offers an experimental Taylor mode implementation, we re-implemented Taylor mode in PyTorch, taking heavy inspiration from the JAX implementation for the interface.
+We decided so because PyTorch's \texttt{fx} library provides a user-friendly official interface to capture and transform compute graphs of functions to apply our proposed collapsing.
+While we believe that such graph transformations should in principle be feasible in JAX as well (and could \eg be integrated into its \texttt{jit} compiler), it seems that this can currently only be achieved with (potentially fragile) internal APIs and requires a deep understanding of its internal tracing mechanisms.
+
+Our implementation takes a PyTorch function (\eg a neural net) and first captures its compute graph using \texttt{torch.fx}'s symbolic tracing mechanism, then replaces each operation with its Taylor arithmetic.
+This yields the compute graph of the function's $K$-jet.
+Users can use this vanilla Taylor mode to define their differential operator's computation. 
+The collapsing is done by again tracing said computation with \texttt{torch.fx} and rewriting the resulting graph, propagating the summation of highest coefficient up.
+The resulting graph performs the same computation, but uses our collapsed Taylor mode.
+See \Cref{fig:interface-overview} for a visual walk-through of the procedure.
+
+TODO Limitations.
+
+\paragraph{Experimental procedure.} We compare our collapsed Taylor mode with vanilla Taylor mode and nested first-order AD on the previously discussed differential operators in PyTorch on an NVIDIA RTX 6000 with .
+
 
 \paragraph{Example for weighted sum of second-order derivatives.}
+\todo{the example below could be used as benchmark? Otherwise we can remove it.}
 Let's consider the Fokker-Planck equation for the evolution of a probability density $p(\vx, t)$ with $\vx \in \sR^D$ and $t \in \sR_{\le 0}$ given by
 \begin{align}
   \frac{\partial p(\vx, t)}{\partial t}

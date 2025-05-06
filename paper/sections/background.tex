@@ -1,6 +1,4 @@
-
-\todo{We need mention differential operators here, \AW{I would introduce the differential operators at the end of this section. I think that for readers not familar with the Taylor mode, the example in the current form is very usefull}}
-To motivate our approach, consider the one-dimensional case $f: \mathbb{R} \to \mathbb{R}$. When the input variable $x$ is interpreted as a univariate Taylor polynomial 
+Taylor-mode AD allows the computation of higher-order derivatives -- as needed for, e.g., for PDE operators -- through a suitable combinations of Taylor coefficients. The latter can easily be propagated using the chain rule. To illustrate Taylor-mode AD, consider consider the one-dimensional case $f: \mathbb{R} \to \mathbb{R}$. When the input variable $x$ is interpreted as a univariate Taylor polynomial 
 of degree $K$, i.e., $x(t) = \sum_{k=1}^K \frac{t^k}{k!} x_k$ and $f$ is smooth enough, one can also evaluate higher order derivatives of the path $f(x(t))$ that yield a corresponding Taylor polynomial of $f$, i.e., $\sum_{k=0}^K \frac{t^k}{k!} f_k$  with $f_k := \left. \frac{d^k}{dt^k} f(x(t)) \right|_{t=0}$. Using the chain rule, one obtains for the simple example considered here and $K=3$ the coefficients 
 \begin{align}
 \label{eq:taylor-mode-scalar}
@@ -93,7 +91,7 @@ Also in the more general vector-valued case, the evaluation of $\vf$'s $K$-jet a
 \end{figure}
 
 Next, we have to consider the calculation of the derivative values $\vf_k$. As is common for AD, the computation of $\vf_k$
-known as the Taylor-mode of AD relies on a decomposition of $\vf$ into elemental functions for which the derivative rules are known and the application of the chain rule. In the simplest case, $\vf$ might be given as the decomposition $\vf = \vg \circ \vh$ of two elemental functions $\vg$ and $\vh$. Having defined $J^K\vx$, Taylor-mode AD calculates the $K$-jet $\vf$ by successively evaluating all $\vf_k$ through the chain rule using the Faà di Brunos formula mentioned above. For $\vf = \vg \circ \vh$ using the notation introduced above, this formula reads 
+known as the Taylor-mode of AD relies on a decomposition of $\vf$ into elemental functions for which the derivative rules are known and the application of the chain rule. In the simplest case, $\vf$ might be given as the decomposition $\vf = \vg \circ \vh$ of two elemental functions $\vg$ and $\vh$. Having defined $J^K\vx$, Taylor-mode AD calculates the $K$-jet of $\vf$ by successively evaluating all $\vf_k$ through the chain rule using Faà di Bruno's formula mentioned above. For $\vf = \vg \circ \vh$ using the notation introduced above, this formula reads 
 \begin{align}
 \label{eq:faa-di-bruno}
   \vf_k = \vg_k
@@ -125,8 +123,8 @@ Here, $n_s$ counts occurrences of $s$ in an integer partitioning $\sigma$, e.g.,
 
 Our contribution modifies Taylor-mode AD to incorporate structure of common differential operators. 
 To explain our approach systematically, we will use the following Taylor-mode AD scheme, which derives the $K$-jet for a decomposed $\vf = \vg \circ \vh$ given $J^K\vx$:
+\todo{AW: It is difficult to fit also the number of the equation ointo the line, therefore I deleted the number and will reformulate the reference to this equation}
 \begin{align*}%\label{eq:taylor-mode-composition}
- % \begin{split}
       &\begin{pmatrix*}
         \vx_0
         \\
@@ -235,6 +233,7 @@ To explain our approach systematically, we will use the following Taylor-mode AD
    % \end{split}
 \end{align*}
 This procedure explains how to compute the coefficients that occur in the $K$-jets of nodes in the computational graph of $\vf$'s decomposition, and how the result relates to the input $K$-jet.
+
 
 As can be seen for all $K$-jets, the $K$-th coefficient is computed as the sum of weighted inner products over all derivative degrees $|\sigma|$ and the tensor product of corresponding input coefficients. This tensor product is highly nonlinear in general. However, in the following section, we propose a new approach that takes advantage of a linear structure in the input coefficients to be propagated through the computational graph. This linear structure is often exposed by differential operators
 that may include also mixed-partial derivatives. Being part of a higher-order derivative tensor, they are not directly computable using a single $K$-jet. Hence, we leverage the work of Griewank et al. \cite{griewank_evaluating_1999}. They derived a technique to compute the whole $K$-th derivative tensor with a minimal number of $K$-jets propagated through the computational graph by choosing the coefficients of the $K$-jets appropriately. \AW{Here now the picture and explanation}. 

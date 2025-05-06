@@ -1,35 +1,41 @@
-\todo{improve intro text \AW{I adapted the intro, I did not touch Sec 3.1 so far}}
-
-In this section, we exploit the linearity in the $K$th coefficient when propagating a family of $K$-jets through a computational graph. Such families of $K$-jets were already considered for the Forward-Laplace \cite{li2023forward}, Randomized Taylor-Mode ~\cite{shi2024stochastic, hu2023hutchinson} and the generalized trace operator. Afterwards, we show that all differential operators, including those not directly representable through jets because of mixed partial derivatives, can be computed via 
-the propagation of a suitable chosen family of jets using an algorithm of Griewank et al. \cite{griewank_evaluating_1999}. The result will also include the approach of \cite{shi2024stochastic} for computing arbitrary differential operators. However, our approach only needs jets of the highest derivative degree. In addition, it has to be emphasized that our proposed method can be completely automated, meaning that it can be implemented as part of a JIT-toolchain.
+In this section, we exploit the linearity in the $K$th coefficients when propagating a family of $K$-jets through a computational graph. Such families of $K$-jets were already considered for the Forward-Laplace \cite{li2023forward}, Randomized Taylor-Mode ~\cite{shi2024stochastic, hu2023hutchinson} and the generalized trace operator\todo{T: Cite the papers that also considered this, and maybe an application?}. Afterwards, we show that differential operators with a suitable structure can be computed via the propagation of a appropriately chosen family of jets using an algorithm of Griewank et al. \cite{griewank_evaluating_1999}. The result will also include the approach of \cite{shi2024stochastic} for computing arbitrary differential operators. However, our approach only needs jets of the highest derivative degree occurring in the differential operator. In addition, it has to be emphasized that our proposed method can be completely automated, meaning that it can be implemented as part of a JIT-toolchain. \todo{T: BTW the automation is currently just a claim of me. I did not fully think through the idea of automating the TTC formula. }
 
 
-\subsection{Linearity for Taylor-mode AD}
-\todo{M: Question: Are the vectors $\vv_n$ sufficiently motivated for a reader at this point of the manuscript? \AW{Ich glaube nicht, ich verstehe das auch noch nicht ganz, ist das ein $K$-jet oder eine Familie von $K$-jets? Oder eine Summe von $N$ $K$-jets? Dann müssen wir irgendwie die Beziehung zu den $\vx$ noch ziehen. Können wir die irgendwie geeignet durchnummerieren?}}
-The aim is to compute the $K$-Jet 
-\begin{align}\label{eq:sum-k-jet}
+\subsection{Exploiting Linearity in Taylor-mode AD}
+To derive the proposed method, the considerations start with a sum over $K$th-order directional derivatives of a function $\vf$ like the Laplacian. In our notation, this sum can be represented as 
+\begin{align}\label{eq:sum-k-directional}
   \sum_{n=1}^N\left< 
   \partial^{K} f(\vx_0),
   \otimes_{k=1}^K \vv_n
   \right>.
 \end{align}
-Inserting this into the propagation scheme \cref{eq:taylor-mode-composition} gives the Taylor-mode presented in \cref{eq:sum-taylor-mode-naive}, which would propagate $1 + KN$ vectors. 
+For the Laplacian, one has  $K = 2$, $N$ equals the dimension of $\vx$, i.e., $N= D$, and the vectors are chosen as the unit vectors $\vv_n = \ve_n$.
+Instead of nesting derivative calculations to compute the full $K$-th order derivative tensor, $K$-jets can be utilized to efficiently calculate those derivatives. To this end, one
+could propagate a family of $K$-jets as illustrated above for a simple example through the whole computational using the Taylor-mode of AD. %, see Equation~\cref{eq:sum-taylor-mode-naive}. 
+\todo{AW: Do we need Equation~\cref{eq:sum-taylor-mode-naive}? This is just one more step of propagation through the computation graph and the sum over the entries?
+T: I think it is helpful to exactly know what and how we want to compute something, but I'm open to discuss it} 
+Note, that it is crucial to select appropriate input coefficients $\vx_i$. For example, one could initialize the $n$-th $K$-jet with $\vx_{0, n} = \vv_n$ and $\vx_{k, n} = \vzero\in\R^D$ if the differential operator is given by the sum of the pure $K$-th derivatives with respect to the components of $\vx$. In \cref{eq:sum-taylor-mode-naive} we selected the $n$-th $K$-Jet with $\vx_{0, n} = \vv_n$ and $\vx_{k, n} = \vzero$.
 
-Our efficient approach is based on the observation that there is a special element in $\partitioning(K)$, namely the trivial partition $\sigma_{t} = \{K\}$. This partition corresponds to the term 
+Without further optimizations, the Taylor-mode of AD( \cref{eq:sum-taylor-mode-naive}) propagates $1 + KN$ through every node of the computational graph. Subsequently, one would 
+have to sum the corresponding highest derivatives. \todo{AW: I think we have to be careful to state the complexity precisely. Therefore, I would prefer the formulation as stated here, i.e., X vectors aof length Y, or we state the number of coefficients propagated. WIther way is fine for me, we should just clearly state is.
+T: From my perspective, it is already really clear. We propagate 1 + NK coefficients through every node. The size of the coefficients itself depends on the actual node. From my point of view it would not help to introduce a dimension for the nodes, it might even be to complicated then. But of course it only my point of view! Open to discuss.}
+
+The approach we propose here is based on the observation that there is a special element in the set of integer partitions $\partitioning(K)$, namely the trivial partition $\sigma_{t} = \{K\}$ corresponding, e.g., to the term
 \begin{equation}
     \nu(\sigma_{t}) \left<
-    \partial \vg(\vh),
+    \partial \vg(\vh_0),
     \vh_{K, n}
     \right>, 
 \end{equation}
-of the Faà di Bruno formula. Using the definitions of \cite{hardy2006combinatorics} it is $\nu(\sigma_{t}) = 1$. 
-Therefore,
-\begin{align}
-\label{eq:faa-di-bruno-expanded}
+of the Faà di Bruno formula. Using the definitions of \cite{hardy2006combinatorics}, one obtains $\nu(\sigma_{t}) = 1$. \todo{AW: I see the $t$ for trivial, however we also have $t$ as argument where the jet is evaluated, I would prefer a different notation here.
+T: What do you think about $\sigma_{tr}$? Since we use this sigma just here, its fine for me to even call it $\sigma_{trivial}$
+}
+Therefore, one has
+\begin{equation}\label{eq:faa-di-bruno-expanded}
      \vf_{K, n} 
      = 
      \vg_{K,n} 
-     &= 
+     = 
      \displaystyle\sum_{
       \sigma \in \partitioning(K) \setminus \{\sigma_t\}
      } 
@@ -37,22 +43,17 @@ Therefore,
      \partial^{|\sigma|} \vg(\vh_0),
      \tensorprod{s \in \sigma} \vh_{K, n}
      \right>
-     \\
-     &+
+     +
      \left<
-     \partial \vg(\vh),
+     \partial \vg(\vh_0),
      \vh_{K, n}
      \right>.
-\end{align}
-
-
-Looking at \cref{eq:faa-di-bruno-expanded} together with \cref{eq:sum-taylor-mode-naive}, it can be seen that it is not necessary to propagate the $K$-th Taylor coefficients $\vx_{K,n}, \{\vh_{K,n}\}_n, \{\vg_{K, n}\}_n$ to compute the $K$-Jet \cref{eq:sum-k-jet}. Instead, it is sufficient to propagate the sums of these coefficients directly by using linearity of $\left<\partial \vh, \bullet \right>$ and $\left< \partial g, \bullet \right>$. \Cref{eq:sum-taylor-mode-efficient} shows this scheme (changes highlighted in \textcolor{maincolor}{color}. This scheme \cref{eq:sum-taylor-mode-efficient}, only propagates $1 + (K-1)N + 1$ vectors. 
-
-To emphasize that the saving of $N-1$ vectors in the propagation scheme is indeed significant for common applications, important operators are discussed below. 
-
+\end{equation}
+The last inner-product term on the right-hand side is linear in $\vh_{K,n}$, marking the key property for our method. Hence, to compute the sum of $\{\vg_{K, n}\}_n$ and thus \cref{eq:sum-k-directional}, instead of passing the highest coefficients, like $\{\vh_{K,n}\}_n$, separately along the nodes of the computational graph, it is possible to directly propagate their sum like $\sum_n \vh_{K,n}$, due to the linearity of $\left<\partial \vh, \bullet \right>$ and $\left< \partial \vg, \bullet \right>$. Combining this insight with the Taylor-mode of AD  yields our proposed collapsed Taylor-mode as detailed in the appendix, see \cref{eq:sum-taylor-mode-efficient}  where the changes are highlighted in \textcolor{maincolor}{color}. This scheme propagates only $1 + (K - 1)N + 1$ vectors at every node in the computational graph.
+To emphasize that the saving of $N-1$ coefficients at every node in the propagation scheme is indeed significant for common applications, important operators are discussed below. 
 
 \subsection{Examples}
-A highlight of our general approach \cref{eq:sum-k-jet} is that it naturally includes common important differential operators or their approximation.
+A highlight of our general approach \cref{eq:sum-k-directional} is that it naturally includes common important differential operators or their approximation.
 
 \paragraph{Laplace Operator} The Laplace operator plays a central role in many physical and engineering applications, including electrostatics, fluid dynamics, and heat conduction. In the context of variational Monte Carlo simulations in quantum mechanics \cite{foulkes2001quantum, pfau2020ab}, the Laplacian of the wavefunction must be evaluated repeatedly as part of the wavefunction optimization process. For a function $f: \sR^D \to \sR$ the Laplacian is given as
 \begin{align}\label{eq:laplacian}
@@ -65,7 +66,7 @@ A highlight of our general approach \cref{eq:sum-k-jet} is that it naturally inc
   \ve_d \otimes \ve_d
   \right>
 \end{align}
-Assume that $f$ is again decomposed into $g \circ \vh$, where $\vh$ is vector valued, as is the case if $\vh$ is a hidden layer of a neural network. Selecting $K = 2$, $N=D$ and $\vv_n = \ve_n$ lifts \cref{eq:laplacian} into the setting of \cref{eq:sum-k-jet}.
+Assume that $f$ is again decomposed into $g \circ \vh$, where $\vh$ is vector valued, as is the case if $\vh$ is a hidden layer of a neural network. Selecting $K = 2$, $N=D$ and $\vv_n = \ve_n$ lifts \cref{eq:laplacian} into the setting of \cref{eq:sum-k-directional}.
 Naively applying the scheme \cref{eq:sum-taylor-mode-efficient} would lead to $1 + 2D$ (see \cref{eq:laplacian-naive}). If we instead apply our proposed efficient scheme \cref{eq:sum-taylor-mode-efficient}, only $1 + D + 1$ vectors are propagated. The scheme is presented in \cref{eq:laplacian-efficient} (changes highlighted in \textcolor{maincolor}{color})
 
 Note that this scheme is aligned with the findings of \cite{li2023forward}, but here it is embedded into a general framework.
@@ -78,7 +79,8 @@ A natural generalization of the Laplace operator involves forming weighted sums 
 \begin{align}\label{eq:weighted-laplacian}
   \sum_{i,j} \boldsymbol{C}_{i,j} \frac{\partial^2 \vf(\vx_0)}{\partial x_i \partial x_j}.
 \end{align}
-This expression represents the diffusion term in a Kolmogorov-type partial differential equation \cite{hu2023hutchinson}. It is often equivalently written as $\Tr (\langle \msigma \msigma^\top, \partial^2 \vf(\vx_0))\rangle$, where $\msigma$ may be a function $\msigma:\mathbb R^{D}\to \mathbb R^{D\times D}$. Since $\boldsymbol{C}$ is positive semi-definite it can be expressed as $\mC = \sum_{n=1}^{\rank(\mC)} \vc_n \vc_n^\top$ for suitable $\vc_n \in \sR^D$. This matches the setting of \cref{eq:sum-k-jet} with $K = 2, N = \rank(\mC)$ and $\vv_n = \vc_n$, and can be computed using \cref{eq:sum-taylor-mode-efficient}. This requires the propagation of $1 + \rank(\mC) + 1$ vectors instead of $1 + 2\rank(\mC)$.
+This expression represents, for example, the diffusion term in a Kolmogorov-type partial differential equation \cite{hu2023hutchinson}. It is often equivalently written as $\Tr ( \msigma \msigma^\top \partial^2 \vf(\vx_0))$, where $\msigma$ may be a function $\msigma:\mathbb R^{D}\to \mathbb R^{D\times D}$. Since $\boldsymbol{C}$ is positive semi-definite it can be expressed as $\mC = \sum_{n=1}^{\rank(\mC)} \vc_n \vc_n^\top$ for suitable $\vc_n \in \sR^D$. This matches the setting of \cref{eq:sum-k-directional} with $K = 2, N = \rank(\mC)$ and $\vv_n = \vc_n$, and can be computed using \cref{eq:sum-taylor-mode-efficient}. This requires the propagation of $1 + \rank(\mC) + 1$ vectors instead of $1 + 2\rank(\mC)$.
+An important special case of \cref{eq:weighted-laplacian} is the Hutchinson Trace Estimator for the Laplacian \cite{hu2023hutchinson}, which is also computable like the Forward-Laplacian scheme \cite{li2023forward}, leveraging the collapsed Taylor-mode. 
 
 %Another important differential operator is represented by a symmetric positive semi-definite (PSD) matrix $\boldsymbol{C} \in \left(\mathbb{R}^D\right)^{\otimes 2}$:
 %\begin{align}\label{eq:weighted-laplacian}
@@ -88,13 +90,11 @@ This expression represents the diffusion term in a Kolmogorov-type partial diffe
 %\begin{equation*}
 %    \Tr (\msigma \msigma^\top \partial^2 \vf(\vx_0)
 %\end{equation*}
-%in Fokker-Planck and Hamiltonian-Jacobi Bellmann equations. \todo{need citations} Since $\boldsymbol{C}$ is PSD it can be expressed as $\mC = \sum_{n=1}^{\rank(\mC)} \vc_n \vc_n^\top$ for suitable $\vc_n \in \sR^D$. Therefore, it fits the setting of \cref{eq:sum-k-jet} with $K = 2, N = \rank(\mC)$ and $\vv_n = \vc_n$, and can be compute using \cref{eq:sum-taylor-mode-efficient}. This requires the propagation of $1 + \rank(\mC) + 1$ vectors instead of $1 + 2\rank(\mC)$.
-
-\todo{mention randomized laplacians!}
+%in Fokker-Planck and Hamiltonian-Jacobi Bellmann equations. \todo{need citations} Since $\boldsymbol{C}$ is PSD it can be expressed as $\mC = \sum_{n=1}^{\rank(\mC)} \vc_n \vc_n^\top$ for suitable $\vc_n \in \sR^D$. Therefore, it fits the setting of \cref{eq:sum-k-directional} with $K = 2, N = \rank(\mC)$ and $\vv_n = \vc_n$, and can be compute using \cref{eq:sum-taylor-mode-efficient}. This requires the propagation of $1 + \rank(\mC) + 1$ vectors instead of $1 + 2\rank(\mC)$.
 
 
 \paragraph{Traces of higher-order derivative tensors}
-\todo{cite papers that consider this. M: I am not so sure where this opeartor appears naturally} The higher-order Laplacian, an often theoretically considered example, is also easily expressible in our framework:
+\todo{cite papers that consider this. M: I am not so sure where this opeartor appears naturally} The higher-order Laplacian, e.g., considered as theoretical example in \cite{shi2024stochastic}, or as application in ...  is also naturally expressible in our framework:
 \begin{align}\label{eq:trace-differential-operator}
     \Tr( \partial^K f(\vx) )
     \coloneqq
@@ -111,16 +111,19 @@ with $N = D$ and $\vv_n = \ve_n$.
 
 \subsection{Operators with mixed-partial Derivative}
 Despite being already powerful enough to unify various approaches for the computation of important differential operators, our framework cannot handle operators that include arbitrary mixed-partial derivatives.
-In the following, we explain how to transform a differential operator containing arbitrary mixed-partial derivatives into a combination of Jets using a well-known result from the AD community.
+In the following, we explain how to transform a differential operator containing arbitrary mixed-partial derivatives into a combination of Jets using the result of Griewank et al. \cite{griewank_evaluating_1999} that is well-known in the AD community.
 
+The considerations start with the generalized version of \cref{eq:sum-k-directional}:
+\begin{align}\label{eq:sums-k-directional}
+  \sum_{n_1=1}^{N_1} \dots \sum_{n_K=1}^{N_K}\left< 
+  \partial^{K} f(\vx_0),
+  \otimes_{k=1}^K \vv_{n_k}
+  \right>.
+\end{align}
+This operator assumes the independent summation over the direction vectors $\vv_{n_k}$. For distinct $\vv_{n_k}$, the summands are not representable as a single coefficient of a $K$-Jet and thus, not computable via collapsed Taylor-mode. \todo{T: until here}
+\Cref{eq:sums-k-directional} includes operators like the Biharmonic Operator for $K = 4, ....$
 
-Consider the operator
-\begin{equation}
-   \mA = \sum_{n=1}^{N} \frac{\partial^{\vk_n}}{\partial \vx^{\vk_n}},
-\end{equation}
-where $\vk_n = (k_1, \dots, k_D) \in \mathbb{N}^D$ is a multi-index. Further information about the multi-index notation can be found in \cref{sec:appendix_ttc}.
-
-A technique to reconstruct mixed-partials of arbitrary order from jets has already been proposed in 1999 by Griewank et al. in \cite{griewank_evaluating_1999}. The authors summarized their method in the following formula
+if $\vk_n = (0) \in \mathbb{N}^D$. The technique of Griewank et al. to reconstruct a mixed-partials of degree $K$ from $K$-Jets has been summarized in the formula
 \begin{equation}
 \label{eq:ttc_general}
     \frac{\partial^{\vk}}{\partial \vz^\vk} \vf(\vx + \boldsymbol{S} \vz)\Big|_{\vz = \boldsymbol{0}} 
@@ -145,7 +148,7 @@ A technique to reconstruct mixed-partials of arbitrary order from jets has alrea
     \boldsymbol{S}\vl
     \right>.
 \end{align}
-Therefore, a general differential operator with arbitrary mixed-partial derivatives $\mA\vf(\vx_0)$ is expressible in our setting \cref{eq:sum-k-jet}. Thus, for every $\mA$ we can apply our efficient propagation scheme and have to propagate the different $|\vk_n|$-Jets with directions $\mS \vl$ \todo{maybe be a bit more precise here} instead of depending on expensive nested derivative calls. 
+Therefore, a general differential operator with arbitrary mixed-partial derivatives $\mA\vf(\vx_0)$ is expressible in our setting \cref{eq:sum-k-directional}. Thus, for every $\mA$ we can apply our efficient propagation scheme and have to propagate the different $|\vk_n|$-Jets with directions $\mS \vl$ \todo{maybe be a bit more precise here} instead of depending on expensive nested derivative calls. 
 
 As the inventors of the formula already recognized, the coefficients $\gamma_{\vk\vl}$ only depend on the problem structure and are independent of the function $\vf$. As we will show, this allows to exploit symmetry that is often inherent to differential operators.
 \todo{are there symmetries directly exploitable?}
@@ -302,6 +305,7 @@ The \Crefrange{eq:ttc_biharm_full1}{eq:ttc_biharm_full3} are computed through $D
 
 \paragraph{[Not done] Stochastic Taylor Derivative Estimator}
 \todo{consider this for mixed-partials, like estimator of biharmonic, maybe mention this also in weighted sum of derivatives}
+\cite{hu2023hutchinson} also considered biharmonic!
 The approach of \citep{shi2024stochastic} lacks the possibility to handle differential operators with arbitrary mixed-partials. With our framework however, it is easy to transform a differential operator with mixed-partials into a collection of Jets. Therefore, the randomization approach of their work is automatically applicable in our framework. 
 
 The sampled directions to approximate a differential operator 

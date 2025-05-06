@@ -107,39 +107,57 @@ An important special case of \cref{eq:weighted-laplacian} is the Hutchinson Trac
     \otimes_{i=1}^K \ve_d
     \right>,
 \end{align}
-with $N = D$ and $\vv_n = \ve_n$.
+with $N = D$ and $\vv_n = \ve_n$. t
 
 \subsection{Operators with mixed-partial Derivative}
-Despite being already powerful enough to unify various approaches for the computation of important differential operators, our framework cannot handle operators that include arbitrary mixed-partial derivatives.
-In the following, we explain how to transform a differential operator containing arbitrary mixed-partial derivatives into a combination of Jets using the result of Griewank et al. \cite{griewank_evaluating_1999} that is well-known in the AD community.
+Despite being already general enough to unify various approaches for the computation of important differential operators, up to now our framework cannot handle operators that include arbitrary mixed-partial derivatives.
+To tackle this problem, we extend our framework to transform a differential operator containing arbitrary mixed-partial derivatives into a combination of Jets using the result of Griewank et al. \cite{griewank_evaluating_1999}.
 
-The considerations start with the generalized version of \cref{eq:sum-k-directional}:
+\todo{T: Working on it.}
+To extend our method, we start with a generalized version of \cref{eq:sum-k-directional}:
 \begin{align}\label{eq:sums-k-directional}
   \sum_{n_1=1}^{N_1} \dots \sum_{n_K=1}^{N_K}\left< 
   \partial^{K} f(\vx_0),
   \otimes_{k=1}^K \vv_{n_k}
-  \right>.
+  \right>
+  =
+  \sum_{k = 1}^K \left. \frac{d^K}{dz^K}
+  f(\vx_0 + \mV_k \vz) \right|_{\vz = \vzero}.
 \end{align}
-This operator assumes the independent summation over the direction vectors $\vv_{n_k}$. For distinct $\vv_{n_k}$, the summands are not representable as a single coefficient of a $K$-Jet and thus, not computable via collapsed Taylor-mode. \todo{T: until here}
-\Cref{eq:sums-k-directional} includes operators like the Biharmonic Operator for $K = 4, ....$
+The equation includes operators like the Biharmonic Operator (see \cref{sec:example2}). In general, the independent summation over the direction vectors $\vv_{n_k}$ is assumed. For distinct $\vv_{n_k}$, the summands are not directly representable by $K$-Jets and thus, not computable via collapsed Taylor-mode. 
+The technique of Griewank et al. to reconstruct a mixed-partial of degree $K$ from a family of $K$-Jets has been summarized in the formula
 
-if $\vk_n = (0) \in \mathbb{N}^D$. The technique of Griewank et al. to reconstruct a mixed-partials of degree $K$ from $K$-Jets has been summarized in the formula
+$\vv_k$ coincide such that we have only $P \leq K$ different direction vectors
+
+$\vi = (p_1, \dots, p_P)$ numbers of how often every direction occur.
+
 \begin{equation}
 \label{eq:ttc_general}
-    \frac{\partial^{\vk}}{\partial \vz^\vk} \vf(\vx + \boldsymbol{S} \vz)\Big|_{\vz = \boldsymbol{0}} 
+    \left< 
+    \partial^{K} f(\vx_0),
+    \otimes_{k=1}^K \vv_{k}
+    \right>    
     = 
-    \sum_{\underset{\vl \in \mathbb{N}^p}{|\vl| = |\vk|}}
-    \gamma_{\vk \vl}
-    \frac{1}{\vk!}
+    \sum_{\underset{\vl \in \mathbb{N}^P}{|\vl| = |\vi|}}
+    \gamma_{\vi \vl}
+    \frac{1}{\vi!}
     \left<
     \partial^{K}\vf,
     \otimes_{k=1}^K
-    \boldsymbol{S}\vl
+    \sum_{p=1}^P\vv_p l_p
     \right>.
 \end{equation}
+
+
 \cref{sec:appendix_ttc} provides supplementary details to the formula. From \cref{eq:ttc_general} we conclude
 \begin{align} \label{eq:ttc_general_operator}
-    \mA \vf(\vx_0) =  \sum_{n=1}^N \sum_{\underset{\vl \in \mathbb{N}^p}{|\vl| = |\vk_n|}}
+  \sum_{n_1=1}^{N_1} \dots \sum_{n_K=1}^{N_K}\left< 
+  \partial^{K} f(\vx_0),
+  \otimes_{k=1}^K \vv_{n_k}
+  \right>
+  = 
+  
+  \sum_{n=1}^N \sum_{\underset{\vl \in \mathbb{N}^p}{|\vl| = |\vk_n|}}
     \gamma_{\vk_n \vl}
     \frac{1}{\vk_n!}
     \left<
@@ -153,7 +171,7 @@ Therefore, a general differential operator with arbitrary mixed-partial derivati
 As the inventors of the formula already recognized, the coefficients $\gamma_{\vk\vl}$ only depend on the problem structure and are independent of the function $\vf$. As we will show, this allows to exploit symmetry that is often inherent to differential operators.
 \todo{are there symmetries directly exploitable?}
 
-\subsection{Examples}
+\subsection{Examples} \label{sec:example2}
 
 \paragraph{Biharmonic Operator}
 The Biharmonic Operator is a fourth-order differential operator with mixed-partial derivatives that is interesting for some practitioners. \todo{cite}

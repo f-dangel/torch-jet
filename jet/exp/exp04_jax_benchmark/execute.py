@@ -263,13 +263,8 @@ def laplacian_function(
     grad_func = lambda: grad(summed_laplacian, argnums=0)(params, X)  # noqa: E731
 
     # jit the functions
-    # NOTE For unknown reasons, we cannot jit these functions when using the folx
-    # package. They give an error inside the forward Laplacian. Therefore we do not
-    # apply jit for this strategy.
-    # TODO Report this bug on the folx repository
-    if strategy != "jet_simplified":
-        func = jit(func)
-        grad_func = jit(grad_func)
+    func = jit(func)
+    grad_func = jit(grad_func)
 
     # add a trailing statement to wait until the computations are done
     return lambda: block_until_ready(func()), lambda: block_until_ready(grad_func())
@@ -329,13 +324,8 @@ def bilaplacian_function(
     grad_func = lambda: grad(summed_bilaplacian, argnums=0)(params, X)  # noqa: E731
 
     # jit the functions
-    # NOTE For unknown reasons, we cannot jit these functions when using the folx
-    # package. They give an error inside the forward Laplacian. Therefore we do not
-    # apply jit for this strategy.
-    # TODO Report this bug on the folx repository
-    if strategy != "jet_simplified":
-        func = jit(func)
-        grad_func = jit(grad_func)
+    func = jit(func)
+    grad_func = jit(grad_func)
 
     # add a trailing statement to wait until the computations are done
     return lambda: block_until_ready(func()), lambda: block_until_ready(grad_func())

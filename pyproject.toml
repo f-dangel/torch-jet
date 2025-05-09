@@ -46,6 +46,7 @@ exp = [
     "tueplots",
     "pydot", # visualizing torch.fx compute graphs
     "jax[cuda12]",
+    "jaxlib",
     "folx",
 ]
 # Dependencies needed to run the tests (semicolon/line-separated).

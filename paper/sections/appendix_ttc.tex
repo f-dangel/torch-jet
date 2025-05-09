@@ -1,31 +1,27 @@
 This section introduces the notation used in \cref{eq:ttc_general}. 
-The left side of the equation, is defined as the derivative of $\vf$ with respect to an auxiliary variable $\vz = (z_1, \dots, z_p) \in \mathbb{R}^p$ of order $\vk = (k_1, \dots, k_p) \in \mathbb{N}^p$, $p \in \mathbb{N}$. In this context, we understand $\mathbb{N}^p$ as multi-index set, and the derivative of order $\vk$ is defined as 
-\begin{equation}
-    \frac{\partial^{\vk}}{\partial \vz^\vk} :=  \frac{\partial^{k_1} \dots \partial^{k_p}}{\partial z_1^{k_1} \dots \partial z_p^{k_p}}.
-\end{equation}
-Corresponding to the auxiliary variables $\vz$ there is the matrix $\boldsymbol{S} = (\vs_1, \dots, \vs_p) \in \mathbb{R}^{n \times p}$, which is used to encode the combination of the partial derivatives. Using $|\vk| = \sum_{n=1}^p k_n$, the left side of the equation computes the derivatives $\partial^{|\vk|} \vf(\vx)[\underbrace{\vs_1, \dots, \vs_1}_{k_1}, \dots, \underbrace{\vs_p, \dots, \vs_p}_{k_p}]$. The right side of the formula sums over all multi-indices $\vl \in \mathbb{N}^p$ such that $|\vl| = |\vk|$. If $p=2$ and $|\vk| = 4$ the index-set consists of $\left\{ (4,0), (0, 4), (3, 1), (1, 3),  (2, 2)\right\}$. 
+The right side of the formula sums over all multi-indices $\vq = (q_1, \dots q_P) \in \mathbb{N}^p$ such that $|\vq| := \sum_i q_i = K$. If $p=2$ and $|\vq| = 4$ this index-set consists of $\left\{ (4,0), (0, 4), (3, 1), (1, 3),  (2, 2)\right\}$. 
 
-The coefficient $\gamma_{\vk \vl}$ is given as \todo{explain set of indices for the summation}
+The coefficient $\gamma_{\vp \vq}$ is given as
 \begin{equation}
 \label{eq:ttc_coeff}
-    \gamma_{\vk \vl} = \sum_{0 < \vm \leq \vk} (-1)^{|\vk - \vm|} 
+    \gamma_{\vp \vq} = \sum_{0 < \vm \leq \vp} (-1)^{|\vp - \vm|} 
     \left(
     \begin{matrix}
-        \vk \\
+        \vp \\
         \vm
     \end{matrix}
     \right) 
     \left( 
     \begin{matrix}
-        |\vk|\frac{\vm}{|\vm|} \\
-        \vl
+        |\vp|\frac{\vm}{|\vm|} \\
+        \vq
     \end{matrix} 
     \right)  
     \left( 
-    \frac{|\vm|}{|\vk|}
-    \right)^{|\vk|}.
+    \frac{|\vm|}{|\vp|}
+    \right)^{|\vp|}.
 \end{equation}
-The summation ranges over the set $\left\{ \vm = (m_1, \dots, m_p) \in \mathbb{N}^p \mid m_1 \leq k_1, \dots, m_p \leq k_p, |m| > 0 \right\}$. Furthermore, we utilize the generalized binomial coefficient
+The summation ranges over the set $\left\{ \vm = (m_1, \dots, m_p) \in \mathbb{N}^p \mid m_1 \leq p_1, \dots, m_p \leq p_P, |m| > 0 \right\}$. Furthermore, we utilize the generalized binomial coefficient
 \begin{equation}
     \left(
        \begin{matrix}
@@ -52,87 +48,215 @@ $
     \right).
 $ 
 This notation also includes cases where the multi-index has components of $\mathbb{R}$.
-The notation $\boldsymbol{S}\vl$ is understood as a matrix-vector product.
+
+\subsection{Examples} 
+\paragraph{Biharmonic Operator -- Collapsed Taylor}
+To compute \cref{eq:biharm} with \cref{eq:ttc_general}, we first select $K = 4, P = 2, N_1 = N_2 = D, \vp = (2, 2), \vv_{n_1} = \ve_{n_1}$ and $\ve_{n_2} = \ve_{n_2}$. Then we insert these parameters into the general equation and get
+\begin{equation} \label{eq:ttc_for_biharm}
+    \begin{aligned}
+    \Delta^2 \vf(\vx_0)
+    &=
+    \sum_{\underset{\vq \in \mathbb{N}^2}{|\vq| = 4}}
+    \gamma_{(2, 2) \vq}
+    \frac{1}{4!}
+    \sum_{n_1=1}^D \sum_{n_2=1}^D 
+    \left<
+    \partial^4 \vf(\vx_0),
+    \otimes_{k=1}^4 \left(\ve_{n_1} q_1 + \ve_{n_2} q_2\right)
+    \right>
+    \\
+    &=
+    \frac{1}{24} 
+    \Big(
+    \gamma_{(2, 2)(4, 0)}
+    \sum_{n_1=1}^D \sum_{n_2=1}^D
+    \left<
+    \partial^4 \vf(\vx_0),
+    \otimes_{k=1}^4 4 \ve_{n_1}
+    \right>
+    \\
+    &+
+    \gamma_{(2, 2)(0, 4)}
+    \sum_{n_1=1}^D \sum_{n_2=1}^D 
+    \left<
+    \partial^4 \vf(\vx_0),
+    \otimes_{k=1}^4 4 \ve_{n_2}
+    \right>
+    \\
+    &+
+    \gamma_{(2, 2)(3, 1)}
+    \sum_{n_1=1}^D \sum_{n_2=1}^D
+    \left<
+    \partial^4 \vf(\vx_0),
+    \otimes_{k=1}^4 \left( 
+    3 \ve_{n_1} + \ve_{n_2}
+    \right)
+    \right>
+    \\
+    &+
+    \gamma_{(2, 2)(1, 3)}
+    \sum_{n_1=1}^D \sum_{n_2=1}^D 
+    \left<
+    \partial^4 \vf(\vx_0),
+    \otimes_{k=1}^4 \left(
+    \ve_{n_1} + 3 \ve_{n_2}
+    \right)
+    \right>
+    \\
+    &+
+    \gamma_{(2, 2)(2, 2)}
+    \sum_{n_1=1}^D \sum_{n_2=1}^D 
+    \left<
+    \partial^4 \vf(\vx_0),
+    \otimes_{k=1}^4 \left( 2 \ve_{n_1} +  2\ve_{n_2}\right)
+    \right>
+    \Big).
+    \end{aligned}
+\end{equation}
+Afterwards, we exploit the symmetry of the coefficients $\gamma_{(2, 2)(4, 0)} = \gamma_{(2, 2)(0, 4)}$ and $\gamma_{(2, 2)(3, 1)} = \gamma_{(2, 2)(1, 3)}$
+
+\begin{equation} \label{eq:ttc_for_biharm_2}
+    \begin{aligned}
+    &\frac{1}{24} 
+    \Big(
+    2D\gamma_{(2, 2)(4, 0)}
+    \sum_{n_1=1}^D 
+    \left<
+    \partial^4 \vf(\vx_0),
+    \otimes_{k=1}^4 4 \ve_{n_1}
+    \right>
+    \\
+    &+
+    2 \gamma_{(2, 2)(3, 1)}
+    \sum_{n_1=1}^D \sum_{n_2=1}^D
+    \left<
+    \partial^4 \vf(\vx_0),
+    \otimes_{k=1}^4 \left( 
+    3 \ve_{n_1} + \ve_{n_2}
+    \right)
+    \right>
+    \\
+    &+
+    \gamma_{(2, 2)(2, 2)}
+    \sum_{n_1=1}^D \sum_{n_2=1}^D 
+    \left<
+    \partial^4 \vf(\vx_0),
+    \otimes_{k=1}^4 \left( 2 \ve_{n_1} +  2\ve_{n_2}\right)
+    \right>
+    \Big).
+    \end{aligned}
+\end{equation}
+Since the first sum captures all diagonal directions $e_{n_1} = e_{n_2}$, we extract this from the second and third sums to further reduce the computational effort. We obtain
+\begin{equation} \label{eq:ttc_for_biharm3}
+    \begin{aligned}
+    &\frac{1}{24} 
+    \Big(
+    \left(
+    2D\gamma_{(2, 2)(4, 0)} + 2 \gamma_{(2, 2)(3, 1)} + \gamma_{(2, 2)(2, 2)}
+    \right)
+    \sum_{n_1=1}^D 
+    \left<
+    \partial^4 \vf(\vx_0),
+    \otimes_{k=1}^4 4 \ve_{n_1}
+    \right>
+    \\
+    &+
+    2 \gamma_{(2, 2)(3, 1)}
+    \sum_{n_1=1}^D \sum_{\underset{n_2 \neq n_1}{n_2=1}}^D
+    \left<
+    \partial^4 \vf(\vx_0),
+    \otimes_{k=1}^4 \left( 
+    3 \ve_{n_1} + \ve_{n_2}
+    \right)
+    \right>
+    \\
+    &+
+    \gamma_{(2, 2)(2, 2)}
+    \sum_{n_1=1}^D \sum_{\underset{n_2 \neq n_1}{n_2 = 1}}^D 
+    \left<
+    \partial^4 \vf(\vx_0),
+    \otimes_{k=1}^4 \left( 2 \ve_{n_1} +  2\ve_{n_2}\right)
+    \right>
+    \Big).
+    \end{aligned}
+\end{equation}
+
+\subsection{Other methods}\label{sec:appendix_ttc_other_methods}
+
+\paragraph{Hutchinson Trace Estimation}
+In Theorem 3.3 of \cite{hu2023hutchinson}, the authors showed how to approximate the Biharmonic Operator using a normal distribution and a 4-Jet. We improve their result in two directions. On the one hand, we allow exact computation of the Biharmonic Operator, using a family of 4-Jets, avoiding the estimation error and the selection of sampling batches. On the other hand, we improved the underlying Taylor-mode of the approximate solution by introducing the collapsed Taylor-mode.
 
 
-\subsection{Examples} \label{sec:biharm_felix_approach}
-\paragraph{Felix's approach to computing the biharmonic operator.}
-In the paragraph above, we learned that if we can write our coefficient tensor as $\tC = \sum_d (\vv_d)^{\otimes K}$, then we can use $K$-th order Taylor mode to efficiently compute it, while collapsing the sum.
-Let's look at the biharmonic operator now.
-It reads $\Delta^2 f(\vx) =\sum_{i=1}^D \sum_{j=1}^D \partial^4 f(\vx) [\ve_i, \ve_i, \ve_j, \ve_j]$. 
-Let's write down the coefficient tensor for the biharmonic.
-It is $\tC = \sum_d \sum_{d'} (\ve_d)^{\otimes 2} (\ve_{d'})^{\otimes 2}$.
-What do we see? This coefficient cannot be written in our desired form; it is slightly more general: We have a sum, but instead of a 4-th tensor power of the same vector, we get the product of two 2-nd tensor powers (note that in the most general case we have four different vectors). Since we now have to collapse the fourth derivative tensor along \emph{different} dimensions, we cannot use 4-th order Taylor mode to compute it!
-
-Since we cannot use 4-th order Taylor mode, let's increase $K$ to $>4$ and look for terms of the form $\partial^4 f(\vx) [\bullet, \bullet, \blacktriangle, \blacktriangle]$.
-After starring at the Faa di Bruno cheatsheet (\Cref{sec:faa-di-bruno-cheatsheet}) for a bit, we can see that these terms show up in the $K=6$-th order Taylor mode.
-Let's write down how the 6-th derivative looks like if we set the Taylor coefficients to $\vx_3 = \vx_4 = \vx_5 = \vx_6 = \vzero$.
-The output of Taylor mode is then
-\begin{subequations}
+\paragraph{Stochastic Taylor Derivative Estimator}
+A different approach was proposed in \cite{shi2024stochastic}, which relies on the hand-selection of certain $6$-Jets to extract the searched derivatives. The degree and directions for the Jets are obtained by considering the Faà di Bruno formula for the 6-th coefficient $\vf_6$. Selecting coefficients of the input $6$-Jet to $\vx_1 = \ve_{n_1}, \vx_2 = \ve_{n_2}$ and  $\vx_3 = \vx_4 = \vx_5 = \vx_6 = \vzero$ leads us to
 \begin{align}\label{eq:felix-biharmonic-jet1}
     \vf_6
-    =
-    \partial^{6} f[\vx_1, \vx_1, \vx_1, \vx_1, \vx_1, \vx_1]
+    &=
+    \left<
+    \partial^{6} \vf(\vx_0), 
+    \otimes_{k=1}^6 \ve_{n_1}
+    \right>
     +
-    15 \partial^5 f[\vx_1, \vx_1, \vx_1, \vx_1, \vx_2]
+    15 
+    \left<
+    \partial^5 \vf(\vx_0), 
+    \left(\ve_{n_1}\right)^{\otimes 4} \otimes \ve_{n_2}
+    \right>
     +
     {\color{blue}
-    45 \partial^4 f[\vx_1, \vx_1, \vx_2, \vx_2]
+    45 
+    \left<
+    \partial^4 \vf(\vx_0),
+    \left(\ve_{n_1}\right)^{\otimes 2} \otimes \left(\ve_{n_2} \right)^{\otimes 2}
+    \right>
     }
-    +
-    15 \partial^3 f[\vx_2, \vx_2, \vx_2]
+    \\
+    &+
+    15 
+    \left<
+    \partial^3 \vf(\vx_0), 
+    \otimes_{k=1}^3 \ve_{n_2}
+    \right>.
 \end{align}
-Notice the \textcolor{blue}{blue term}, which has the same structure as the summands we want to compute for the biharmonic.
-Now we have to find a way to kill the other terms.
-We can kill the $\partial^5$ and $\partial^3$ term by noting that they contain $\vx_2$ an odd number of times.
-We can use this to evaluate the negative of those terms by evaluating the Taylor mode from \Cref{eq:felix-biharmonic-jet1}, but using $-\vx_2$ instead of $\vx_2$.
-This gives
+Notice the \textcolor{blue}{blue term}, which has the same structure as the summands we want to compute for the Biharmonic operator. Therefore, a first $6$-Jet with the input Jet is computed as explained above. To cancel out the unwanted terms, we evaluate another $6$-Jet with $\vx_2 = -\ve_{n_2}$ and adding the $6$-th coefficient of this Jet to \cref{eq:felix-biharmonic-jet1} gives
 \begin{align}\label{eq:felix-biharmonic-jet2}
-    \vf_6
-    =
-    \partial^{6} f[\vx_1, \vx_1, \vx_1, \vx_1, \vx_1, \vx_1]
-    -
-    15 \partial^5 f[\vx_1, \vx_1, \vx_1, \vx_1, \vx_2]
+    2 \left<
+    \partial^{6} \vf(\vx_0), 
+    \otimes_{k=1}^6 \ve_{n_1}
+    \right>
     +
     {\color{blue}
-    45 \partial^4 f[\vx_1, \vx_1, \vx_2, \vx_2]
+    90
+    \left<
+    \partial^4 \vf(\vx_0),
+    \left(\ve_{n_1}\right)^{\otimes 2} \otimes \left(\ve_{n_2} \right)^{\otimes 2}
+    \right>.
     }
-    -
-    15 \partial^3 f[\vx_2, \vx_2, \vx_2]
 \end{align}
-To kill the $\partial^6$ term, we evaluate the same jet as in \Cref{eq:felix-biharmonic-jet1}, but set $\vx_2 = \vzero$. This gives
+Finally, a third $6$-Jet is computing with $\vx_2 = \vzero$. The $6$-th coefficient of this Jet contains only  
 \begin{align}\label{eq:felix-biharmonic-jet3}
-    \vf_6
-    =
-    \partial^{6} f[\vx_1, \vx_1, \vx_1, \vx_1, \vx_1, \vx_1]
+    \left<
+    \partial^{6} \vf(\vx_0),
+    \otimes_{k=1}^6 \vx_1
+    \right>.
 \end{align}
-Now, let's put things together.
-Let's evaluate  \Cref{eq:felix-biharmonic-jet1} $+$ \Cref{eq:felix-biharmonic-jet2} $- 2 $ \Cref{eq:felix-biharmonic-jet3}, which gives
-\begin{align}
-    {\color{blue}
-    90 \partial^4 f[\vx_1, \vx_1, \vx_2, \vx_2]
+We obtain 
+\begin{equation}
+        {\color{blue}
+    90
+    \left<
+    \partial^4 \vf(\vx_0),
+    \left(\vx_1\right)^{\otimes 2} \otimes \left(\vx_2 \right)^{\otimes 2}
+    \right>    
     }
-\end{align}
-\end{subequations}
-Cool! \textbf{We now found a way to compute one summand of the biharmonic operator by computing three $6$-jets and then linearly combining their outputs.}
-(NOTE: I think this is somewhat similar to Chapter 13.3 in Andrea's book). These jets only differ in how we set the second-order Taylor coefficient: $+1 \vx_2, -1 \vx_2, 0 \vx_2$.
-We should see plenty of cancellations from the $\pm \vx_2$ in the compute graph.
-It might be a headache to write the simplifications that take care of this.
+\end{equation}
+by subtracting twice of the $6$-th coefficient of the third Jet from \cref{eq:felix-biharmonic-jet2}.
 
-Let's do a quick analysis of this approach: For each jet, we have to forward-propagate $1 + 6$ vectors.
-That's $3 + 18$ vectors in total.
-With a fully-naive approach, we can now compute the biharmonic by repeating this procedure $D^2$ times (once per element). 
-That would be $21 D^2$ vectors in total.
+To summarize the procedure, we evaluate the 6-Jet three times. The first Jet has the input $\vx_1 = \ve_{n_1}, \vx_2 = \ve_{n_2}$ and $\vx_3 = \vx_4 = \vx_5 = \vx_6 = \vzero$, the second Jet has the same input Jet apart from $\vx_2 = \- \ve_{n_2}$. The third 6-Jet takes $\vx_2 = \vzero$. Then we add the $6$-th coefficient of the first and the second and subtract twice of the $6$-th coefficient of the third Jet. Dividing by $90$ provides the derivative corresponding to the $n_1, n_2$ term of the Biharmonic Operator.
 
-However, we may hope to reduce this by removing some redundancies and collapsing sums.
+The usual Taylor-mode would propagate $1 + 18D^2$ vectors through every node, where we already apply that all Jets share $\vx_0$ and therefore the corresponding first coefficients. 
+Leveraging our collapsed Taylor-mode would have the cost of passing $1 + 3 + 15D^2$ vectors to every node of the compute graph. Still, this is very expensive in comparison to our approach described before. In addition, until now, the selection of the Jet degree and the input coefficients requires substantial human effort.
 
-First, note that all three jets share the same $\vx_0$.
-Hence, we actually need $1 + 18$ rather than $3 + 18$ vectors for one element of the biharmonic; and we can also share this computation over all summands.
-This gets us down to $1 + 18 D^2$ vectors total.
 
-Second, note that we can pull the sum from the biharmonic inside each of the three jets.
-This brings us down from $1 + 18$ to $1 + 3 + 15$ where only the $15$ scales with $D^2$.
-Overall, collapsing the sum brings us down to $1 + 3 + 15D^2$.
-
-I think there is more to collapse, but for that we need to write out all sums.
-I believe we could get something that looks very similar to what Tim wrote down below.
+\paragraph{Nested Laplace}
+Another way is naturally given by considering the Biharmonic Operator as the second-order Laplacian. Then, \cref{eq:laplacian-naive} could be applied twice. The twice-applied Laplacian would have to push $(2 + D) + D * (2 + D) + D * (2 + D) = 2D^2 + 5D + 2$ vectors to every node of the computational graph. Leveraging in this case our collapsed Taylor-Mode we would reduce the number of vectors to $1 + D * (2 + D) + 1 * (2 + D) = D^2 + 3D + 3$. However, implementing functionalities that allow to nest Jet computations is a computational cumbersome task and to our knowledge there is no tool including such feature. \todo{T: Please check. Is this right?} Additionally, this approach lacks the efficient work and memory distribution opportunities as our method does. \todo{t: can we state this? Because we can not test this claim}

@@ -18,29 +18,34 @@
 %\newcommand{\AK}[2][]{\alternatingtodo[color=red!40, #1]{#2 }}
 \newcommand{\temp}[1]{\textcolor{blue}{#1}}
 \newcommand{\AW}[1]{\textcolor{darkgreen}{#1}}
-\newcommand{\mycolor}{blue}
+\newcommand{\colorcTM}{tab-green}
+\newcommand{\colorTM}{tab-orange}
+\newcommand{\colorcTMname}{green}
 
 \begin{document}
 
 \maketitle
 
 \begin{abstract}
-  For the accelerated evaluation differential operators, we explore automated computational graph simplifications based on the concept of linearity.
-  These simplification can be used for many common differential operators like the Laplacian that computes the sum of diagonal elements of the Hessian using Taylor mode automatic differentiation (\texttt{jet}s).
-  We show that the required Taylor coefficients can first be summed, then propagated, which reduces the overall computational cost.
-  Due to the simplicity of this simplification (propagating a sum up a computational graph), we argue that it could (or should) be performed by the just-in-time (\texttt{jit}) compiler in machine learning frameworks.
-  Our preliminary experiments achieve promising, fully automated, speed-ups, which we believe can easily be integrated into automatic differentiation libraries.
+Recent developments in the field of physically informed neural networks have been concerned with the efficient computation of the involved, often higher-order, differential operators. While the classical way of nesting the derivative computations is seen to be inefficient, various methods were investigated to tackle this bottleneck. Besides the approximation of the operators by stochastic sampling, using modified automatic differentiation methods has become a field of interest. To accelerate the evaluation of differential operators, we explore automated computational graph simplifications based on the concept of linearity on top of Taylor-Mode AD. We show that the required Taylor coefficients can first be summed, then propagated, which reduces the overall computational cost, yielding our proposed method collapsed Taylor-Mode.
+These simplifications can be used for many common differential operators like the Laplacian. 
+In addition, we combined collapsed Taylor-Mode with a result of the automatic differentiation community to be able to leverage our approach when the operator is not directly representable through Taylor-Mode AD. Our approach can be naturally combined with stochastic approaches and extends previous modified AD schemes while being able to handle operators with derivatives of arbitrary order that were difficult, if not impossible, to evaluate using previous approaches.
+
+Due to the simplicity of our graph modification (propagating a sum up a computational graph), we argue that it could (or should) be performed by the just-in-time (\texttt{jit}) compiler in machine learning frameworks. Our preliminary experiments achieve promising, fully automated, speed-ups, which we believe can easily be integrated into automatic differentiation libraries.
 \end{abstract}
 
 \AW{comments
  \begin{itemize}
      \item compute graph, computation graph $\Rightarrow$ computational graph?
-     \item Taylor-mode AD or Taylor-mode of AD?
+     \item Taylor-mode AD or Taylor-mode of AD? -> Taylor-mode AD wird von \cite{hu2023hutchinson},  \cite{shi2024stochastic}, und Jax verwendet
+     \item Taylor mode or Taylor-Mode?
+     \item Gross- versus Kleinschreibung in Captions?
+     \item I'm not sure if we can currently argue that TTC is fully automated. Indeed, it is automatically applicable, but we show more simplifications that are (currently) done by hand. 
  \end{itemize}
 }\section{Introduction}\label{sec:introduction}
 \input{sections/introduction.tex}
 
-\section{Background on AD for Higher-Order Derivatives}\label{sec:background}
+\section{Background on Taylor-Mode}\label{sec:background}
 \input{sections/background.tex}
 
 \section{The Collapsed Taylor-Mode}\label{sec:methodology}

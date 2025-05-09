@@ -151,7 +151,7 @@ Can we do better?
         \\
         \vdots
         \\
-        \mathemph{\displaystyle\sum_{n = 1}^N\vx_{K, n}}
+        \textcolor{\colorcTM}{\displaystyle\sum_{n = 1}^N\vx_{K, n}}
       \end{pmatrix*}
       &\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
         \begin{pmatrix*}[l]
@@ -180,7 +180,7 @@ Can we do better?
           \\
           \vdots
           \\
-          \mathemph{ \displaystyle \sum_{n = 1}^N \vh_{K, n}} &=
+          \textcolor{\colorcTM}{ \displaystyle \sum_{n = 1}^N \vh_{K, n}} &=
           \displaystyle \sum_{n=1}^N \sum_{
           \sigma \in \partitioning(K) \setminus \{\sigma_t\}
           }
@@ -192,7 +192,7 @@ Can we do better?
           &+ 
           \left<
           \partial \vh(\vx_0),
-          \mathemph{
+          \textcolor{\colorcTM}{
           \sum_{n=1}^N \vx_{K, n}
           }
           \right>
@@ -223,7 +223,7 @@ Can we do better?
           \\
           \vdots
           \\
-          \mathemph{\displaystyle\sum_{n=1}^N\vg_{K,n}} &=
+          \textcolor{\colorcTM}{\displaystyle\sum_{n=1}^N\vg_{K,n}} &=
           \displaystyle \sum_{n=1}^N \sum_{
           \sigma \in \partitioning(K) \setminus \{\sigma_t\}
           } 
@@ -235,7 +235,7 @@ Can we do better?
           &+
           \left<
           \partial \vg(\vh_0),
-          \mathemph{\displaystyle \sum_{n=1}^N\vh_{K, n}}
+          \textcolor{\colorcTM}{\displaystyle \sum_{n=1}^N\vh_{K, n}}
           \right>
         \end{pmatrix*}
         \\
@@ -263,7 +263,7 @@ Can we do better?
           \\
           \vdots
           \\
-          \mathemph{\displaystyle \sum_{n=1}^N \vf_{K, n}} &=
+          \textcolor{\colorcTM}{\displaystyle \sum_{n=1}^N \vf_{K, n}} &=
           \displaystyle \sum_{n=1}^N\sum_{
           \sigma \in \partitioning(K) \setminus \{ \sigma_t \}
           }
@@ -275,11 +275,11 @@ Can we do better?
           &+
           \left<
           \partial \vf(\vx_0),
-          \mathemph{\displaystyle \sum_{n=1}^N\vx_{K, n}}
+          \textcolor{\colorcTM}{\displaystyle \sum_{n=1}^N\vx_{K, n}}
           \right>
         \end{pmatrix*}
         \\
-        &\overset{\text{slice}}{\to} \mathemph{\sum_{n=1}^N \vg_{K,n}}
+        &\overset{\text{slice}}{\to} \textcolor{\colorcTM}{\sum_{n=1}^N \vg_{K,n}}
           \overset{\{\vx_{1,n} = \vv_n, \vx_{2,n} = \vzero, \dots, \vx_{K, n} = \vzero \}}{=} 
           \sum_{n=1}^N \left<
           \partial^K \vf(\vx_0), 
@@ -390,7 +390,7 @@ Instead of naively applying \cref{eq:sum-taylor-mode-naive}, \cref{eq:sum-taylor
       \\
       \{\vx_{1,d} \}
       \\
-      \mathemph{\displaystyle\sum_{d=1}^D \vx_{2,d}}
+      \textcolor{\colorcTM}{\displaystyle\sum_{d=1}^D \vx_{2,d}}
     \end{pmatrix*}
     &\overset{\text{(\ref{eq:taylor-mode-scalar})}}{\to}
       \begin{pmatrix*}[l]
@@ -403,14 +403,14 @@ Instead of naively applying \cref{eq:sum-taylor-mode-naive}, \cref{eq:sum-taylor
         \right>
         \}
         \\
-        \mathemph{\displaystyle\sum_{d=1}^D \vh_{2,d}} = \displaystyle\sum_{d=1}^D 
+        \textcolor{\colorcTM}{\displaystyle\sum_{d=1}^D \vh_{2,d}} = \displaystyle\sum_{d=1}^D 
         \left< \partial^2 \vh(\vx_0), 
         \vx_{1,d} \otimes \vx_{1,d} 
         \right> 
         + 
         \left<
         \partial \vh(\vx_0),
-        \mathemph{\displaystyle\sum_{d=1}^D\vx_{2,d}}
+        \textcolor{\colorcTM}{\displaystyle\sum_{d=1}^D\vx_{2,d}}
         \right>
       \end{pmatrix*}
     \\
@@ -425,7 +425,7 @@ Instead of naively applying \cref{eq:sum-taylor-mode-naive}, \cref{eq:sum-taylor
         \right>
         \}
         \\
-        \mathemph{\displaystyle\sum_{d=1}^D\vg_{2,d}} 
+        \textcolor{\colorcTM}{\displaystyle\sum_{d=1}^D\vg_{2,d}} 
         = 
         \displaystyle\sum_{d=1}^D
         \left< 
@@ -435,7 +435,7 @@ Instead of naively applying \cref{eq:sum-taylor-mode-naive}, \cref{eq:sum-taylor
         + 
         \left< 
         \partial \vg(\vh_0), 
-        \mathemph{\displaystyle\sum_{d=1}^D\vh_{2,d}}
+        \textcolor{\colorcTM}{\displaystyle\sum_{d=1}^D\vh_{2,d}}
         \right>
       \end{pmatrix*} 
       \\
@@ -450,7 +450,7 @@ Instead of naively applying \cref{eq:sum-taylor-mode-naive}, \cref{eq:sum-taylor
         \right>
         \}
         \\
-        \mathemph{\displaystyle\sum_{d=1}^D \vf_{2,d}}
+        \textcolor{\colorcTM}{\displaystyle\sum_{d=1}^D \vf_{2,d}}
         =
         \displaystyle\sum_{d=1}^D 
         \left<
@@ -460,11 +460,11 @@ Instead of naively applying \cref{eq:sum-taylor-mode-naive}, \cref{eq:sum-taylor
         +
         \left<
         \partial \vf(\vx_0),
-        \mathemph{\displaystyle\sum_{i=1}^D\vx_{2,d}}
+        \textcolor{\colorcTM}{\displaystyle\sum_{i=1}^D\vx_{2,d}}
         \right>
       \end{pmatrix*}
     \\
-    &\overset{\text{slice}}{\to} \mathemph{\sum_{d=1}^D \{ \vg_{2,d} \}}
+    &\overset{\text{slice}}{\to} \textcolor{\colorcTM}{\sum_{d=1}^D \{ \vg_{2,d} \}}
       \overset{\{(\vx_{1,d} = \ve_d, \vx_{2,d} = \vzero)\}}{=}
       \Delta f(\vx_0)
   \end{split}

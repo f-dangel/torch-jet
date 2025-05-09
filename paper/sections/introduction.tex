@@ -2,7 +2,7 @@ Recently, neural networks have increasingly been used to represent potentially h
 The physics is typically encoded in the form of partial differential equations (PDEs), and the neural network representation must therefore satisfy such equations.
 This requires the application of partial differential operators to the neural network representation, which need to be computed with respect to the input rather than the trainable weights.
 Unlike the setting of network training with first-order methods, these input derivatives are often high-order PDE operators, requiring second derivatives or even higher.
-Efficient automatic differentiation of such operators must therefore go beyond mere backpropagation, a realization that motivated this and previous work and is illustrated in Figure \ref{fig:benchmark}.
+Since nested AD is expensive, efficient automatic differentiation of such operators must therefore go beyond mere backpropagation, a realization that motivated this fact and previous work is illustrated in Figure \ref{fig:benchmark}.
 
 \paragraph{Variational Monte Carlo} A prominent example is variational Monte Carlo (VMC), where neural quantum states must satisfy Schrödinger's equation \cite{carleo2017solving, pfau2020ab, hermann2020deep}.
 This involves the computation of the input Laplacian to capture the kinetic energy contribution to the Hamiltonian.
@@ -13,7 +13,14 @@ However, recent developments in optimization techniques have also revived the us
 This approach necessitates differentiable application of potentially high-order PDE operators.
 For instance, the PINN formulation of Kolmogorov-type equations—including the Fokker-Planck, Black-Scholes, and Hamilton-Jacobi-Bellman equations—requires the evaluation of weighted second-order input derivatives in high-dimensional spatial domains \cite{hu2023hutchinson, sun2024dynamical}.
 
-\paragraph{Compuational Challenges} As illustrated in Figure \ref{fig:benchmark} and Figure \ref{fig:benchmark-randomized-laplacians}, the computation of input derivatives can be a significant computational bottleneck in terms of both memory and runtime, particularly for high-dimensional or high-order operators. This limitation may restrict the scalability of recent approaches and hinder broader applicability. To address this challenge, we advocate for more efficient and automated use of advanced automatic differentiation techniques. In particular, we propose to generalize recent graph simplification strategies—such as the forward Laplacian scheme—by systematically exploiting the linearity of differential operators leveraging Taylor-mode automatic differentiation. This has the potential to both reduce resource consumption and broaden the range of feasible applications in VMC, PINNs, and related areas.
+\todo{T: Add something about Biharmonic or other higher-order operators}
+
+\todo{T: What about discussing recent approaches, like forward-laplace, Hutchison trace and stochastic ad?}
+
+\paragraph{Computational Challenges} As illustrated in Figure \ref{fig:benchmark} and Figure \ref{fig:benchmark-randomized-laplacians}, the computation of input derivatives can be a significant computational bottleneck in terms of both memory and runtime, particularly for high-dimensional or high-order operators. This limitation may restrict the scalability of recent approaches and hinder broader applicability. To address this challenge, we advocate for more efficient and automated use of advanced automatic differentiation techniques. In particular, we propose to generalize recent graph simplification strategies—such as the forward Laplacian scheme—by systematically exploiting the linearity of differential operators leveraging Taylor-mode automatic differentiation. This generalization enables us to apply efficient propagation schemes to a wide range of operators. This has the potential to both reduce resource consumption and broaden the range of feasible applications in VMC, PINNs, and related areas.
+
+While recent work has pointed out a connection between Taylor-mode and the Forward-Laplacian, it remains unclear how to leverage this connection.
+Our work changes this.
 
 \begin{figure*}[!t]
   \centering

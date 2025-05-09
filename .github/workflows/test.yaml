@@ -29,6 +29,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         make install-test
+        python -m pip install jax
     - name: Run test
       run: |
         make test

@@ -1,0 +1,268 @@
+\begin{figure}[!h]
+  \centering
+  \tikzset{state/.style={rectangle, rounded corners, align=left, font=\ttfamily, draw=black, anchor=west, align=left, inner sep=5pt}}
+  \tikzset{leaf/.style={fill=gray!50!white}}
+  \tikzset{output/.style={fill=gray!25!white}}
+  \tikzset{replicate/.style={fill=blue!25!white}}
+  \scalebox{0.58}{
+    \begin{tikzpicture}
+      % draw the nodes
+      \matrix [%
+      ampersand replacement=\&,% to use inside a savebox
+      column sep=4ex,%
+      row sep=4ex,%
+      ]{
+        \node[state, leaf] (x0) {x0};
+        \& \node[state, replicate] (x0-d) {x0\_d = replicate(x0)};
+        \& \node[state, output] (f0-d) {f0\_d = sin(x0\_d)};
+        \\
+        \node[state, leaf] (x1-d) {x1\_d};
+        \& \node[state] (df-d) {df\_d = cos(x0\_d)};
+        \& \node[state, output] (f1-d) {f1\_d = einsum(``...,...\\->...'', x1\_d, df\_d)};
+        \\
+        \node[state, leaf] (x2-d) {x2\_d};
+        \& \node[state] (d2f-d) {d2f\_d = -df\_d};
+        \& \node[state] (temp1-d) {temp1\_d = einsum(``...,...,...\\->...'', d2f\_d, x1\_d, x1\_d)};
+        \\
+        \& \node[state] (temp2-d) {temp2\_d = einsum(``...,...\\->...'', df\_d, x2\_d)};
+        \& \node[state] (f2-d) {f2\_d = temp1\_d + temp2\_d};
+        \& \node[state, output] (f2) {f2 = sum(f2\_d, dim=0)};
+        \\
+      };
+
+      % draw the relations
+      \tikzset{arrow/.style={-Stealth}}
+      \path
+      (x0) edge [arrow] (x0-d)
+      (x0-d) edge [arrow] (f0-d)
+      (x0-d) edge [arrow] (df-d)
+      (df-d) edge [arrow] (d2f-d)
+      (df-d) edge [arrow] (f1-d)
+      (x1-d) edge [arrow, out=25, in=170] (f1-d)
+      (d2f-d) edge [arrow] (temp1-d)
+      (df-d) edge [arrow, out=-25, in=65] (temp2-d)
+      (x2-d) edge [arrow] (temp2-d)
+      (x1-d) edge [arrow, out=-25,in=170] (temp1-d)
+      (temp1-d) edge [arrow] (f2-d)
+      (temp2-d) edge [arrow] (f2-d)
+      (f2-d) edge [arrow] (f2)
+      ;
+    \end{tikzpicture}
+  }
+
+  \vspace{-0.6ex}
+  \noindent\rule{\textwidth}{1pt}
+  \vspace{-0.6ex}
+
+  \scalebox{0.58}{
+    \begin{tikzpicture}
+      % draw the nodes
+      \matrix [%
+      ampersand replacement=\&,% to use inside a savebox
+      column sep=4ex,%
+      row sep=4ex,%
+      ]{
+        \node[state, leaf] (x0) {x0};
+        \& \node[state] (f0) {f0 = sin(x0)};
+        \& \node[state, output, replicate] (f0-d) {f0\_d = replicate(f\_0)};
+        \\
+        \&
+        \node[state, replicate] (x0-d) {x0\_d = replicate(x0)};
+        \\
+        \node[state, leaf] (x1-d) {x1\_d};
+        \& \node[state] (df-d) {df\_d = cos(x0\_d)};
+        \& \node[state, output] (f1-d) {f1\_d = einsum(``...,...\\->...'', x1\_d, df\_d)};
+        \\
+        \node[state, leaf] (x2-d) {x2\_d};
+        \& \node[state] (d2f-d) {d2f\_d = -df\_d};
+        \& \node[state] (temp1-d) {temp1\_d = einsum(``...,...,...\\->...'', d2f\_d, x1\_d, x1\_d)};
+        \\
+        \& \node[state] (temp2-d) {temp2\_d = einsum(``...,...\\->...'', df\_d, x2\_d)};
+        \& \node[state] (f2-d) {f2\_d = temp1\_d + temp2\_d};
+        \& \node[state, output] (f2) {f2 = sum(f2\_d, dim=0)};
+        \\
+      };
+
+      % draw the relations
+      \tikzset{arrow/.style={-Stealth}}
+      \path
+      (x0) edge [arrow] (f0)
+      (f0) edge [arrow] (f0-d)
+      (x0) edge [arrow] (x0-d)
+      (x0-d) edge [arrow] (df-d)
+      (df-d) edge [arrow] (d2f-d)
+      (df-d) edge [arrow] (f1-d)
+      (x1-d) edge [arrow, out=25, in=170] (f1-d)
+      (d2f-d) edge [arrow] (temp1-d)
+      (df-d) edge [arrow, out=-25, in=65] (temp2-d)
+      (x2-d) edge [arrow] (temp2-d)
+      (x1-d) edge [arrow, out=-25,in=170] (temp1-d)
+      (temp1-d) edge [arrow] (f2-d)
+      (temp2-d) edge [arrow] (f2-d)
+      (f2-d) edge [arrow] (f2)
+      ;
+    \end{tikzpicture}
+  }
+
+  \vspace{-0.6ex}
+  \noindent\rule{\textwidth}{1pt}
+  \vspace{-0.6ex}
+
+  \scalebox{0.58}{
+    \begin{tikzpicture}
+      % draw the nodes
+      \matrix [%
+      ampersand replacement=\&,% to use inside a savebox
+      column sep=4ex,%
+      row sep=4ex,%
+      ]{
+        \node[state, leaf] (x0) {x0};
+        \& \node[state] (f0) {f0 = sin(x0)};
+        \& \node[state, output, replicate] (f0-d) {f0\_d = replicate(f\_0)};
+        \\
+        \& \node[state] (df) {df = cos(x0)};
+        \\
+        \node[state, leaf] (x1-d) {x1\_d};
+        \& \node[state, replicate] (df-d) {df\_d = replicate(df)};
+        \& \node[state, output] (f1-d) {f1\_d = einsum(``...,...\\->...'', x1\_d, df\_d)};
+        \\
+        \node[state, leaf] (x2-d) {x2\_d};
+        \& \node[state] (d2f-d) {d2f\_d = -df\_d};
+        \& \node[state] (temp1-d) {temp1\_d = einsum(``...,...,...\\->...'', d2f\_d, x1\_d, x1\_d)};
+        \\
+        \& \node[state] (temp2-d) {temp2\_d = einsum(``...,...\\->...'', df\_d, x2\_d)};
+        \& \node[state] (f2-d) {f2\_d = temp1\_d + temp2\_d};
+        \& \node[state, output] (f2) {f2 = sum(f2\_d, dim=0)};
+        \\
+      };
+
+      % draw the relations
+      \tikzset{arrow/.style={-Stealth}}
+      \path
+      (x0) edge [arrow] (f0)
+      (f0) edge [arrow] (f0-d)
+      (x0) edge [arrow] (df)
+      (df) edge [arrow] (df-d)
+      (df-d) edge [arrow] (d2f-d)
+      (df-d) edge [arrow] (f1-d)
+      (x1-d) edge [arrow, out=25, in=170] (f1-d)
+      (d2f-d) edge [arrow] (temp1-d)
+      (df-d) edge [arrow, out=-25, in=65] (temp2-d)
+      (x2-d) edge [arrow] (temp2-d)
+      (x1-d) edge [arrow, out=-25,in=170] (temp1-d)
+      (temp1-d) edge [arrow] (f2-d)
+      (temp2-d) edge [arrow] (f2-d)
+      (f2-d) edge [arrow] (f2)
+      ;
+    \end{tikzpicture}
+  }
+
+  \vspace{-0.6ex}
+  \noindent\rule{\textwidth}{1pt}
+  \vspace{-0.6ex}
+
+  \scalebox{0.58}{
+    \begin{tikzpicture}
+      % draw the nodes
+      \matrix [%
+      ampersand replacement=\&,% to use inside a savebox
+      column sep=4ex,%
+      row sep=4ex,%
+      ]{
+        \node[state, leaf] (x0) {x0};
+        \& \node[state] (f0) {f0 = sin(x0)};
+        \& \node[state, output, replicate] (f0-d) {f0\_d = replicate(f\_0)};
+        \\
+        \node[state, leaf] (x1-d) {x1\_d};
+        \& \node[state] (df) {df = cos(x0)};
+        \& \node[state, output] (f1-d) {f1\_d = einsum(``d...,...\\->d...'', x1\_d, df)};
+        \\
+        \& \node[state] (d2f) {d2f = -df};
+        \\
+        \node[state, leaf] (x2-d) {x2\_d};
+        \& \node[state, replicate] (d2f-d) {d2f\_d = replicate(d2f)};
+        \& \node[state] (temp1-d) {temp1\_d = einsum(``...,...,...\\->...'', d2f\_d, x1\_d, x1\_d)};
+        \\
+        \& \node[state] (temp2-d) {temp2\_d = einsum(``...,d...\\->d...'', df, x2\_d)};
+        \& \node[state] (f2-d) {f2\_d = temp1\_d + temp2\_d};
+        \& \node[state, output] (f2) {f2 = sum(f2\_d, dim=0)};
+        \\
+      };
+
+      % draw the relations
+      \tikzset{arrow/.style={-Stealth}}
+      \path
+      (x0) edge [arrow] (f0)
+      (x0) edge [arrow] (df)
+      (f0) edge [arrow] (f0-d)
+      (df) edge [arrow] (d2f)
+      (d2f) edge [arrow] (d2f-d)
+      (df) edge [arrow] (f1-d)
+      (x1-d) edge [arrow, out=25, in=170] (f1-d)
+      (d2f-d) edge [arrow] (temp1-d)
+      (df) edge [arrow, out=-25, in=15] (temp2-d)
+      (x2-d) edge [arrow] (temp2-d)
+      (x1-d) edge [arrow, out=-20,in=160] (temp1-d)
+      (temp1-d) edge [arrow] (f2-d)
+      (temp2-d) edge [arrow] (f2-d)
+      (f2-d) edge [arrow] (f2)
+      ;
+    \end{tikzpicture}
+  }
+
+  \vspace{-0.6ex}
+  \noindent\rule{\textwidth}{1pt}
+  \vspace{-0.6ex}
+
+  \scalebox{0.58}{
+    \begin{tikzpicture}
+      % draw the nodes
+      \matrix [%
+      ampersand replacement=\&,% to use inside a savebox
+      column sep=4ex,%
+      row sep=4ex,%
+      ]{
+        \node[state, leaf] (x0) {x0};
+        \& \node[state] (f0) {f0 = sin(x0)};
+        \& \node[state, output, replicate] (f0-d) {f0\_d = replicate(f\_0)};
+        \\
+        \node[state, leaf] (x1-d) {x1\_d};
+        \& \node[state] (df) {df = cos(x0)};
+        \& \node[state, output] (f1-d) {f1\_d = einsum(``d...,...\\->d...'', x1\_d, df)};
+        \\
+        \node[state, leaf] (x2-d) {x2\_d};
+        \& \node[state] (d2f) {d2f = -df};
+        \& \node[state] (temp1-d) {temp1\_d = einsum(``...,d...,d...\\->d...'', d2f, x1\_d, x1\_d)};
+        \\
+        \& \node[state] (temp2-d) {temp2\_d = einsum(``...,d...\\->d...'', dg, x2\_d)};
+        \& \node[state] (f2-d) {f2\_d = temp1\_d + temp2\_d};
+        \& \node[state, output] (f2) {f2 = sum(f2\_d, dim=0)};
+        \\
+      };
+
+      % draw the relations
+      \tikzset{arrow/.style={-Stealth}}
+      \path
+      (x0) edge [arrow] (f0)
+      (f0) edge [arrow] (f0-d)
+      (x0) edge [arrow] (df)
+      (df) edge [arrow] (d2f)
+      (df) edge [arrow] (f1-d)
+      (x1-d) edge [arrow, out=25, in=170] (f1-d)
+      (d2f) edge [arrow] (temp1-d)
+      (df) edge [arrow, out=-45, in=65] (temp2-d)
+      (x2-d) edge [arrow] (temp2-d)
+      (x1-d) edge [arrow, out=-25,in=170] (temp1-d)
+      (temp1-d) edge [arrow] (f2-d)
+      (temp2-d) edge [arrow] (f2-d)
+      (f2-d) edge [arrow] (f2)
+      ;
+    \end{tikzpicture}
+  }
+  \caption{\textbf{Step-by-step illustration of pushing \texttt{replicate} nodes down a computation graph.}}
+  \label{fig:push-replicate-simplification}
+\end{figure}
+%%% Local Variables:
+%%% mode: LaTeX
+%%% TeX-master: "../main"
+%%% End:

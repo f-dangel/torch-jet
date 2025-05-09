@@ -1,0 +1,56 @@
+\begin{figure}[!h]
+  \tikzset{state/.style={rectangle, rounded corners, align=left, font=\ttfamily, draw=black, anchor=west, align=left, inner sep=5pt}}
+  \tikzset{leaf/.style={fill=gray!50!white}}
+  \tikzset{output/.style={fill=gray!25!white}}
+  \centering
+  \scalebox{0.66}{
+    \begin{tikzpicture}
+      % draw the nodes
+      \matrix [%
+      ampersand replacement=\&,% to use inside a savebox
+      column sep=4ex,%
+      row sep=4ex,%
+      ]{
+        \node[state, leaf] (x0) {x0};
+        \& \node[state] (f0) {f0 = sin(x0)};
+        \& \node[state, output] (f0-d) {f0\_d = replicate(f0)};
+        \\
+        \node[state, leaf] (x1-d) {x1\_d};
+        \& \node[state] (df) {df = cos(x0)};
+        \& \node[state, output] (f1-d) {f1\_d = einsum(``d...,...\\->d...'', x1\_d, df)};
+        \\
+        \node[state, leaf] (x2-d) {x2\_d};
+        \& \node[state] (d2f) {d2f = -df};
+        \& \node[state] (temp1) {temp1 = einsum(``...,d...,d...\\->...'', d2f, x1\_d, x1\_d)};
+        \\
+        \node[state] (x2) {x2 = sum(x2\_d, dim=0)};
+        \& \node[state] (temp2) {temp2 = einsum(``...,...\\->...'', df, x2)};
+        \&
+        \& \node[state, output] (f2) {f2 = temp1 + temp2};
+        \\
+      };
+
+      % draw the relations
+      \tikzset{arrow/.style={-Stealth}}
+      \path
+      (x0) edge [arrow] (f0)
+      (f0) edge [arrow] (f0-d)
+      (x0) edge [arrow] (df)
+      (df) edge [arrow] (d2f)
+      (df) edge [arrow] (f1-d)
+      (x1-d) edge [arrow, out=15, in=170] (f1-d)
+      (d2f) edge [arrow] (temp1)
+      (df) edge [arrow, out=-45, in=65] (temp2)
+      (x2-d) edge [arrow] (x2)
+      (x2) edge [arrow] (temp2)
+      (x1-d) edge [arrow, out=-25,in=170] (temp1)
+      (temp1) edge [arrow] (f2)
+      (temp2) edge [arrow] (f2)
+      ;
+    \end{tikzpicture}
+  }
+\end{figure}
+%%% Local Variables:
+%%% mode: LaTeX
+%%% TeX-master: "../main"
+%%% End:

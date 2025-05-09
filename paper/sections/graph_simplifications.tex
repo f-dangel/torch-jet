@@ -1,0 +1,68 @@
+In this section, we illustrate the two graph simplifications that are required to collapse Taylor mode.
+
+We will consider collapsing the $f = \sin$ function's 2-jet as example.
+Let's recall the vectorized-then-summed 2-jet of \Cref{eq:taylor-mode-scalar} for this example and assume that the Taylor coefficients are given by $\{\vx_{0,d} = \vx_0\}$ (\ie same primal value), $\{\vx_{1,d}\}$, and $\{\vx_{2,d}\}$ where $d$ indexes the directions along which we evaluate then sum:
+\begin{align*}
+  \begin{matrix}
+    \vx_0
+    \\
+    \{\vx_{1,d}\}
+    \\
+    \{\vx_{2,d}\}
+  \end{matrix}
+  &\overset{\text{replicate $\vx_0$}}{\to}
+    \begin{Bmatrix}
+      \vx_{0,d} = \vx_0
+      \\
+      \vx_{1,d}
+      \\
+      \vx_{2,d}
+    \end{Bmatrix}
+    \overset{\text{2-jet}}{\to}
+    \begin{Bmatrix}
+      \vf_{0,d} = \sin(\vx_0)
+      \\
+      \vf_{1,d} = \cos(\vx_0) \odot \vx_{1,d}
+      \\
+      \vf_{2,d} = -\cos(\vx_0) \odot \vx_{2,d} + \cos(\vx_0) \odot \vx_{1,d} \odot \vx_{1,d}
+    \end{Bmatrix}
+  \\
+  &\overset{\text{sum highest component}}{\to}
+    \begin{matrix}
+      \begin{Bmatrix}
+        \vf_{0,d}
+        \\
+        \vf_{1,d}
+      \end{Bmatrix}
+      \\
+      \sum_d \vf_{2,d}
+    \end{matrix}
+\end{align*}
+where $\sin$ applies element-wise and $\odot$ denotes element-wise multiplication.
+The computation graph for this procedure is displayed in the following diagram, with input and output nodes highlighted dark and light gray, and the convention that a suffix \texttt{\_d} means that a tensor collects the result of all the jets along its leading axis.
+$\texttt{replicate}$ is a function that replicates a tensor $D$ times along a new leading axis, which can be basically for free and without additional memory overhead in PyTorch (using \texttt{torch.expand}). All other functions refer to those of the PyTorch API:
+
+\input{figures/sin_2jet_before}
+
+Our simplification proceeds in two steps.
+First, propagate \texttt{replicate} nodes down the graph to remove repeated computations on the same tensors (one forward traversal through the graph).
+Second, propagate \texttt{sum} nodes up the graph (one backward traversal through the graph).
+After applying both steps, the simplified looks as follows:
+
+\input{figures/sin_2jet_after}
+
+Two important properties of the new graph are (i) the \texttt{replicate} node moved to an output node, hence all redundant computation was successfully removed (ii) The highest component \texttt{x2\_d} is immediately summed then propagated, \ie we collapsed Taylor mode.
+
+We will now illustrate the two simplification steps in full detail.
+The first stage starts from the original graph and pushes forward the replicate node, as illustrated step-by-step in \Cref{fig:push-replicate-simplification}.
+The second stage starts from the graph produced by the replicate-push procedure, and propagates the final sum node up the graph, illustrated by \Cref{fig:pull-sum-simplification}.
+This yields the final computation graph shown above.
+
+\input{figures/sin_2jet_push_replicate}
+
+\input{figures/sin_2jet_pull_sum}
+
+%%% Local Variables:
+%%% mode: LaTeX
+%%% TeX-master: "../main"
+%%% End:

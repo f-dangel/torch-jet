@@ -1,239 +1,62 @@
-\paragraph{Design decisions and limitations.} Although JAX already offers an experimental Taylor mode implementation, we re-implemented Taylor mode in PyTorch, taking heavy inspiration from the JAX implementation for the interface.
+\paragraph{Design decisions.}
+Although JAX already offers an experimental Taylor mode implementation, we re-implemented Taylor mode in PyTorch, taking heavy inspiration from the JAX implementation for the interface.
 We decided so because PyTorch's \texttt{fx} library provides a user-friendly official interface to capture and transform compute graphs of functions to apply our proposed collapsing.
 While we believe that such graph transformations should in principle be feasible in JAX as well (and could \eg be integrated into its \texttt{jit} compiler), it seems that this can currently only be achieved with (potentially fragile) internal APIs and requires a deep understanding of its internal tracing mechanisms.
 Main advantage seems to be that we can clearly disentangle building the graph from simplifying it using linearity, whereas in JAX we could write a custom interpreter that would have to re-implement the logic of summing the $K$-th component for abitrary $K$.
 
 \paragraph{Usage.} Our implementation takes a PyTorch function (\eg a neural net) and first captures its compute graph using \texttt{torch.fx}'s symbolic tracing mechanism, then replaces each operation with its Taylor arithmetic.
 This yields the compute graph of the function's $K$-jet.
-Users can use this vanilla Taylor mode to define their differential operator's computation. 
+Users can use this vanilla Taylor mode to define their differential operator's computation.
 The collapsing is done by again tracing said computation with \texttt{torch.fx} and rewriting the resulting graph, propagating the summation of highest coefficient up.
 The resulting graph performs the same computation, but uses our collapsed Taylor mode.
 See \Cref{fig:interface-overview} for a visual walk-through of the procedure.
 
-TODO Limitations.
+\paragraph{Limitations.}
+Two limitations of our implementation are that (i) it only supports a small number of primitives and missing primitives need to be implemented (as is the case for the Taylor mode implementation JAX) and (ii) that \texttt{torch.fx} graphs can, at the moment, not be \texttt{jit}-compiled with \texttt{torch.compile}, \ie our PyTorch experiments report both un-compiled Taylor mode and nested first-order AD, although the latter could be further accelerated.
 
-\paragraph{Experimental procedure.} We compare our collapsed Taylor mode with vanilla Taylor mode and nested first-order AD on the previously discussed differential operators in PyTorch on an NVIDIA RTX 6000 with .
+\input{figures/torch_benchmark}
+\input{tables/torch_benchmark}
 
+\paragraph{Experimental procedure.}
+We empirically validate our proposed collapsing approach using our PyTorch implementation of Taylor mode.
+Since \texttt{torch.fx} is at the moment incompatible with \texttt{torch.compile}, all implementations are not \texttt{jit}-compiled.
+We compare collapsed Taylor mode with vanilla Taylor mode and nested first-order AD on the previously discussed differential operators an NVIDIA RTX 6000 with 24 GiB memory.
+To implement the (weighted) Laplacian and its stochastic counterpart, we use vector-Hessian-vector products (VHVPs) in forward-over-reverse order, as recommended by \citet{dagreou2024how}.
+For the Bi-Laplacian, we simply nest two VHVPs.
+For all implementations, we measure (i) run time, and peak memory when computing the (ii) differentiable operator (\eg required for PINNs), and (iii) the non-differentiable operator (\eg required for VMC).
+The run time measurements commence with 10 warm-up runs, followed by 50 repetitions, and we report the smallest run time as best approximation to run time.
+The peak memory allocation does not fluctuate, hence we determine it in a single run.
 
+\paragraph{Experimental results.}
+\Cref{fig:benchmark} visualizes the computational demands' growth \wrt the batch size (exact) and number of Monte-Carlo samples (stochastic) for fixed dimensions $D$.
+We used a 5-layer MLP with $\tanh$ activation and around 3M parameters, similar to the ones employed in other works on PINNs \cite{dangel2024kroneckerfactored,shi2024stochastic}.
+As the scalings with batch size and Monte-Carlo samples are both linear, we quantify the results by fitting linear functions and reporting their slopes (\ie time and memory added per datum/sample) in \Cref{tab:benchmark}. We make the following observations:
+\begin{itemize}
+\item \textbf{Collapsed Taylor mode accelerates standard Taylor mode.}
+  When comparing collapsed with standard Taylor mode, we observe that the measure run time differences correspond well with the theoretical prediction.
+  \Eg for the Laplacian, the ratio of propagated vectors between standard and collapsed is $\nicefrac{(2 + D)}{(1 + 2D)} \approx 0.5$; we observe that adding one datum adds $0.60ms$ to standard and $0.33ms$ to collapsed Taylor mode.
+  Similar for the weighted Laplacian and for their stochastic versions.
+  This means that we can compute these operators with twice the batch size or MC-samples in the same time as had we used standard Taylor mode.
 
+  % TODO Could drop a sentence about the Bi-Laplacian, but the ratio of vectors is slightly complicated and may be confusing for readers
+  % For the Bi-Laplacian, the ratio is $\nicefrac{4.5 D^2 - 1.5D + 6}{TODO}$
 
-\begin{figure*}[!t]
-  \centering
-  \newsavebox{\benchmarkLegend}
-  \savebox{\benchmarkLegend}{
-    \begin{tikzpicture}[font=\small]
-      \matrix [%
-      matrix of nodes,%
-      ampersand replacement=\&,% to use inside a savebox
-      nodes={anchor=west, align=left, inner sep=1pt},%
-      column sep=1ex,%
-      row sep=0ex,%
-      ] (legend)
-      {
-        \draw[tab-blue] plot[mark=*] coordinates {(0,0)};
-        \& Nested 1\textsuperscript{st}-order\phantom{y}\!\!\!\!
-        \\
-        \draw[tab-orange] plot[mark=triangle*, rotate=270] coordinates {(0,0)};
-        \& Standard Taylor
-        \\
-        \draw[tab-green] plot[mark=triangle*, rotate=90] coordinates {(0,0)};
-        \& Collapsed (ours)\phantom{y}\!\!\!\!
-        \\[2ex]
-        \node[anchor=center]{\tikz\draw[thick] (0, 0) to ++(2.5ex, 0);};
-        \& Differentiable\phantom{y}
-        \\
-        \node[anchor=center, opacity=0.5]{\tikz\draw[thick, dashed] (0, 0) to ++(2.5ex, 0);};
-        \& Non-diff.\phantom{y}
-        \\
-      };
+\item \textbf{Collapsed Taylor mode consistently outperforms nested 1\textsuperscript{st}-order AD.} For the exact and stochastic Laplacian and weighted Laplacian, collapsed Taylor mode is roughly twice as fast as nested AD while using 70-80\% of the latter's memory.
+  The only exception is for the differentiable Bi-Laplacian, which consumes about 20\% more memory, but uses only 66\% time. For the randomized Bi-harmonic, we observe even greater run time and memory improvements by roughly 9 and 3 (or 6 if non-differentiable)x.
 
-      \draw[gray, rounded corners] (current bounding box.north west) rectangle (current bounding box.south east);
-    \end{tikzpicture}
-  }
-  % From https://tex.stackexchange.com/a/7318
-  \newcolumntype{C}{ >{\centering\arraybackslash} m{0.18\textwidth} }
-  \newcolumntype{D}{ >{\centering\arraybackslash} m{0.27\textwidth} }
-  \newcolumntype{E}{ >{\centering\arraybackslash} m{0.22\textwidth} }
-  \begin{tabular}{CDEE}
-    & \makecell{\textbf{Laplacian} \\ $(D=50)$}
-    & \makecell{\textbf{Weighted Laplacian} \\ $(D=50)$}
-    & \makecell{\textbf{Bi-harmonic} \\ $(D=5)$}
-    \\[1ex]
-    \makecell{\textbf{Exact} \\ \\ \\ \\ \\ \\ }
-    & \includegraphics{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_laplacian_vary_batch_size.pdf}
-    % [trim={left bottom right top},clip]
-    &  \includegraphics[trim={0.45cm 0 0 0},clip]{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_weighted_laplacian_vary_batch_size.pdf}
-    & \includegraphics[trim={0.45cm 0 0 0},clip]{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_5_name_bilaplacian_vary_batch_size.pdf}
-    \\[-6.5ex]
-  \scalebox{0.85}{
-    \begin{tikzpicture}
-      \node {\usebox{\benchmarkLegend}};
-    \end{tikzpicture}
-  }
-    \\[-6.5ex]
-    \makecell{\\ \textbf{Stochastic}}
-    & \includegraphics{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_2048_device_cuda_dim_50_distribution_normal_name_laplacian_vary_num_samples.pdf}
-    & \includegraphics[trim={0.45cm 0 0 0},clip]{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_2048_device_cuda_dim_50_distribution_normal_name_weighted_laplacian_vary_num_samples.pdf}
-    & \includegraphics[trim={0.45cm 0 0 0},clip]{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_256_device_cuda_dim_5_distribution_normal_name_bilaplacian_vary_num_samples.pdf}
-  \end{tabular}
+  \todo{FD: I don't have a good explanation the stochastic Bi-harmonic has the largest performance difference.
+    I am using a similar implementation than for the exact Bi-harmonic.
+    Would be cool if we had an explanation here.}
 
-  \caption{\textbf{\textcolor{tab-green}{Collapsed Taylor mode} is faster than \textcolor{tab-orange}{standard Taylor mode} and \textcolor{tab-blue}{nested first-order automatic differentiaion} while using less or the same memory, \textcolor{black!50!white}{opaque} memory consumptions are for non-differentiable computations.}
-    Results are on GPU and we use a $D \to 768 \to 768 \to 512 \to 512 \to 1$ MLP with tanh activations with $D=50$ for the Laplacians and $D=5$ for the Bi-harmonic operator.
-    The exact computation varies the batch size, and the approximate computation fixes $N=2048$ for the Laplacians, and $N=256$ for the Bi-Laplacian, and varies the number of Monte-Carlo samples such that $S < D$ for the Laplacians, and $2 + 3S < 6D^2 - 3D + 6$ for the Bi-Laplacian (we can compute exactly otherwise).
-    For each approach, we fit a line to the data and report the slope in \Cref{tab:benchmark}  to quantify the relative speedup and memory reduction.
-  }
-  \label{fig:benchmark}
-\end{figure*}
-
-\begin{table}[!t]
-  \centering
-  \caption{\textbf{Benchmark from \Cref{fig:benchmark} in numbers.}
-    We fit linear functions and report their slopes, \ie how much run time and memory increase when incrementing the batch size or number of Monte-Carlo samples.
-    Our collapsed Taylor mode is up to two times faster than nested first-order autodiff, while using 80\% of memory in the differentiable, and 70\% in the non-differentiable, setting.
-    All numbers are shown with two significant digits and bold values are best according to parenthesized values.}
-  \label{tab:benchmark}
-  \vspace{1.5ex}
-  % paths where the performances are stored
-  \def\datapathLaplacianExact{../jet/exp/exp01_benchmark_laplacian/performance/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_laplacian_vary_batch_size}
-  \def\datapathLaplacianStochastic{../jet/exp/exp01_benchmark_laplacian/performance/architecture_tanh_mlp_768_768_512_512_1_batch_size_2048_device_cuda_dim_50_distribution_normal_name_laplacian_vary_num_samples}
-  \def\datapathWeightedLaplacianExact{../jet/exp/exp01_benchmark_laplacian/performance/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_weighted_laplacian_vary_batch_size}
-  \def\datapathWeightedLaplacianStochastic{../jet/exp/exp01_benchmark_laplacian/performance/architecture_tanh_mlp_768_768_512_512_1_batch_size_2048_device_cuda_dim_50_distribution_normal_name_weighted_laplacian_vary_num_samples}
-  \def\datapathBilaplacianExact{../jet/exp/exp01_benchmark_laplacian/performance/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_5_name_bilaplacian_vary_batch_size}
-  \def\datapathBilaplacianStochastic{../jet/exp/exp01_benchmark_laplacian/performance/architecture_tanh_mlp_768_768_512_512_1_batch_size_256_device_cuda_dim_5_distribution_normal_name_bilaplacian_vary_num_samples}
-  \resizebox{\linewidth}{!}{%
-    % configuration options for the \num command
-    \sisetup{%
-      % scientific-notation=true,%
-      round-mode=figures,%
-      round-precision=2,%
-      detect-weight, % for bolding to work
-      tight-spacing=true, % less space around \cdot
-    }
-    \begin{tabular}{ccc|cccc}
-      \toprule
-      \textbf{Mode}
-      & \makecell{\textbf{Per-datum or } \\ \textbf{-sample cost}}
-      & \textbf{Implementation}
-      & \textbf{Laplacian}
-      & \makecell{\textbf{Weighted} \\ \textbf{Laplacian}}
-      & \textbf{Bi-harmonic}
-      \\
-      \midrule
-      \multirow{9}{*}{\textbf{Exact}}
-      & \multirow{3}{*}{Time [ms]}
-      & \textcolor{tab-blue}{Nested first-order}
-      & \input{\datapathLaplacianExact/hessian_trace_best.txt}
-      & \input{\datapathWeightedLaplacianExact/hessian_trace_best.txt}
-      & \input{\datapathBilaplacianExact/hessian_trace_best.txt}
-      \\
-      &
-      & \textcolor{tab-orange}{Standard Taylor}
-      & \input{\datapathLaplacianExact/jet_naive_best.txt}
-      & \input{\datapathWeightedLaplacianExact/jet_naive_best.txt}
-      & \input{\datapathBilaplacianExact/jet_naive_best.txt}
-      \\
-      &
-      & \textcolor{tab-green}{Collapsed (ours)}
-      & \textbf{\input{\datapathLaplacianExact/jet_simplified_best.txt}}
-      & \textbf{\input{\datapathWeightedLaplacianExact/jet_simplified_best.txt}}
-      & \textbf{\input{\datapathBilaplacianExact/jet_simplified_best.txt}}
-      \\ \cmidrule{2-6}
-      & \multirow{3}{*}{\makecell{Mem.\,[MiB] \\ (differentiable)}}
-      & \textcolor{tab-blue}{Nested first-order}
-      & \input{\datapathLaplacianExact/hessian_trace_peakmem.txt}
-      & \input{\datapathWeightedLaplacianExact/hessian_trace_peakmem.txt}
-      & \textbf{\input{\datapathBilaplacianExact/hessian_trace_peakmem.txt}}
-      \\
-      &
-      & \textcolor{tab-orange}{Standard Taylor}
-      & \input{\datapathLaplacianExact/jet_naive_peakmem.txt}
-      & \input{\datapathWeightedLaplacianExact/jet_naive_peakmem.txt}
-      & \input{\datapathBilaplacianExact/jet_naive_peakmem.txt}
-      \\
-      &
-      & \textcolor{tab-green}{Collapsed (ours)}
-      & \textbf{\input{\datapathLaplacianExact/jet_simplified_peakmem.txt}}
-      & \textbf{\input{\datapathWeightedLaplacianExact/jet_simplified_peakmem.txt}}
-      & \input{\datapathBilaplacianExact/jet_simplified_peakmem.txt}
-      \\ \cmidrule{2-6}
-      & \multirow{3}{*}{\makecell{Mem.\,[MiB] \\ (non-diff.)}}
-      & \textcolor{tab-blue}{Nested first-order}
-      & \input{\datapathLaplacianExact/hessian_trace_peakmem_nondifferentiable.txt}
-      & \input{\datapathWeightedLaplacianExact/hessian_trace_peakmem_nondifferentiable.txt}
-      & \input{\datapathBilaplacianExact/hessian_trace_peakmem_nondifferentiable.txt}
-      \\
-      &
-      & \textcolor{tab-orange}{Standard Taylor}
-      & \textbf{\input{\datapathLaplacianExact/jet_naive_peakmem_nondifferentiable.txt}}
-      & \textbf{\input{\datapathWeightedLaplacianExact/jet_naive_peakmem_nondifferentiable.txt}}
-      & \input{\datapathBilaplacianExact/jet_naive_peakmem_nondifferentiable.txt}
-      \\
-      &
-      & \textcolor{tab-green}{Collapsed (ours)}
-      & \textbf{\input{\datapathLaplacianExact/jet_simplified_peakmem_nondifferentiable.txt}}
-      & \textbf{\input{\datapathWeightedLaplacianExact/jet_simplified_peakmem_nondifferentiable.txt}}
-      & \textbf{\input{\datapathBilaplacianExact/jet_simplified_peakmem_nondifferentiable.txt}}
-      \\
-      \midrule
-      \multirow{9}{*}{\textbf{Stochastic}}
-      & \multirow{3}{*}{Time [ms]}
-      & \textcolor{tab-blue}{Nested first-order}
-      & \input{\datapathLaplacianStochastic/hessian_trace_best.txt}
-      & \input{\datapathWeightedLaplacianStochastic/hessian_trace_best.txt}
-      & \input{\datapathBilaplacianStochastic/hessian_trace_best.txt}
-      \\
-      &
-      & \textcolor{tab-orange}{Standard Taylor}
-      & \input{\datapathLaplacianStochastic/jet_naive_best.txt}
-      & \input{\datapathWeightedLaplacianStochastic/jet_naive_best.txt}
-      & \input{\datapathBilaplacianStochastic/jet_naive_best.txt}
-      \\
-      &
-      & \textcolor{tab-green}{Collapsed (ours)}
-      & \textbf{\input{\datapathLaplacianStochastic/jet_simplified_best.txt}}
-      & \textbf{\input{\datapathWeightedLaplacianStochastic/jet_simplified_best.txt}}
-      & \textbf{\input{\datapathBilaplacianStochastic/jet_simplified_best.txt}}
-      \\ \cmidrule{2-6}
-      & \multirow{3}{*}{\makecell{Mem.\,[MiB]\\(differentiable)}}
-      & \textcolor{tab-blue}{Nested first-order}
-      & \input{\datapathLaplacianStochastic/hessian_trace_peakmem.txt}
-      & \input{\datapathWeightedLaplacianStochastic/hessian_trace_peakmem.txt}
-      & \input{\datapathBilaplacianStochastic/hessian_trace_peakmem.txt}
-      \\
-      &
-      & \textcolor{tab-orange}{Standard Taylor}
-      & \input{\datapathLaplacianStochastic/jet_naive_peakmem.txt}
-      & \input{\datapathWeightedLaplacianStochastic/jet_naive_peakmem.txt}
-      & \input{\datapathBilaplacianStochastic/jet_naive_peakmem.txt}
-      \\
-      &
-      & \textcolor{tab-green}{Collapsed (ours)}
-      & \textbf{\input{\datapathLaplacianStochastic/jet_simplified_peakmem.txt}}
-      & \textbf{\input{\datapathWeightedLaplacianStochastic/jet_simplified_peakmem.txt}}
-      & \textbf{\input{\datapathBilaplacianStochastic/jet_simplified_peakmem.txt}}
-      \\ \cmidrule{2-6}
-      & \multirow{3}{*}{\makecell{Mem.\,[MiB]\\(non-diff.)}}
-      & \textcolor{tab-blue}{Nested first-order}
-      & \input{\datapathLaplacianStochastic/hessian_trace_peakmem_nondifferentiable.txt}
-      & \input{\datapathWeightedLaplacianStochastic/hessian_trace_peakmem_nondifferentiable.txt}
-      & \input{\datapathBilaplacianStochastic/hessian_trace_peakmem_nondifferentiable.txt}
-      \\
-      &
-      & \textcolor{tab-orange}{Standard Taylor}
-      & \textbf{\input{\datapathLaplacianStochastic/jet_naive_peakmem_nondifferentiable.txt}}
-      & \textbf{\input{\datapathWeightedLaplacianStochastic/jet_naive_peakmem_nondifferentiable.txt}}
-      & \input{\datapathBilaplacianStochastic/jet_naive_peakmem_nondifferentiable.txt}
-      \\
-      &
-      & \textcolor{tab-green}{Collapsed (ours)}
-      & \textbf{\input{\datapathLaplacianStochastic/jet_simplified_peakmem_nondifferentiable.txt}}
-      & \textbf{\input{\datapathWeightedLaplacianStochastic/jet_simplified_peakmem_nondifferentiable.txt}}
-      & \textbf{\input{\datapathBilaplacianStochastic/jet_simplified_peakmem_nondifferentiable.txt}}
-      \\
-      \bottomrule
-    \end{tabular}
-  }
-\end{table}
+\item \textbf{If the PDE operator can be non-differentiable, both standard and Taylor mode require significantly less memory than nested 1\textsuperscript{st}-order AD.}
+  This aligns with our understanding of Taylor mode, which performs a single forward propagation and does not need to store any intermediates for future differentiation, in contrast to the nested differentiation.
+\end{itemize}
+We also conducted experiments with JAX (+ \texttt{jit}) to rule out artifacts from the ML framework.
+In general, we find that the choice of ML framework does not affect the results.
+\Eg, for computing the Laplacian with nesting, we found that PyTorch increases by 0.61ms and 4.4 and 2.2 MiB per datum, while JAX increases by 0.57ms and 6.0, and 1.4 MiB per datum (\Cref{fig:vanilla-taylor-not-enough,tab:jax-benchmark}.
+We find the same trend when comparing our collapsed Taylor mode and JAX's forward Laplacian.
+Interestingly, we noticed that JAX's Taylor mode was consistently slower than our PyTorch implementation, despite using \texttt{jit}.
+We conclude from these results that (both ours, as well as the existing JAX) Taylor mode implementations still have potential for improvements that may further improve the margin to nested first-order.
 
 %%% Local Variables:
 %%% mode: LaTeX

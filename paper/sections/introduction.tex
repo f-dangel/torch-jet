@@ -32,7 +32,7 @@ Our work changes this.
       Illustrated for computing the Laplacian of a $\mathrm{tanh}$-activated $50 \!\to\! 768 \!\to\! 768 \!\to\! 512 \!\to\! 512 \!\to\! 1$
       MLP with JAX (+ \texttt{jit}) on GPU (details in \Cref{sec:jax-benchmark}).
       We show how to automatically obtain the specialized forward Laplacian through simple graph transformations of vanilla Taylor mode based on linearity, which could be done by the \texttt{jit} compiler.
-    }
+    }\label{fig:vanilla-taylor-not-enough}
 
     \vspace{0.25ex}
     \caption{\textbf{$\blacktriangleright$ Our collapsed Taylor mode directly propagates the sum of highest degree coefficients.}

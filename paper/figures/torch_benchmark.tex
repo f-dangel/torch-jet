@@ -1,0 +1,74 @@
+\begin{figure*}[!t]
+  \centering
+  \newsavebox{\benchmarkLegend}
+  \savebox{\benchmarkLegend}{
+    \begin{tikzpicture}[font=\small]
+      \matrix [%
+      matrix of nodes,%
+      ampersand replacement=\&,% to use inside a savebox
+      nodes={anchor=west, align=left, inner sep=1pt},%
+      column sep=1ex,%
+      row sep=0ex,%
+      ] (legend)
+      {
+        \draw[tab-blue] plot[mark=*] coordinates {(0,0)};
+        \& Nested 1\textsuperscript{st}-order\phantom{y}\!\!\!\!
+        \\
+        \draw[tab-orange] plot[mark=triangle*, rotate=270] coordinates {(0,0)};
+        \& Standard Taylor
+        \\
+        \draw[tab-green] plot[mark=triangle*, rotate=90] coordinates {(0,0)};
+        \& Collapsed (ours)\phantom{y}\!\!\!\!
+        \\[2ex]
+        \node[anchor=center]{\tikz\draw[thick] (0, 0) to ++(2.5ex, 0);};
+        \& Differentiable\phantom{y}
+        \\
+        \node[anchor=center, opacity=0.5]{\tikz\draw[thick, dashed] (0, 0) to ++(2.5ex, 0);};
+        \& Non-diff.\phantom{y}
+        \\
+      };
+
+      \draw[gray, rounded corners] (current bounding box.north west) rectangle (current bounding box.south east);
+    \end{tikzpicture}
+  }
+  % From https://tex.stackexchange.com/a/7318
+  \newcolumntype{C}{ >{\centering\arraybackslash} m{0.18\textwidth} }
+  \newcolumntype{D}{ >{\centering\arraybackslash} m{0.27\textwidth} }
+  \newcolumntype{E}{ >{\centering\arraybackslash} m{0.22\textwidth} }
+  \begin{tabular}{CDEE}
+    & \makecell{\textbf{Laplacian} \\ $(D=50)$}
+    & \makecell{\textbf{Weighted Laplacian} \\ $(D=50)$}
+    & \makecell{\textbf{Bi-harmonic} \\ $(D=5)$}
+    \\[1ex]
+    \makecell{\textbf{Exact} \\ \\ \\ \\ \\ \\ }
+    & \includegraphics{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_laplacian_vary_batch_size.pdf}
+    % [trim={left bottom right top},clip]
+    &  \includegraphics[trim={0.45cm 0 0 0},clip]{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_weighted_laplacian_vary_batch_size.pdf}
+    & \includegraphics[trim={0.45cm 0 0 0},clip]{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_5_name_bilaplacian_vary_batch_size.pdf}
+    \\[-6ex]
+  \scalebox{0.85}{
+    \begin{tikzpicture}
+      \node {\usebox{\benchmarkLegend}};
+    \end{tikzpicture}
+  }
+    & ($N=2048$)
+    & ($N=2048$)
+    & ($N=256$)
+    \\[-6ex]
+    \makecell{\\ \textbf{Stochastic}}
+    & \includegraphics{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_2048_device_cuda_dim_50_distribution_normal_name_laplacian_vary_num_samples.pdf}
+    & \includegraphics[trim={0.45cm 0 0 0},clip]{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_2048_device_cuda_dim_50_distribution_normal_name_weighted_laplacian_vary_num_samples.pdf}
+    & \includegraphics[trim={0.45cm 0 0 0},clip]{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_256_device_cuda_dim_5_distribution_normal_name_bilaplacian_vary_num_samples.pdf}
+  \end{tabular}
+
+  \caption{\textbf{\textcolor{tab-green}{Collapsed Taylor mode} is faster than \textcolor{tab-orange}{standard Taylor mode} and \textcolor{tab-blue}{nested first-order automatic differentiaion} while using less or the same memory, \textcolor{black!50!white}{opaque} memory consumptions are for non-differentiable computations.}
+    Results are on GPU and we use a $D \to 768 \to 768 \to 512 \to 512 \to 1$ MLP with tanh activations.
+    The exact computation varies the batch size, and the approximate computation fixes the batch size then varies the number of Monte-Carlo samples such that $S < D$ for the Laplacians, and $2 + 3S < 6D^2 - 3D + 6$ for the Bi-Laplacian (we can compute exactly otherwise).
+    For each approach, we fit a line to the data and report the slope in \Cref{tab:benchmark}  to quantify the relative speedup and memory reduction.
+  }
+  \label{fig:benchmark}
+\end{figure*}
+%%% Local Variables:
+%%% mode: LaTeX
+%%% TeX-master: "../main"
+%%% End:

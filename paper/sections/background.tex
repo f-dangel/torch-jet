@@ -1,5 +1,7 @@
 Taylor-mode AD allows the computation of higher-order derivatives -- as needed for, e.g., for PDE operators -- through a suitable combinations of Taylor coefficients. The latter can easily be propagated using the chain rule. To illustrate Taylor-mode AD, consider consider the one-dimensional case $f: \mathbb{R} \to \mathbb{R}$. When the input variable $x$ is interpreted as a univariate Taylor polynomial 
 of degree $K$, i.e., $x(t) = \sum_{k=1}^K \frac{t^k}{k!} x_k$ and $f$ is smooth enough, one can also evaluate higher order derivatives of the path $f(x(t))$ that yield a corresponding Taylor polynomial of $f$, i.e., $\sum_{k=0}^K \frac{t^k}{k!} f_k$  with $f_k := \left. \frac{d^k}{dt^k} f(x(t)) \right|_{t=0}$. Using the chain rule, one obtains for the simple example considered here and $K=3$ the coefficients 
+\input{figures/taylor_signature}
+
 \begin{align}
 \label{eq:taylor-mode-scalar}
 \begin{split}
@@ -55,40 +57,6 @@ To simplify the notation we use $(\vv)^{\otimes K} = \otimes_{k=1}^K \vv$ and fr
 where $\tA, \tB \in \left(\mathbb{R}^{D}\right)^{\otimes K}$. The $k$-th derivative of a function $\vf: \mathbb{R}^D \to \mathbb{R}^m$ is denoted by $\partial^k \vf$. 
 
 Also in the more general vector-valued case, the evaluation of $\vf$'s $K$-jet at an argument $\vx_0 \in \mathbb{R}^n$ starts with the extension of $\vx_0$ to a smooth path $\vx: \mathbb{R} \to \mathbb{R}^D$ such that $\vx(0) = \vx_0$. Then, the $K$-jet of $\vf$ is defined as $J^K \vf : \mathbb{R} \to \mathbb{R}^m$, $(J^K \vf)(t) := \sum_{k=0}^K \frac{t^k}{k!} \vf_k$ with $\vf_k := \left. \frac{d^k}{dt^k} \vf(\vx(t)) \right|_{t=0} $, where the evaluation of $\vf_k$ requires the $K$-jet $(J^K \vx)(t) := \sum_{k=0}^K \frac{t^k}{k!} \vx_k$ as can be seen in the simple example \eqref{eq:taylor-mode-scalar} above and illustrated in Figure~\ref{fig:utp}.
-%\todo{I would like a $J^K$ at the arrows.}
-\begin{figure}[h]
-\begin{center}
-  \begin{tikzpicture}
-    \node[align=center] (topleft) {Extent input to smooth path \\
-      $\vx(t)$};
-
-    \node[align=center, right=4cm of topleft] (topright) {Path in output space \\ $\vf(\vx(t))$};
-    \draw [-Latex] (topleft.east) to node [midway, above] {$f$} (topright.west);
-
-    \node[align=center, below=1cm of topright] (bottomright) {%Taylor polynomial of degree $K$
-      %\\
-      $K$-jet \; $\sum_{k=0}^K \frac{t^k}{k!} \vf_k$
-      %\\
-      %{\color{maincolor}$(\vf_0, \dots, \vf_K)$}
-    };
-    \draw [-Latex] (topright.south) to node [midway, right] {$J^K$} 
-    (bottomright.north);
-
-    \node[align=center, below=1cm of topleft] (bottomleft) {{%Taylor polynomial of degree $K$
-      %\\
-      $K$-jet \; $\sum_{k=0}^K \frac{t^k}{k!} \vx_k$
-      %\\
-      %{\color{maincolor} $(\vx_0, \dots, \vx_K)$}
-      }};
-    \draw [-Latex] (topleft.south) to node [midway, left] {$J^K$} (bottomleft.north);
-
-    \draw [-Latex, \colorTM] (bottomleft.east) to node [midway, above, tab-orange] {\textcolor{\colorTM}{Taylor-mode AD}
-    } (bottomright.west);
-  \end{tikzpicture}
-\end{center}
-\caption{The Taylor-mode AD: From the $K$-jet of the input to the $K$-jet of the output}
-\label{fig:utp}
-\end{figure}
 
 Next, we have to consider the calculation of the derivative values $\vf_k$. As is common for AD, the computation of $\vf_k$
 known as the Taylor-mode AD relies on a decomposition of $\vf$ into elemental functions for which the derivative rules are known and the application of the chain rule. In the simplest case, $\vf$ might be given as the decomposition $\vf = \vg \circ \vh$ of two elemental functions $\vg$ and $\vh$. Having defined $J^K\vx$, Taylor-mode AD calculates the $K$-jet of $\vf$ by successively evaluating all $\vf_k$ through the chain rule using Faà di Bruno's formula mentioned above. For $\vf = \vg \circ \vh$ using the notation introduced above, this formula reads 

@@ -1,0 +1,43 @@
+\begin{figure}[!t]
+  \centering
+  \begin{minipage}[t]{0.7\linewidth}
+    \centering
+   \begin{tikzpicture}
+    \tikzset{box/.style={rectangle, rounded corners, draw=black, inner sep=3pt}}
+    \node[align=center, box] (topleft) {Extent input to \\ smooth path
+      $\vx(t)$};
+
+    \node[align=center, right=2.5cm of topleft, box] (topright) {Path in output \\ space $f(\vx(t))$};
+    \draw [-Latex] (topleft.east) to node [midway, above] {$f$} (topright.west);
+
+    \node[align=center, below=1cm of topright, box, draw=tab-orange] (bottomright) {%Taylor polynomial of degree $K$
+      % \\
+      $K$-jet \; $\sum_{k=0}^K \frac{t^k}{k!} \vf_k$
+      % \\
+      % {\color{maincolor}$(\vf_0, \dots, \vf_K)$}
+    };
+    \draw [-Latex] (topright.south) to node [midway, right] {$J^K$}
+    (bottomright.north);
+
+    \node[align=center, below=1cm of topleft, box, draw=tab-orange] (bottomleft) {{%Taylor polynomial of degree $K$
+        % \\
+        $K$-jet \; $\sum_{k=0}^K \frac{t^k}{k!} \vx_k$
+        % \\
+        % {\color{maincolor} $(\vx_0, \dots, \vx_K)$}
+      }};
+    \draw [-Latex] (topleft.south) to node [midway, left] {$J^K$} (bottomleft.north);
+
+    \draw [-Latex, \colorTM, align=center] (bottomleft.east) to node [midway, above, tab-orange] {\color{\colorTM}Taylor-mode\\ AD} (bottomright.west);
+  \end{tikzpicture}
+  \end{minipage}
+  \hfill
+  \begin{minipage}[b]{0.29\linewidth}
+    \caption{The Taylor-mode AD: From the $K$-jet of the input to the $K$-jet of the output.}
+  \label{fig:utp}
+  \end{minipage}
+\end{figure}
+
+%%% Local Variables:
+%%% mode: LaTeX
+%%% TeX-master: "../main"
+%%% End:

@@ -41,22 +41,99 @@ As the scalings with batch size and Monte-Carlo samples are both linear, we quan
   % TODO Could drop a sentence about the Bi-Laplacian, but the ratio of vectors is slightly complicated and may be confusing for readers
   % For the Bi-Laplacian, the ratio is $\nicefrac{4.5 D^2 - 1.5D + 6}{TODO}$
 
-\item \textbf{Collapsed Taylor mode consistently outperforms nested 1\textsuperscript{st}-order AD.} For the exact and stochastic Laplacian and weighted Laplacian, collapsed Taylor mode is roughly twice as fast as nested AD while using 70-80\% of the latter's memory.
-  The only exception is for the differentiable Bi-Laplacian, which consumes about 20\% more memory, but uses only 66\% time. For the randomized Bi-harmonic, we observe even greater run time and memory improvements by roughly 9 and 3 (or 6 if non-differentiable)x.
+\item \textbf{Collapsed Taylor mode consistently outperforms nested 1\textsuperscript{st}-order AD.}
+  For the exact and stochastic Laplacian and weighted Laplacian, collapsed Taylor mode is roughly twice as fast as nested AD while using 70-80\% of the latter's memory.
+  The only exception is for the differentiable Bi-Laplacian, which consumes about 20\% more memory, but uses only 66\% time.
+  For the randomized Bi-harmonic, we observe even greater run time and memory improvements by roughly 9 and 3 (or 6 if non-differentiable)x.
 
   \todo{FD: I don't have a good explanation the stochastic Bi-harmonic has the largest performance difference.
     I am using a similar implementation than for the exact Bi-harmonic.
-    Would be cool if we had an explanation here.}
+    Would be cool if we had an explanation here.
+    One main difference is that I have to \texttt{vmap} twice, first over the data, then over the vectors.
+    It could be that this triggers some redundant re-computation, but is hard to verify.
+  }
 
 \item \textbf{If the PDE operator can be non-differentiable, both standard and Taylor mode require significantly less memory than nested 1\textsuperscript{st}-order AD.}
   This aligns with our understanding of Taylor mode, which performs a single forward propagation and does not need to store any intermediates for future differentiation, in contrast to the nested differentiation.
 \end{itemize}
 We also conducted experiments with JAX (+ \texttt{jit}) to rule out artifacts from the ML framework.
 In general, we find that the choice of ML framework does not affect the results.
-\Eg, for computing the Laplacian with nesting, we found that PyTorch increases by 0.61ms and 4.4 and 2.2 MiB per datum, while JAX increases by 0.57ms and 6.0, and 1.4 MiB per datum (\Cref{fig:vanilla-taylor-not-enough,tab:jax-benchmark}.
+\Eg, for computing the Laplacian with nesting, we found that PyTorch increases by 0.61ms and 4.4 and 2.2 MiB per datum, while JAX increases by 0.57ms and 6.0, and 1.4 MiB per datum (\Cref{fig:vanilla-taylor-not-enough,tab:jax-benchmark}).
 We find the same trend when comparing our collapsed Taylor mode and JAX's forward Laplacian.
 Interestingly, we noticed that JAX's Taylor mode was consistently slower than our PyTorch implementation, despite using \texttt{jit}.
 We conclude from these results that (both ours, as well as the existing JAX) Taylor mode implementations still have potential for improvements that may further improve the margin to nested first-order.
+
+\begin{table}[!h]
+  \centering
+  \caption{\textbf{Comparison of theoretical and empirical performance ratios between standard and collapsed Taylor mode.}
+    We write down how many vectors are added when adding another data point (exact) or another Monte-Carlo sample (stochastic).
+    The ratio of vectors is an optimistic estimation of the performance ratio, because it assumes that all vectors are propagated independently (false), and that the required intermediates are TODO.
+  }
+  \begin{tabular}{cc|ccc}
+    \toprule
+    \textbf{Mode}
+    & \makecell{\textbf{Add one datum} \\ \textbf{or MC sample}}
+    & \makecell{\textbf{Laplacian} \\ ($D = 50$)}
+    & \makecell{\textbf{Weighted Laplacian} \\ ($D=\rank(\mC)=50$)}
+    & \makecell{\textbf{Bi-harmonic} \\ ($D=5$)}
+    \\
+    \midrule
+    \multirow{4}{*}{\textbf{Exact}}
+    & \textcolor{tab-orange}{$\Delta$ vectors (standard)}
+    & $1 + 2D$
+    & $1 + 2 \rank(\mC)$
+    & $6D^2 - 2D + 1$
+    \\
+    & \textcolor{tab-green}{$\Delta$ vectors (collapsed)}
+    & $2 + D$
+    & $2 + \rank(\mC)$
+    & $\nicefrac{9}{2} D^2 - \nicefrac{3}{2} D + 4$
+    \\
+    & Theoretical ratio $\nicefrac{\color{tab-green}\Delta}{\color{tab-orange}\Delta}$
+    & \num{0.51}
+    & \num{0.51}
+    & \num{0.77}
+    \\
+    & Empirical time ratio
+    & \num{0.55}
+    & \num{0.55}
+    & \num{0.88}
+    \\
+    & Empirical mem.\,ratio
+    & \num{0.65}
+    & \num{0.65}
+    & \num{0.78}
+    \\
+    \midrule
+    \multirow{4}{*}{\textbf{Stochastic}}
+    & \textcolor{tab-orange}{$\Delta$ vectors (standard)}
+    & $2$
+    & $2$
+    & $4$
+    \\
+    & \textcolor{tab-green}{$\Delta$ vectors (collapsed)}
+    & $1$
+    & $1$
+    & $3$
+    \\
+    & Theoretical ratio $\nicefrac{\color{tab-green}\Delta}{\color{tab-orange}\Delta}$
+    & \num{0.5}
+    & \num{0.5}
+    & \num{0.75}
+    \\
+    & Empirical time ratio
+    & \num{0.54}
+    & \num{0.54}
+    & \num{0.76}
+    \\
+    & Empirical mem.\,ratio
+    & \num{0.64}
+    & \num{0.64}
+    & \num{0.72}
+    \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
 %%% Local Variables:
 %%% mode: LaTeX

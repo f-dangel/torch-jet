@@ -472,7 +472,7 @@ def randomized_bilaplacian_function(
                 down, and summations up, the computation graph.
         distribution: From which distribution to draw the random vectors. Supported
             values are `'normal'`.
-        num_samples: How many Monte-Carlo ksamples should be used by the estimation.
+        num_samples: How many Monte-Carlo samples should be used by the estimation.
 
     Returns:
         A function that computes the randomized Bi-Laplacian of the function f at the

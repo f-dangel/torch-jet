@@ -182,13 +182,13 @@ To summarize, we have been able to express a general differential operator given
 
 %\subsection{Examples} \label{sec:example2}
 
-\paragraph{Biharmonic Operator} A prominent differential operator with mixed-partials is represented by the Biharmonic Operator. \todo{cite} Below, we derive the formula to compute the operator using collapsed Taylor-mode.
-Our approach first applies \cref{eq:ttc_general} to the Biharmonic Operator \cref{eq:biharm} with the parameters selected as stated aboveto $K = 4, P = 2, N_1 = N_2 = D, \vp=(2, 2)$ and the directions to the unit vectors $\vv_{n_1} = \ve_{n_1}$ and $\vv_{n_2} = \ve_{n_2}$. The result is shown in the appendix \cref{eq:ttc_for_biharm} and the coefficients are listed in \cref{tab:ttc_biharm_coeffs}.
+\paragraph{Biharmonic Operator} A prominent differential operator with mixed partial derivatives is represented by the Biharmonic Operator. 
+Our approach first applies \cref{eq:ttc_general} to the Biharmonic Operator \cref{eq:biharm} with the parameters selected as stated above. The result is shown in \cref{eq:ttc_for_biharm} in  the appendix and the coefficients are listed in \cref{tab:ttc_biharm_coeffs}.
 
 \input{figures/ttc_bilaplacian}
 
-As mentioned before, the coefficients $\gamma_{\vp \vq}$ capture the symmetric structure of the differential operator. A close look into the definition \cref{eq:ttc_coeff} shows the equality of the coefficients for $\vq = (4,0)$ with $\vq = (0, 4)$ and $\vq = (3, 1)$ with $\vq = (1, 3)$. Exploiting those symmetries, the formula boils down to \cref{eq:ttc_for_biharm_2}. Furthermore, the second and third sums contain the jets of the first sum. This is exploited in \cref{eq:ttc_for_biharm3}.
-The last term can be further simplified by leveraging the symmetry of the direction $2 \ve_i + 2 \ve_j$. This simplification leads to the following final efficient jet-based formula for the Biharmonic Operator :
+As mentioned before, the coefficients $\gamma_{\vp \vq}$ capture the symmetric structure of the differential operator. A close look into the definition \cref{eq:ttc_coeff} reveals the values of the coefficients for $\vp = (4,0)$ with $\vq = (0, 4)$ and $\vp = (3, 1)$ with $\vp = (1, 3)$. \todo{AW: Tim, please check $\vp$ and $\vq$ here, there were $\vq$ at all four places I guessed this combination} Exploiting those symmetries, the formula boils down to \cref{eq:ttc_for_biharm_2}. Furthermore, the second and third sums contain the jets of the first sum. This is exploited in \cref{eq:ttc_for_biharm3}.
+The last term can be further simplified by leveraging the symmetry of the direction $2 \ve_i + 2 \ve_j$ leading to the final efficient jet-based formula for the Biharmonic Operator given by
 \begin{equation} \label{eq:ttc_for_biharm_final}
     \begin{aligned}
     \Delta^2 \vf(\vx_0) &= 
@@ -205,25 +205,27 @@ The last term can be further simplified by leveraging the symmetry of the direct
     \\
     &+
     2 \gamma_{(2, 2)(3, 1)}
-    \sum_{n_1=1}^D \sum_{\underset{n_2 \neq n_1}{n_2=1}}^D
+     \sum_{n_1=1}^D\sum_{\underset{n_2 \neq n_1}{n_2=1}}^D\!\!\!
     \left<
     \partial^4 \vf(\vx_0),
     \otimes_{k=1}^4 \left( 
-    3 \ve_{n_1} + \ve_{n_2}
+    3 \ve_{n_1}+\ve_{n_2}
     \right)
     \right>
     \\
-    &+
+    & +
     2 \gamma_{(2, 2)(2, 2)}
     \sum_{n_1=1}^{D - 1} \sum_{n_2 = n_1 + 1}^D 
     \left<
     \partial^4 \vf(\vx_0),
-    \otimes_{k=1}^4 \left( 2 \ve_{n_1} +  2\ve_{n_2}\right)
+    \otimes_{k=1}^4 \left( 2 \ve_{n_1}+2\ve_{n_2}\right)
     \right>
-    \Big)
+    \Big).
     \end{aligned}
 \end{equation}
-The final equation is based on $D + D(D-1) + \frac{D(D-1)}{2}$ different $4$-jets, where we can collapse the highest coefficients. From this we conclude that our formula for the Biharmonic Operator has the effort of propagating $1 + 3D + 1 + 1 + 3 \cdot D(D-1) + 1 + 1 + 3 \frac{D(D-1)}{2} + 1 = 9\frac{D^2}{2} - 3\frac{D}{2} + 6$ vectors through every node in the computational graph, when computed with our proposed collapsed Taylor-mode. As emphasized before, all jets are independent and can be computed in parallel, which provides further benefits for the run-time complexity. 
+The final equation is based on $D + D(D-1) + \frac{D(D-1)}{2}$ different $4$-jets, where once more we can collapse the highest coefficients. Hence, our formula for the Biharmonic Operator propagates $1 + 3D + 1 + 1 + 3  D(D-1) + 1 + 1 + 3 \frac{D(D-1)}{2} + 1 = 9\frac{D^2}{2} - 3\frac{D}{2} + 6$ vectors through every node in the computational graph, when computed the proposed collapsed Taylor-mode AD. As before, all jets can be computed in parallel, which provides further benefits for the run-time complexity. 
 
-The above procedure describes a generic approach for computing linear differential operators with Taylor-Mode AD that can be combined with our proposed collapsing method. We demonstrated it on the Biharmonic Operator, as it is a commonly used operator of degree greater than two. We also considered other approach, which underperform our contribution. For a comparison see \cref{sec:appendix_ttc_other_methods}. It has to be remarked, because of its special structure, there is an other efficient scheme for computing the Biharmonic Operator that nests twice the Laplacian. In the appendix, we briefly discuss this approach in combination with our collapsed Taylor-Mode. However, our focus here was to show the reader that our idea applies to other differential operators, therefore making it a relevant contribution.
+The above procedure describes a generic approach for computing linear differential operators with Taylor-Mode AD that can be combined with our proposed collapsing method. 
+%We demonstrated it on the Biharmonic Operator, as it is a commonly used operator of degree greater than two. 
+We also considered other approach, which underperform our contribution. For a comparison see \cref{sec:appendix_ttc_other_methods}. It has to be remarked that, because of its special structure, there is another efficient scheme for computing the Biharmonic Operator that nests twice the Laplacian. In the appendix, we briefly discuss this approach in combination with our collapsed Taylor-mode AD. However, our focus here was to show that our idea applies to other differential operators, therefore making it a relevant contribution.
 

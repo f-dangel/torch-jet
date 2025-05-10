@@ -142,6 +142,46 @@ def laplacian_function(
         )
 
 
+def vector_hessian_vector_product(
+    f: Callable[[Tensor], Tensor], dummy_x: Tensor
+) -> Callable[[Tensor, Tensor], Tensor]:
+    """Generate function to compute the vector-Hessian-vector product of f at x with v.
+
+    Args:
+        f: The function whose vector-Hessian-vector product we want to compute.
+            It should take the input tensor as argument and return the output tensor.
+        dummy_x: An un-batched dummy input tensor to determine the input dimensions.
+
+    Returns:
+        A function that computes the vector-Hessian-vector product of f at the input
+        tensor x given x and the vector. Has the same shape as f(x).
+    """
+    # perform the contraction of the HVP and the vector with einsum to support
+    # functions with non-scalar output
+    sum_dims = dummy_x.ndim
+    dims = " ".join([f"d{i}" for i in range(sum_dims)])
+    equation = f"... {dims}, {dims} -> ..."
+
+    def vhv(x: Tensor, v: Tensor) -> Tensor:
+        """Compute the vector-Hessian-vector product of f with v evaluated at x.
+
+        Args:
+            x: The input to the function at which the vector-Hessian-vector product
+                is computed.
+            v: The vector to compute the vector-Hessian-vector product with.
+                Has same shape as `x`.
+
+        Returns:
+            The vector-Hessian-vector product. Has the same shape as f(x).
+        """
+        grad_func = jacrev(f)
+        _, hvp = jvp(grad_func, (x,), (v,))
+
+        return einsum(hvp, v, equation)
+
+    return vhv
+
+
 def randomized_laplacian_function(
     f: Callable[[Tensor], Tensor],
     X: Tensor,
@@ -181,28 +221,8 @@ def randomized_laplacian_function(
 
     if strategy == "hessian_trace":
 
-        # perform the contraction of the HVP and the vector with einsum to support
-        # functions with non-scalar output
-        sum_dims = X.ndim - 1 if is_batched else X.ndim
-        dims = " ".join([f"d{i}" for i in range(sum_dims)])
-        equation = f"... {dims}, {dims} -> ..."
-
-        def vhv(x: Tensor, v: Tensor) -> Tensor:
-            """Compute vector-Hessian-vector products of f evaluated at x.
-
-            Args:
-                x: The input to the function at which the vector-Hessian-vector product
-                    is computed.
-                v: The vector to compute the vector-Hessian-vector product with.
-                    Has same shape as `x`.
-
-            Returns:
-                The vector-Hessian-vector product. Has the same shape as f(x).
-            """
-            grad_func = jacrev(f)
-            _, hvp = jvp(grad_func, (x,), (v,))
-
-            return einsum(hvp, v, equation)
+        dummy_x = X[0] if is_batched else X
+        vhv = vector_hessian_vector_product(f, dummy_x)
 
         # vmap over data points and fix data
         if is_batched:
@@ -346,29 +366,8 @@ def randomized_weighted_laplacian_function(
     )
 
     if strategy == "hessian_trace":
-
-        # perform the contraction of the vector-Hessian-vector product with einsum to
-        # support functions with non-scalar output
-        sum_dims = X.ndim - 1 if is_batched else X.ndim
-        dims = " ".join([f"d{i}" for i in range(sum_dims)])
-        equation = f"... {dims}, {dims} -> ..."
-
-        def vhv(x: Tensor, v: Tensor) -> Tensor:
-            """Compute vector-Hessian-vector products of f evaluated at x.
-
-            Args:
-                x: The input to the function at which the vector-Hessian-vector product
-                    is computed.
-                v: The vector to compute the vector-Hessian-vector product with.
-                    Has same shape as `x`.
-
-            Returns:
-                The vector-Hessian-vector product. Has the same shape as f(x).
-            """
-            grad_func = jacrev(f)
-            _, hvp = jvp(grad_func, (x,), (v,))
-
-            return einsum(hvp, v, equation)
+        dummy_x = X[0] if is_batched else X
+        vhv = vector_hessian_vector_product(f, dummy_x)
 
         # vmap over data points and fix data
         if is_batched:
@@ -433,18 +432,17 @@ def bilaplacian_function(
         if is_batched:
             bilaplacian = vmap(bilaplacian)
 
-        return lambda: bilaplacian(X)
-
     elif strategy in {"jet_naive", "jet_simplified"}:
         bilaplacian = Bilaplacian(f, X, is_batched)
         pull_sum_vmapped = strategy == "jet_simplified"
         bilaplacian = simplify(
             symbolic_trace(bilaplacian), pull_sum_vmapped=pull_sum_vmapped
         )
-        return lambda: bilaplacian(X)
 
     else:
         raise ValueError(f"Unsupported strategy: {strategy}.")
+
+    return lambda: bilaplacian(X)
 
 
 def randomized_bilaplacian_function(
@@ -474,7 +472,7 @@ def randomized_bilaplacian_function(
                 down, and summations up, the computation graph.
         distribution: From which distribution to draw the random vectors. Supported
             values are `'normal'`.
-        num_samples: How many Monte-Carlo samples should be used by the estimation.
+        num_samples: How many Monte-Carlo ksamples should be used by the estimation.
 
     Returns:
         A function that computes the randomized Bi-Laplacian of the function f at the
@@ -487,44 +485,11 @@ def randomized_bilaplacian_function(
         raise ValueError(f"Unsupported distribution: {distribution!r}.")
 
     if strategy == "hessian_trace":
-        # perform the contraction of the vector-Hessian-vector product with einsum to
-        # support functions with non-scalar output
-        sum_dims = X.ndim - 1 if is_batched else X.ndim
-        dims = " ".join([f"d{i}" for i in range(sum_dims)])
-        equation = f"... {dims}, {dims} -> ..."
-
-        def d4f_vvvv(x: Tensor, v: Tensor) -> Tensor:
-            """Multiply the 4th-order derivative tensor of f(x) with v along all axes.
-
-            Args:
-                x: The input to the function at which the tensor-vector product
-                    is computed.
-                v: The vector to compute the tensor-vector product with.
-                    Has same shape as `x`.
-
-            Returns:
-                The vector-derivative tensor product. Has the same shape as f(x).
-            """
-
-            def vhv(f: Callable[[Tensor], Tensor]) -> Callable[[Tensor], Tensor]:
-                """Return a function that computes the vector-Hessian-vector product.
-
-                Args:
-                    f: The function whose vector-Hessian-vector product is computed.
-
-                Returns:
-                    A function that computes the vector-Hessian-vector product of f.
-                    The VHVP has the same shape as f(x).
-                """
-
-                def _vhv(x: Tensor) -> Tensor:
-                    grad_func = jacrev(f)
-                    _, hvp = jvp(grad_func, (x,), (v,))
-                    return einsum(hvp, v, equation)
-
-                return _vhv
-
-            return (vhv(vhv(f)))(x)
+        dummy_x = X[0] if is_batched else X
+        d2f_vv = vector_hessian_vector_product(f, dummy_x)
+        d4f_vvvv = lambda x, v: vector_hessian_vector_product(  # noqa: E731
+            lambda x: d2f_vv(x, v), dummy_x
+        )(x, v)
 
         # vmap over data points and fix data
         if is_batched:

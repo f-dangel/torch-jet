@@ -107,11 +107,13 @@ class Bilaplacian(Module):
         """
         D = self.unbatched_dim
 
+        Z = zeros(*self.x_shape, **self.x_kwargs)
+
         # first 4-jet
         X1_0 = replicate(x, D)
-        X1_2 = zeros(D, *self.x_shape, **self.x_kwargs)
-        X1_3 = zeros(D, *self.x_shape, **self.x_kwargs)
-        X1_4 = zeros(D, *self.x_shape, **self.x_kwargs)
+        X1_2 = replicate(Z, D)
+        X1_3 = replicate(Z, D)
+        X1_4 = replicate(Z, D)
 
         X1_1 = 4 * eye(D, **self.x_kwargs)
         if self.is_batched:
@@ -125,9 +127,9 @@ class Bilaplacian(Module):
 
         # second 4-jet
         X2_0 = replicate(x, D * (D - 1))
-        X2_2 = zeros(D * (D - 1), *self.x_shape, **self.x_kwargs)
-        X2_3 = zeros(D * (D - 1), *self.x_shape, **self.x_kwargs)
-        X2_4 = zeros(D * (D - 1), *self.x_shape, **self.x_kwargs)
+        X2_2 = replicate(Z, D * (D - 1))
+        X2_3 = replicate(Z, D * (D - 1))
+        X2_4 = replicate(Z, D * (D - 1))
 
         X2_1 = zeros(D, D - 1, D, **self.x_kwargs)
         for i in range(D):
@@ -147,9 +149,9 @@ class Bilaplacian(Module):
 
         # third 4-jet
         X3_0 = replicate(x, D * (D - 1) // 2)
-        X3_2 = zeros(D * (D - 1) // 2, *self.x_shape, **self.x_kwargs)
-        X3_3 = zeros(D * (D - 1) // 2, *self.x_shape, **self.x_kwargs)
-        X3_4 = zeros(D * (D - 1) // 2, *self.x_shape, **self.x_kwargs)
+        X3_2 = replicate(Z, D * (D - 1) // 2)
+        X3_3 = replicate(Z, D * (D - 1) // 2)
+        X3_4 = replicate(Z, D * (D - 1) // 2)
 
         X3_1 = zeros(D * (D - 1) // 2, D, **self.x_kwargs)
         counter = 0

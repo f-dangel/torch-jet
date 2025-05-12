@@ -2,12 +2,12 @@ Recently, neural networks have increasingly been used to represent potentially h
 The physics is typically encoded in the form of partial differential equations (PDEs), and the neural network representation must therefore satisfy such equations.
 This requires the application of partial differential operators to the neural network representation, which need to be computed with respect to the input rather than the trainable weights.
 Unlike the setting of network training with first-order methods, these input derivatives are often high-order PDE operators, requiring second derivatives or even higher.
-Since nested AD is expensive, efficient automatic differentiation of such operators must therefore go beyond mere backpropagation, a realization that motivated this fact and previous work is illustrated in Figure \ref{fig:benchmark}.
+Since nested automatic differentiation (AD) is expensive, efficient differentiation of such operators must therefore go beyond mere backpropagation, a realization that motivated this fact and previous work is illustrated in Figure \ref{fig:benchmark}.
 
 \paragraph{Variational Monte Carlo} A prominent example is variational Monte Carlo (VMC), where neural quantum states must satisfy Schrödinger's equation \cite{carleo2017solving, pfau2020ab, hermann2020deep}.
 This involves the computation of the input Laplacian to capture the kinetic energy contribution to the Hamiltonian.
 In many settings, this Laplacian need not be differentiable with respect to the network weights \cite{li2023forward}.
-However, recent developments in optimization techniques have also revived the use of differentiable Laplacians \cite{webber2022rayleigh, toulouse2007optimization}.
+However, recent developments in optimization have also revived the use of differentiable Laplacians \cite{webber2022rayleigh, toulouse2007optimization}.
 
 \paragraph{Physics-Informed Neural Networks} A more general framework arises in physics-informed neural networks (PINNs), which cast PDE problems as optimization tasks by minimizing the residuals of the governing equations \cite{raissi2019physics, karniadakis2021physics}.
 This approach necessitates differentiable application of potentially high-order PDE operators.
@@ -17,7 +17,7 @@ For instance, the PINN formulation of Kolmogorov-type equations—including the 
 
 \todo{T: What about discussing recent approaches, like forward-laplace, Hutchison trace and stochastic ad?}
 
-\paragraph{Computational Challenges} As illustrated in Figure \ref{fig:benchmark} and Figure \ref{fig:benchmark-randomized-laplacians}, the computation of input derivatives can be a significant computational bottleneck in terms of both memory and runtime, particularly for high-dimensional or high-order operators. This limitation may restrict the scalability of recent approaches and hinder broader applicability. To address this challenge, we advocate for more efficient and automated use of advanced automatic differentiation techniques. In particular, we propose to generalize recent graph simplification strategies—such as the forward Laplacian scheme—by systematically exploiting the linearity of differential operators leveraging Taylor-mode automatic differentiation. This generalization enables us to apply efficient propagation schemes to a wide range of operators. This has the potential to both reduce resource consumption and broaden the range of feasible applications in VMC, PINNs, and related areas.
+\paragraph{Computational Challenges} As illustrated in Figure \ref{fig:benchmark} and Figure \ref{fig:benchmark-randomized-laplacians}, the computation of input derivatives can be a significant computational bottleneck in terms of both memory and runtime, particularly for high-dimensional or high-order operators. This limitation may restrict the scalability of recent approaches and hinder broader applicability. To address this challenge, we advocate for more efficient and automated use of advanced AD. In particular, we propose to generalize recent graph simplification strategies—such as the forward Laplacian scheme—by systematically exploiting the linearity of differential operators leveraging Taylor-mode AD. This generalization enables us to apply efficient propagation schemes to a wide range of operators. This has the potential to both reduce resource consumption and broaden the range of feasible applications in VMC, PINNs, and related areas.
 
 While recent work has pointed out a connection between Taylor-mode and the Forward-Laplacian, it remains unclear how to leverage this connection.
 Our work changes this.
@@ -49,10 +49,10 @@ Our work changes this.
 Our contributions comprise the following topics:
 \begin{enumerate}
 \item We describe the `collapsed' Taylor mode where the highest Taylor coefficients during the forward propagation are propagated as a weighted sum of said derivatives.
-  This approach has first been used in the `forward Laplacian framework \cite{li2023forward}, which, however, does not rely on Taylor mode.
+  This approach has first been used in the `forward Laplacian' framework \cite{li2023forward}, which, however, does not rely on Taylor mode.
   Our collapsed Taylor mode improves on it in two ways.
-  First, it is based on standard Taylor mode that then allows simple graph rewrites based on linearity.
-  Second, it generalizes to other differential operators and can also be applied to recently proposed randomization techniques for Taylor mode.
+  First, it is based on standard Taylor-mode AD that then allows simple graph rewrites based on linearity.
+  Second, it generalizes to other differential operators and can also be applied to recently proposed randomization techniques for Taylor-mode AD.
 
 \item This leads to a conceptually clean separation of concepts, allowing for a simple implementation that can handle all scenarios and does not require manual implementations for each differential operator.
   To demonstrate this, we build a Taylor mode library for PyTorch and equip it with the necessary graph simplifications using the \texttt{torch.fx} library, and show how collapsed Taylor mode accelerates the computation of various differential operators.

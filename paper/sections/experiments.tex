@@ -13,6 +13,7 @@ See \Cref{fig:interface-overview} for a visual walk-through of the procedure.
 
 \paragraph{Limitations.}
 Two limitations of our implementation are that (i) it only supports a small number of primitives and missing primitives need to be implemented (as is the case for the Taylor mode implementation JAX) and (ii) that \texttt{torch.fx} graphs can, at the moment, not be \texttt{jit}-compiled with \texttt{torch.compile}, \ie our PyTorch experiments report both un-compiled Taylor mode and nested first-order AD, although the latter could be further accelerated.
+And (iii), to keep the number of supported operations and graph simplifications minimal, we currently do not use in-place operations (I think nested first-order probably does that).
 
 \input{figures/torch_benchmark}
 \input{tables/torch_benchmark}

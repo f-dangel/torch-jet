@@ -180,7 +180,41 @@ Since the first sum captures all diagonal directions $e_{n_1} = e_{n_2}$, we ext
     \Big).
     \end{aligned}
 \end{equation}
-
+Exploiting furter symmetries, one obtains
+\begin{equation} \label{eq:ttc_for_biharm_final}
+    \begin{aligned}
+    \Delta^2 \vf(\vx_0) &=
+    \frac{1}{24}
+    \Big(
+    \left(
+    2D\gamma_{(2, 2)(4, 0)} + 2 \gamma_{(2, 2)(3, 1)} + \gamma_{(2, 2)(2, 2)}
+    \right)
+    \sum_{n_1=1}^D
+    \left<
+    \partial^4 \vf(\vx_0),
+    \otimes_{k=1}^4 4 \ve_{n_1}
+    \right>
+    \\
+    &+
+    2 \gamma_{(2, 2)(3, 1)}
+     \sum_{n_1=1}^D\sum_{\underset{n_2 \neq n_1}{n_2=1}}^D\!\!\!
+    \left<
+    \partial^4 \vf(\vx_0),
+    \otimes_{k=1}^4 \left(
+    3 \ve_{n_1}+\ve_{n_2}
+    \right)
+    \right>
+    \\
+    & +
+    2 \gamma_{(2, 2)(2, 2)}
+    \sum_{n_1=1}^{D - 1} \sum_{n_2 = n_1 + 1}^D
+    \left<
+    \partial^4 \vf(\vx_0),
+    \otimes_{k=1}^4 \left( 2 \ve_{n_1}+2\ve_{n_2}\right)
+    \right>
+    \Big).
+    \end{aligned}
+\end{equation}
 \subsection{Other methods}\label{sec:appendix_ttc_other_methods}
 
 \paragraph{Hutchinson Trace Estimation}

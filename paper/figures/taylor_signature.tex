@@ -14,18 +14,18 @@
     \node[align=center, below=1cm of topright, box, draw=tab-orange] (bottomright) {%Taylor polynomial of degree $K$
       % \\
       $K$-jet \; $\sum_{k=0}^K \frac{t^k}{k!} \vf_k$
-      % \\
-      % {\color{maincolor}$(\vf_0, \dots, \vf_K)$}
+      \\
+      as $(\vf_0, \dots, \vf_K)$
     };
     \draw [-Latex] (topright.south) to node [midway, right] {$J^K$}
     (bottomright.north);
 
-    \node[align=center, below=1cm of topleft, box, draw=tab-orange] (bottomleft) {{%Taylor polynomial of degree $K$
+    \node[align=center, below=1cm of topleft, box, draw=tab-orange] (bottomleft) {%Taylor polynomial of degree $K$
         % \\
         $K$-jet \; $\sum_{k=0}^K \frac{t^k}{k!} \vx_k$
-        % \\
-        % {\color{maincolor} $(\vx_0, \dots, \vx_K)$}
-      }};
+        \\
+        as $(\vx_0, \dots, \vx_K)$
+      };
     \draw [-Latex] (topleft.south) to node [midway, left] {$J^K$} (bottomleft.north);
 
     \draw [-Latex, \colorTM, align=center, very thick] (bottomleft.east) to node [midway, above, tab-orange] {\color{\colorTM}Taylor-mode\\ AD} (bottomright.west);

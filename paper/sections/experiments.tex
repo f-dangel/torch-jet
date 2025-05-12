@@ -35,7 +35,7 @@ The peak memory allocation does not fluctuate, hence we determine it in a single
 \Cref{fig:benchmark} visualizes the computational demands' growth \wrt the batch size (exact) and number of Monte-Carlo samples (stochastic) for fixed dimensions $D$.
 We used a 5-layer MLP with $\tanh$ activation and around 3M parameters, similar to the ones employed in other works on PINNs \cite{dangel2024kroneckerfactored,shi2024stochastic}.
 As the scalings with batch size and Monte-Carlo samples are both linear, we quantify the results by fitting linear functions and reporting their slopes (\ie time and memory added per datum/sample) in \Cref{tab:benchmark}. We make the following observations:
-\begin{itemize}[itemindent=-20pt]
+\begin{itemize}[leftmargin=0.5cm]
 \item \textbf{Collapsed Taylor mode accelerates standard Taylor mode.}
   When comparing collapsed with standard Taylor mode, we observe that the measure run time differences correspond well with the theoretical prediction.
   \Eg for the Laplacian, the ratio of propagated vectors between standard and collapsed is $\nicefrac{(2 + D)}{(1 + 2D)} \approx 0.5$; we observe that adding one datum adds $0.60ms$ to standard and $0.33ms$ to collapsed Taylor mode.

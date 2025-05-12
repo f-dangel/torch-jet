@@ -40,7 +40,7 @@ Given $K$ vectors $\vv_1, \dots, \vv_K \in \sR^D$, we write their tensor product
   \left[\otimes_{k=1}^K \vv_k\right]_{d_1, \dots, d_K}
   = [\vv_1]_{d_1} \cdots [\vv_K]_{d_K}
 \end{equation*}
-for $d_1, \dots, d_K \in \{1, \dots, D\}$, and compactly write $(\vv)^{\otimes K} = \otimes_{k=1}^K \vv$.
+for $d_1, \dots, d_K \in \{1, \dots, D\}$, and compactly write $\vv^{\otimes K} = \otimes_{k=1}^K \vv$.
 We define the inner product of two tensors $\smash{\tA, \tB \in (\sR^{D})^{\otimes K}}$ as the Euclidean inner product of their flattened versions
 \begin{align}\label{eq:derivative-tensor-scalar-product}
   \textstyle % Comment out this line if we have enough space
@@ -106,7 +106,7 @@ Given $J^K\vx$, Taylor-mode calculates the $K$-jet of $\vf$ by successively eval
 \end{align}
 Here, $\partitioning(k)$ is the integer partitioning of $k$ (a set of sets), $\nu$ is a multiplicity function, and $n_s$ counts occurrences of $s$ in an integer partitioning $\sigma$ (\eg $n_1(\{1,1,3\}) = 2$ and $n_3 = 1$).
 \citet[][\S13]{griewank2008evaluating} presents explicit formulas of common elemental functions that have quadratic complexity in $K$.
-In summary, this yields the following propagation scheme:
+In summary, this yields the propagation scheme (where $\vx_k \in \sR^D$, $\vh_k \in \sR^I$, $\vf_k \in \sR^C$)
 \begin{align}\label{eq:taylor-mode-composition}
   \begin{split}
     &\begin{pmatrix*}
@@ -222,9 +222,9 @@ In summary, this yields the following propagation scheme:
       \right)
   \end{split}
 \end{align}
-\Cref{eq:taylor-mode-composition} describes the forward propagation of a single $K$-jet.
+which describes the forward propagation of a single $K$-jet.
 In practise, however, computing PDE operators requires evaluating \emph{multiple} $K$-jets in parallel, and accumulating their results.
-We show that this accumulation can be pulled inside Taylor mode's propagation scheme, which collapses the $K$-th component.
+We show how to pull this accumulation inside Taylor mode's propagation scheme, thereby collapsing it.
 
 %%% Local Variables:
 %%% mode: LaTeX

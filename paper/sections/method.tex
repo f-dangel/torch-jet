@@ -10,11 +10,11 @@ Hence, it can be implemented as part of a JIT-toolchain.
   I did not fully think through the idea of automating the TTC formula.
 }
 
-
-\subsection{Exploiting Linearity in Taylor-mode AD}
+\subsection{Exploiting Linearity to Collapse Taylor-mode AD}
 To derive the proposed method, the considerations start with a sum over $K$th-order directional derivatives of a function $\vf$ like the Laplacian.
 In our notation, this sum can be represented as
 \begin{align}\label{eq:sum-k-directional}
+  \textstyle % Comment out this line if we have enough space
   \sum_{n=1}^N\left<
   \partial^{K} f(\vx_0),
   \otimes_{k=1}^K \vv_n
@@ -31,30 +31,31 @@ Subsequently, one has to sum up the corresponding highest derivatives to obtain 
 This is illustrated in the appendix, see \cref{eq:sum-taylor-mode-naive}, for our simple example.
 The approach we propose here is based on the observation that there is a special element in the set of integer partitions $\partitioning(K)$, namely the trivial partition $\tilde{\sigma}= \{K\}$ corresponding to the term
 \begin{equation}
-    \nu(\tilde{\sigma}) \left<
+  \nu(\tilde{\sigma}) \left<
     \partial \vg(\vh_0),
     \vh_{K, n}
-    \right>,
+  \right>,
 \end{equation}
 of the Faà di Bruno formula. Using the definitions of \cite{hardy2006combinatorics}, one obtains $\nu(\tilde{\sigma}) = 1$
 yielding
 \begin{equation}\label{eq:faa-di-bruno-expanded}
-     \vf_{K, n}
-     =
-     \vg_{K,n}
-     =
-     \displaystyle\sum_{
-      \sigma \in \partitioning(K) \setminus \{\tilde{\sigma}\}
-     }
-     \nu(\sigma) \left<
-     \partial^{|\sigma|} \vg(\vh_0),
-     \tensorprod{s \in \sigma} \vh_{K, n}
-     \right>
-     +
-     \left<
-     \partial \vg(\vh_0),
-     \vh_{K, n}
-     \right>
+  \textstyle % Comment out this line if we have enough space
+  \vf_{K, n}
+  =
+  \vg_{K,n}
+  =
+  \sum_{
+    \sigma \in \partitioning(K) \setminus \{\tilde{\sigma}\}
+  }
+  \nu(\sigma) \left<
+    \partial^{|\sigma|} \vg(\vh_0),
+    \tensorprod{s \in \sigma} \vh_{K, n}
+  \right>
+  +
+  \left<
+    \partial \vg(\vh_0),
+    \vh_{K, n}
+  \right>
 \end{equation}
 for our simple example.
 The last inner-product term on the right-hand side is linear in $\vh_{K,n}$, marking the key property for our method.
@@ -74,6 +75,7 @@ A highlight of our general approach, i.e., the collapsed Taylor-mode AD for \cre
 In the context of variational Monte Carlo simulations in quantum mechanics \cite{foulkes2001quantum, pfau2020ab}, the Laplacian of the wave function must be evaluated repeatedly as part of the wave function optimization process.
 For a function $f: \sR^D \to \sR$, the Laplacian is given as
 \begin{align}\label{eq:laplacian}
+  \textstyle % Comment out this line if we have enough space
   \Delta f(\vx_0)
   :=
   \sum_{d=1}^D \frac{\partial^2 f(\vx_0)}{\partial x_d^2}
@@ -96,6 +98,7 @@ Note that this scheme agrees with the one presented in \cite{li2023forward}, but
 A natural generalization of the Laplace operator involves forming weighted sums of second derivatives.
 Given a positive semi-definite matrix $\boldsymbol{C}\in\mathbb R^{D\times D}$, we consider the operator
 \begin{align}\label{eq:weighted-laplacian}
+  \textstyle % Comment out this line if we have enough space
   \sum_{i,j=1}^D \boldsymbol{C}_{i,j} \frac{\partial^2 \vf(\vx_0)}{\partial x_i \partial x_j}.
 \end{align}
 This expression represents, for example, the diffusion term in a Kolmogorov-type partial differential equation \cite{hu2023hutchinson}.
@@ -105,30 +108,31 @@ This requires the propagation of $1 + \rank(\mC) + 1$ vectors instead of $1 + 2\
 An important special case of \cref{eq:weighted-laplacian} is the Hutchinson Trace Estimation for the Laplacian \cite{hu2023hutchinson}, which is also computable like the Forward-Laplacian scheme \cite{li2023forward}, leveraging the collapsed Taylor-mode.
 For our simple example $\vf = \vg \circ \vh$ from above, the differential operator \eqref{eq:weighted-laplacian} can be calculated using \cref{eq:sum-taylor-mode-efficient}.
 
-%Another important differential operator is represented by a symmetric positive semi-definite (PSD) matrix $\boldsymbol{C} \in \left(\mathbb{R}^D\right)^{\otimes 2}$:
-%\begin{align}\label{eq:weighted-laplacian}
-%  \sum_{i,j} \boldsymbol{C}_{i,j} \frac{\partial^2 \vf(\vx_0)}{\partial x_i \partial x_j}.
-%\end{align}
-%Those operators occur, for example, as
-%\begin{equation*}
-%    \Tr (\msigma \msigma^\top \partial^2 \vf(\vx_0)
-%\end{equation*}
-%in Fokker-Planck and Hamiltonian-Jacobi Bellmann equations. \todo{need citations} Since $\boldsymbol{C}$ is PSD it can be expressed as $\mC = \sum_{n=1}^{\rank(\mC)} \vc_n \vc_n^\top$ for suitable $\vc_n \in \sR^D$. Therefore, it fits the setting of \cref{eq:sum-k-directional} with $K = 2, N = \rank(\mC)$ and $\vv_n = \vc_n$, and can be compute using \cref{eq:sum-taylor-mode-efficient}. This requires the propagation of $1 + \rank(\mC) + 1$ vectors instead of $1 + 2\rank(\mC)$.
+% Another important differential operator is represented by a symmetric positive semi-definite (PSD) matrix $\boldsymbol{C} \in \left(\mathbb{R}^D\right)^{\otimes 2}$:
+% \begin{align}\label{eq:weighted-laplacian}
+%   \sum_{i,j} \boldsymbol{C}_{i,j} \frac{\partial^2 \vf(\vx_0)}{\partial x_i \partial x_j}.
+% \end{align}
+% Those operators occur, for example, as
+% \begin{equation*}
+%   \Tr (\msigma \msigma^\top \partial^2 \vf(\vx_0)
+% \end{equation*}
+% in Fokker-Planck and Hamiltonian-Jacobi Bellmann equations. \todo{need citations} Since $\boldsymbol{C}$ is PSD it can be expressed as $\mC = \sum_{n=1}^{\rank(\mC)} \vc_n \vc_n^\top$ for suitable $\vc_n \in \sR^D$. Therefore, it fits the setting of \cref{eq:sum-k-directional} with $K = 2, N = \rank(\mC)$ and $\vv_n = \vc_n$, and can be compute using \cref{eq:sum-taylor-mode-efficient}. This requires the propagation of $1 + \rank(\mC) + 1$ vectors instead of $1 + 2\rank(\mC)$.
 
 
 \paragraph{Traces of higher-order derivative tensors}
 The higher-order Laplacian, e.g., considered as theoretical example in \cite{shi2024stochastic}, or as application in ...\todo{add references}  is also naturally expressible in our framework as
 \begin{align}\label{eq:trace-differential-operator}
-    \Tr( \partial^K f(\vx) )
-    \coloneqq
-    \sum_{d=1}^D
-    \frac{\partial^K f(\vx_0)}{\partial \evx_d^K}
-    =
-    \sum_{d=1}^D
-    \left<
-    \partial^K f(\vx_0),
-    \otimes_{i=1}^K \ve_d
-    \right>,
+  \textstyle % Comment out this line if we have enough space
+  \Tr( \partial^K f(\vx) )
+  \coloneqq
+  \sum_{d=1}^D
+  \frac{\partial^K f(\vx_0)}{\partial \evx_d^K}
+  =
+  \sum_{d=1}^D
+  \left<
+  \partial^K f(\vx_0),
+  \otimes_{i=1}^K \ve_d
+  \right>,
 \end{align}
 with $N = D$ and $\vv_n = \ve_n$.
 
@@ -140,26 +144,28 @@ To tackle this problem, we extend our framework to transform a differential oper
 
 As one important example, we consider the Biharmonic Operator, i.e.,
 \begin{align}
-\label{eq:biharm}
-    \Delta^2 \vf(\vx_0)
-    \coloneqq
-    \sum_{n_1=1}^D \sum_{n_2=1}^D
-    \frac{\partial^4 \vf(\vx_0)}{\partial \evx_{n_1}^2 \partial \evx_{n_2}^2}
-    =
-    \sum_{n_1=1}^D \sum_{n_2=1}^D
-    \left<
-    \partial^4 \vf(\vx_0),
-    \left(\ve_{n_1}\right)^{\otimes 2} \otimes \left(\ve_{n_2}\right)^{\otimes 2}
-    \right>.
+  \label{eq:biharm}
+  \textstyle % Comment out this line if we have enough space
+  \Delta^2 \vf(\vx_0)
+  \coloneqq
+  \sum_{n_1=1}^D \sum_{n_2=1}^D
+  \frac{\partial^4 \vf(\vx_0)}{\partial \evx_{n_1}^2 \partial \evx_{n_2}^2}
+  =
+  \sum_{n_1=1}^D \sum_{n_2=1}^D
+  \left<
+  \partial^4 \vf(\vx_0),
+  \ve_{n_1}^{\otimes 2} \otimes \ve_{n_2}^{\otimes 2}
+  \right>.
 \end{align}
 Once more, we introduce a notation that allows us to cover also more general cases.
 For the maximal derivative degree $K$, $P \leq K$ different sums and arbitrary directions $\vv_{n_k}$, we can rewrite \cref{eq:biharm} as
 \begin{align}\label{eq:sums-k-directional}
+  \textstyle % Comment out this line if we have enough space
   \sum_{n_1=1}^{N_1} \dots \sum_{n_P=1}^{N_P}\left<
   \partial^{K} f(\vx_0),
-  \left(\vv_{n_1}\right)^{\otimes p_1}
+  \vv_{n_1}^{\otimes p_1}
   \otimes \ldots \otimes
-  \left(\vv_{n_P}\right)^{\otimes p_P}
+  \vv_{n_P}^{\otimes p_P}
   \right>,
 \end{align}
 with $K = 4, P = 2, N_1 = N_2 = D, \vp = (2, 2), \vv_{n_1} = \ve_{n_1}$ and $\vv_{n_2} = \ve_{n_2}$.
@@ -169,48 +175,52 @@ Those summands are not directly representable by $K$-jets and thus, not computab
 However, Griewank et al.
 derived in \cite{griewank_evaluating_1999} an approach to reconstruct linear combinations of mixed-partial derivatives of degree $K$ from a family of $K$-jets, which corresponds exactly to our situation and is given by
 \begin{equation}
-\label{eq:ttc_general}
-    \left<
-  \partial^{K} f(\vx_0),
-  \left(\vv_{n_1}\right)^{\otimes p_1}
-  \otimes \ldots \otimes
-  \left(\vv_{n_P}\right)^{\otimes p_P}
+  \label{eq:ttc_general}
+  \textstyle % Comment out this line if we have enough space
+  \left<
+    \partial^{K} f(\vx_0),
+    \vv_{n_1}^{\otimes p_1}
+    \otimes \ldots \otimes
+    \vv_{n_P}^{\otimes p_P}
   \right>
   = \sum_{\underset{\vq \in \mathbb{N}^P}{|\vq| = K}}
-    \gamma_{\vp \vq}
-    \frac{1}{K!}
-    \left<
+  \gamma_{\vp \vq}
+  \frac{1}{K!}
+  \left<
     \partial^{K}\vf(\vx_0),
     \otimes_{k=1}^K
-    \sum_{p=1}^P \vv_{n_p} q_p
-    \right>
+      \sum_{p=1}^P \vv_{n_p} q_p
+  \right>
 \end{equation}
+\todo{Felix@Tim: I find the notation confusing: Do we first sum, then take the tensor product? If not, we need to set parentheses.}
 in our notation.
-Appendix \cref{sec:appendix_ttc} provides supplementary details for the multi-index notation and the coefficients in the formula.
+\Cref{sec:appendix_ttc} provides supplementary details for the multi-index notation and the coefficients in the formula.
 From this reconstruction we conclude that \cref{eq:sums-k-directional} can be rewritten as
 \begin{align} \label{eq:ttc_general_operator}
+  \textstyle % Comment out this line if we have enough space
   \sum_{n_1=1}^{N_1} \dots \sum_{n_P=1}^{N_P}
   \sum_{\underset{\vq \in \mathbb{N}^P}{|\vq| = K}}
-    \gamma_{\vp \vq}
-    \frac{1}{K!}
-    \left<
-    \partial^{K}\vf(\vx_0),
-    \otimes_{k=1}^K
-    \sum_{p = 1}^P \vv_{n_p} q_p
-    \right>.
+  \gamma_{\vp \vq}
+  \frac{1}{K!}
+  \left<
+  \partial^{K}\vf(\vx_0),
+  \otimes_{k=1}^K
+  \sum_{p = 1}^P \vv_{n_p} q_p
+  \right>.
 \end{align}
 The authors of \cite{griewank_evaluating_1999} recognized that the coefficients $\gamma_{\vp\vq}/K!$ only depend on the problem structure, i.e., on $K$, $P$ and $\vp$ and not on the function $\vf$ and the directions $\vv_{n_k}$.
 Therefore, we can pull out the inner sum as well as the coefficients to obtain the expression
 \begin{equation}\label{eq:ttc-general}
-    \sum_{\underset{\vq \in \mathbb{N}^P}{|\vq| = K}}
-    \gamma_{\vp \vq}
-    \frac{1}{K!}
-    \sum_{n_1=1}^{N_1} \dots \sum_{n_P=1}^{N_P}
-    \left<
+  \textstyle % Comment out this line if we have enough space
+  \sum_{\underset{\vq \in \mathbb{N}^P}{|\vq| = K}}
+  \gamma_{\vp \vq}
+  \frac{1}{K!}
+  \sum_{n_1=1}^{N_1} \dots \sum_{n_P=1}^{N_P}
+  \left<
     \partial^{K}\vf(\vx_0),
     \otimes_{k=1}^K
     \sum_{p = 1}^P \vv_{n_p} q_p
-    \right>.
+  \right>.
 \end{equation}
 Furthermore, we can exploit symmetries in $\gamma_{\vp\vq}$ that are often inherent to the differential operators under consideration as illustrated in an example below.
 
@@ -221,10 +231,10 @@ It is important to emphasize that, in contrast to nesting derivative calls and o
 \begin{wrapfigure}[20]{r}{0.4\textwidth}
   \centering
   \vspace{-2ex}
-\input{figures/ttc_bilaplacian}
-\vspace{-2ex}
-\caption{\textbf{Illustration of \Cref{eq:ttc-general} for the Bi-Laplacian}, \ie the jet directions and coefficients for computing the partial derivative $\nicefrac{\partial^4}{\partial^2 x_i \partial^2 x_j}$.
-  They correspond to the border of a parallelepiped.}
+  \input{figures/ttc_bilaplacian}
+  \vspace{-2ex}
+  \caption{\textbf{Illustration of \Cref{eq:ttc-general} for the Bi-Laplacian}, \ie the jet directions and coefficients for computing the partial derivative $\nicefrac{\partial^4}{\partial^2 x_i \partial^2 x_j}$.
+    They correspond to the border of a parallelepiped.}
 \end{wrapfigure}
 
 \paragraph{Biharmonic Operator} A prominent differential operator with mixed partial derivatives is represented by the Biharmonic Operator.
@@ -243,7 +253,7 @@ Hence, our formula for the Biharmonic Operator propagates $1 + 3D + 1 + 1 + 3 D(
 As before, all jets can be computed in parallel, which provides further benefits for the run-time complexity.
 
 The above procedure describes a generic approach for computing linear differential operators with Taylor-Mode AD that can be combined with our proposed collapsing method.
-%We demonstrated it on the Biharmonic Operator, as it is a commonly used operator of degree greater than two.
+% We demonstrated it on the Biharmonic Operator, as it is a commonly used operator of degree greater than two.
 We also considered other proposed approaches, which underperform our contribution.
 For a comparison, see \cref{sec:appendix_ttc_other_methods}.
 It has to be remarked that, because of its special structure, there is another efficient scheme for computing the Biharmonic Operator that nests twice the Laplacian.

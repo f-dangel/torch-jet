@@ -1,4 +1,13 @@
-TODO
+Computing differential operators of high-dimensional functions is a critical component in scientific machine learning, particularly for physics-informed neural networks and variational Monte Carlo. 
+While Taylor-mode automatic differentiation promises efficient computation of higher-order derivatives, we found that vanilla implementations often underperform compared to nested backpropagation. 
+Our work introduces collapsed Taylor-mode AD, a simple yet effective optimization that propagates the sum of highest-order coefficients directly through the computational graph. 
+This approach (1) unifies and generalizes recent advances in forward-mode schemes, showing that the forward Laplacian emerges naturally from collapsing standard Taylor mode, while extending to other differential operators and stochastic variants, 
+(2) demonstrates that such optimizations can be achieved through simple graph rewrites based on linearity, making it amenable to integration into existing just-in-time compilers without requiring specialized interfaces, and (3)
+provides substantial empirical improvements over both vanilla Taylor mode and nested backpropagation, with up to 2x speedup for Laplacian operators and 9x for randomized Bi-harmonic operators, while often using less memory. 
+Our PyTorch implementation and experiments confirm that these theoretical benefits translate into practical performance gains. 
+The success of collapsed Taylor mode suggests that forward-mode AD schemes, when properly optimized, can outperform the traditional backpropagation approach for computing PDE operators. 
+We believe this work takes an important step toward making Taylor mode a practical alternative in scientific machine learning, while maintaining ease of use through potential compiler integration. 
+Future work could focus on integrating these optimizations directly into ML framework compilers, extending support to more primitive operations, and exploring additional graph-based optimizations for automatic differentiation. 
 %%% Local Variables:
 %%% mode: LaTeX
 %%% TeX-master: "../main"

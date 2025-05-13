@@ -8,7 +8,7 @@
     \node[align=center, box] (topleft) {Extent input to \\ smooth path
       $\vx(t)$};
 
-    \node[align=center, right=2.5cm of topleft, box] (topright) {Path in output \\ space $f(\vx(t))$};
+    \node[align=center, right=2.7cm of topleft, box] (topright) {Path in output \\ space $f(\vx(t))$};
     \draw [-Latex] (topleft.east) to node [midway, above] {$f$} (topright.west);
 
     \node[align=center, below=1cm of topright, box, draw=tab-orange, fill=tab-orange!25!white] (bottomright) {%Taylor polynomial of degree $K$
@@ -28,14 +28,14 @@
       };
     \draw [-Latex] (topleft.south) to node [midway, left] {$J^K$} (bottomleft.north);
 
-    \draw [-Latex, \colorTM, align=center, very thick] (bottomleft.east) to node [midway, above, tab-orange] {\color{\colorTM}Taylor-mode\\ AD} (bottomright.west);
+    \draw [-Latex, \colorTM, align=center, very thick] (bottomleft.east) to node [midway, above, tab-orange] {\color{\colorTM}Taylor mode} (bottomright.west);
   \end{tikzpicture}
   \end{minipage}
   \hfill
   \begin{minipage}[t]{0.35\linewidth}
-    \caption{\textbf{Taylor-mode propagates Taylor coefficients of a path in input space.}
+    \caption{\textbf{Taylor mode propagates Taylor coefficients of a path in input space.}
     This results in the function-transformed path's Taylor coefficients.
-    The Taylor expansion of degree $K$ is called a $K$-jet; hence Taylor-mode propagates the input $K$-jet to the output $K$-jet.}
+    The Taylor expansion of degree $K$ is called a $K$-jet; hence Taylor mode propagates the input $K$-jet to the output $K$-jet.}
   \label{fig:utp}
   \end{minipage}
 \end{figure}

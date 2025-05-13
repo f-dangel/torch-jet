@@ -72,11 +72,16 @@ For a function $f: \sR^D \to \sR$, the Laplacian is given as
   :=
   \sum_{d=1}^D \frac{\partial^2 f(\vx_0)}{\partial x_d^2}
   =
-  \sum_{d=1}^D \left<
+  \begin{cases}
+  = \sum_{d=1}^D \left<
   \partial^2 f(\vx_0),
   \ve_d \otimes \ve_d
-  \right>.
+  \right>. \text{(exact Taylor mode)}
+  \\
+  \approx ... \text{(stochastic Taylor mode)}
+  \end{cases}
 \end{align}
+\todo{Write down the stochastic cases for the Laplacian, weighted Laplacian, and Biharmonic.}
 If $f$ can be decomposed into $g \circ \vh$, where $\vh$ is vector-valued, as is the case if $\vh$ is a hidden layer of a neural network, then selecting $K = 2$, $N=D$ and $\vv_n = \ve_n$ lifts \cref{eq:laplacian} into the setting of \cref{eq:sum-k-directional}.
 For standard Taylor-mode AD, one propagates $1 + 2D$ vectors through the computational graph, see \cref{eq:laplacian-naive}.
 If we apply the collapsed Taylor-mode as proposed here, $1 + D + 1$ vectors are propagated.
@@ -85,7 +90,7 @@ Note that this scheme agrees with the one presented in \cite{li2023forward}, but
 
 
 
-\paragraph{Weighted sums of second-order derivatives.} %\todo{We can make the connection \cite{hu2023hutchinson} equation (5) clear and discuss the case of $\mC$ being a function of the input}
+\paragraph{Weighted Laplacian.} %\todo{We can make the connection \cite{hu2023hutchinson} equation (5) clear and discuss the case of $\mC$ being a function of the input}
 
 A natural generalization of the Laplace operator involves forming weighted sums of second derivatives.
 Given a positive semi-definite matrix $\boldsymbol{C}\in\mathbb R^{D\times D}$, we consider the operator
@@ -112,6 +117,7 @@ For our simple example $\vf = \vg \circ \vh$ from above, the differential operat
 
 
 \paragraph{Traces of higher-order derivative tensors}
+\todo{We probably have to remove this to save space.}
 The higher-order Laplacian, e.g., considered as theoretical example in \cite{shi2024stochastic}, or as application in ...\todo{add references}  is also naturally expressible in our framework as
 \begin{align}\label{eq:trace-differential-operator}
   \textstyle % Comment out this line if we have enough space
@@ -180,11 +186,11 @@ derived in \cite{griewank_evaluating_1999} an approach to reconstruct linear com
   \frac{1}{K!}
   \left<
     \partial^{K}\vf(\vx_0),
-    \otimes_{k=1}^K
-      \sum_{p=1}^P \vv_{n_p} q_p
+      \left(\sum_{p=1}^P \vv_{n_p} q_p\right)^{\otimes K}
   \right>
 \end{equation}
-\todo{Felix@Tim: I find the notation confusing: Do we first sum, then take the tensor product? If not, we need to set parentheses.}
+\todo{Felix@Tim: I find the notation confusing: Do we first sum, then take the tensor product? If not, we need to set parentheses.
+Tim: this is excalty what we are doing. First sum, then product. We might use $(...)^{\otimes K}$}
 in our notation.
 \Cref{sec:appendix_ttc} provides supplementary details for the multi-index notation and the coefficients in the formula.
 From this reconstruction we conclude that \cref{eq:sums-k-directional} can be rewritten as

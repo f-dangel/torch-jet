@@ -71,6 +71,16 @@ group-minimum-digits={3}%
 \definecolor{tab-orange}{rgb}{1.0, 0.498, 0.055}
 \definecolor{tab-blue}{rgb}{0.121, 0.466, 0.705}
 \definecolor{tab-green}{rgb}{0.173, 0.627, 0.173}
+% NOTE We overwrite the MATPLOTLIB default colors because they are not
+% colorblind friendly. We use the scheme from
+% https://colorbrewer2.org/#type=qualitative&scheme=Dark2&n=3,
+% which has green, orange, purple
+\definecolor{colorbrewer-green}{RGB}{27, 158, 119}
+\colorlet{tab-green}{colorbrewer-green}
+\definecolor{colorbrewer-orange}{RGB}{217, 95, 2}
+\colorlet{tab-orange}{colorbrewer-orange}
+\definecolor{colorbrewer-blue}{RGB}{117, 112, 179}
+\colorlet{tab-blue}{colorbrewer-blue}
 
 % ===================================================================
 % LINKS & REFERENCES

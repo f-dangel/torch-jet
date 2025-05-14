@@ -106,7 +106,26 @@
 \renewcommand\thefigure{\thesection\arabic{figure}}
 \renewcommand\thetable{\thesection\arabic{table}}
 
-\section{Visual Tour: From Function to Collapsed Taylor Mode AD}\label{sec:appendix-visual-tour}
+% modified title header from main page, code extracted from NeurIPS template
+\makeatletter
+\vbox{%
+  \hsize\textwidth
+  \linewidth\hsize
+  \vskip 0.1in
+  \@toptitlebar
+  \centering
+  {\LARGE\bf \@title (Supplementary Material)\par}
+  \@bottomtitlebar
+  \vskip 0.3in \@minus 0.1in
+}
+\makeatother
+
+% APPENDIX TOC
+\startcontents[sections]
+\printcontents[sections]{l}{1}{\setcounter{tocdepth}{2}}
+
+\clearpage
+\section{Visual Tour: From Function to Collapsed Taylor Mode}\label{sec:appendix-visual-tour}
 \input{figures/interface_overview}
 \clearpage
 
@@ -114,13 +133,13 @@
 \input{sections/graph_simplifications}
 \clearpage
 
-\section{Exploiting Linearity to Collapse Taylor Mode AD}
+\section{Exploiting Linearity to Collapse Taylor Mode}
 \input{sections/appendix_linearity_for_taylor}
 
 \section{Fa\`a Di Bruno Formula Cheat Sheet}\label{sec:faa-di-bruno-cheatsheet}
 \input{sections/faa_di_bruno}
 
-\section{Supplementary Material for "Collapsed Taylor Mode for Arbitrary Mixed Partial Derivatives"}\label{sec:appendix_ttc}
+\section{Details on (Collapsed) Taylor Mode for Arbitrary Mixed Partial Derivatives}\label{sec:appendix_ttc}
 \input{sections/appendix_ttc}
 
 \section{PyTorch benchmark}

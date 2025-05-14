@@ -1,10 +1,10 @@
 This section introduces the notation used in \cref{eq:ttc_general}. 
 The right side of the formula sums over all multi-indices $\vj = (j_1, \dots j_I) \in \mathbb{N}^I$ such that $|\vj| := \sum_i j_i = K$. If $I=2$ and $|\vj| = 4$ this index-set consists of $\left\{ (4,0), (0, 4), (3, 1), (1, 3),  (2, 2)\right\}$. 
 
-The coefficient $\gamma_{\vi \vj}$ is given as
+The coefficient $\gamma_{\vi, \vj}$ is given as
 \begin{equation}
 \label{eq:ttc_coeff}
-    \gamma_{\vi \vj} = \sum_{0 < \vm \leq \vi} (-1)^{|\vi - \vm|} 
+    \gamma_{\vi, \vj} = \sum_{0 < \vm \leq \vi} (-1)^{|\vi - \vm|} 
     \left(
     \begin{matrix}
         \vi \\
@@ -21,7 +21,7 @@ The coefficient $\gamma_{\vi \vj}$ is given as
     \frac{|\vm|}{|\vi|}
     \right)^{|\vi|}.
 \end{equation}
-The summation ranges over the set $\left\{ \vm = (m_1, \dots, m_I) \in \mathbb{N}^I \mid m_1 \leq j_1, \dots, m_p \leq j_P, |\vm| > 0 \right\}$. Furthermore, we utilize the generalized binomial coefficient
+The summation ranges over the set $\left\{ \vm = (m_1, \dots, m_I) \in \mathbb{N}^I \mid m_1 \leq i_1, \dots, m_I \leq i_I, |\vm| > 0 \right\}$. Furthermore, we utilize the generalized binomial coefficient
 \begin{equation}
     \left(
        \begin{matrix}
@@ -49,8 +49,7 @@ $
 $ 
 This notation also includes cases where the multi-index has components of $\mathbb{R}$.
 
-\subsection{Examples} 
-\paragraph{Biharmonic Operator -- Collapsed Taylor}
+\paragraph{Applied to the biharmonic operator.}
 To compute \cref{eq:biharm} with \cref{eq:ttc_general}, we first select $K = 4, P = 2, N_1 = N_2 = D, \vp = (2, 2), \vv_{n_1} = \ve_{n_1}$ and $\ve_{n_2} = \ve_{n_2}$. Then we insert these parameters into the general equation and get
 \begin{equation} \label{eq:ttc_for_biharm}
     \begin{aligned}
@@ -254,7 +253,7 @@ A different approach was proposed in \cite{shi2024stochastic}, which relies on t
     \right>.
     \end{split}
 \end{align}
-Notice the \textcolor{blue}{blue term}, which has the same structure as the summands we want to compute for the Biharmonic operator. Therefore, a first $6$-Jet with the input Jet is computed as explained above. To cancel out the unwanted terms, we evaluate another $6$-Jet with $\vx_2 = -\ve_{n_2}$ and adding the $6$-th coefficient of this Jet to \cref{eq:felix-biharmonic-jet1} gives
+Notice the \textcolor{blue}{blue term}, which has the same structure as the summands we want to compute for the Biharmonic operator. Therefore, a first $6$-jet with the input jet is computed as explained above. To cancel out the unwanted terms, we evaluate another $6$-jet with $\vx_2 = -\ve_{n_2}$ and adding the $6$-th coefficient of this jet to \cref{eq:felix-biharmonic-jet1} gives
 \begin{align}\label{eq:felix-biharmonic-jet2}
     2 \left<
     \partial^{6} \vf(\vx_0), 
@@ -269,7 +268,7 @@ Notice the \textcolor{blue}{blue term}, which has the same structure as the summ
     \right>.
     }
 \end{align}
-Finally, a third $6$-Jet is computing with $\vx_2 = \vzero$. The $6$-th coefficient of this Jet contains only  
+Finally, a third $6$-jet is computing with $\vx_2 = \vzero$. The $6$-th coefficient of this jet contains only  
 \begin{align}\label{eq:felix-biharmonic-jet3}
     \left<
     \partial^{6} \vf(\vx_0),
@@ -286,13 +285,13 @@ We obtain
     \right>    
     }
 \end{equation}
-by subtracting twice of the $6$-th coefficient of the third Jet from \cref{eq:felix-biharmonic-jet2}.
+by subtracting twice of the $6$-th coefficient of the third jet from \cref{eq:felix-biharmonic-jet2}.
 
-To summarize the procedure, we evaluate the 6-Jet three times. The first Jet has the input $\vx_1 = \ve_{n_1}, \vx_2 = \ve_{n_2}$ and $\vx_3 = \vx_4 = \vx_5 = \vx_6 = \vzero$, the second Jet has the same input Jet apart from $\vx_2 = \- \ve_{n_2}$. The third 6-Jet takes $\vx_2 = \vzero$. Then we add the $6$-th coefficient of the first and the second and subtract twice of the $6$-th coefficient of the third Jet. Dividing by $90$ provides the derivative corresponding to the $n_1, n_2$ term of the Biharmonic Ooerator.
+To summarize the procedure, we evaluate the 6-jet three times. The first jet has the input $\vx_1 = \ve_{n_1}, \vx_2 = \ve_{n_2}$ and $\vx_3 = \vx_4 = \vx_5 = \vx_6 = \vzero$, the second jet has the same input jet apart from $\vx_2 = \- \ve_{n_2}$. The third 6-jet takes $\vx_2 = \vzero$. Then we add the $6$-th coefficient of the first and the second and subtract twice of the $6$-th coefficient of the third jet. Dividing by $90$ provides the derivative corresponding to the $n_1, n_2$ term of the Biharmonic operator.
 
-The usual Taylor-mode would propagate $1 + 18D^2$ vectors through every node, where we already apply that all Jets share $\vx_0$ and therefore the corresponding first coefficients. 
-Leveraging our collapsed Taylor-mode would have the cost of passing $1 + 3 + 15D^2$ vectors to every node of the compute graph. Still, this is very expensive in comparison to our approach described before. In addition, until now, the selection of the Jet degree and the input coefficients requires substantial human effort.
+The usual Taylor mode would propagate $1 + 18D^2$ vectors through every node, where we already exploit that all jets share $\vx_0$ and therefore the corresponding first coefficients. 
+Leveraging our collapsed Taylor mode would have the cost of passing $1 + 3 + 15D^2$ vectors to every node of the compute graph. Still, this is very expensive in comparison to our approach described before. In addition, until now, the selection of the jet degree and the input coefficients requires substantial human effort.
 
 
 \paragraph{Nested Laplace}
-Another way is naturally given by considering the Biharmonic operator as the second-order Laplacian. Then, \cref{eq:laplacian-naive} could be applied twice. The twice-applied Laplacian would have to push $(2 + D) + D * (2 + D) + D * (2 + D) = 2D^2 + 5D + 2$ vectors to every node of the computational graph. Leveraging in this case our collapsed Taylor-Mode we would reduce the number of vectors to $1 + D * (2 + D) + 1 * (2 + D) = D^2 + 3D + 3$. However, implementing functionalities that allow to nest Jet computations is a computational cumbersome task and to our knowledge there is no tool including such feature. \todo{T: Please check. Is this right?} Additionally, this approach lacks the efficient work and memory distribution opportunities as our method does. \todo{t: can we state this? Because we can not test this claim}
+Another way is naturally given by considering the Biharmonic operator as the second-order Laplacian. Then, \cref{eq:laplacian-naive} could be applied twice. The twice-applied Laplacian would have to push $(2 + D) + D * (2 + D) + D * (2 + D) = 2D^2 + 5D + 2$ vectors to every node of the computational graph. Leveraging in this case our collapsed Taylor mode we would reduce the number of vectors to $1 + D * (2 + D) + 1 * (2 + D) = D^2 + 3D + 3$. However, implementing functionalities that allow to nest jet computations is a computational cumbersome task and to our knowledge there is no tool including such feature. \todo{T: Please check. Is this right?} Additionally, this approach lacks the efficient work and memory distribution opportunities as our method does. \todo{t: can we state this? Because we can not test this claim}

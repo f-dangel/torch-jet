@@ -144,7 +144,7 @@ In the general case,
         \quad
       &\text{(exact)}
       \\[1ex]
-      \{(\vx_{0,s} & = \vx_0, &\vx_{1, s} & = \msigma \vv_s, &\vx_{2,s} & = \vzero)\}_{s=1}^S
+      \{(\vx_{0,s} &\!\!\!\!= \vx_0, &\vx_{1, s} & \!\!\!\!= \msigma \vv_s, &\vx_{2,s} & \!\!\!\!= \vzero)\}_{s=1}^S
                                                                           \quad
       &{\color{tab-orange} 1 + S + S\, \text{vectors}}
         \quad
@@ -185,7 +185,7 @@ We will then demonstrate the approach on the biharmonic operator with 4-dimensio
     & \text{(stochastic)}
   \end{cases}
 \end{align}
-The stochastic version is easy. We simply draw $S$ standard normal vectors, then propagate the coefficients $(\vx_{0,s} = \vx_0, \vx_{1,s} = \vv_s, \vx_{2,s} = \vx_{3,s} = \vx_{4,s} = \vzero)$.
+The stochastic version is already solved by our approach presented above. We simply draw $S$ standard normal vectors $\vv_s$, then propagate the coefficients $(\vx_{0,s} = \vx_0, \vx_{1,s} = \vv_s, \vx_{2,s} = \vx_{3,s} = \vx_{4,s} = \vzero)$.
 Using standard Taylor mode, this uses ${\color{tab-orange} 1 + S + S + S + S}$ vectors.
 Collapsing Taylor mode uses ${\color{tab-green} 1 + S + S + S + 1}$ vectors.
 For the exact biharmonic, we need to develop an approach to compute mixed partials.
@@ -199,73 +199,73 @@ We can always express this tensor in a tensor product basis,
   \partial^K \vf(\vx_0), \tC
   \right>
   =
-  \sum_{d_1=1}^{D_1} \dots \sum_{d_P=1}^{D_P}\left<
+  \sum_{d_1=1}^{D_1} \dots \sum_{d_I=1}^{D_I}\left<
   \partial^{K} \vf(\vx_0),
-  \vv_{d_1}^{\otimes p_1}
+  \vv_{d_1}^{\otimes i_1}
   \otimes \ldots \otimes
-  \vv_{d_P}^{\otimes p_P}
+  \vv_{d_I}^{\otimes i_I}
   \right>
   \,
   \in \sR^C\,,
 \end{align}
-where the $p_i$s sum to $K$ and the $D_i$s are at most $D$ (in the worst case $(D_i, p_i) = (D, 1)\, \forall i$).
-For the biharmonic \cref{eq:biharm}, we identify $K = 4, P = 2, \vp = (2, 2), D_1 = D_2 = D, \vv_{d_1} = \ve_{d_1}$, and $\vv_{d_2} = \ve_{d_2}$.
+where the $\vi = (i_1, \dots, i_I)$ sum to $K$ and $D_j \leq D$.
+For the biharmonic \cref{eq:biharm}, we identify $K = 4, I = 2, \vi = (2, 2), D_1 = D_2 = D, \vv_{d_1} = \ve_{d_1}$, and $\vv_{d_2} = \ve_{d_2}$.
 From the Fa\'a di Bruno formula, we know that we can only compute terms of the form $\langle \partial^{K} \vf(\vx_0), \vv^{\otimes K}\rangle$ with a $K$-jet.
-The challenge in \cref{eq:sums-k-directional} is that it includes terms whose directions do \emph{not} coincide in all directions (\eg for the biharmonic we have $P=2$ different directions).
+The challenge in \cref{eq:sums-k-directional} is that it includes terms where \emph{not} all directions coincide (\eg for the biharmonic we have $I=2$ different directions).
 
-Fortunately, \citet{griewank_evaluating_1999} derived an approach to reconstruct such mixed-direction terms by linear combination of a \emph{family} of $K$-jets.
-This family is determined by all vectors $\vq \in \sN^P$ whose entries, like $\vp$ from above, sum to $K$ (see \cref{fig:ttc_biharm_coeffs} for an illustration for the biharmonic (5 directions)).
-The $K$-jets along these directions are then combined with coefficients $\gamma_{\vp, \vq} \in \sR$, whose definition we provide in \cref{sec:appendix_ttc}.
-In summary, we get
+Fortunately, \citet{griewank_evaluating_1999} derived an approach to reconstruct such mixed-direction terms by linear combining a \emph{family} of $K$-jets.
+This family is determined by all vectors $\vj \in \sN^P$ whose entries sum to $K$ (see \cref{fig:ttc_biharm_coeffs} for an illustration for the biharmonic (5 directions)).
+The $K$-jets along these directions are then combined with coefficients $\gamma_{\vi, \vj} \in \sR$, whose definition we provide in \cref{sec:appendix_ttc}.
+In summary, we get \todo{T: Why [] for the multi-indices? F: We use [] to indicate indexing into a vector. Otherwise it is unclear if a subscript is a direction, data point, degree of derivative, etc.}
 \begin{equation}
   \label{eq:ttc_general}
   \textstyle % Comment out this line if we have enough space
   \!\!\!\!\!
   \left<
     \partial^{K} \vf(\vx_0),
-    \vv_{d_1}^{\otimes p_1}
+    \vv_{d_1}^{\otimes i_1}
     \otimes \ldots \otimes
-    \vv_{d_P}^{\otimes p_P}
+    \vv_{d_I}^{\otimes i_I}
   \right>
-  = \sum_{\vq \in \sN^P, \lVert \vq \rVert_1 = K}
-  \frac{\gamma_{\vp, \vq}}{K!}
+  = \sum_{\vj \in \sN^I, \lVert \vj \rVert_1 = K}
+  \frac{\gamma_{\vi, \vj}}{K!}
   \left<
     \partial^{K}\vf(\vx_0),
-    \left(\sum_{p=1}^P \vv_{d_p} [\vq]_p\right)^{\otimes K}
+    \left(\sum_{i=1}^I \vv_{d_i} [\vj]_i\right)^{\otimes K}
   \right>\,.
 \end{equation}
 This construction allows us to rewrite \cref{eq:sums-k-directional} as
 \begin{align*}
   \textstyle % Comment out this line if we have enough space
-  \sum_{d_1=1}^{D_1} \dots \sum_{d_P=1}^{D_P}
-  \sum_{\vq \in \mathbb{N}^P, \lVert \vq \rVert_1 = K}
-  \frac{\gamma_{\vp, \vq}}{K!}
+  \sum_{d_1=1}^{D_1} \dots \sum_{d_I=1}^{D_I}
+  \sum_{\vj \in \mathbb{N}^I, \lVert \vj \rVert_1 = K}
+  \frac{\gamma_{\vi, \vj}}{K!}
   \left<
   \partial^{K}\vf(\vx_0),
   \left(
-  \sum_{p = 1}^P \vv_{d_p} [\vq]_p
+  \sum_{i = 1}^I \vv_{d_i} [\vj]_i
   \right)^{\otimes K}
   \right>\,,
 \end{align*}
-and---since the coefficients $\gamma_{\vp\vq}$ only depend on the problem structure ($K$, $P$ and $\vp$) and \emph{not} on the function $\vf$ and the directions $\vv_{d_p}$ \cite{griewank_evaluating_1999}---we can pull out the inner sum to obtain the final expression
+and---since the coefficients $\gamma_{\vi,\vj}$ only depend on the problem structure ($K$, $I$ and $\vi$) and \emph{not} on the function $\vf$ and the directions $\vv_{d_i}$ \cite{griewank_evaluating_1999}---we can pull out the inner sum to obtain the final expression
 \begin{equation}\label{eq:ttc-general}
   \textstyle % Comment out this line if we have enough space
-  \sum_{\vq \in \mathbb{N}^P, \lVert \vq \rVert_1 = K}
-  \frac{\gamma_{\vp, \vq}}{K!}
+  \sum_{\vj \in \mathbb{N}^I, \lVert \vj \rVert_1 = K}
+  \frac{\gamma_{\vi, \vj}}{K!}
   {\color{tab-green}
-  \sum_{d_1=1}^{D_1} \dots \sum_{d_P=1}^{D_P}
+  \sum_{d_1=1}^{D_1} \dots \sum_{d_I=1}^{D_I}
   }
   {\color{tab-orange}
   \left<
     \partial^{K}\vf(\vx_0),
     \left(
-      \sum_{p = 1}^P \vv_{d_p} [\vq]_p
+      \sum_{i = 1}^I \vv_{d_i} [\vj]_i
     \right)^{\otimes K}
   \right>}\,.
 \end{equation}
-We can use standard Taylor mode to compute each \textcolor{tab-orange}{summand}, propagating different $K$-jets with coefficients $(\vx_0, \vx_1 = \sum_p \vv_{d_p}[\vq]_p, \vx_2 = \dots =\vx_K = \vzero)$, then \textcolor{tab-green}{collapse} the sum from the basis expansion.
-Repeating this process for each $\vq$, then forming the linear combination using the $\gamma_{{\vp, \vq}}$s, yields the differential operator we sought to compute originally.
-Further, we can often exploit symmetries in the $\gamma_{\vp\vq}$s and the basis vectors to further reduce the number of $K$-jets.
+We can use standard Taylor mode to compute each \textcolor{tab-orange}{summand}, propagating different $K$-jets with coefficients $(\vx_0, \vx_1 = \sum_i \vv_{d_i}[\vj]_i, \vx_2 = \dots =\vx_K = \vzero)$, then \textcolor{tab-green}{collapse} the sum from the basis expansion \todo{t: Does basis expansion refer to the mathematical term? I dont understand what this means in our context}.
+Repeating this process for each $\vj$, then forming the linear combination using the $\gamma_{{\vi, \vj}}$'s, yields the differential operator we sought to compute originally.
+Further, we can often exploit symmetries in the $\gamma_{\vi, \vj}$s and the basis vectors to further reduce the number of $K$-jets. \todo{T: what are the basis vectors?}
 Please see \cref{sec:appendix_ttc} for a fully-contained example.
 
 \begin{wrapfigure}[20]{r}{0.4\textwidth}
@@ -279,27 +279,17 @@ Please see \cref{sec:appendix_ttc} for a fully-contained example.
 \end{wrapfigure}
 
 \paragraph{Applied to the biharmonic operator.}
-Let us now illustrate the most important aspects of applying \cref{eq:ttc-general} to the biharmonic \cref{eq:biharm}.
-The full procedure is shown in \cref{eq:ttc_for_biharm}.
-\Cref{fig:ttc_biharm_coeffs} illustrates the five vectors $\vq$ describing the family of $4$-jets we need to evaluate to isolate a mixed derivative $\langle \partial^4 \vf(\vx_0), \ve_i^{\otimes 2} \otimes \ve_j^{\otimes 2} \rangle$, and the coefficients $\gamma_{\vp, \vq}$.
-A close look into the definition \cref{eq:ttc_coeff} shows the equality of the coefficients for $\vq = (4,0)$ with $\vq = (0, 4)$ and $\vq = (3, 1)$ with $\vq = (1, 3)$.
-Exploiting those symmetries allows to reduce the family from five to three members to isolate one summand of the biharmonic (\cref{eq:ttc_for_biharm_2}), totalling $5D^2$ $4$-jets.
-Using the symmetries in the $\gamma$s and the basis reduces this to $3 D^2$ (\cref{eq:ttc_for_biharm3}).
-Removing doubly-computed terms brings down the number of $4$-jets to the final value $D + D(D-1) + \nicefrac{D(D-1)}{2}$.
-All jets are computed in parallel.
-In total, we need to propagate ${\color{tab-orange} TODO}$ \todo{Felix@Tim: please fill in if you have time} vectors using standard Taylor mode.
-After collapsing, we propagate ${\color{tab-green}1 + 3D + 1 + 1 + 3 D(D-1) + 1 + 1 + 3 \frac{D(D-1)}{2} + 1 = 9\frac{D^2}{2} - 3\frac{D}{2} + 6}$ vectors.
-
-\paragraph{Summary \& limitations.}
-\todo{Felix: Did not work on this paragraph. I think it might be better to mention it in the experiments because otherwise we end really week here and we don't have experiments/evidence to show that all the complicated math we introduced was still worth it.}
-The above procedure describes a generic approach for computing linear differential operators with our collapsed Taylor mode.
-% that can be combined with our proposed collapsing method.
-% We demonstrated it on the Biharmonic Operator, as it is a commonly used operator of degree greater than two.
-We also considered other proposed approaches, which underperform our contribution.
-For a comparison, see \cref{sec:appendix_ttc_other_methods}.
-Because of its special structure, there is another efficient scheme for computing the Biharmonic Operator that nests twice the Laplacian.
-In the appendix, we briefly discuss this approach in combination with our collapsed Taylor mode.
-However, our focus here was to show that our idea applies to other differential operators, therefore making it a relevant contribution.
+Let us now illustrate the key aspects of applying \cref{eq:ttc-general} to the biharmonic \cref{eq:biharm} (see ~\crefrange{eq:ttc_for_biharm}{eq:ttc_for_biharm_final} for the full procedure).
+\Cref{fig:ttc_biharm_coeffs} illustrates the five vectors $\vj$ characterizing the $4$-jets we need to obtain $\langle \partial^4 \vf(\vx_0), \ve_{d_1}^{\otimes 2} \otimes \ve_{d_2}^{\otimes 2} \rangle$, and the coefficients $\gamma_{\vi, \vj}$.
+A close look into the definition \cref{eq:ttc_coeff} shows the equality of $\gamma_{\vi, \vj}$ for $\vj = (4,0)$ and $\vj = (0, 4)$ as well as $\vj = (3, 1)$ and $\vj = (1, 3)$.
+Exploiting those symmetries allows us to reduce the required jets for every summand from five to three (\cref{eq:ttc_for_biharm_2}).
+Removing doubly-computed terms brings down the number of $4$-jets to the final value $D + D(D-1) + \nicefrac{1}{2}D(D-1)$.
+All these jets are computed in parallel.
+In total, we need to propagate $1 + 4D + 1 + 4D(D-1) + 1 + \nicefrac{4}{2}D(D-1) = 6D^2 - 2D + 3$ vectors using standard Taylor mode.
+After collapsing, we propagate ${\color{tab-green}1 + 3D + 1 + 1 + 3 D(D-1) + 1 + 1 + \frac{3}{2} D(D-1)  + 1 = 9\frac{D^2}{2} - 3\frac{D}{2} + 6}$ vectors.
+This is more efficient than other (arguably more pedagogical) approaches based $6$-jets, see \cref{sec:appendix_ttc_other_methods} for a comparison. \todo{t: grafic needs update for new notation: $\vp$ vs $\vi$, $\vj$ vs. $\vq$, $\vx_1$ vs $\ve_{d_1}$, $\vx_j$ vs $\ve_{d_2}$ and $\gamma_{\vp}$ vs $\gamma_{\vi}$}
+\todo{T: do we summarize the first term in the propagation scheme? should be always the same, right?}
+\paragraph{Summary} Overall, this demonstrates the relevance of collapsing standard Taylor mode. It is applicable to computing \emph{general} linear differential operators beyond Laplacians.
 
 %%% Local Variables:
 %%% mode: LaTeX

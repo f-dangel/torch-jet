@@ -1,5 +1,5 @@
 To estimate the performance ratio between standard and collapsed Taylor mode, we can use the increment of vectors both modes propagate forward as we increase either the batch size or the number of Monte-Carlo samples.
-This is a relatively simplistic proxy; \eg it assumes that each vector adds the same computational load, which is false as vectors of corresponding to higher components require more work and memory (as the Faa di Bruno formula contains more terms unless a composite function is linear).
+This is a relatively simplistic proxy; \eg, it assumes that each vector adds the same computational load, which is false as vectors corresponding to higher components require more work and memory (as the Faà di Bruno formula contains more terms unless a composite function is linear).
 Conversely, incrementing the MC samples by one does add cost to compute or store the derivatives, as they are already computed with just a single sample.
 \Cref{tab:benchmark-ratios} summarizes the theoretical and empirical ratios. We find them to align quite well, despite the overly simplistic assumptions.
 

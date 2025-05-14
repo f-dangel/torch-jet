@@ -18,7 +18,7 @@ However, we observe empirically that vanilla Taylor-mode is often not enough to 
 However, recent works have successfully demonstrated the potential of modified forward propagation schemes.
 For the (weighted) Laplacian, \citet{li2023forward, li2024dof} developed a special forward propagation framework called the \emph{forward Laplacian}.
 Relating to our example above, JAX' forward Laplacian \cite{gao2023folx} is roughly twice as fast as nested backpropagation at reduced memory costs.
-While the forward Laplacian does not rely on Taylor mode, recent work pointed out a connection \cite{dangel2024kroneckerfactored}; however, it remains unclear if efficient forward schemes can be derived for other differential operators. Another line of work concerns the stochastic approximation of differential operators in high-dimensions \citet{shi2024stochastic}, relying on Taylor mode with suitably sampled random directions. In this work we identify a mechanism to rewrite the computational graph of standard Taylor mode, applicable to general PDE operators and stochastic Taylor mode. Precisely, our contributions are:
+While the forward Laplacian does not rely on Taylor mode, recent work pointed out a connection \cite{dangel2024kroneckerfactored}; however, it remains unclear if efficient forward schemes can be derived for other differential operators. Another line of work concerns the stochastic approximation of differential operators in high-dimensions \citet{shi2024stochastic}, relying on Taylor mode with suitably sampled random directions. In this work we identify a mechanism to rewrite the computational graph of standard Taylor mode, applicable to general PDE operators and stochastic Taylor mode: Precisely, our contributions are:
 \todo{Felix: Make it more explicit that we evaluate Taylor mode in multiple directions and then sum the results. The sum can be pulled inside.}
 
 \begin{figure*}[!t]
@@ -36,7 +36,7 @@ While the forward Laplacian does not rely on Taylor mode, recent work pointed ou
     \vspace{0.25ex}
     \caption{\textbf{$\blacktriangleright$ Our collapsed Taylor mode directly propagates the sum of highest degree coefficients.}
       Visualized for propagating four $K$-jets through a $\sR^5 \!\to\! \sR^3 \!\to\! \sR$ function ($K=2$ yields the forward Laplacian).
-      \Cref{sec:introduction} introduces the notation.}\label{fig:visual-abstract}
+      \Cref{sec:background} introduces the notation.}\label{fig:visual-abstract}
   \end{minipage}
   \hfill
   \begin{minipage}[b]{0.57\linewidth}
@@ -53,16 +53,16 @@ While the forward Laplacian does not rely on Taylor mode, recent work pointed ou
   %Collapsing standard Taylor mode for the Laplacian yields the forward Laplacian \cite{li2023forward}, but we show that this optimization is applicable to many other differential operators, and stochastic Taylor mode \cite{shi2024stochastic}.
   \todo{Felix: Phrase this so that it becomes clear that this is a theoretical contribution.}
 
-%\item \textbf{We show how to collapse standard Taylor mode by simple graph rewrites based on linearity.}
-%  This leads to a clean separation of concepts:
-%  Users can build their computational graph using standard Taylor mode, then use graph rewrites to collapse it.
-%  Due to the simple nature of our proposed rewrites, this feature could easily be absorbed into the just-in-time (JIT) compilation of ML frameworks, without introducing a new interface.
+\item \textbf{We show how to collapse standard Taylor mode by simple graph rewrites based on linearity.}
+  This leads to a clean separation of concepts:
+  Users can build their computational graph using standard Taylor mode, then use graph rewrites to collapse it.
+  Due to the simple nature of our proposed rewrites, this feature could easily be absorbed into the just-in-time (JIT) compilation of ML frameworks, without introducing a new interface.
 
 \item \textbf{We empirically demonstrate the performance improvements of collapsed Taylor mode.} We introduce a Taylor mode library for PyTorch \cite{paszke2019pytorch} that realizes the graph simplifications with \texttt{torch.fx} \cite{reed2022torch}. Furthemore, we show that collapsing Taylor mode yields the theoretically expected improvements in run time and memory consumption. Due to the simple nature of our proposed rewrites, this feature could easily be integrated into the just-in-time (JIT) compilation of ML frameworks, without introducing a new interface.
 
 \end{enumerate}
 
-%Our work takes an important step towards the broader adoption of Taylor mode as viable alternative to backpropagation for computing PDE operators, while being as easy to use. 
+Our work takes an important step towards the broader adoption of Taylor mode as viable alternative to backpropagation for computing PDE operators, while being as easy to use. 
 
 %%% Local Variables:
 %%% mode: LaTeX

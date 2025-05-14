@@ -1,43 +1,48 @@
-\paragraph{Design decisions.}
-Although JAX already offers an experimental Taylor mode implementation, we re-implemented Taylor mode in PyTorch, taking heavy inspiration from the JAX implementation for the interface.
-We decided so because PyTorch's \texttt{fx} library provides a user-friendly official interface to capture and transform computational graphs of functions to apply our proposed collapsing.
-While we believe that such graph transformations should in principle be feasible in JAX as well (and could, \eg, be integrated into its \texttt{jit} compiler), it seems that this can currently only be achieved with (potentially fragile) internal APIs and requires a deep understanding of its internal tracing mechanisms.
-The main advantage seems to be that we can clearly disentangle building the graph from simplifying it using linearity, whereas in JAX we could write a custom interpreter that would have to re-implement the logic of summing the $K$-th component for abitrary $K$.
+Here, we describe how we implemented the collapsing process of Taylor mode and empirically validate the performance improvements of collapsing standard Taylor mode on the previously described operators.
+
+\paragraph{Design decisions \& limitations.}
+JAX~\cite{bradbury2018jax} already offers an--albeit experimental---Taylor mode implementation~\cite{bettencourt2019taylor}.
+However, we found it challenging to capture the computation graph and modify it using JAX's public interface.
+In contrast, PyTorch \cite{paszke2019pytorch} provides \texttt{torch.fx} \cite{reed2022torch}, which offers a user-friendly interface to capture and transform computation graphs purely in Python.
+Hence, we re-implemented Taylor mode in PyTorch, taking heavy inspiration from the JAX implementation.
+
+This deliberate choice imposes certain limitations.
+First, as of now, our Taylor mode in PyTorch supports only a small number of primitives, because the Taylor arithmetic in \cref{eq:faa-di-bruno} needs to be implemented case by case (this of course also applies to JAX's Taylor mode, which has broader operator coverage).
+Second, functions represented by \texttt{torch.fx} graphs can, at the moment, not be accelerated with \texttt{torch.compile}.
+In our PyTorch experiments, we therefore report un-compiled implementations. 
+Our JAX experiments with the Laplacian confirm that relative performance remains consistent when using \texttt{jit} (\cref{sec:jax-benchmark}). 
+Last, while our Taylor mode implementation is competitive with JAX's, we did not fully optimize it (\eg we do \emph{not} use in-place operations, and we do \emph{not} implement the efficient scheme from \citet[][\S13]{griewank_evaluating_1999}, but stick to \cref{eq:faa-di-bruno}).
+Given our implementation's superiority compared to nested first-order AD that we demonstrate below, these are promising future efforts that will further improve performance, and we believe that making Taylor mode available to the PyTorch community is also an important step towards establishing its use.
 
 \paragraph{Usage.}
-Our implementation takes a PyTorch function (\eg a neural net) and first captures its computational graph using \texttt{torch.fx}'s symbolic tracing mechanism, then replaces each operation with its Taylor arithmetic.
-This yields the computational graph of the function's $K$-jet.
+Our implementation takes a PyTorch function (\eg a neural net) and first captures its computational graph using \texttt{torch.fx}'s symbolic tracing mechanism.
+Then, it replaces each operation with its Taylor arithmetic, which yields the computational graph of the function's $K$-jet.
 Users can use this vanilla Taylor mode to define their differential operator's computation.
-The collapsing is done by again tracing said computation with \texttt{torch.fx} and rewriting the resulting graph, propagating the summation of highest coefficient up.
-The resulting graph performs the same computation, but uses our collapsed Taylor mode.
-See \Cref{fig:interface-overview} for a visual walk-through of the procedure.
-
-\paragraph{Limitations.}
-Two limitations of our implementation are that (i) it only supports a small number of primitives and missing primitives need to be implemented (as is the case for the Taylor mode implementation JAX) and (ii) that \texttt{torch.fx} graphs can, at the moment, not be \texttt{jit}-compiled with \texttt{torch.compile}, \ie, our PyTorch experiments report both un-compiled Taylor mode and nested first-order AD, although the latter could be further accelerated.
-And (iii), to keep the number of supported operations and graph simplifications minimal, we currently do not use in-place operations
-\textcolor{red}{(I think nested first-order probably does that). \AW{AW: comment still in main text}}
+The collapsing is done by again by a function \texttt{simplify}, which again traces the computation, then rewrites the graph, propagating the summation of highest coefficients up to the leafs.
+This requires one backward traversal of the graph.
+The resulting graph performs the same computation, but propagates summed coefficients, \ie uses collapsed Taylor mode.
+See \cref{fig:interface-overview} for a visual walk-through of the procedure.
 
 \input{figures/torch_benchmark}
 \input{tables/torch_benchmark}
 
-\paragraph{Experimental procedure.}
-We empirically validate our proposed collapsing approach using our PyTorch implementation of Taylor mode.
-Since \texttt{torch.fx} is at the moment incompatible with \texttt{torch.compile}, all implementations are not \texttt{jit}-compiled.
-We compare collapsed Taylor mode with vanilla Taylor mode and nested first-order AD on the previously discussed differential operators using an NVIDIA RTX 6000 with 24 GiB memory.
-To implement the (weighted) Laplacian and its stochastic counterpart, we use vector-Hessian-vector products (VHVPs) in forward-over-reverse order, as recommended already in \AW{Griewank \& Walther \cite{griewank2008evaluating}.}  %  by \citet{dagreou2024how}. 
-\todo{I would actually prefer the reference to the AD book, since this is already explained there, but also OK if you prefer the ML reference.}
-For the Biharmonic operator, we simply nest two VHVPs.
-For all implementations, we measure (i) runtime, and peak memory when computing the (ii) differentiable operator (\eg required for PINNs), and (iii) the non-differentiable operator (\eg required for VMC).
-The runtime measurements commence with 10 warm-up runs, followed by 50 repetitions, and we report the smallest runtime as best approximation to runtime.
-The peak memory allocation does not fluctuate, hence we determine it in a single run.
+\paragraph{Experimental setup.}
+We empirically validate our proposed collapsing approach in PyTorch.
+We compare collapsed Taylor mode with vanilla Taylor mode and nested first-order AD on the previously discussed differential operators using an Nvidia RTX 6000 with 24 GiB memory.
+To implement the (weighted) Laplacian and its stochastic counterpart, we use vector-Hessian-vector products (VHVPs) in forward-over-reverse order, as recommended \cite{griewank2008evaluating,dagreou2024how}.
+For the biharmonic operator, we simply nest two VHVPs.
+We use a $D \to 768 \to 768 \to 512 \to 512 \to 1$ MLP $f_\vtheta$ with tanh activations and trainable parameters $\vtheta$, and compute the differential operators on multiple data in parallel, \ie on a batch of size $N$.
 
+For all implementations, we measure three performance metrics (memory allocation does not fluctuate, hence we determine it in a single run):
+\begin{enumerate}[leftmargin=0.5cm]
+    \item \textbf{Runtime.} We report the smallest value of 50 independent repetitions.
+    
+    \item \textbf{Peak memory (non-differentiable \wrt $\vtheta$)} when computing the PDE operator inside a \texttt{torch.no\_grad} context, \ie we are only interested in its value (\eg in VMC \cite{pfau2020ab}).
+    
+    \item \textbf{Peak memory (differentiable \wrt $\vtheta$)} when computing the PDE operator inside a \texttt{torch.enable\_grad} context. This covers applications like PINNs or alternative VMC works \cite{webber2022rayleigh, toulouse2007optimization} that demand the PDE operator be differentiable \wrt the neural network's parameters $\vtheta$.
+\end{enumerate}
 
-\todo{Integrate this.}
-In many settings, this Laplacian need not be differentiable with respect to the network weights \cite{li2023forward}.
-\todo{Felix: Write down that the function is $f_\vtheta(\vx)$ and we want to compute differential operators \wrt $\vx$, then differentiate \wrt $\vtheta$ using standard backprop.}
-However, recent developments in optimization have also revived the use of differentiable Laplacians \cite{webber2022rayleigh, toulouse2007optimization}.
-
-\paragraph{Experimental results.}
+\paragraph{Results.}
 \Cref{fig:benchmark} visualizes the computational demands' growth \wrt the batch size (exact) and number of Monte-Carlo samples (stochastic) for fixed dimensions $D$.
 We used a 5-layer MLP with $\tanh$ activation and around 3M parameters, similar to the ones employed in other works on PINNs \cite{dangel2024kroneckerfactored,shi2024stochastic}.
 As the scalings with batch size and Monte-Carlo samples are both linear, we quantify the results by fitting linear functions and reporting their slopes (\ie, time and memory added per datum/sample) in \Cref{tab:benchmark}. We make the following observations:
@@ -59,6 +64,12 @@ As the scalings with batch size and Monte-Carlo samples are both linear, we quan
 \item \textbf{If the PDE operator can be non-differentiable, both standard and Taylor mode require significantly less memory than nested 1\textsuperscript{st}-order AD.}
   This aligns with our understanding of Taylor mode, which performs a single forward propagation and does not need to store any intermediates for future differentiation, in contrast to the nested differentiation.
 \end{itemize}
+
+Because of its special structure, there is another efficient scheme for computing the Biharmonic Operator that nests twice the Laplacian.
+In the appendix, we briefly discuss this approach in combination with our collapsed Taylor mode.
+However, our focus here was to show that our idea applies to other differential operators, therefore making it a relevant contribution.
+
+
 We also conducted experiments with JAX (+ \texttt{jit}) to rule out artifacts from the ML framework.
 In general, we find that the choice of ML framework does not affect the results.
 \Eg, for computing the Laplacian with nesting, we found that PyTorch increases by 0.61ms and 4.4 and 2.2 MiB per datum, while JAX increases by 0.57ms and 6.0, and 1.4 MiB per datum (\Cref{fig:vanilla-taylor-not-enough,tab:jax-benchmark}).

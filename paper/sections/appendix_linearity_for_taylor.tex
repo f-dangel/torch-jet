@@ -176,7 +176,7 @@ Leveraging linearity in the certain terms (in green) of the highest coefficient 
           \\
           \vdots
           \\
-          \textcolor{\colorcTM}{ \displaystyle \sum_{r = 1}R \vh_{K, r}} &=
+          \textcolor{\colorcTM}{ \displaystyle \sum_{r = 1}^R \vh_{K, r}} &=
           \displaystyle \sum_{r=1}^R \sum_{
           \sigma \in \partitioning(K) \setminus \{\sigma_t\}
           }
@@ -189,7 +189,7 @@ Leveraging linearity in the certain terms (in green) of the highest coefficient 
           \left<
           \partial \vh(\vx_0),
           \textcolor{\colorcTM}{
-          \sum_{n=1}^N \vx_{K, n}
+          \sum_{r=1}^R \vx_{K, r}
           }
           \right>
         \end{pmatrix*} 
@@ -198,40 +198,40 @@ Leveraging linearity in the certain terms (in green) of the highest coefficient 
         \begin{pmatrix*}[l]
           \vg_0 &=  \vg(\vh_0)
           \\
-          \{\vg_{1,n}\} &= 
+          \{\vg_{1,r}\} &= 
           \left\{
           \left< 
           \partial \vg(\vh_0), 
-          \vh_{1, n}
+          \vh_{1, r}
           \right>
           \right\}
           \\
-          \{\vg_{2,n}\} &= 
+          \{\vg_{2,r}\} &= 
           \left\{
           \left<
           \partial^2 \vg(\vh_0), 
-          \vh_{1, n} \otimes \vh_{1, n}\right>
+          \vh_{1, r} \otimes \vh_{1, r}\right>
           + 
           \left< \partial \vg(\vh_0),
-          \vh_{2, n}
+          \vh_{2, r}
           \right>
           \right\}
           \\
           \vdots
           \\
-          \textcolor{\colorcTM}{\displaystyle\sum_{n=1}^N\vg_{K,n}} &=
-          \displaystyle \sum_{n=1}^N \sum_{
+          \textcolor{\colorcTM}{\displaystyle\sum_{r=1}^R\vg_{K,r}} &=
+          \displaystyle \sum_{r=1}^R \sum_{
           \sigma \in \partitioning(K) \setminus \{\sigma_t\}
           } 
           \nu(\sigma) \left<
           \partial^{|\sigma|} \vg(\vh_0),
-          \tensorprod{s \in \sigma} \vh_{s, n}
+          \tensorprod{s \in \sigma} \vh_{s, r}
           \right>
           \\
           &+
           \left<
           \partial \vg(\vh_0),
-          \textcolor{\colorcTM}{\displaystyle \sum_{n=1}^N\vh_{K, n}}
+          \textcolor{\colorcTM}{\displaystyle \sum_{r=1}^R\vh_{K, r}}
           \right>
         \end{pmatrix*}
         \\
@@ -239,47 +239,47 @@ Leveraging linearity in the certain terms (in green) of the highest coefficient 
         \begin{pmatrix*}[l]
           \vf_0 &=  \vf(\vx_0)
           \\
-          \{\vf_{1,n}\} &= \left\{
+          \{\vf_{1,r}\} &= \left\{
           \left<
           \partial \vf(\vx_0), 
-          \vx_{1, n}
+          \vx_{1, r}
           \right>
           \right\}
           \\
-          \{\vf_{2,n}\} &= \left\{
+          \{\vf_{2,r}\} &= \left\{
           \left<
           \partial^2 \vf(\vx_0), 
-          \vx_{1, n} \otimes \vx_{1, n}
+          \vx_{1, r} \otimes \vx_{1, r}
           \right>
           + 
           \left< \partial \vf(\vx_0),
-          \vx_{2, n}
+          \vx_{2, r}
           \right>
           \right\}
           \\
           \vdots
           \\
-          \textcolor{\colorcTM}{\displaystyle \sum_{n=1}^N \vf_{K, n}} &=
-          \displaystyle \sum_{n=1}^N\sum_{
+          \textcolor{\colorcTM}{\displaystyle \sum_{r=1}^R \vf_{K, r}} &=
+          \displaystyle \sum_{r=1}^R\sum_{
           \sigma \in \partitioning(K) \setminus \{ \sigma_t \}
           }
           \nu(\sigma) \left< 
           \partial^{|\sigma|} \vf(\vx_0),
-          \tensorprod{s \in \sigma} \vx_{s, n}
+          \tensorprod{s \in \sigma} \vx_{s, r}
           \right> 
           \\
           &+
           \left<
           \partial \vf(\vx_0),
-          \textcolor{\colorcTM}{\displaystyle \sum_{n=1}^N\vx_{K, n}}
+          \textcolor{\colorcTM}{\displaystyle \sum_{r=1}^R\vx_{K, r}}
           \right>
         \end{pmatrix*}
         \\
-        &\overset{\text{slice}}{\to} \textcolor{\colorcTM}{\sum_{n=1}^N \vg_{K,n}}
-          \overset{\{\vx_{1,n} = \vv_n, \vx_{2,n} = \vzero, \dots, \vx_{K, n} = \vzero \}}{=} 
-          \sum_{n=1}^N \left<
+        &\overset{\text{slice}}{\to} \textcolor{\colorcTM}{\sum_{r=1}^R \vg_{K,r}}
+          \overset{\{\vx_{1,r} = \vv_r, \vx_{2,r} = \vzero, \dots, \vx_{K, r} = \vzero \}}{=} 
+          \sum_{r=1}^R \left<
           \partial^K \vf(\vx_0), 
-          \otimes_{k=1}^K \vv_n
+          \otimes_{k=1}^K \vv_r
           \right>
     \end{split}
 \end{align}

@@ -8,7 +8,7 @@
 
 
 
-\scalebox{0.58}{
+\scalebox{0.70}{
     \begin{tikzpicture}
       % draw the nodes
       \matrix [%
@@ -17,8 +17,8 @@
       row sep=4ex,%
       ]{
         \node[state, leaf] (x0) {x0};
-        \& \node[state] (f0) {f0 = sin(x0)};
         \&
+        \& \node[state] (f0) {f0 = sin(x0)};
         \& \node[state, output] (f0-d) {f0\_r = replicate(f0)};
         \\
         \node[state, leaf] (x1-d) {x1\_r};
@@ -31,7 +31,7 @@
         \& \node[state] (temp1-d) {temp1\_r = einsum(``...,r...,r...\\->r...'', df, x1\_r, x1\_r)};
         \\
         \node[state, leaf] (x2-d) {x2\_r};
-        \& \node[state] (temp2-d) {temp2\_d = einsum(``...,r...\\->r...'', d2f, x2\_r)};
+        \& \node[state] (temp2-d) {temp2\_r = einsum(``...,r...\\->r...'', d2f, x2\_r)};
         \& \node[state] (f2-d) {f2\_r = temp1\_r + temp2\_r};
         \& \node[state, output, sum] (f2) {f2 = sum(f2\_r, dim=0)};
         \\
@@ -43,7 +43,7 @@
       (x0) edge [arrow] (f0)
       (f0) edge [arrow] (f0-d)
       (x0) edge [arrow, out=-30, in=170] (df)
-      (f0-d) edge [arrow] (d2f-d)
+      (f0) edge [arrow] (d2f-d)
       (df) edge [arrow] (f1-d)
       (x1-d) edge [arrow, out=18, in=175] (f1-d)
       (d2f-d) edge [arrow] (temp2-d)
@@ -61,7 +61,7 @@
   \noindent\rule{\textwidth}{1pt}
   \vspace{-0.6ex}
 
-  \scalebox{0.58}{
+  \scalebox{0.70}{
     \begin{tikzpicture}
       % draw the nodes
       \matrix [%
@@ -70,8 +70,8 @@
       row sep=4ex,%
       ]{
         \node[state, leaf] (x0) {x0};
-        \& \node[state] (f0) {f0 = sin(x0)};
         \&
+        \& \node[state] (f0) {f0 = sin(x0)};
         \& \node[state, output] (f0-d) {f0\_r = replicate(f0)};
         \\
         \node[state, leaf] (x1-d) {x1\_r};
@@ -84,11 +84,11 @@
         \& \node[state] (temp1-d) {temp1\_r = einsum(``...,r...,r...\\->r...'', df, x1\_r, x1\_r)};
         \\
         \node[state, leaf] (x2-d) {x2\_r};
-        \& \node[state] (temp2-d) {temp2\_d = einsum(``...,r...\\->r...'', d2f, x2\_r)};
-        \& \node[state, sum] (temp1) {temp1 = sum(temp1\_d, dim=0)};
+        \& \node[state] (temp2-d) {temp2\_r = einsum(``...,r...\\->r...'', d2f, x2\_r)};
+        \& \node[state, sum] (temp1) {temp1 = sum(temp1\_r, dim=0)};
 
         \\
-        \& \node[state, sum] (temp2) {temp2 = sum(temp2\_d, dim=0)};
+        \& \node[state, sum] (temp2) {temp2 = sum(temp2\_r, dim=0)};
         \& \node[state, output] (f2) {f2 = temp1 + temp2};
         \\
       };
@@ -99,7 +99,7 @@
       (x0) edge [arrow] (f0)
       (f0) edge [arrow] (f0-d)
       (x0) edge [arrow, out=-30, in=170] (df)
-      (f0-d) edge [arrow] (d2f-d)
+      (f0) edge [arrow] (d2f-d)
       (df) edge [arrow] (f1-d)
       (x1-d) edge [arrow, out=18, in=175] (f1-d)
       (d2f-d) edge [arrow] (temp2-d)
@@ -120,7 +120,7 @@
   \vspace{-0.6ex}
 
 
-  \scalebox{0.58}{
+  \scalebox{0.70}{
     \begin{tikzpicture}
       % draw the nodes
       \matrix [%
@@ -129,8 +129,8 @@
       row sep=4ex,%
       ]{
         \node[state, leaf] (x0) {x0};
+         \&
         \& \node[state] (f0) {f0 = sin(x0)};
-        \&
         \& \node[state, output] (f0-d) {f0\_r = replicate(f0)};
         \\
         \node[state, leaf] (x1-d) {x1\_r};
@@ -154,7 +154,7 @@
       (x0) edge [arrow] (f0)
       (f0) edge [arrow] (f0-d)
       (x0) edge [arrow, out=-30, in=170] (df)
-      (f0-d) edge [arrow] (d2f-d)
+      (f0) edge [arrow] (d2f-d)
       (df) edge [arrow] (f1-d)
       (x1-d) edge [arrow, out=18, in=175] (f1-d)
       (d2f-d) edge [arrow] (temp2)
@@ -172,7 +172,7 @@
   \noindent\rule{\textwidth}{1pt}
   \vspace{-0.6ex}
 
-    \scalebox{0.58}{
+    \scalebox{0.70}{
     \begin{tikzpicture}
       % draw the nodes
       \matrix [%
@@ -181,8 +181,8 @@
       row sep=4ex,%
       ]{
         \node[state, leaf] (x0) {x0};
-        \& \node[state] (f0) {f0 = sin(x0)};
         \&
+        \& \node[state] (f0) {f0 = sin(x0)};
         \& \node[state, output] (f0-d) {f0\_r = replicate(f0)};
         \\
         \node[state, leaf] (x1-d) {x1\_r};
@@ -191,11 +191,11 @@
         \& \node[state, output] (f1-d) {f1\_r = einsum(``...,r...\\->r...'', df, x1\_r)};
         \\
         \&        
-        \& \node[state] (temp1) {temp1 = einsum(``...,r...,r...\\->...'', df, x1\_r, x1\_r)};
+        \& \node[state, sum] (temp1) {temp1 = einsum(``...,r...,r...\\->...'', df, x1\_r, x1\_r)};
         \\
         \node[state, leaf] (x2-d) {x2\_r};
         \& \node[state, sum] (x2) {sum(x2\_r, dim=0)};
-        \& \node[state] (temp2) {temp2 = einsum(``...,r...\\->...'', d2f, x2\_r)};
+        \& \node[state] (temp2) {temp2 = einsum(``...,r...\\->...'', d2f, x2)};
         \& \node[state, output] (f2) {f2 = temp1 + temp2};
         \\
       };
@@ -206,7 +206,7 @@
       (x0) edge [arrow] (f0)
       (f0) edge [arrow] (f0-d)
       (x0) edge [arrow, out=-30, in=170] (df)
-      (f0-d) edge [arrow] (d2f-d)
+      (f0) edge [arrow] (d2f-d)
       (df) edge [arrow] (f1-d)
       (x1-d) edge [arrow, out=18, in=175] (f1-d)
       (d2f-d) edge [arrow, out=-30, in=168] (temp2)

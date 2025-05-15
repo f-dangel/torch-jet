@@ -1,6 +1,6 @@
-\begin{table}[!t]
+\begin{table}[!b]
   \centering
-  \caption{\textbf{Benchmark from \Cref{fig:benchmark} in numbers.}
+  \caption{\textbf{Benchmark from \cref{fig:benchmark} in numbers.}
     We fit linear functions and report their slopes, \ie, how much runtime and memory increase when incrementing the batch size or random samples.
     We show two significant digits and bold values are best according to parenthesized values.}
   \label{tab:benchmark}
@@ -54,7 +54,7 @@
       & \textcolor{tab-blue}{Nested 1\textsuperscript{st}-order}
       & \input{\datapathLaplacianExact/hessian_trace_peakmem.txt}
       & \input{\datapathWeightedLaplacianExact/hessian_trace_peakmem.txt}
-      & \textbf{\input{\datapathBilaplacianExact/hessian_trace_peakmem.txt}}
+      & \textbf{\input{\datapathBilaplacianExact/hessian_trace_peakmem.txt}}\footnotemark
       \\
       &
       & \textcolor{tab-orange}{Standard Taylor}
@@ -146,6 +146,12 @@
     \end{tabular}
   \end{small}
 \end{table}
+\footnotetext{For the exact biharmonic, the 1\textsuperscript{st}-order AD implementation---unlike our Taylor mode implementations---has a somewhat unfair advantage: it leverages the operator’s special structure by computing it as the Laplacian of the Laplacian, $\Delta^2 \vf(\vx_0) = \Delta ( \Delta \vf(\vx_0) )$.
+Had we instead naively computed, then summed, the fourth-order derivatives by tensor-vector-products (TVPs) with $\partial^4 \vf(\vx_0)$ \cite[\eg done in][]{hu2023hutchinson}, performance would have degraded \emph{dramatically}, similar to the performance gap we observe for the stochastic biharmonic operator which has to use these TVPs.
+Hence, we omit this naive exact approach, which, however, is \emph{necessary for general operators}.
+
+We chose the biharmonic as a case study for a general linear differential operator to show that even here, collapsing Taylor yields improvements, despite increased memory use.
+In \cref{sec:jax-benchmark}, we confirm that incorporating this advantage by nesting Laplacians---also possible in (collapsed) Taylor mode---offers the most efficient approach, achieving roughly 3x better runtime and memory with our collapsing technique (\cref{tab:jax-benchmark,fig:jax-benchmark}).}
 %%% Local Variables:
 %%% mode: LaTeX
 %%% TeX-master: "../main"

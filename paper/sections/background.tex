@@ -1,9 +1,9 @@
-Taylor-mode AD (or, simply, Taylor mode) computes higher-order derivatives---as needed, \eg, for PDE operators---through propagation of Taylor coefficients according to the chain rule.
+Taylor mode AD (or, simply, Taylor mode) computes higher-order derivatives---as needed, \eg, for PDE operators---through propagation of Taylor coefficients according to the chain rule.
 
 \input{figures/taylor_signature}
 
 \paragraph{Scalar case.}
-To illustrate Taylor mode, consider the scalar function $f: \sR \to \sR$ and extend the input variable $x$ to a path $x(t)$ whose form is a univariate Taylor polynomial of degree $K$, $\smash{x(t) = \sum_{k=0}^K \frac{t^k}{k!} x_k}$ with $x_k$ the $k$-th Taylor coefficient.
+To illustrate Taylor mode, consider the scalar function $f: \sR \to \sR$ and extend the input variable $x$ to a path $x(t)$ with $x(0) = x_0$, whose form is a univariate Taylor polynomial of degree $K$, $\smash{x(t) = \sum_{k=0}^K \frac{t^k}{k!} x_k}$ with $x_k$ the $k$-th Taylor coefficient.
 If $f$ is smooth enough, we can evaluate Taylor coefficients of the transformed path $\smash{f(x(t)) = \sum_{k=0}^K \frac{t^k}{k!} f_k}$ with $\smash{f_k \coloneqq \frac{\mathrm{d}^k}{\mathrm{d}t^k} f(x(t)) |_{t=0}}$.
 The chain rule provides the coefficients' propagation rules.
 \Eg, for degree $K=3$ we get
@@ -23,9 +23,9 @@ The chain rule provides the coefficients' propagation rules.
   \end{matrix*}
 \end{align}
 \citet{faa1857note} provided the general formula for $f_k$, and \citet{fraenkel1978formulae} extended it to the multivariate case \cite[see also][]{arbogast1800calcul,hardy2006combinatorics}.
-It serves as foundation for the Taylor mode to compute higher-order derivatives, e.g.,  \citep[\S13]{griewank2008evaluating}:
+It serves as foundation for Taylor mode to compute higher-order derivatives \citep[\eg,][\S13]{griewank2008evaluating}:
 setting $x_1 = 1, x_2 = x_3 = 0$ yields $f_1 = \partial f(x_0), f_2 = \partial^2 f(x_0), f_3 = \partial^3 f(x_0)$.
-We call the univariate Taylor polynomial of a function $x(t)$ of degree $K$, represented by the coefficients $(x_0, \dots, x_K)$, the \emph{$K$-jet of $x$}, following the terminology of JAX's Taylor mode.
+We call the univariate Taylor polynomial of a function $x(t)$ of degree $K$, represented by the coefficients $(x_0, \dots, x_K)$, the \emph{$K$-jet of $x$}, following the terminology of JAX's Taylor mode \cite{bettencourt2019taylor}.
 
 \paragraph{Notation for multivariate case.}
 We consider the general case of computing higher-order derivatives, \eg PDE operators, of a vector-to-vector function $\vf: \sR^D \to \sR^C$.

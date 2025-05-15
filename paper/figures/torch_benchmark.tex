@@ -1,4 +1,4 @@
-\begin{figure*}[!t]
+\begin{figure*}[!b]
   \small
   \centering
   \newsavebox{\benchmarkLegend}
@@ -62,7 +62,7 @@
     & \includegraphics[trim={0.45cm 0 0 0},clip]{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_256_device_cuda_dim_5_distribution_normal_name_bilaplacian_vary_num_samples.pdf}
   \end{tabular}
 
-  \caption{\textbf{\textcolor{tab-green}{Collapsed Taylor mode} accelerates \textcolor{tab-orange}{standard Taylor mode} and outperforms \textcolor{tab-blue}{nested first-order AD}.}
+  \caption{\textbf{\textcolor{tab-green}{Collapsed Taylor mode} accelerates \textcolor{tab-orange}{standard Taylor mode} and outperforms \textcolor{tab-blue}{nested 1\textsuperscript{st}-order AD}.}
     Exact computation varies the batch size, stochastic computation fixes a batch size and varies the samples such that $S < D$ (Laplacians), and $2 + 3S < \nicefrac{9}{2} D^2 - \nicefrac{3}{2}D + 4$ (biharmonic operator); we could compute exactly otherwise.
     Opaque markers are non-differentiable computations.
     % For each approach, we fit a line to the data and report the slope in \Cref{tab:benchmark}  to quantify the relative speedup and memory reduction.

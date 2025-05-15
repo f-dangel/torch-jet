@@ -1,7 +1,7 @@
 \begin{table}[!h]
   \centering
   \caption{\textbf{Comparison of theoretical and empirical performance ratios between standard and collapsed Taylor mode.}
-    We write down how many vectors are added when adding another data point (exact) or another Monte-Carlo sample (stochastic).
+    We list the number of additional vectors that are used when adding another data point (exact) or another Monte-Carlo sample (stochastic).
     The ratio of vectors offers a good estimate of the empirically measured performance ratio.
   }\label{tab:benchmark-ratios}
   \vspace{0.5ex}
@@ -11,19 +11,19 @@
       \textbf{Mode}
       & \makecell{\textbf{Add one datum} \\ \textbf{or MC sample}}
       & \makecell{\textbf{Laplacian} \\ ($D = 50$)}
-      & \makecell{\textbf{Weighted Laplacian} \\ ($D=\rank(\mC)=50$)}
+      & \makecell{\textbf{Weighted Laplacian} \\ ($D=R=50$)}
       & \makecell{\textbf{Biharmonic} \\ ($D=5$)}
       \\
       \midrule
       \multirow{4}{*}{\textbf{Exact}}
       & \textcolor{tab-orange}{$\Delta$ vectors (standard)}
       & $1 + 2D$
-      & $1 + 2 \rank(\mC)$
+      & $1 + 2 R$
       & $6D^2 - 2D + 1$
       \\
       & \textcolor{tab-green}{$\Delta$ vectors (collapsed)}
       & $2 + D$
-      & $2 + \rank(\mC)$
+      & $2 + R$
       & $\nicefrac{9}{2} D^2 - \nicefrac{3}{2} D + 4$
       \\
       & Theoretical ratio $\nicefrac{\color{tab-green}\Delta}{\color{tab-orange}\Delta}$

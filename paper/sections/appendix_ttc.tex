@@ -1,10 +1,11 @@
-This section introduces the notation used in \cref{eq:ttc_general}. 
-The right side of the formula sums over all multi-indices $\vj = (j_1, \dots j_I) \in \mathbb{N}^I$ such that $|\vj| := \sum_i j_i = K$. If $I=2$ and $|\vj| = 4$ this index-set consists of $\left\{ (4,0), (0, 4), (3, 1), (1, 3),  (2, 2)\right\}$. 
+This section introduces the notation we used in \cref{eq:ttc_general}. 
+The right side of the formula sums over all $\vj
+\in \mathbb{N}^I$ such that $\lVert \vj \rVert_1 := \sum_i [\vj]_i = K$. If $I=2$ and $\lVert \vj \rVert_1 = 4$, this index-set consists of $\left\{ (4,0), (0, 4), (3, 1), (1, 3),  (2, 2)\right\}$. 
 
-The coefficient $\gamma_{\vi, \vj}$ is given as
+The coefficient $\gamma_{\vi, \vj}$ is defined as
 \begin{equation}
 \label{eq:ttc_coeff}
-    \gamma_{\vi, \vj} = \sum_{0 < \vm \leq \vi} (-1)^{|\vi - \vm|} 
+    \gamma_{\vi, \vj} := \sum_{0 < \vm \leq \vi} (-1)^{\lVert \vi - \vm \rVert_1} 
     \left(
     \begin{matrix}
         \vi \\
@@ -13,25 +14,24 @@ The coefficient $\gamma_{\vi, \vj}$ is given as
     \right) 
     \left( 
     \begin{matrix}
-        |\vi|\frac{\vm}{|\vm|} \\
+        \lVert \vi \rVert_1 \frac{\vm}{\lVert \vm \rVert_1} \\
         \vj
     \end{matrix} 
     \right)  
     \left( 
-    \frac{|\vm|}{|\vi|}
-    \right)^{|\vi|}.
+    \frac{\lVert \vm \rVert_1}{\lVert \vi \rVert_1}
+    \right)^{\lVert \vi \rVert_1}.
 \end{equation}
-\todo{T: use 1-norm!}
-The summation ranges over the set $\left\{ \vm = (m_1, \dots, m_I) \in \mathbb{N}^I \mid m_1 \leq i_1, \dots, m_I \leq i_I, |\vm| > 0 \right\}$. Furthermore, we utilize the generalized binomial coefficient
+The summation ranges over the set $\left\{ \vm \in \mathbb{N}^I \mid [\vm]_1 \leq [\vi]_1, \dots, [\vm]_I \leq [\vi]_I, \lVert \vm \rVert_1 > 0 \right\}$. Furthermore, we utilize the generalized binomial coefficient
 \begin{equation}
     \left(
        \begin{matrix}
         a \\
         b
     \end{matrix}
-    \right) = \prod_{l=0}^{b-1} \frac{a - l}{b - l}
+    \right) := \prod_{l=0}^{b-1} \frac{a - l}{b - l}
 \end{equation}
-to allow the computation for all $a \in \mathbb{R}$ and $b \in \mathbb{N}$, which is defined to be $1$ if $b=0$. The generalized binomial coefficient of multi-indices, is the product of all generalized binomial coefficients of the components of the indices:
+to allow the computation for all $a \in \mathbb{R}$ and $b \in \mathbb{N}$, which is defined to be $1$ if $b=0$. The generalized binomial coefficient of vectors is the product of all generalized binomial coefficients of the components:
 $
 \left(
     \begin{matrix}
@@ -39,144 +39,142 @@ $
         \vb
     \end{matrix}
     \right) 
-    = 
+    := 
     \prod_{i=1}^I
     \left(
        \begin{matrix}
-        a_i \\
-        b_i
+        [\va]_i \\
+        [\vb]_i
     \end{matrix}
     \right).
 $ 
-This notation also includes cases where the multi-index has components of $\mathbb{R}$.
+This notation also includes cases where the vector has components of $\mathbb{R}$.
 
-\subsection{Applied to the biharmonic operator.}\label{sec:appendix-biharmonic-details}
+\subsection{Applied to the Biharmonic Operator}\label{sec:appendix-biharmonic-details}
 
-To compute \cref{eq:biharm} with \cref{eq:ttc_general}, we first select $K = 4, P = 2, N_1 = N_2 = D, \vp = (2, 2), \vv_{n_1} = \ve_{n_1}$ and $\ve_{n_2} = \ve_{n_2}$. Then we insert these parameters into the general equation and get
+To compute \cref{eq:biharm} with \cref{eq:ttc_general}, we first select $K = 4, I = 2, D_1 = D_2 = D, \vi = (2, 2), \vv_{d_1} = \ve_{d_1}$ and $\ve_{d_2} = \ve_{d_2}$. Then we insert these parameters into the general equation \cref{eq:ttc_general} and get
 \begin{equation} \label{eq:ttc_for_biharm}
     \begin{aligned}
     \Delta^2 \vf(\vx_0)
     &=
-    \sum_{\underset{\vq \in \mathbb{N}^2}{|\vq| = 4}}
-    \gamma_{(2, 2) \vq}
+    \sum_{\vj \in \mathbb{N}^2, \lVert \vj \rVert_1 = 4}
+    \gamma_{(2, 2), \vj}
     \frac{1}{4!}
-    \sum_{n_1=1}^D \sum_{n_2=1}^D 
+    \sum_{d_1=1}^D \sum_{d_2=1}^D 
     \left<
     \partial^4 \vf(\vx_0),
-    \otimes_{k=1}^4 \left(\ve_{n_1} q_1 + \ve_{n_2} q_2\right)
+    \left(\ve_{d_1} [\vj]_1 + \ve_{d_2} [\vj]_2\right)^{\otimes 4}
     \right>
     \\
     &=
     \frac{1}{24} 
     \Big(
-    \gamma_{(2, 2)(4, 0)}
-    \sum_{n_1=1}^D \sum_{n_2=1}^D
+    \gamma_{(2, 2), (4, 0)}
+    \sum_{d_1=1}^D \sum_{d_2=1}^D
     \left<
     \partial^4 \vf(\vx_0),
-    \otimes_{k=1}^4 4 \ve_{n_1}
+    \left(4 \ve_{d_1}\right)^{\otimes 4}
     \right>
     \\
     &+
-    \gamma_{(2, 2)(0, 4)}
-    \sum_{n_1=1}^D \sum_{n_2=1}^D 
+    \gamma_{(2, 2), (0, 4)}
+    \sum_{d_1=1}^D \sum_{d_2=1}^D 
     \left<
     \partial^4 \vf(\vx_0),
-    \otimes_{k=1}^4 4 \ve_{n_2}
+    \left(4 \ve_{d_2} \right)^{\otimes 4}
     \right>
     \\
     &+
-    \gamma_{(2, 2)(3, 1)}
-    \sum_{n_1=1}^D \sum_{n_2=1}^D
+    \gamma_{(2, 2), (3, 1)}
+    \sum_{d_1=1}^D \sum_{d_2=1}^D
     \left<
     \partial^4 \vf(\vx_0),
-    \otimes_{k=1}^4 \left( 
-    3 \ve_{n_1} + \ve_{n_2}
-    \right)
+    \left(3 \ve_{d_1} + \ve_{d_2}\right)^{\otimes 4}
     \right>
     \\
     &+
-    \gamma_{(2, 2)(1, 3)}
-    \sum_{n_1=1}^D \sum_{n_2=1}^D 
+    \gamma_{(2, 2), (1, 3)}
+    \sum_{d_1=1}^D \sum_{d_2=1}^D 
     \left<
     \partial^4 \vf(\vx_0),
-    \otimes_{k=1}^4 \left(
-    \ve_{n_1} + 3 \ve_{n_2}
-    \right)
+    \left(
+    \ve_{d_1} + 3 \ve_{d_2}
+    \right)^{\otimes 4}
     \right>
     \\
     &+
-    \gamma_{(2, 2)(2, 2)}
-    \sum_{n_1=1}^D \sum_{n_2=1}^D 
+    \gamma_{(2, 2), (2, 2)}
+    \sum_{d_1=1}^D \sum_{d_2=1}^D 
     \left<
     \partial^4 \vf(\vx_0),
-    \otimes_{k=1}^4 \left( 2 \ve_{n_1} +  2\ve_{n_2}\right)
+    \left( 2 \ve_{d_1} +  2\ve_{d_2}\right)^{\otimes 4}
     \right>
     \Big).
     \end{aligned}
 \end{equation}
-Afterwards, we exploit the symmetry of the coefficients $\gamma_{(2, 2)(4, 0)} = \gamma_{(2, 2)(0, 4)}$ and $\gamma_{(2, 2)(3, 1)} = \gamma_{(2, 2)(1, 3)}$ yielding
+Afterwards, we exploit the symmetry of the coefficients $\gamma_{(2, 2), (4, 0)} = \gamma_{(2, 2), (0, 4)}$ and $\gamma_{(2, 2), (3, 1)} = \gamma_{(2, 2), (1, 3)}$ yielding
 
 \begin{equation} \label{eq:ttc_for_biharm_2}
     \begin{aligned}
     &\frac{1}{24} 
     \Big(
-    2D\gamma_{(2, 2)(4, 0)}
-    \sum_{n_1=1}^D 
+    2D\gamma_{(2, 2),(4, 0)}
+    \sum_{d_1=1}^D 
     \left<
     \partial^4 \vf(\vx_0),
-    \otimes_{k=1}^4 4 \ve_{n_1}
+    \left(4 \ve_{d_1}\right)^{\otimes 4}
     \right>
     \\
     &+
-    2 \gamma_{(2, 2)(3, 1)}
-    \sum_{n_1=1}^D \sum_{n_2=1}^D
+    2 \gamma_{(2, 2), (3, 1)}
+    \sum_{d_1=1}^D \sum_{d_2=1}^D
     \left<
     \partial^4 \vf(\vx_0),
-    \otimes_{k=1}^4 \left( 
-    3 \ve_{n_1} + \ve_{n_2}
-    \right)
+    \left( 
+    3 \ve_{d_1} + \ve_{d_2}
+    \right)^{\otimes 4}
     \right>
     \\
     &+
-    \gamma_{(2, 2)(2, 2)}
-    \sum_{n_1=1}^D \sum_{n_2=1}^D 
+    \gamma_{(2, 2), (2, 2)}
+    \sum_{d_1=1}^D \sum_{d_2=1}^D 
     \left<
     \partial^4 \vf(\vx_0),
-    \otimes_{k=1}^4 \left( 2 \ve_{n_1} +  2\ve_{n_2}\right)
+    \left( 2 \ve_{d_1} +  2\ve_{d_2}\right)^{\otimes 4}
     \right>
     \Big).
     \end{aligned}
 \end{equation}
-Since the first sum captures all diagonal directions $e_{n_1} = e_{n_2}$, we extract this from the second and third sums to further reduce the computational effort. We obtain
+Since the first sum captures all diagonal directions $e_{d_1} = e_{d_2}$, we extract this from the second and third sums to further reduce the computational effort. We obtain
 \begin{equation} \label{eq:ttc_for_biharm3}
     \begin{aligned}
     &\frac{1}{24} 
     \Big(
     \left(
-    2D\gamma_{(2, 2)(4, 0)} + 2 \gamma_{(2, 2)(3, 1)} + \gamma_{(2, 2)(2, 2)}
+    2D\gamma_{(2, 2), (4, 0)} + 2 \gamma_{(2, 2), (3, 1)} + \gamma_{(2, 2),(2, 2)}
     \right)
-    \sum_{n_1=1}^D 
+    \sum_{d_1=1}^D 
     \left<
     \partial^4 \vf(\vx_0),
-    \otimes_{k=1}^4 4 \ve_{n_1}
+    \left( 4 \ve_{d_1} \right)^{\otimes 4}
     \right>
     \\
     &+
-    2 \gamma_{(2, 2)(3, 1)}
-    \sum_{n_1=1}^D \sum_{\underset{n_2 \neq n_1}{n_2=1}}^D
+    2 \gamma_{(2, 2),(3, 1)}
+    \sum_{d_1=1}^D \sum_{\underset{d_2 \neq d_1}{d_2=1}}^D
     \left<
     \partial^4 \vf(\vx_0),
-    \otimes_{k=1}^4 \left( 
-    3 \ve_{n_1} + \ve_{n_2}
-    \right)
+    \left( 
+    3 \ve_{d_1} + \ve_{d_2}
+    \right)^{\otimes 4}
     \right>
     \\
     &+
-    \gamma_{(2, 2)(2, 2)}
-    \sum_{n_1=1}^D \sum_{\underset{n_2 \neq n_1}{n_2 = 1}}^D 
+    \gamma_{(2, 2), (2, 2)}
+    \sum_{d_1=1}^D \sum_{\underset{d_2 \neq d_1}{d_2 = 1}}^D 
     \left<
     \partial^4 \vf(\vx_0),
-    \otimes_{k=1}^4 \left( 2 \ve_{n_1} +  2\ve_{n_2}\right)
+    \left( 2 \ve_{d_1} +  2\ve_{d_2}\right)^{\otimes 4}
     \right>
     \Big).
     \end{aligned}
@@ -188,51 +186,52 @@ Exploiting further symmetries, one obtains
     \frac{1}{24}
     \Big(
     \left(
-    2D\gamma_{(2, 2)(4, 0)} + 2 \gamma_{(2, 2)(3, 1)} + \gamma_{(2, 2)(2, 2)}
+    2D\gamma_{(2, 2), (4, 0)} + 2 \gamma_{(2, 2), (3, 1)} + \gamma_{(2, 2),(2, 2)}
     \right)
-    \sum_{n_1=1}^D
+    \sum_{d_1=1}^D
     \left<
     \partial^4 \vf(\vx_0),
-    \otimes_{k=1}^4 4 \ve_{n_1}
+    \left(4 \ve_{d_1}\right)^{\otimes 4}
     \right>
     \\
     &+
-    2 \gamma_{(2, 2)(3, 1)}
-     \sum_{n_1=1}^D\sum_{\underset{n_2 \neq n_1}{n_2=1}}^D\!\!\!
+    2 \gamma_{(2, 2), (3, 1)}
+     \sum_{d_1=1}^D\sum_{\underset{d_2 \neq d_1}{d_2=1}}^D\!\!\!
     \left<
     \partial^4 \vf(\vx_0),
-    \otimes_{k=1}^4 \left(
-    3 \ve_{n_1}+\ve_{n_2}
-    \right)
+     \left(
+    3 \ve_{d_1}+\ve_{d_2}
+    \right)^{\otimes 4}
     \right>
     \\
     & +
-    2 \gamma_{(2, 2)(2, 2)}
-    \sum_{n_1=1}^{D - 1} \sum_{n_2 = n_1 + 1}^D
+    2 \gamma_{(2, 2), (2, 2)}
+    \sum_{d_1=1}^{D - 1} \sum_{d_2 = d_1 + 1}^D
     \left<
     \partial^4 \vf(\vx_0),
-    \otimes_{k=1}^4 \left( 2 \ve_{n_1}+2\ve_{n_2}\right)
+   \left( 2 \ve_{d_1}+2\ve_{d_2}\right)^{ \otimes 4 }
     \right>
     \Big).
     \end{aligned}
 \end{equation}
-\subsection{Other methods}\label{sec:appendix_ttc_other_methods}
 
-\paragraph{Stochastic Taylor Derivative Estimator}
-A different approach was proposed in \cite{shi2024stochastic}, which relies on the hand-selection of certain $6$-jets to extract the required derivatives. The degree and directions for the jets are obtained by considering the Faà di Bruno formula for the 6-th coefficient $\vf_6$. Selecting coefficients of the input $6$-jet to $\vx_1 = \ve_{n_1}, \vx_2 = \ve_{n_2}$ and  $\vx_3 = \vx_4 = \vx_5 = \vx_6 = \vzero$ leads us to
+
+\subsection{Biharmonic Operator via Stochastic Taylor Derivative Estimator}\label{sec:appendix_ttc_other_methods}
+
+A different approach to compute arbitrary-mixed derivatives was proposed in \cite{shi2024stochastic}. This approach relies, for the biharmonic operator, on the hand-selection of certain $6$-jets to extract the required derivatives. The degree and directions for the jets are obtained by considering the Faà di Bruno formula for the 6-th coefficient $\vf_6$ (see \cref{sec:faa-di-bruno-cheatsheet}). Selecting coefficients of the input $6$-jet to $\vx_1 = \ve_{d_1}, \vx_2 = \ve_{d_2}$ and  $\vx_3 = \vx_4 = \vx_5 = \vx_6 = \vzero$ leads us to
 \begin{align}\label{eq:felix-biharmonic-jet1}
 \begin{split}
     \vf_6
     &=
     \left<
     \partial^{6} \vf(\vx_0), 
-    \otimes_{k=1}^6 \ve_{n_1}
+    \otimes_{k=1}^6 \ve_{d_1}
     \right>
     +
     15 
     \left<
     \partial^5 \vf(\vx_0), 
-    \left(\ve_{n_1}\right)^{\otimes 4} \otimes \ve_{n_2}
+    \left(\ve_{d_1}\right)^{\otimes 4} \otimes \ve_{d_2}
     \right>
     \\
     &  \quad{}  +
@@ -240,29 +239,29 @@ A different approach was proposed in \cite{shi2024stochastic}, which relies on t
     45 
     \left<
     \partial^4 \vf(\vx_0),
-    \left(\ve_{n_1}\right)^{\otimes 2} \otimes \left(\ve_{n_2} \right)^{\otimes 2}
+    \left(\ve_{d_1}\right)^{\otimes 2} \otimes \left(\ve_{d_2} \right)^{\otimes 2}
     \right>
     }
 +
     15 
     \left<
     \partial^3 \vf(\vx_0), 
-    \otimes_{k=1}^3 \ve_{n_2}
+    \otimes_{k=1}^3 \ve_{d_2}
     \right>.
     \end{split}
 \end{align}
-Notice the \textcolor{blue}{blue term}, which has the same structure as the summands we want to compute for the Biharmonic operator. Therefore, a first $6$-jet with the input jet is computed as explained above. To cancel out the unwanted terms, we evaluate another $6$-jet with $\vx_2 = -\ve_{n_2}$ and adding the $6$-th coefficient of this jet to \cref{eq:felix-biharmonic-jet1} gives
+Notice the \textcolor{blue}{blue term}, which has the same structure as the summands we want to compute for the biharmonic operator. Therefore, a first $6$-jet is computed as explained above. To cancel out the unwanted terms, we evaluate another $6$-jet with the same input except $\vx_2 = -\ve_{d_2}$ and adding the $6$-th coefficient of this jet to \cref{eq:felix-biharmonic-jet1} gives
 \begin{align}\label{eq:felix-biharmonic-jet2}
     2 \left<
     \partial^{6} \vf(\vx_0), 
-    \otimes_{k=1}^6 \ve_{n_1}
+    \otimes_{k=1}^6 \ve_{d_1}
     \right>
     +
     {\color{blue}
     90
     \left<
     \partial^4 \vf(\vx_0),
-    \left(\ve_{n_1}\right)^{\otimes 2} \otimes \left(\ve_{n_2} \right)^{\otimes 2}
+    \left(\ve_{d_1}\right)^{\otimes 2} \otimes \left(\ve_{d_2} \right)^{\otimes 2}
     \right>.
     }
 \end{align}
@@ -285,8 +284,8 @@ We obtain
 \end{equation}
 by subtracting twice of the $6$-th coefficient of the third jet from \cref{eq:felix-biharmonic-jet2}.
 
-To summarize the procedure, we evaluate the 6-jet three times. The first jet has the input $\vx_1 = \ve_{n_1}, \vx_2 = \ve_{n_2}$ and $\vx_3 = \vx_4 = \vx_5 = \vx_6 = \vzero$, the second jet has the same input jet apart from $\vx_2 = \- \ve_{n_2}$. The third 6-jet takes $\vx_2 = \vzero$. Then we add the $6$-th coefficient of the first and the second and subtract twice of the $6$-th coefficient of the third jet. Dividing by $90$ provides the derivative corresponding to the $n_1, n_2$ term of the Biharmonic operator.
+To summarize the procedure, we evaluate the 6-jet three times. The first jet has the input $\vx_1 = \ve_{d_1}, \vx_2 = \ve_{d_2}$ and $\vx_3 = \vx_4 = \vx_5 = \vx_6 = \vzero$, the second jet has the same input jet apart from $\vx_2 = \- \ve_{d_2}$. The third 6-jet takes $\vx_2 = \vzero$. Then we add the $6$-th coefficient of the first and the second and subtract twice of the $6$-th coefficient of the third jet. Dividing by $90$ provides the derivative corresponding to the $d_1, d_2$ term of the biharmonic operator.
 
-The usual Taylor mode would propagate $1 + 18D^2$ vectors through every node, where we already exploit that all jets share $\vx_0$ and therefore the corresponding first coefficients. 
+The standard Taylor mode would propagate $1 + 18D^2$ vectors through every node, where we already exploit that all jets share $\vx_0$. 
 Leveraging our collapsed Taylor mode would have the cost of passing $1 + 3 + 15D^2$ vectors to every node of the compute graph. Still, this is very expensive in comparison to our approach described before. In addition, until now, the selection of the jet degree and the input coefficients requires substantial human effort.
 

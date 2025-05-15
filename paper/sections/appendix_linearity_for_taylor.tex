@@ -128,14 +128,14 @@ The following Taylor mode AD scheme results from inserting \cref{eq:sum-k-direct
         &\overset{\text{slice}}{\to} \{ \vg_{K,r} \}
         \\
         &\overset{\text{sum}}{\to} \sum_{r=1}^R \vg_{K,r} 
-          \overset{\{\vx_{1,r} = \vv_n, \vx_{2,r} = \vzero, \dots, \vx_{K, r} = \vzero \}}{=} 
-          \sum_{n=r}^R \left<
+          \overset{\{\vx_{1,r} = \vv_r, \vx_{2,r} =  \dots = \vx_{K, r} = \vzero \}}{=} 
+          \sum_{r=1}^R \left<
           \partial^K \vf(\vx_0), 
           \otimes_{k=1}^K \vv_r
           \right>
     \end{split}
 \end{align}
-Leveraging linearity in the certain terms (in green) of the highest coefficient instead, leads to
+Leveraging linearity in certain terms (in green) of the highest coefficient, as explained in \cref{eq:faa-di-bruno-expanded}, instead leads to
 \begin{align}\label{eq:sum-taylor-mode-efficient}
 %  \begin{split}
       \begin{pmatrix*}
@@ -188,7 +188,7 @@ Leveraging linearity in the certain terms (in green) of the highest coefficient 
           \left<
           \partial \vh(\vx_0),
           \textcolor{\colorcTM}{
-          \sum_{r=1}^R \vx_{K, r}
+          \displaystyle\sum_{r=1}^R \vx_{K, r}
           }
           \right>
         \end{pmatrix*}      \nonumber \\    
@@ -276,7 +276,7 @@ Leveraging linearity in the certain terms (in green) of the highest coefficient 
         \end{pmatrix*}
         \\
         &\overset{\text{slice}}{\to} \textcolor{\colorcTM}{\sum_{r=1}^R \vg_{K,r}}
-          \overset{\{\vx_{1,r} = \vv_r, \vx_{2,r} = \vzero, \dots, \vx_{K, r} = \vzero \}}{=} 
+          \overset{\{\vx_{1,r} = \vv_r, \vx_{2,r} =  \dots = \vx_{K, r} = \vzero \}}{=} 
           \sum_{r=1}^R \left<
           \partial^K \vf(\vx_0), 
           \otimes_{k=1}^K \vv_r
@@ -284,10 +284,11 @@ Leveraging linearity in the certain terms (in green) of the highest coefficient 
    % \end{split}
 \end{align*}
 
-\subsection{Examples -- Laplace Operator}
+\subsection{Second-order Operators --- Laplacian}
+Here, we will show details about the propagation schemes of the standard Taylor mode and the collapsed Taylor mode for the computation of the Laplacian of $\vf$. We consider the decomposition $\vf = \vg \circ \vh$.
 
-\paragraph{Vanilla Taylor Mode AD}
-If we have $f = \vg \circ \vh$ and apply the vanilla Taylor mode (see \cref{eq:sum-taylor-mode-naive}) to compute the Laplacian we obtain
+\paragraph{Standard Taylor Mode AD}
+Using standard Taylor mode (see \cref{eq:sum-taylor-mode-naive}) to compute the Laplacian we obtain
 {
 \setlength{\abovedisplayskip}{0pt}
 \setlength{\belowdisplayskip}{0pt}
@@ -300,7 +301,7 @@ If we have $f = \vg \circ \vh$ and apply the vanilla Taylor mode (see \cref{eq:s
       \\
       \{\vx_{2,d} \}
     \end{pmatrix*}
-    &\overset{\text{(\ref{eq:taylor-mode-scalar})}}{\to}
+    &\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
       \begin{pmatrix*}[l]
         \vh_0 =  \vh(\vx_0)
         \\
@@ -325,63 +326,63 @@ If we have $f = \vg \circ \vh$ and apply the vanilla Taylor mode (see \cref{eq:s
         \}
       \end{pmatrix*}
     \\
-    &\overset{\text{(\ref{eq:taylor-mode-scalar})}}{\to}
+    &\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
       \begin{pmatrix*}[l]
-        g_0 =  g(\vh_0)
+        \vg_0 =  \vg(\vh_0)
         \\
-        \{g_{1,d}\} = \{
-        \left<\partial g(\vh_0), 
+        \{\vg_{1,d}\} = \{
+        \left<\partial \vg(\vh_0), 
         \vh_{1,d}
         \right>
         \}
         \\
-        \{g_{2,d}\} = \{
+        \{\vg_{2,d}\} = \{
         \left< 
-        \partial^2 g(\vh_0),
+        \partial^2 \vg(\vh_0),
         \vh_{1,d} \otimes \vh_{1,d} 
         \right>
         + 
         \left<
-        \partial g(\vh_0), 
+        \partial \vg(\vh_0), 
         \vh_{2,d}
         \right>
         \}
       \end{pmatrix*}
       \\
-      &\overset{\text{(\ref{eq:taylor-mode-scalar})}}{=}
+      &\overset{\text{(\ref{eq:faa-di-bruno})}}{=}
       \begin{pmatrix*}[l]
-        f_0 =  \vf(\vx_0)
+        \vf_0 =  \vf(\vx_0)
         \\
-        \{f_{1,d} \} = \{
+        \{\vf_{1,d} \} = \{
         \left<
-        \partial f(\vx_0),
+        \partial \vf(\vx_0),
         \vx_{1,d}
         \right>
         \}
         \\
-        \{ f_{2,d} \} = \{
+        \{ \vf_{2,d} \} = \{
         \left<
-        \partial^2 f(\vx_0),
+        \partial^2 \vf(\vx_0),
         \vx_{1,d} \otimes \vx_{1,d}
         \right>
         + 
         \left<
-        \partial f(\vx_0), 
+        \partial \vf(\vx_0), 
         \vx_{2,d}
         \right>
         \}
       \end{pmatrix*}
     \\
-    &\overset{\text{slice}}{\to} \{ g_{2,d} \}
+    &\overset{\text{slice}}{\to} \{ \vg_{2,d} \}
     \\
-    &\overset{\text{sum}}{\to} \sum_{d=1}^D \{ g_{2,d} \}
-      \overset{\{\vx_{1,d} = \ve_d, \vx_{2,d} = \vzero\}}{=} \Delta f(\vx_0).
+    &\overset{\text{sum}}{\to} \sum_{d=1}^D \{ \vg_{2,d} \}
+      \overset{\{\vx_{1,d} = \ve_d, \vx_{2,d} = \vzero\}}{=} \Delta \vf(\vx_0).
   \end{split}
 \end{align}
 }
 
 \paragraph{Collapsed Taylor Mode AD}
-Using our proposed collapsed Taylor mode we get
+Using our proposed collapsed Taylor mode, we get
 {
 \setlength{\abovedisplayskip}{2pt}
 \setlength{\belowdisplayskip}{2pt}
@@ -468,7 +469,7 @@ Using our proposed collapsed Taylor mode we get
     \\
     &\overset{\text{slice}}{\to} \textcolor{\colorcTM}{\sum_{d=1}^D \{ \vg_{2,d} \}}
       \overset{\{(\vx_{1,d} = \ve_d, \vx_{2,d} = \vzero)\}}{=}
-      \Delta f(\vx_0)
+      \Delta \vf(\vx_0)
   \end{split}
 \end{align}
 }

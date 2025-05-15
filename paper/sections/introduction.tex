@@ -1,17 +1,17 @@
-Using neural networks to learn functions constrained by physical laws is a popular trend in scientific machine learning \cite{carleo2017solving, pfau2020ab, hermann2020deep, karniadakis2021physics, raissi2019physics, hu2023hutchinson, sun2020global}.
+Using neural networks to learn functions constrained by physical laws is a popular trend in scientific machine learning \cite{carleo2017solving,pfau2020ab,hermann2020deep,hu2023hutchinson,karniadakis2021physics, raissi2019physics,sun2020global}.
 Typically, the Physics is encoded through partial differential equations (PDEs) that the neural net must satisfy.
 The associated loss functions require evaluating differential operators \wrt the net's input, rather than weights.
 Evaluating these differential operators remains a computational challenge, especially if they contain high-order derivatives.
 
 \paragraph{Computing PDE operators.} Two important fields that build on PDE operators are variational Monte-Carlo (VMC) simulations and Physics-informed neural networks (PINNs).
-VMC employs neural networks as ansatz for the Schr\"odinger equation \cite{carleo2017solving, pfau2020ab, hermann2020deep} and demands computing the net's Laplacian, \ie, the Hessian trace.
-PINNs represent PDE solutions as a neural net and train it by minimizing the residuals of the governing equations \cite{raissi2019physics, karniadakis2021physics}. For instance, Kolmogorov-type equations, like the Fokker-Planck and Black-Scholes equation, require weighted second-order derivatives on high-dimensional spatial domains \cite{hu2023hutchinson, sun2024dynamical}.
-PINN applications for elasticity problems use the biharmonic operator \cite{vahab_physics-informed_2022, hu2023hutchinson, vikas_biharm, shi2024stochastic}, which contains fourth-order derivatives.
+VMC employs neural networks as ansatz for the Schr\"odinger equation \cite{carleo2017solving, pfau2020ab, hermann2020deep} and demands computing the net's Laplacian (the Hessian trace) for the Hamiltonian's kinetic term.
+PINNs represent PDE solutions as a neural net and train it by minimizing the residuals of the governing equations \cite{raissi2019physics, karniadakis2021physics}. For instance, Kolmogorov-type equations like the Fokker-Planck and Black-Scholes equation require weighted second-order derivatives on high-dimensional spatial domains \cite{hu2023hutchinson, sun2024dynamical}.
+Other PINNs for elasticity problems use the biharmonic operator \cite{vahab_physics-informed_2022, hu2023hutchinson, vikas_biharm, shi2024stochastic}, which contains fourth-order derivatives.
 
 \paragraph{Is backpropagation all we need?}
 % Alternative: The gap between theory and practice
 Although nesting first-order automatic differentiation (AD) to compute high-order derivatives scales exponentially \wrt the degree in time and memory \cite[][\S3.2]{shi2024stochastic}, this approach is common practice: it is easy to implement in ML libraries, and their backpropagation is highly optimized.
-A promising alternative is \emph{Taylor-mode AD}~\cite[or simply \emph{Taylor-mode},][\S13]{griewank2008evaluating}, introduced to the ML community in \citeyear{bettencourt2019taylor}, which scales polynomially \wrt degree in time and memory \cite{griewank_evaluating_1999}.
+A promising alternative is \emph{Taylor-mode AD}~\cite[or simply \emph{Taylor-mode},][\S13]{griewank2008evaluating}, introduced to the ML community in \citeyear{bettencourt2019taylor}, which scales polynomially \wrt the degree in time and memory \cite{griewank_evaluating_1999}.
 However, we observe empirically that vanilla Taylor mode may not be enough to beat nesting: when evaluating the Laplacian of a 5-layer MLP, using JAX's \emph{Taylor mode is 50\% slower than nested backpropagation} that computes, then traces, the Hessian via Hessian-vector products \cite{pearlmutter1994fast,dagreou2024how}.
 This calls into question the relevance of Taylor mode for computing common PDE operators.
 
@@ -22,7 +22,7 @@ While the forward Laplacian does not rely on Taylor mode, recent work pointed ou
 Concurrently, \citet{shi2024stochastic} derived stochastic approximations of differential operators in high dimensions by evaluating Taylor mode along suitably sampled random directions.
 
 Irrespective of stochastic or exact computation, at their core, these popular PDE operators are \emph{linear}: we must evaluate derivatives along multiple directions, then sum them.
-Based on this linearity, we identify an optimization mechanism to rewrite the computational graph of standard Taylor mode that is applicable to general linear PDE operators and randomized Taylor mode:
+Based on this linearity, we identify an optimization technique to rewrite the computational graph of standard Taylor mode that is applicable to general linear PDE operators and randomized Taylor mode:
 
 \begin{figure*}[!t]
   \centering
@@ -33,7 +33,7 @@ Based on this linearity, we identify an optimization mechanism to rewrite the co
     \caption{\textbf{$\blacktriangle$ Vanilla Taylor mode is not enough to beat nested 1\textsuperscript{st}-order AD.}
       Illustrated for computing the Laplacian of a $\mathrm{tanh}$-activated $50 \!\to\! 768 \!\to\! 768 \!\to\! 512 \!\to\! 512 \!\to\! 1$
       MLP with JAX (+ \texttt{jit}) on GPU (details in \Cref{sec:jax-benchmark}).
-      We show how to automatically obtain the specialized forward Laplacian through simple graph transformations of vanilla Taylor mode.
+      We show how to automatically obtain the specialized forward Laplacian through simple graph transformations that ``collapse`` vanilla Taylor mode.
     }\label{fig:vanilla-taylor-not-enough}
 
     \vspace{0.25ex}
@@ -50,7 +50,7 @@ Based on this linearity, we identify an optimization mechanism to rewrite the co
 \end{figure*}
 
 \begin{enumerate}[leftmargin=0.5cm]
-\item \textbf{We propose optimizing standard Taylor mode by collapsing the highest Taylor coefficients,} directly propagating their sum, rather than propagating then summing (\cref{fig:visual-abstract}).
+\item \textbf{We propose optimizing standard Taylor mode by collapsing the highest Taylor coefficients,} directly \textcolor{tab-green}{\bfseries propagating their sum}, rather than \textcolor{tab-orange}{\bfseries propagating then summing} (\cref{fig:visual-abstract}).
 Our approach contains the forward Laplacian as special case, is applicable to randomized Taylor mode, and also general linear PDE operators, which we show using the techniques from \citet{griewank_evaluating_1999}.
 
 %and, relying on [...] can be generalized to 
@@ -64,7 +64,7 @@ Our approach contains the forward Laplacian as special case, is applicable to ra
 
 \item \textbf{We empirically demonstrate that collapsing Taylor mode accelerates standard Taylor mode.}
 We implement a Taylor mode library for PyTorch \cite{paszke2019pytorch} that realizes the graph simplifications with \texttt{torch.fx} \cite{reed2022torch}.
-On popular PDE operators, we empirically find that collapsed Taylor mode achieves the theoretically expected performance improvements of standard Taylor mode, and consistently outperforms nested first-order AD.
+On popular PDE operators, we empirically find that, compared to standard Taylor mode, collapsed Taylor mode achieves superior performance that is well-aligned with the theoretical expectation, while consistently outperforming nested first-order AD.
 \end{enumerate}
 
 Our work takes an important step towards the broader adoption of Taylor mode as viable alternative to nested first-order AD for computing PDE operators, while being as easy to use. 

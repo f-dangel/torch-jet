@@ -3,7 +3,7 @@
   \tikzset{leaf/.style={fill=gray!50!white}}
   \tikzset{output/.style={fill=gray!25!white}}
   \tikzset{replicate/.style={fill=blue!25!white}}
-  \scalebox{0.58}{
+  \scalebox{0.70}{
     \begin{tikzpicture}
       % draw the nodes
       \matrix [%
@@ -55,7 +55,7 @@
   \noindent\rule{\textwidth}{1pt}
   \vspace{-0.6ex}
 
-  \scalebox{0.58}{
+  \scalebox{0.70}{
     \begin{tikzpicture}
       % draw the nodes
       \matrix [%
@@ -64,8 +64,8 @@
       row sep=4ex,%
       ]{
         \node[state, leaf] (x0) {x0};
-        \& \node[state] (f0) {f0 = sin(x0)};
         \&
+        \& \node[state] (f0) {f0 = sin(x0)};
         \& \node[state, replicate] (f0-d) {f0\_r = replicate(f0)};
         \\
         \& \node[state, replicate] (x0-d) {x0\_r = replicate(x0)};
@@ -111,7 +111,7 @@
   \noindent\rule{\textwidth}{1pt}
   \vspace{-0.6ex}
 
-  \scalebox{0.58}{
+  \scalebox{0.70}{
     \begin{tikzpicture}
       % draw the nodes
       \matrix [%
@@ -120,8 +120,8 @@
       row sep=4ex,%
       ]{
         \node[state, leaf] (x0) {x0};
-        \& \node[state] (f0) {f0 = sin(x0)};
         \&
+        \& \node[state] (f0) {f0 = sin(x0)};
         \& \node[state, replicate] (f0-d) {f0\_r = replicate(f0)};
         \\
         \&
@@ -167,7 +167,7 @@
   \vspace{-0.6ex}
   \noindent\rule{\textwidth}{1pt}
   \vspace{-0.6ex}
-  \scalebox{0.58}{
+  \scalebox{0.70}{
     \begin{tikzpicture}
       % draw the nodes
       \matrix [%
@@ -176,8 +176,8 @@
       row sep=4ex,%
       ]{
         \node[state, leaf] (x0) {x0};
-        \& \node[state] (f0) {f0 = sin(x0)};
         \&
+        \& \node[state] (f0) {f0 = sin(x0)};
         \& \node[state, replicate] (f0-d) {f0\_r = replicate(f0)};
         \\
         \node[state, leaf] (x1-d) {x1\_r};
@@ -187,10 +187,10 @@
         einsum(``...,r...\\->r...'', df, x1\_r)};
         \\
         \& 
-        \& \node[state] (temp1-d) {temp1\_r = einsum(``...,r...,r...\\->r...'', df, x1\_r, x1\_r)};
+        \& \node[state, replicate] (temp1-d) {temp1\_r = einsum(``...,r...,r...\\->r...'', df, x1\_r, x1\_r)};
         \\
         \node[state, leaf] (x2-d) {x2\_r};
-        \& \node[state] (temp2-d) {temp2\_d = einsum(``...,r...\\->r...'', d2f, x2\_r)};
+        \& \node[state, replicate] (temp2-d) {temp2\_r = einsum(``...,r...\\->r...'', d2f, x2\_r)};
         \& \node[state] (f2-d) {f2\_r = temp1\_r + temp2\_r};
         \& \node[state, output] (f2) {f2 = sum(f2\_r, dim=0)};
         \\
@@ -202,7 +202,7 @@
       (x0) edge [arrow] (f0)
       (f0) edge [arrow] (f0-d)
       (x0) edge [arrow, out=-30, in=170] (df)
-      (f0-d) edge [arrow] (d2f-d)
+      (f0) edge [arrow] (d2f-d)
       (df) edge [arrow] (f1-d)
       (x1-d) edge [arrow, out=18, in=175] (f1-d)
       (d2f-d) edge [arrow] (temp2-d)

@@ -1,6 +1,13 @@
-To estimate the performance ratio between standard and collapsed Taylor mode, we can use the increment of vectors both modes propagate forward as we increase either the batch size or the number of Monte-Carlo samples.
-This is a relatively simplistic proxy; \eg, it assumes that each vector adds the same computational load, which is false as vectors corresponding to higher components require more work and memory (as the Faà di Bruno formula contains more terms unless a composite function is linear).
-Conversely, incrementing the MC samples by one does add cost to compute or store the derivatives, as they are already computed with just a single sample.
+Here, we compare the theoretically estimated performance improvements based on counting the number of forward-propagated vectors with the empirically measured performance.
+
+To estimate the performance ratio between standard and collapsed Taylor mode, we can use the number of additional vectors both modes propagate forward as we increase either the batch size or the number of Monte-Carlo samples.
+This is a relatively simplistic proxy; \eg, it assumes that each vector adds the same computational load, which is inaccurate as vectors corresponding to higher coefficients require more work and memory (as the Faà di Bruno formula contains more terms in general).
+Conversely, while incrementing the MC samples does add additional vectors that are propagated, it does not introduce additional cost to compute or store the derivatives, as they are already computed with just a single sample.
 \Cref{tab:benchmark-ratios} summarizes the theoretical and empirical ratios. We find them to align quite well, despite the overly simplistic assumptions.
+
+As concrete example, consider the exact Laplacian.
+Adding one datum introduces {\color{tab-green}$2 + D$} versus {\color{tab-orange}$1 + 2D$} new vectors.
+For $D=50$, their ratio is $\nicefrac{\color{tab-green}(2 + D)}{\color{tab-orange}(1 + 2D)} \approx 0.51$.
+Empirically, we measure that adding one datum adds {\color{tab-orange}$0.60$\,ms} to standard and {\color{tab-green}$0.33$\,ms} to collapsed Taylor mode (\cref{tab:benchmark}), whose ratio of $\approx 0.55$ is close to the theoretical value.
 
 \input{tables/torch_ratios}

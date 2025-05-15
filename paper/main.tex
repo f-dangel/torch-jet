@@ -1,7 +1,7 @@
 \documentclass{article}
 
 % use numbers for citations to save space
-\PassOptionsToPackage{numbers, compress}{natbib}
+\PassOptionsToPackage{numbers, compress, sort}{natbib}
 
 % The authors should use one of these tracks.
 % Before accepting by the NeurIPS conference, select one of the options below.
@@ -70,7 +70,7 @@
 \section{Introduction}\label{sec:introduction}
 \input{sections/introduction.tex}
 
-\section{Background: Introduction to Taylor-Mode AD}\label{sec:background}
+\section{Background: Introduction to Taylor Mode AD}\label{sec:background}
 \input{sections/background.tex}
 
 \section{Collapsing Taylor Mode AD}\label{sec:methodology}
@@ -114,33 +114,37 @@
 \printcontents[sections]{l}{1}{\setcounter{tocdepth}{2}}
 
 \clearpage
-\section{Visual Tour: From Function to Collapsed Taylor Mode}\label{sec:appendix-visual-tour}
-\input{figures/interface_overview}
-\clearpage
-
-\section{Graph Simplifications}\label{sec:graph-simplifications}
-\input{sections/graph_simplifications}
-\clearpage
-
-\section{Exploiting Linearity to Collapse Taylor Mode}
-\input{sections/appendix_linearity_for_taylor}
-
 \section{Fa\`a Di Bruno Formula Cheat Sheet}\label{sec:faa-di-bruno-cheatsheet}
 \input{sections/faa_di_bruno}
+
+\clearpage
+\section{Visual Tour: From Function to Collapsed Taylor Mode}\label{sec:appendix-visual-tour}
+\input{figures/interface_overview}
+
+\clearpage
+\section{Graph Simplifications}\label{sec:graph-simplifications}
+\input{sections/graph_simplifications}
+
+\clearpage
+\section{Exploiting Linearity to Collapse Taylor Mode}
+\input{sections/appendix_linearity_for_taylor}
 
 \section{Details on (Collapsed) Taylor Mode for Arbitrary Mixed Partial Derivatives}\label{sec:appendix_ttc}
 \input{sections/appendix_ttc}
 
-\section{PyTorch benchmark}
+\section{PyTorch Benchmark}
 \label{sec:pytorch-benchmark}
 \input{sections/appendix_torch}
 
-\section{JAX benchmark}
+\section{JAX Benchmark}
 \label{sec:jax-benchmark}
 \input{sections/appendix_jax}
 
 \newpage
-\section*{NeurIPS Paper Checklist}
+% This command creates an un-numbered section and adds it to the table of contents
+% (see https://www.reddit.com/r/LaTeX/comments/10pjrwt/comment/j6kvo50/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button)
+\newcommand*{\nsection}[1]{\section*{#1}\addcontentsline{toc}{section}{#1}}
+\nsection{NeurIPS Paper Checklist}
 \input{sections/checklist.tex}
 
 \end{document}

@@ -4,57 +4,57 @@
     &\to&
           \vh_{0}
           =
-          h(\vx_{0})
+          \vh(\vx_{0})
     &\to&
           \vg_{0}
           =
-          g(\vh_{0})
+          \vg(\vh_{0})
           =
     &\vf_{0}
       =
-      f(\vx_{0})
+      \vf(\vx_{0})
     \\
     \vx_{1}
     &\to&
           \vh_{1}
           =
-          \partial h [\vx_{1}]
+          \langle \partial \vh, \vx_{1} \rangle
     &\to&
           \vg_{1}
           =
-          \partial g [\vh_{1}]
+          \langle \partial \vg, \vh_{1} \rangle
           =
     &\vf_{1}
       =
-      \partial f [\vx_{1}]
+      \langle \partial \vf, \vx_{1} \rangle
     \\
     \vx_{2}
     &\to&
           \vh_{2}
           =
           \begin{matrix}
-            \partial^{2} h [\vx_{1}, \vx_{1}]
+            \langle \partial^{2} \vh, \vx_{1}^{\otimes2} \rangle
             \\
             +
-            \partial h [\vx_{2}]
+            \langle \partial \vh, \vx_{2} \rangle
           \end{matrix}
     &\to&
           \vg_{2}
           =
           \begin{matrix}
-            \partial^{2} g [\vh_{1}, \vh_{1}]
+            \langle \partial^{2} \vg, \vh_{1}^{\otimes2} \rangle
             \\
             +
-            \partial g [\vh_{2}]
+            \langle \partial \vg, \vh_{2} \rangle
           \end{matrix}
           =
     &\vf_{2}
       =
       \begin{matrix}
-        \partial^{2} f [\vx_{1}, \vx_{1}]
+        \langle \partial^{2} \vf, \vx_{1}^{\otimes2} \rangle
         \\
         +
-        \partial f [\vx_{2}]
+        \langle \partial \vf, \vx_{2} \rangle
       \end{matrix}
     \\
     \vx_{3}
@@ -62,37 +62,37 @@
           \vh_{3}
           =
           \begin{matrix}
-            \partial^{3} h [\vx_{1}, \vx_{1}, \vx_{1}]
+            \langle \partial^{3} \vh, \vx_{1}^{\otimes3} \rangle
             \\
             +
-            3 \partial^{2} h [\vx_{1}, \vx_{2}]
+            3 \langle \partial^{2} \vh, \vx_{1}\otimes \vx_{2} \rangle
             \\
             +
-            \partial h [\vx_{3}]
+            \langle \partial \vh, \vx_{3} \rangle
           \end{matrix}
     &\to&
           \vg_{3}
           =
           \begin{matrix}
-            \partial^{3} g [\vh_{1}, \vh_{1}, \vh_{1}]
+            \langle \partial^{3} \vg, \vh_{1}^{\otimes3} \rangle
             \\
             +
-            3 \partial^{2} g [\vh_{1}, \vh_{2}]
+            3 \langle \partial^{2} \vg, \vh_{1}\otimes \vh_{2} \rangle
             \\
             +
-            \partial g [\vh_{3}]
+            \langle \partial \vg, \vh_{3} \rangle
           \end{matrix}
           =
     &\vf_{3}
       =
       \begin{matrix}
-        \partial^{3} f [\vx_{1}, \vx_{1}, \vx_{1}]
+        \langle \partial^{3} \vf, \vx_{1}^{\otimes3} \rangle
         \\
         +
-        3 \partial^{2} f [\vx_{1}, \vx_{2}]
+        3 \langle \partial^{2} \vf, \vx_{1}\otimes \vx_{2} \rangle
         \\
         +
-        \partial f [\vx_{3}]
+        \langle \partial \vf, \vx_{3} \rangle
       \end{matrix}
     \\
     \vx_{4}
@@ -100,55 +100,55 @@
           \vh_{4}
           =
           \begin{matrix}
-            \partial^{4} h [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}]
+            \langle \partial^{4} \vh, \vx_{1}^{\otimes4} \rangle
             \\
             +
-            6 \partial^{3} h [\vx_{1}, \vx_{1}, \vx_{2}]
+            6 \langle \partial^{3} \vh, \vx_{1}^{\otimes2}\otimes \vx_{2} \rangle
             \\
             +
-            4 \partial^{2} h [\vx_{1}, \vx_{3}]
+            4 \langle \partial^{2} \vh, \vx_{1}\otimes \vx_{3} \rangle
             \\
             +
-            3 \partial^{2} h [\vx_{2}, \vx_{2}]
+            3 \langle \partial^{2} \vh, \vx_{2}^{\otimes2} \rangle
             \\
             +
-            \partial h [\vx_{4}]
+            \langle \partial \vh, \vx_{4} \rangle
           \end{matrix}
     &\to&
           \vg_{4}
           =
           \begin{matrix}
-            \partial^{4} g [\vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}]
+            \langle \partial^{4} \vg, \vh_{1}^{\otimes4} \rangle
             \\
             +
-            6 \partial^{3} g [\vh_{1}, \vh_{1}, \vh_{2}]
+            6 \langle \partial^{3} \vg, \vh_{1}^{\otimes2}\otimes \vh_{2} \rangle
             \\
             +
-            4 \partial^{2} g [\vh_{1}, \vh_{3}]
+            4 \langle \partial^{2} \vg, \vh_{1}\otimes \vh_{3} \rangle
             \\
             +
-            3 \partial^{2} g [\vh_{2}, \vh_{2}]
+            3 \langle \partial^{2} \vg, \vh_{2}^{\otimes2} \rangle
             \\
             +
-            \partial g [\vh_{4}]
+            \langle \partial \vg, \vh_{4} \rangle
           \end{matrix}
           =
     &\vf_{4}
       =
       \begin{matrix}
-        \partial^{4} f [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}]
+        \langle \partial^{4} \vf, \vx_{1}^{\otimes4} \rangle
         \\
         +
-        6 \partial^{3} f [\vx_{1}, \vx_{1}, \vx_{2}]
+        6 \langle \partial^{3} \vf, \vx_{1}^{\otimes2}\otimes \vx_{2} \rangle
         \\
         +
-        4 \partial^{2} f [\vx_{1}, \vx_{3}]
+        4 \langle \partial^{2} \vf, \vx_{1}\otimes \vx_{3} \rangle
         \\
         +
-        3 \partial^{2} f [\vx_{2}, \vx_{2}]
+        3 \langle \partial^{2} \vf, \vx_{2}^{\otimes2} \rangle
         \\
         +
-        \partial f [\vx_{4}]
+        \langle \partial \vf, \vx_{4} \rangle
       \end{matrix}
     \\
     \vx_{5}
@@ -156,73 +156,73 @@
           \vh_{5}
           =
           \begin{matrix}
-            \partial^{5} h [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}]
+            \langle \partial^{5} \vh, \vx_{1}^{\otimes5} \rangle
             \\
             +
-            10 \partial^{4} h [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{2}]
+            10 \langle \partial^{4} \vh, \vx_{1}^{\otimes3}\otimes \vx_{2} \rangle
             \\
             +
-            10 \partial^{3} h [\vx_{1}, \vx_{1}, \vx_{3}]
+            10 \langle \partial^{3} \vh, \vx_{1}^{\otimes2}\otimes \vx_{3} \rangle
             \\
             +
-            15 \partial^{3} h [\vx_{1}, \vx_{2}, \vx_{2}]
+            15 \langle \partial^{3} \vh, \vx_{1}\otimes \vx_{2}^{\otimes2} \rangle
             \\
             +
-            5 \partial^{2} h [\vx_{1}, \vx_{4}]
+            5 \langle \partial^{2} \vh, \vx_{1}\otimes \vx_{4} \rangle
             \\
             +
-            10 \partial^{2} h [\vx_{2}, \vx_{3}]
+            10 \langle \partial^{2} \vh, \vx_{2}\otimes \vx_{3} \rangle
             \\
             +
-            \partial h [\vx_{5}]
+            \langle \partial \vh, \vx_{5} \rangle
           \end{matrix}
     &\to&
           \vg_{5}
           =
           \begin{matrix}
-            \partial^{5} g [\vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}]
+            \langle \partial^{5} \vg, \vh_{1}^{\otimes5} \rangle
             \\
             +
-            10 \partial^{4} g [\vh_{1}, \vh_{1}, \vh_{1}, \vh_{2}]
+            10 \langle \partial^{4} \vg, \vh_{1}^{\otimes3}\otimes \vh_{2} \rangle
             \\
             +
-            10 \partial^{3} g [\vh_{1}, \vh_{1}, \vh_{3}]
+            10 \langle \partial^{3} \vg, \vh_{1}^{\otimes2}\otimes \vh_{3} \rangle
             \\
             +
-            15 \partial^{3} g [\vh_{1}, \vh_{2}, \vh_{2}]
+            15 \langle \partial^{3} \vg, \vh_{1}\otimes \vh_{2}^{\otimes2} \rangle
             \\
             +
-            5 \partial^{2} g [\vh_{1}, \vh_{4}]
+            5 \langle \partial^{2} \vg, \vh_{1}\otimes \vh_{4} \rangle
             \\
             +
-            10 \partial^{2} g [\vh_{2}, \vh_{3}]
+            10 \langle \partial^{2} \vg, \vh_{2}\otimes \vh_{3} \rangle
             \\
             +
-            \partial g [\vh_{5}]
+            \langle \partial \vg, \vh_{5} \rangle
           \end{matrix}
           =
     &\vf_{5}
       =
       \begin{matrix}
-        \partial^{5} f [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}]
+        \langle \partial^{5} \vf, \vx_{1}^{\otimes5} \rangle
         \\
         +
-        10 \partial^{4} f [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{2}]
+        10 \langle \partial^{4} \vf, \vx_{1}^{\otimes3}\otimes \vx_{2} \rangle
         \\
         +
-        10 \partial^{3} f [\vx_{1}, \vx_{1}, \vx_{3}]
+        10 \langle \partial^{3} \vf, \vx_{1}^{\otimes2}\otimes \vx_{3} \rangle
         \\
         +
-        15 \partial^{3} f [\vx_{1}, \vx_{2}, \vx_{2}]
+        15 \langle \partial^{3} \vf, \vx_{1}\otimes \vx_{2}^{\otimes2} \rangle
         \\
         +
-        5 \partial^{2} f [\vx_{1}, \vx_{4}]
+        5 \langle \partial^{2} \vf, \vx_{1}\otimes \vx_{4} \rangle
         \\
         +
-        10 \partial^{2} f [\vx_{2}, \vx_{3}]
+        10 \langle \partial^{2} \vf, \vx_{2}\otimes \vx_{3} \rangle
         \\
         +
-        \partial f [\vx_{5}]
+        \langle \partial \vf, \vx_{5} \rangle
       \end{matrix}
     \\
     \vx_{6}
@@ -230,109 +230,109 @@
           \vh_{6}
           =
           \begin{matrix}
-            \partial^{6} h [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}]
+            \langle \partial^{6} \vh, \vx_{1}^{\otimes6} \rangle
             \\
             +
-            15 \partial^{5} h [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{2}]
+            15 \langle \partial^{5} \vh, \vx_{1}^{\otimes4}\otimes \vx_{2} \rangle
             \\
             +
-            20 \partial^{4} h [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{3}]
+            20 \langle \partial^{4} \vh, \vx_{1}^{\otimes3}\otimes \vx_{3} \rangle
             \\
             +
-            45 \partial^{4} h [\vx_{1}, \vx_{1}, \vx_{2}, \vx_{2}]
+            45 \langle \partial^{4} \vh, \vx_{1}^{\otimes2}\otimes \vx_{2}^{\otimes2} \rangle
             \\
             +
-            15 \partial^{3} h [\vx_{1}, \vx_{1}, \vx_{4}]
+            15 \langle \partial^{3} \vh, \vx_{1}^{\otimes2}\otimes \vx_{4} \rangle
             \\
             +
-            60 \partial^{3} h [\vx_{1}, \vx_{2}, \vx_{3}]
+            60 \langle \partial^{3} \vh, \vx_{1}\otimes \vx_{2}\otimes \vx_{3} \rangle
             \\
             +
-            15 \partial^{3} h [\vx_{2}, \vx_{2}, \vx_{2}]
+            15 \langle \partial^{3} \vh, \vx_{2}^{\otimes3} \rangle
             \\
             +
-            6 \partial^{2} h [\vx_{1}, \vx_{5}]
+            6 \langle \partial^{2} \vh, \vx_{1}\otimes \vx_{5} \rangle
             \\
             +
-            15 \partial^{2} h [\vx_{2}, \vx_{4}]
+            15 \langle \partial^{2} \vh, \vx_{2}\otimes \vx_{4} \rangle
             \\
             +
-            10 \partial^{2} h [\vx_{3}, \vx_{3}]
+            10 \langle \partial^{2} \vh, \vx_{3}^{\otimes2} \rangle
             \\
             +
-            \partial h [\vx_{6}]
+            \langle \partial \vh, \vx_{6} \rangle
           \end{matrix}
     &\to&
           \vg_{6}
           =
           \begin{matrix}
-            \partial^{6} g [\vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}]
+            \langle \partial^{6} \vg, \vh_{1}^{\otimes6} \rangle
             \\
             +
-            15 \partial^{5} g [\vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}, \vh_{2}]
+            15 \langle \partial^{5} \vg, \vh_{1}^{\otimes4}\otimes \vh_{2} \rangle
             \\
             +
-            20 \partial^{4} g [\vh_{1}, \vh_{1}, \vh_{1}, \vh_{3}]
+            20 \langle \partial^{4} \vg, \vh_{1}^{\otimes3}\otimes \vh_{3} \rangle
             \\
             +
-            45 \partial^{4} g [\vh_{1}, \vh_{1}, \vh_{2}, \vh_{2}]
+            45 \langle \partial^{4} \vg, \vh_{1}^{\otimes2}\otimes \vh_{2}^{\otimes2} \rangle
             \\
             +
-            15 \partial^{3} g [\vh_{1}, \vh_{1}, \vh_{4}]
+            15 \langle \partial^{3} \vg, \vh_{1}^{\otimes2}\otimes \vh_{4} \rangle
             \\
             +
-            60 \partial^{3} g [\vh_{1}, \vh_{2}, \vh_{3}]
+            60 \langle \partial^{3} \vg, \vh_{1}\otimes \vh_{2}\otimes \vh_{3} \rangle
             \\
             +
-            15 \partial^{3} g [\vh_{2}, \vh_{2}, \vh_{2}]
+            15 \langle \partial^{3} \vg, \vh_{2}^{\otimes3} \rangle
             \\
             +
-            6 \partial^{2} g [\vh_{1}, \vh_{5}]
+            6 \langle \partial^{2} \vg, \vh_{1}\otimes \vh_{5} \rangle
             \\
             +
-            15 \partial^{2} g [\vh_{2}, \vh_{4}]
+            15 \langle \partial^{2} \vg, \vh_{2}\otimes \vh_{4} \rangle
             \\
             +
-            10 \partial^{2} g [\vh_{3}, \vh_{3}]
+            10 \langle \partial^{2} \vg, \vh_{3}^{\otimes2} \rangle
             \\
             +
-            \partial g [\vh_{6}]
+            \langle \partial \vg, \vh_{6} \rangle
           \end{matrix}
           =
     &\vf_{6}
       =
       \begin{matrix}
-        \partial^{6} f [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}]
+        \langle \partial^{6} \vf, \vx_{1}^{\otimes6} \rangle
         \\
         +
-        15 \partial^{5} f [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{2}]
+        15 \langle \partial^{5} \vf, \vx_{1}^{\otimes4}\otimes \vx_{2} \rangle
         \\
         +
-        20 \partial^{4} f [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{3}]
+        20 \langle \partial^{4} \vf, \vx_{1}^{\otimes3}\otimes \vx_{3} \rangle
         \\
         +
-        45 \partial^{4} f [\vx_{1}, \vx_{1}, \vx_{2}, \vx_{2}]
+        45 \langle \partial^{4} \vf, \vx_{1}^{\otimes2}\otimes \vx_{2}^{\otimes2} \rangle
         \\
         +
-        15 \partial^{3} f [\vx_{1}, \vx_{1}, \vx_{4}]
+        15 \langle \partial^{3} \vf, \vx_{1}^{\otimes2}\otimes \vx_{4} \rangle
         \\
         +
-        60 \partial^{3} f [\vx_{1}, \vx_{2}, \vx_{3}]
+        60 \langle \partial^{3} \vf, \vx_{1}\otimes \vx_{2}\otimes \vx_{3} \rangle
         \\
         +
-        15 \partial^{3} f [\vx_{2}, \vx_{2}, \vx_{2}]
+        15 \langle \partial^{3} \vf, \vx_{2}^{\otimes3} \rangle
         \\
         +
-        6 \partial^{2} f [\vx_{1}, \vx_{5}]
+        6 \langle \partial^{2} \vf, \vx_{1}\otimes \vx_{5} \rangle
         \\
         +
-        15 \partial^{2} f [\vx_{2}, \vx_{4}]
+        15 \langle \partial^{2} \vf, \vx_{2}\otimes \vx_{4} \rangle
         \\
         +
-        10 \partial^{2} f [\vx_{3}, \vx_{3}]
+        10 \langle \partial^{2} \vf, \vx_{3}^{\otimes2} \rangle
         \\
         +
-        \partial f [\vx_{6}]
+        \langle \partial \vf, \vx_{6} \rangle
       \end{matrix}
     \\
     \vx_{7}
@@ -340,145 +340,145 @@
           \vh_{7}
           =
           \begin{matrix}
-            \partial^{7} h [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}]
+            \langle \partial^{7} \vh, \vx_{1}^{\otimes7} \rangle
             \\
             +
-            21 \partial^{6} h [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{2}]
+            21 \langle \partial^{6} \vh, \vx_{1}^{\otimes5}\otimes \vx_{2} \rangle
             \\
             +
-            35 \partial^{5} h [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{3}]
+            35 \langle \partial^{5} \vh, \vx_{1}^{\otimes4}\otimes \vx_{3} \rangle
             \\
             +
-            105 \partial^{5} h [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{2}, \vx_{2}]
+            105 \langle \partial^{5} \vh, \vx_{1}^{\otimes3}\otimes \vx_{2}^{\otimes2} \rangle
             \\
             +
-            35 \partial^{4} h [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{4}]
+            35 \langle \partial^{4} \vh, \vx_{1}^{\otimes3}\otimes \vx_{4} \rangle
             \\
             +
-            210 \partial^{4} h [\vx_{1}, \vx_{1}, \vx_{2}, \vx_{3}]
+            210 \langle \partial^{4} \vh, \vx_{1}^{\otimes2}\otimes \vx_{2}\otimes \vx_{3} \rangle
             \\
             +
-            105 \partial^{4} h [\vx_{1}, \vx_{2}, \vx_{2}, \vx_{2}]
+            105 \langle \partial^{4} \vh, \vx_{1}\otimes \vx_{2}^{\otimes3} \rangle
             \\
             +
-            21 \partial^{3} h [\vx_{1}, \vx_{1}, \vx_{5}]
+            21 \langle \partial^{3} \vh, \vx_{1}^{\otimes2}\otimes \vx_{5} \rangle
             \\
             +
-            105 \partial^{3} h [\vx_{1}, \vx_{2}, \vx_{4}]
+            105 \langle \partial^{3} \vh, \vx_{1}\otimes \vx_{2}\otimes \vx_{4} \rangle
             \\
             +
-            70 \partial^{3} h [\vx_{1}, \vx_{3}, \vx_{3}]
+            70 \langle \partial^{3} \vh, \vx_{1}\otimes \vx_{3}^{\otimes2} \rangle
             \\
             +
-            105 \partial^{3} h [\vx_{2}, \vx_{2}, \vx_{3}]
+            105 \langle \partial^{3} \vh, \vx_{2}^{\otimes2}\otimes \vx_{3} \rangle
             \\
             +
-            7 \partial^{2} h [\vx_{1}, \vx_{6}]
+            7 \langle \partial^{2} \vh, \vx_{1}\otimes \vx_{6} \rangle
             \\
             +
-            21 \partial^{2} h [\vx_{2}, \vx_{5}]
+            21 \langle \partial^{2} \vh, \vx_{2}\otimes \vx_{5} \rangle
             \\
             +
-            35 \partial^{2} h [\vx_{3}, \vx_{4}]
+            35 \langle \partial^{2} \vh, \vx_{3}\otimes \vx_{4} \rangle
             \\
             +
-            \partial h [\vx_{7}]
+            \langle \partial \vh, \vx_{7} \rangle
           \end{matrix}
     &\to&
           \vg_{7}
           =
           \begin{matrix}
-            \partial^{7} g [\vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}]
+            \langle \partial^{7} \vg, \vh_{1}^{\otimes7} \rangle
             \\
             +
-            21 \partial^{6} g [\vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}, \vh_{2}]
+            21 \langle \partial^{6} \vg, \vh_{1}^{\otimes5}\otimes \vh_{2} \rangle
             \\
             +
-            35 \partial^{5} g [\vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}, \vh_{3}]
+            35 \langle \partial^{5} \vg, \vh_{1}^{\otimes4}\otimes \vh_{3} \rangle
             \\
             +
-            105 \partial^{5} g [\vh_{1}, \vh_{1}, \vh_{1}, \vh_{2}, \vh_{2}]
+            105 \langle \partial^{5} \vg, \vh_{1}^{\otimes3}\otimes \vh_{2}^{\otimes2} \rangle
             \\
             +
-            35 \partial^{4} g [\vh_{1}, \vh_{1}, \vh_{1}, \vh_{4}]
+            35 \langle \partial^{4} \vg, \vh_{1}^{\otimes3}\otimes \vh_{4} \rangle
             \\
             +
-            210 \partial^{4} g [\vh_{1}, \vh_{1}, \vh_{2}, \vh_{3}]
+            210 \langle \partial^{4} \vg, \vh_{1}^{\otimes2}\otimes \vh_{2}\otimes \vh_{3} \rangle
             \\
             +
-            105 \partial^{4} g [\vh_{1}, \vh_{2}, \vh_{2}, \vh_{2}]
+            105 \langle \partial^{4} \vg, \vh_{1}\otimes \vh_{2}^{\otimes3} \rangle
             \\
             +
-            21 \partial^{3} g [\vh_{1}, \vh_{1}, \vh_{5}]
+            21 \langle \partial^{3} \vg, \vh_{1}^{\otimes2}\otimes \vh_{5} \rangle
             \\
             +
-            105 \partial^{3} g [\vh_{1}, \vh_{2}, \vh_{4}]
+            105 \langle \partial^{3} \vg, \vh_{1}\otimes \vh_{2}\otimes \vh_{4} \rangle
             \\
             +
-            70 \partial^{3} g [\vh_{1}, \vh_{3}, \vh_{3}]
+            70 \langle \partial^{3} \vg, \vh_{1}\otimes \vh_{3}^{\otimes2} \rangle
             \\
             +
-            105 \partial^{3} g [\vh_{2}, \vh_{2}, \vh_{3}]
+            105 \langle \partial^{3} \vg, \vh_{2}^{\otimes2}\otimes \vh_{3} \rangle
             \\
             +
-            7 \partial^{2} g [\vh_{1}, \vh_{6}]
+            7 \langle \partial^{2} \vg, \vh_{1}\otimes \vh_{6} \rangle
             \\
             +
-            21 \partial^{2} g [\vh_{2}, \vh_{5}]
+            21 \langle \partial^{2} \vg, \vh_{2}\otimes \vh_{5} \rangle
             \\
             +
-            35 \partial^{2} g [\vh_{3}, \vh_{4}]
+            35 \langle \partial^{2} \vg, \vh_{3}\otimes \vh_{4} \rangle
             \\
             +
-            \partial g [\vh_{7}]
+            \langle \partial \vg, \vh_{7} \rangle
           \end{matrix}
           =
     &\vf_{7}
       =
       \begin{matrix}
-        \partial^{7} f [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}]
+        \langle \partial^{7} \vf, \vx_{1}^{\otimes7} \rangle
         \\
         +
-        21 \partial^{6} f [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{2}]
+        21 \langle \partial^{6} \vf, \vx_{1}^{\otimes5}\otimes \vx_{2} \rangle
         \\
         +
-        35 \partial^{5} f [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{3}]
+        35 \langle \partial^{5} \vf, \vx_{1}^{\otimes4}\otimes \vx_{3} \rangle
         \\
         +
-        105 \partial^{5} f [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{2}, \vx_{2}]
+        105 \langle \partial^{5} \vf, \vx_{1}^{\otimes3}\otimes \vx_{2}^{\otimes2} \rangle
         \\
         +
-        35 \partial^{4} f [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{4}]
+        35 \langle \partial^{4} \vf, \vx_{1}^{\otimes3}\otimes \vx_{4} \rangle
         \\
         +
-        210 \partial^{4} f [\vx_{1}, \vx_{1}, \vx_{2}, \vx_{3}]
+        210 \langle \partial^{4} \vf, \vx_{1}^{\otimes2}\otimes \vx_{2}\otimes \vx_{3} \rangle
         \\
         +
-        105 \partial^{4} f [\vx_{1}, \vx_{2}, \vx_{2}, \vx_{2}]
+        105 \langle \partial^{4} \vf, \vx_{1}\otimes \vx_{2}^{\otimes3} \rangle
         \\
         +
-        21 \partial^{3} f [\vx_{1}, \vx_{1}, \vx_{5}]
+        21 \langle \partial^{3} \vf, \vx_{1}^{\otimes2}\otimes \vx_{5} \rangle
         \\
         +
-        105 \partial^{3} f [\vx_{1}, \vx_{2}, \vx_{4}]
+        105 \langle \partial^{3} \vf, \vx_{1}\otimes \vx_{2}\otimes \vx_{4} \rangle
         \\
         +
-        70 \partial^{3} f [\vx_{1}, \vx_{3}, \vx_{3}]
+        70 \langle \partial^{3} \vf, \vx_{1}\otimes \vx_{3}^{\otimes2} \rangle
         \\
         +
-        105 \partial^{3} f [\vx_{2}, \vx_{2}, \vx_{3}]
+        105 \langle \partial^{3} \vf, \vx_{2}^{\otimes2}\otimes \vx_{3} \rangle
         \\
         +
-        7 \partial^{2} f [\vx_{1}, \vx_{6}]
+        7 \langle \partial^{2} \vf, \vx_{1}\otimes \vx_{6} \rangle
         \\
         +
-        21 \partial^{2} f [\vx_{2}, \vx_{5}]
+        21 \langle \partial^{2} \vf, \vx_{2}\otimes \vx_{5} \rangle
         \\
         +
-        35 \partial^{2} f [\vx_{3}, \vx_{4}]
+        35 \langle \partial^{2} \vf, \vx_{3}\otimes \vx_{4} \rangle
         \\
         +
-        \partial f [\vx_{7}]
+        \langle \partial \vf, \vx_{7} \rangle
       \end{matrix}
     \\
     \vx_{8}
@@ -486,208 +486,208 @@
           \vh_{8}
           =
           \begin{matrix}
-            \partial^{8} h [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}]
+            \langle \partial^{8} \vh, \vx_{1}^{\otimes8} \rangle
             \\
             +
-            28 \partial^{7} h [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{2}]
+            28 \langle \partial^{7} \vh, \vx_{1}^{\otimes6}\otimes \vx_{2} \rangle
             \\
             +
-            56 \partial^{6} h [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{3}]
+            56 \langle \partial^{6} \vh, \vx_{1}^{\otimes5}\otimes \vx_{3} \rangle
             \\
             +
-            210 \partial^{6} h [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{2}, \vx_{2}]
+            210 \langle \partial^{6} \vh, \vx_{1}^{\otimes4}\otimes \vx_{2}^{\otimes2} \rangle
             \\
             +
-            70 \partial^{5} h [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{4}]
+            70 \langle \partial^{5} \vh, \vx_{1}^{\otimes4}\otimes \vx_{4} \rangle
             \\
             +
-            560 \partial^{5} h [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{2}, \vx_{3}]
+            560 \langle \partial^{5} \vh, \vx_{1}^{\otimes3}\otimes \vx_{2}\otimes \vx_{3} \rangle
             \\
             +
-            420 \partial^{5} h [\vx_{1}, \vx_{1}, \vx_{2}, \vx_{2}, \vx_{2}]
+            420 \langle \partial^{5} \vh, \vx_{1}^{\otimes2}\otimes \vx_{2}^{\otimes3} \rangle
             \\
             +
-            56 \partial^{4} h [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{5}]
+            56 \langle \partial^{4} \vh, \vx_{1}^{\otimes3}\otimes \vx_{5} \rangle
             \\
             +
-            420 \partial^{4} h [\vx_{1}, \vx_{1}, \vx_{2}, \vx_{4}]
+            420 \langle \partial^{4} \vh, \vx_{1}^{\otimes2}\otimes \vx_{2}\otimes \vx_{4} \rangle
             \\
             +
-            280 \partial^{4} h [\vx_{1}, \vx_{1}, \vx_{3}, \vx_{3}]
+            280 \langle \partial^{4} \vh, \vx_{1}^{\otimes2}\otimes \vx_{3}^{\otimes2} \rangle
             \\
             +
-            840 \partial^{4} h [\vx_{1}, \vx_{2}, \vx_{2}, \vx_{3}]
+            840 \langle \partial^{4} \vh, \vx_{1}\otimes \vx_{2}^{\otimes2}\otimes \vx_{3} \rangle
             \\
             +
-            105 \partial^{4} h [\vx_{2}, \vx_{2}, \vx_{2}, \vx_{2}]
+            105 \langle \partial^{4} \vh, \vx_{2}^{\otimes4} \rangle
             \\
             +
-            28 \partial^{3} h [\vx_{1}, \vx_{1}, \vx_{6}]
+            28 \langle \partial^{3} \vh, \vx_{1}^{\otimes2}\otimes \vx_{6} \rangle
             \\
             +
-            168 \partial^{3} h [\vx_{1}, \vx_{2}, \vx_{5}]
+            168 \langle \partial^{3} \vh, \vx_{1}\otimes \vx_{2}\otimes \vx_{5} \rangle
             \\
             +
-            280 \partial^{3} h [\vx_{1}, \vx_{3}, \vx_{4}]
+            280 \langle \partial^{3} \vh, \vx_{1}\otimes \vx_{3}\otimes \vx_{4} \rangle
             \\
             +
-            210 \partial^{3} h [\vx_{2}, \vx_{2}, \vx_{4}]
+            210 \langle \partial^{3} \vh, \vx_{2}^{\otimes2}\otimes \vx_{4} \rangle
             \\
             +
-            280 \partial^{3} h [\vx_{2}, \vx_{3}, \vx_{3}]
+            280 \langle \partial^{3} \vh, \vx_{2}\otimes \vx_{3}^{\otimes2} \rangle
             \\
             +
-            8 \partial^{2} h [\vx_{1}, \vx_{7}]
+            8 \langle \partial^{2} \vh, \vx_{1}\otimes \vx_{7} \rangle
             \\
             +
-            28 \partial^{2} h [\vx_{2}, \vx_{6}]
+            28 \langle \partial^{2} \vh, \vx_{2}\otimes \vx_{6} \rangle
             \\
             +
-            56 \partial^{2} h [\vx_{3}, \vx_{5}]
+            56 \langle \partial^{2} \vh, \vx_{3}\otimes \vx_{5} \rangle
             \\
             +
-            35 \partial^{2} h [\vx_{4}, \vx_{4}]
+            35 \langle \partial^{2} \vh, \vx_{4}^{\otimes2} \rangle
             \\
             +
-            \partial h [\vx_{8}]
+            \langle \partial \vh, \vx_{8} \rangle
           \end{matrix}
     &\to&
           \vg_{8}
           =
           \begin{matrix}
-            \partial^{8} g [\vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}]
+            \langle \partial^{8} \vg, \vh_{1}^{\otimes8} \rangle
             \\
             +
-            28 \partial^{7} g [\vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}, \vh_{2}]
+            28 \langle \partial^{7} \vg, \vh_{1}^{\otimes6}\otimes \vh_{2} \rangle
             \\
             +
-            56 \partial^{6} g [\vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}, \vh_{3}]
+            56 \langle \partial^{6} \vg, \vh_{1}^{\otimes5}\otimes \vh_{3} \rangle
             \\
             +
-            210 \partial^{6} g [\vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}, \vh_{2}, \vh_{2}]
+            210 \langle \partial^{6} \vg, \vh_{1}^{\otimes4}\otimes \vh_{2}^{\otimes2} \rangle
             \\
             +
-            70 \partial^{5} g [\vh_{1}, \vh_{1}, \vh_{1}, \vh_{1}, \vh_{4}]
+            70 \langle \partial^{5} \vg, \vh_{1}^{\otimes4}\otimes \vh_{4} \rangle
             \\
             +
-            560 \partial^{5} g [\vh_{1}, \vh_{1}, \vh_{1}, \vh_{2}, \vh_{3}]
+            560 \langle \partial^{5} \vg, \vh_{1}^{\otimes3}\otimes \vh_{2}\otimes \vh_{3} \rangle
             \\
             +
-            420 \partial^{5} g [\vh_{1}, \vh_{1}, \vh_{2}, \vh_{2}, \vh_{2}]
+            420 \langle \partial^{5} \vg, \vh_{1}^{\otimes2}\otimes \vh_{2}^{\otimes3} \rangle
             \\
             +
-            56 \partial^{4} g [\vh_{1}, \vh_{1}, \vh_{1}, \vh_{5}]
+            56 \langle \partial^{4} \vg, \vh_{1}^{\otimes3}\otimes \vh_{5} \rangle
             \\
             +
-            420 \partial^{4} g [\vh_{1}, \vh_{1}, \vh_{2}, \vh_{4}]
+            420 \langle \partial^{4} \vg, \vh_{1}^{\otimes2}\otimes \vh_{2}\otimes \vh_{4} \rangle
             \\
             +
-            280 \partial^{4} g [\vh_{1}, \vh_{1}, \vh_{3}, \vh_{3}]
+            280 \langle \partial^{4} \vg, \vh_{1}^{\otimes2}\otimes \vh_{3}^{\otimes2} \rangle
             \\
             +
-            840 \partial^{4} g [\vh_{1}, \vh_{2}, \vh_{2}, \vh_{3}]
+            840 \langle \partial^{4} \vg, \vh_{1}\otimes \vh_{2}^{\otimes2}\otimes \vh_{3} \rangle
             \\
             +
-            105 \partial^{4} g [\vh_{2}, \vh_{2}, \vh_{2}, \vh_{2}]
+            105 \langle \partial^{4} \vg, \vh_{2}^{\otimes4} \rangle
             \\
             +
-            28 \partial^{3} g [\vh_{1}, \vh_{1}, \vh_{6}]
+            28 \langle \partial^{3} \vg, \vh_{1}^{\otimes2}\otimes \vh_{6} \rangle
             \\
             +
-            168 \partial^{3} g [\vh_{1}, \vh_{2}, \vh_{5}]
+            168 \langle \partial^{3} \vg, \vh_{1}\otimes \vh_{2}\otimes \vh_{5} \rangle
             \\
             +
-            280 \partial^{3} g [\vh_{1}, \vh_{3}, \vh_{4}]
+            280 \langle \partial^{3} \vg, \vh_{1}\otimes \vh_{3}\otimes \vh_{4} \rangle
             \\
             +
-            210 \partial^{3} g [\vh_{2}, \vh_{2}, \vh_{4}]
+            210 \langle \partial^{3} \vg, \vh_{2}^{\otimes2}\otimes \vh_{4} \rangle
             \\
             +
-            280 \partial^{3} g [\vh_{2}, \vh_{3}, \vh_{3}]
+            280 \langle \partial^{3} \vg, \vh_{2}\otimes \vh_{3}^{\otimes2} \rangle
             \\
             +
-            8 \partial^{2} g [\vh_{1}, \vh_{7}]
+            8 \langle \partial^{2} \vg, \vh_{1}\otimes \vh_{7} \rangle
             \\
             +
-            28 \partial^{2} g [\vh_{2}, \vh_{6}]
+            28 \langle \partial^{2} \vg, \vh_{2}\otimes \vh_{6} \rangle
             \\
             +
-            56 \partial^{2} g [\vh_{3}, \vh_{5}]
+            56 \langle \partial^{2} \vg, \vh_{3}\otimes \vh_{5} \rangle
             \\
             +
-            35 \partial^{2} g [\vh_{4}, \vh_{4}]
+            35 \langle \partial^{2} \vg, \vh_{4}^{\otimes2} \rangle
             \\
             +
-            \partial g [\vh_{8}]
+            \langle \partial \vg, \vh_{8} \rangle
           \end{matrix}
           =
     &\vf_{8}
       =
       \begin{matrix}
-        \partial^{8} f [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}]
+        \langle \partial^{8} \vf, \vx_{1}^{\otimes8} \rangle
         \\
         +
-        28 \partial^{7} f [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{2}]
+        28 \langle \partial^{7} \vf, \vx_{1}^{\otimes6}\otimes \vx_{2} \rangle
         \\
         +
-        56 \partial^{6} f [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{3}]
+        56 \langle \partial^{6} \vf, \vx_{1}^{\otimes5}\otimes \vx_{3} \rangle
         \\
         +
-        210 \partial^{6} f [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{2}, \vx_{2}]
+        210 \langle \partial^{6} \vf, \vx_{1}^{\otimes4}\otimes \vx_{2}^{\otimes2} \rangle
         \\
         +
-        70 \partial^{5} f [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{1}, \vx_{4}]
+        70 \langle \partial^{5} \vf, \vx_{1}^{\otimes4}\otimes \vx_{4} \rangle
         \\
         +
-        560 \partial^{5} f [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{2}, \vx_{3}]
+        560 \langle \partial^{5} \vf, \vx_{1}^{\otimes3}\otimes \vx_{2}\otimes \vx_{3} \rangle
         \\
         +
-        420 \partial^{5} f [\vx_{1}, \vx_{1}, \vx_{2}, \vx_{2}, \vx_{2}]
+        420 \langle \partial^{5} \vf, \vx_{1}^{\otimes2}\otimes \vx_{2}^{\otimes3} \rangle
         \\
         +
-        56 \partial^{4} f [\vx_{1}, \vx_{1}, \vx_{1}, \vx_{5}]
+        56 \langle \partial^{4} \vf, \vx_{1}^{\otimes3}\otimes \vx_{5} \rangle
         \\
         +
-        420 \partial^{4} f [\vx_{1}, \vx_{1}, \vx_{2}, \vx_{4}]
+        420 \langle \partial^{4} \vf, \vx_{1}^{\otimes2}\otimes \vx_{2}\otimes \vx_{4} \rangle
         \\
         +
-        280 \partial^{4} f [\vx_{1}, \vx_{1}, \vx_{3}, \vx_{3}]
+        280 \langle \partial^{4} \vf, \vx_{1}^{\otimes2}\otimes \vx_{3}^{\otimes2} \rangle
         \\
         +
-        840 \partial^{4} f [\vx_{1}, \vx_{2}, \vx_{2}, \vx_{3}]
+        840 \langle \partial^{4} \vf, \vx_{1}\otimes \vx_{2}^{\otimes2}\otimes \vx_{3} \rangle
         \\
         +
-        105 \partial^{4} f [\vx_{2}, \vx_{2}, \vx_{2}, \vx_{2}]
+        105 \langle \partial^{4} \vf, \vx_{2}^{\otimes4} \rangle
         \\
         +
-        28 \partial^{3} f [\vx_{1}, \vx_{1}, \vx_{6}]
+        28 \langle \partial^{3} \vf, \vx_{1}^{\otimes2}\otimes \vx_{6} \rangle
         \\
         +
-        168 \partial^{3} f [\vx_{1}, \vx_{2}, \vx_{5}]
+        168 \langle \partial^{3} \vf, \vx_{1}\otimes \vx_{2}\otimes \vx_{5} \rangle
         \\
         +
-        280 \partial^{3} f [\vx_{1}, \vx_{3}, \vx_{4}]
+        280 \langle \partial^{3} \vf, \vx_{1}\otimes \vx_{3}\otimes \vx_{4} \rangle
         \\
         +
-        210 \partial^{3} f [\vx_{2}, \vx_{2}, \vx_{4}]
+        210 \langle \partial^{3} \vf, \vx_{2}^{\otimes2}\otimes \vx_{4} \rangle
         \\
         +
-        280 \partial^{3} f [\vx_{2}, \vx_{3}, \vx_{3}]
+        280 \langle \partial^{3} \vf, \vx_{2}\otimes \vx_{3}^{\otimes2} \rangle
         \\
         +
-        8 \partial^{2} f [\vx_{1}, \vx_{7}]
+        8 \langle \partial^{2} \vf, \vx_{1}\otimes \vx_{7} \rangle
         \\
         +
-        28 \partial^{2} f [\vx_{2}, \vx_{6}]
+        28 \langle \partial^{2} \vf, \vx_{2}\otimes \vx_{6} \rangle
         \\
         +
-        56 \partial^{2} f [\vx_{3}, \vx_{5}]
+        56 \langle \partial^{2} \vf, \vx_{3}\otimes \vx_{5} \rangle
         \\
         +
-        35 \partial^{2} f [\vx_{4}, \vx_{4}]
+        35 \langle \partial^{2} \vf, \vx_{4}^{\otimes2} \rangle
         \\
         +
-        \partial f [\vx_{8}]
+        \langle \partial \vf, \vx_{8} \rangle
       \end{matrix}
   \end{align*}
 \end{tiny}

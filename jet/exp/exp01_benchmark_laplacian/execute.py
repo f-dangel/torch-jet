@@ -3,6 +3,7 @@
 from argparse import ArgumentParser, Namespace
 from functools import partial
 from os import makedirs, path
+from sys import platform
 from time import perf_counter
 from typing import Callable, Union
 
@@ -10,6 +11,9 @@ from einops import einsum
 from torch import (
     Tensor,
     allclose,
+)
+from torch import compile as torch_compile
+from torch import (
     device,
     dtype,
     float64,
@@ -37,6 +41,8 @@ HERE = path.abspath(__file__)
 HEREDIR = path.dirname(HERE)
 RAWDIR = path.join(HEREDIR, "raw")
 makedirs(RAWDIR, exist_ok=True)
+
+ON_MAC = platform == "darwin"
 
 # Define supported PyTorch architectures
 SUPPORTED_ARCHITECTURES = {
@@ -710,7 +716,23 @@ if __name__ == "__main__":
         X,
         is_batched,
     )
-    print(f"Setting up function took: {perf_counter() - start:.3f} s.")
+
+    @no_grad()
+    def func_no() -> Tensor:
+        """Non-differentiable computation.
+
+        Returns:
+            Value of the differentiable operator
+        """
+        return func()
+
+    # It seems possible to get inductor working on MAC. However, we ran into
+    # issues on MAC, therefore turn off compilation.
+    if not ON_MAC:
+        func = torch_compile(func)
+        func_no = torch_compile(func_no)
+
+    print(f"Setting up functions took: {perf_counter() - start:.3f} s.")
 
     is_cuda = args.device == "cuda"
     op = args.operator.capitalize()
@@ -720,7 +742,7 @@ if __name__ == "__main__":
     # 1) Peak memory with non-differentiable result
     with no_grad():
         mem_no = measure_peak_memory(
-            func, f"{op} non-differentiable ({description})", is_cuda
+            func_no, f"{op} non-differentiable ({description})", is_cuda
         )
 
     # 2) Peak memory with differentiable result

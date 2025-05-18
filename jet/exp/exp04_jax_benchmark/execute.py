@@ -1,7 +1,6 @@
 """Script that carries out measurements of peak memory and run time in JAX."""
 
 from os import makedirs, path
-from sys import platform
 from time import perf_counter
 from typing import Callable
 
@@ -25,7 +24,12 @@ from jax.random import PRNGKey, uniform
 from jax.tree_util import tree_map
 from jax.typing import ArrayLike, DTypeLike
 
-from jet.exp.exp01_benchmark_laplacian.execute import BASELINE, parse_args, savepath
+from jet.exp.exp01_benchmark_laplacian.execute import (
+    BASELINE,
+    ON_MAC,
+    parse_args,
+    savepath,
+)
 from jet.exp.utils import measure_peak_memory, measure_time
 
 HERE = path.abspath(__file__)
@@ -35,7 +39,6 @@ makedirs(RAWDIR, exist_ok=True)
 
 
 # Turning on double precision on MAC gives errors
-ON_MAC = platform == "darwin"
 if not ON_MAC:
     # Enable float64 computation in JAX. This has to be done at start-up!
     config.update("jax_enable_x64", True)

@@ -1,4 +1,4 @@
-from torch import cuda, manual_seed, randn
+from torch import cuda, device, manual_seed, randn
 from torch.fx import symbolic_trace
 from torch.nn import Linear, Sequential, Tanh
 
@@ -6,7 +6,8 @@ from jet.bilaplacian import RandomizedBilaplacian
 from jet.exp.utils import measure_peak_memory
 from jet.simplify import simplify
 
-dev = device("cuda" if cuda.is_available() else "cpu")
+is_cuda = cuda.is_available()
+dev = device("cuda" if is_cuda else "cpu")
 
 
 manual_seed(0)
@@ -42,5 +43,5 @@ print("After simplification:", len(list(f_simple2.graph.nodes)))
 # print(f_simple2.graph)
 
 if __name__ == "__main__":
-    peakmem = measure_peak_memory(lambda: f_simple1(X), "naive", False)
-    peakmem = measure_peak_memory(lambda: f_simple2(X), "collapsed", False)
+    peakmem = measure_peak_memory(lambda: f_simple1(X), "naive", is_cuda)
+    peakmem = measure_peak_memory(lambda: f_simple2(X), "collapsed", is_cuda)

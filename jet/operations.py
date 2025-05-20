@@ -31,8 +31,12 @@ def _faa_di_bruno(vs: Tuple[Primal, ...], K: int, dn: Dict[int, Primal]) -> List
     vs_out = []
     for k in range(K):
         for idx, sigma in enumerate(integer_partitions(k + 1)):
-            vs_contract = [vs[i - 1] for i in sigma]
-            term = tensor_prod(dn[len(vs_contract)], *vs_contract)
+            vs_count = {i: sigma.count(i) for i in sigma}
+            vs_contract = [vs[i-1] ** count if count > 1 else vs[i-1] for i, count in vs_count.items()]
+            vs_prod = vs_contract[0]
+            for v in vs_contract[1:]:
+                vs_prod = vs_prod * v
+            term = tensor_prod(dn[len(sigma)], vs_prod)
             nu = multiplicity(sigma)
             # avoid multiplication by one
             term = nu * term if nu != 1.0 else term

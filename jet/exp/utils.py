@@ -61,6 +61,8 @@ def measure_peak_memory(
         The peak memory usage in GiB.
     """
     if is_cuda:
+        if not use_jax:
+            cuda.reset_peak_memory_stats()
         f()
         if use_jax:
             # See https://github.com/jax-ml/jax/issues/8096

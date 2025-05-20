@@ -272,23 +272,7 @@ EXPERIMENTS = [
         # what to plot: x-axis is nums_samples and each strategy is plotted in a curve
         ("num_samples", "strategy"),
     ),
-    # Experiment 3:  Use the largest MLP from dangel2024kroneckerfactored and vary the
-    #                in features, computing the Bi-Laplacian.
-    (  # Experiment name, must be unique
-        "bilaplacian_vary_dim",
-        # Experiment parameters
-        {
-            "architectures": ["tanh_mlp_768_768_512_512_1"],
-            "dims": linspace(1, 10, 10).int().unique().tolist(),
-            "batch_sizes": [256],
-            "strategies": SUPPORTED_STRATEGIES,
-            "devices": ["cuda"],
-            "operator": "bilaplacian",
-        },
-        # what to plot: x-axis is dims and each strategy is plotted in a curve
-        ("dim", "strategy"),
-    ),
-    # Experiment 4:  Use the largest MLP from dangel2024kroneckerfactored with 50
+    # Experiment 3:  Use the largest MLP from dangel2024kroneckerfactored with 50
     #                in features; vary the batch size, computing the weighted Laplacian.
     (  # Experiment name, must be unique
         "weighted_laplacian_vary_batch_size",
@@ -304,7 +288,7 @@ EXPERIMENTS = [
         # what to plot: x-axis is batch size and each strategy is plotted in a curve
         ("batch_size", "strategy"),
     ),
-    # Experiment 5:  Use the largest MLP from dangel2024kroneckerfactored and with
+    # Experiment 4:  Use the largest MLP from dangel2024kroneckerfactored and with
     #                50 in features, vary the MC samples computing the randomized
     #                weighted Laplacian.
     (  # Experiment name, must be unique
@@ -323,7 +307,7 @@ EXPERIMENTS = [
         # what to plot: x-axis is nums_samples and each strategy is plotted in a curve
         ("num_samples", "strategy"),
     ),
-    # Experiment 6:  Use the largest MLP from dangel2024kroneckerfactored and with
+    # Experiment 5:  Use the largest MLP from dangel2024kroneckerfactored and with
     #                5 in features, vary the MC samples computing the randomized
     #                Bi-Laplacian.
     (  # Experiment name, must be unique
@@ -344,7 +328,7 @@ EXPERIMENTS = [
         # what to plot: x-axis is nums_samples and each strategy is plotted in a curve
         ("num_samples", "strategy"),
     ),
-    # Experiment 7:  Use the largest MLP from dangel2024kroneckerfactored with 5
+    # Experiment 6:  Use the largest MLP from dangel2024kroneckerfactored with 5
     #                in features; vary the batch size, computing the Bi-Laplacian.
     (  # Experiment name, must be unique
         "bilaplacian_vary_batch_size",

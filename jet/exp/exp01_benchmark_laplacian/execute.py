@@ -729,8 +729,13 @@ if __name__ == "__main__":
     # It seems possible to get inductor working on MAC. However, we ran into
     # issues on MAC, therefore turn off compilation.
     if not ON_MAC:
-        func = torch_compile(func)
-        func_no = torch_compile(func_no)
+        compile_error = args.operator == "bilaplacian" and args.strategy == "hessian_trace"
+        if not compile_error:
+            print("Using torch.compile")
+            func = torch_compile(func)
+            func_no = torch_compile(func_no)
+        else:
+            print("Skipping torch.compile due to error.")
 
     print(f"Setting up functions took: {perf_counter() - start:.3f} s.")
 

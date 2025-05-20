@@ -729,7 +729,9 @@ if __name__ == "__main__":
     # It seems possible to get inductor working on MAC. However, we ran into
     # issues on MAC, therefore turn off compilation.
     if not ON_MAC:
-        compile_error = args.operator == "bilaplacian" and args.strategy == "hessian_trace"
+        compile_error = (
+            args.operator == "bilaplacian" and args.strategy == "hessian_trace"
+        )
         if not compile_error:
             print("Using torch.compile")
             func = torch_compile(func)

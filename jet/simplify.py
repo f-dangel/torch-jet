@@ -355,7 +355,6 @@ class RewriteSumVmapped(RewriteReplicate):
             if (  # sum_vmapped(x * replicate(y)) -> sum_vmapped(x) * y
                 op.target in {mul, operator.mul} and len(parents) == 2
             ):
-                print("Found sum_vmapped with replicate: ", node, op)
                 # need to replace replicate(y) with y
                 (replicate,) = replicates
                 (replicated,) = self.parents(replicate)

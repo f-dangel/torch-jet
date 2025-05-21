@@ -5,7 +5,7 @@ from functools import partial
 from os import makedirs, path
 from sys import platform
 from time import perf_counter
-from typing import Callable, Union
+from typing import Callable, Optional, Union
 
 from einops import einsum
 from torch import (
@@ -149,7 +149,7 @@ def laplacian_function(
 
 
 def vector_hessian_vector_product(
-    f: Callable[[Tensor], Tensor], dummy_x: Tensor
+    f: Callable[[Tensor], Tensor], dummy_x: Tensor, num_out_dims: Optional[int] = None
 ) -> Callable[[Tensor, Tensor], Tensor]:
     """Generate function to compute the vector-Hessian-vector product of f at x with v.
 
@@ -157,6 +157,9 @@ def vector_hessian_vector_product(
         f: The function whose vector-Hessian-vector product we want to compute.
             It should take the input tensor as argument and return the output tensor.
         dummy_x: An un-batched dummy input tensor to determine the input dimensions.
+        num_out_dims: The number of un-batched output dimensions. If None, the number
+            of output dimensions is inferred using an ellipsis ('...') inside einsum to
+            perform the trace. This may lead the compiler to crash.
 
     Returns:
         A function that computes the vector-Hessian-vector product of f at the input
@@ -165,8 +168,11 @@ def vector_hessian_vector_product(
     # perform the contraction of the HVP and the vector with einsum to support
     # functions with non-scalar output
     sum_dims = dummy_x.ndim
-    dims = " ".join([f"d{i}" for i in range(sum_dims)])
-    equation = f"... {dims}, {dims} -> ..."
+    in_dims = " ".join([f"d{i}" for i in range(sum_dims)])
+    out_dims = (
+        " ".join([f"o{i}" for i in range(num_out_dims)]) if num_out_dims else "..."
+    )
+    equation = f"{out_dims} {in_dims}, {in_dims} -> {out_dims}"
 
     def vhv(x: Tensor, v: Tensor) -> Tensor:
         """Compute the vector-Hessian-vector product of f with v evaluated at x.
@@ -226,9 +232,14 @@ def randomized_laplacian_function(
         raise ValueError(f"Unsupported distribution: {distribution!r}.")
 
     if strategy == "hessian_trace":
-
         dummy_x = X[0] if is_batched else X
-        vhv = vector_hessian_vector_product(f, dummy_x)
+
+        # infer the number of output dimensions, which allows not using ellipsis
+        # in the einsum used to perform the VHVP and prevents the compiler from crashing
+        with no_grad():
+            num_out_dims = f(dummy_x).ndim
+
+        vhv = vector_hessian_vector_product(f, dummy_x, num_out_dims=num_out_dims)
 
         # vmap over data points and fix data
         if is_batched:
@@ -373,7 +384,13 @@ def randomized_weighted_laplacian_function(
 
     if strategy == "hessian_trace":
         dummy_x = X[0] if is_batched else X
-        vhv = vector_hessian_vector_product(f, dummy_x)
+
+        # infer the number of output dimensions, which allows not using ellipsis
+        # in the einsum used to perform the VHVP and prevents the compiler from crashing
+        with no_grad():
+            num_out_dims = f(dummy_x).ndim
+
+        vhv = vector_hessian_vector_product(f, dummy_x, num_out_dims=num_out_dims)
 
         # vmap over data points and fix data
         if is_batched:
@@ -492,9 +509,15 @@ def randomized_bilaplacian_function(
 
     if strategy == "hessian_trace":
         dummy_x = X[0] if is_batched else X
-        d2f_vv = vector_hessian_vector_product(f, dummy_x)
+
+        # infer the number of output dimensions, which allows not using ellipsis
+        # in the einsum used to perform the VHVP and prevents the compiler from crashing
+        with no_grad():
+            num_out_dims = f(dummy_x).ndim
+
+        d2f_vv = vector_hessian_vector_product(f, dummy_x, num_out_dims=num_out_dims)
         d4f_vvvv = lambda x, v: vector_hessian_vector_product(  # noqa: E731
-            lambda x: d2f_vv(x, v), dummy_x
+            lambda x: d2f_vv(x, v), dummy_x, num_out_dims=num_out_dims
         )(x, v)
 
         # vmap over data points and fix data

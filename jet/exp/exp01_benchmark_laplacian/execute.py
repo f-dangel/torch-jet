@@ -582,7 +582,7 @@ def get_function_and_description(
     net: Callable[[Tensor], Tensor],
     X: Tensor,
     is_batched: bool,
-) -> tuple[Callable[[], Tensor], str]:
+) -> tuple[Callable[[], Tensor], Callable[[], Tensor], str]:
     """Determine the function and its description based on the operator and strategy.
 
     Args:
@@ -596,7 +596,8 @@ def get_function_and_description(
         is_batched: A flag indicating if the input is batched.
 
     Returns:
-        A tuple containing the function to compute the operator and a description
+        A tuple containing the function to compute the operator (differentiable),
+        the function to compute the operator (non-differentiable), and a description
         string.
 
     Raises:
@@ -635,7 +636,25 @@ def get_function_and_description(
     else:
         raise ValueError(f"Unsupported operator: {operator}.")
 
-    return func, description
+    @no_grad()
+    def func_no() -> Tensor:
+        """Non-differentiable computation.
+
+        Returns:
+            Value of the differentiable operator
+        """
+        return func()
+
+    compile_error = operator == "bilaplacian" and strategy == "hessian_trace"
+    if ON_MAC:
+        print("Skipping torch.compile due to MAC-incompatibility.")
+    elif compile_error:
+        print("Skipping torch.compile due to bug in torch.compile error.")
+    else:
+        print("Using torch.compile")
+        func, func_no = torch_compile(func), torch_compile(func_no)
+
+    return func, func_no, description
 
 
 def setup_input(
@@ -707,7 +726,7 @@ if __name__ == "__main__":
 
     manual_seed(2)  # this allows making the randomized methods deterministic
     start = perf_counter()
-    func, description = get_function_and_description(
+    func, func_no, description = get_function_and_description(
         args.operator,
         args.strategy,
         args.distribution,
@@ -717,28 +736,6 @@ if __name__ == "__main__":
         is_batched,
     )
 
-    @no_grad()
-    def func_no() -> Tensor:
-        """Non-differentiable computation.
-
-        Returns:
-            Value of the differentiable operator
-        """
-        return func()
-
-    # It seems possible to get inductor working on MAC. However, we ran into
-    # issues on MAC, therefore turn off compilation.
-    if not ON_MAC:
-        compile_error = (
-            args.operator == "bilaplacian" and args.strategy == "hessian_trace"
-        )
-        if not compile_error:
-            print("Using torch.compile")
-            func = torch_compile(func)
-            func_no = torch_compile(func_no)
-        else:
-            print("Skipping torch.compile due to error.")
-
     print(f"Setting up functions took: {perf_counter() - start:.3f} s.")
 
     is_cuda = args.device == "cuda"
@@ -747,10 +744,9 @@ if __name__ == "__main__":
     # Carry out the measurements
 
     # 1) Peak memory with non-differentiable result
-    with no_grad():
-        mem_no = measure_peak_memory(
-            func_no, f"{op} non-differentiable ({description})", is_cuda
-        )
+    mem_no = measure_peak_memory(
+        func_no, f"{op} non-differentiable ({description})", is_cuda
+    )
 
     # 2) Peak memory with differentiable result
     mem = measure_peak_memory(func, f"{op} ({description})", is_cuda)
@@ -765,7 +761,7 @@ if __name__ == "__main__":
             result = func()
 
         manual_seed(2)  # make sure that the baseline is deterministic
-        baseline_func, _ = get_function_and_description(
+        _, baseline_func_no, _ = get_function_and_description(
             args.operator,
             BASELINE,
             args.distribution,
@@ -774,8 +770,7 @@ if __name__ == "__main__":
             X,
             is_batched,
         )
-        with no_grad():
-            baseline_result = baseline_func()
+        baseline_result = baseline_func_no()
 
         assert (
             baseline_result.shape == result.shape

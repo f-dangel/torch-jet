@@ -1,9 +1,9 @@
 """Utility functions for computing jets."""
 
 from math import factorial, prod
-from typing import Callable, List, Optional, Set, Tuple
+from typing import Callable, Optional, Tuple
 
-from torch import Tensor, device, dtype, einsum, empty
+from torch import Tensor, device, dtype, empty
 from torch.nn import Module
 
 # type annotation for arguments and Taylor coefficients in input and output space
@@ -30,19 +30,6 @@ def integer_partitions(n: int, I: int = 1):  # noqa: E741
     for i in range(I, n // 2 + 1):
         for p in integer_partitions(n - i, i):
             yield (i,) + p
-
-
-def tensor_prod(*tensors: Tensor) -> Tensor:
-    """Compute the element-wise product of tensors.
-
-    Args:
-        tensors: Tensors to be multiplied.
-
-    Returns:
-        Element-wise product of the tensors.
-    """
-    equation = ",".join(len(tensors) * ["..."]) + "->..."
-    return einsum(equation, *tensors)
 
 
 def multiplicity(sigma: Tuple[int, ...]) -> float:
@@ -140,38 +127,4 @@ def rademacher(
         .bernoulli_()
         .mul_(2)
         .sub_(1)
-    )
-
-
-def get_letters(num_letters: int, blocked: Optional[Set] = None) -> List[str]:
-    """Return a list of ``num_letters`` unique letters for an einsum equation.
-
-    Args:
-        num_letters: Number of letters to return.
-        blocked: Set of letters that should not be used.
-
-    Returns:
-        List of ``num_letters`` unique letters.
-
-    Raises:
-        ValueError: If ``num_letters`` cannot be satisfied with einsum-supported
-            letters.
-    """
-    if num_letters == 0:
-        return []
-
-    max_letters = 26
-    blocked = set() if blocked is None else blocked
-    letters = []
-
-    for i in range(max_letters):
-        letter = chr(ord("a") + i)
-        if letter not in blocked:
-            letters.append(letter)
-            if len(letters) == num_letters:
-                return letters
-
-    raise ValueError(
-        f"Ran out of letters. PyTorch's einsum supports {max_letters} letters."
-        + f" Requested {num_letters}, blocked: {len(blocked)}.)"
     )

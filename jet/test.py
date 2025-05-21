@@ -10,6 +10,7 @@ from jet.simplify import simplify
 if __name__ == "__main__":
     is_cuda = cuda.is_available()
     dev = device("cuda" if is_cuda else "cpu")
+    print(f"Running on device {str(dev)}")
 
     manual_seed(0)
     model = Sequential(

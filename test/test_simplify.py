@@ -376,8 +376,13 @@ def test_simplify_laplacian(config: Dict[str, Any], distribution: Optional[str])
         num_vectors = x.shape[1:].numel() if is_batched else x.numel()
     non_collapsed_shape = (num_vectors, *x.shape)
     collapsed_shape = x.shape
+
+    # NOTE if we have a linear layer at the beginning, or any operation whose second
+    # derivative vanishes, the term sum_vmapped(x1 ** 2) will not show up. Therefore
+    # the number of collapsed term will be smaller
+    num_collapsed = 1 if config["id"].endswith("mlp") else 2
     ensure_tensor_constants_collapsed(
-        fast, collapsed_shape, non_collapsed_shape, strict=False
+        fast, collapsed_shape, non_collapsed_shape, at_least=num_collapsed
     )
 
 
@@ -449,8 +454,13 @@ def test_simplify_weighted_laplacian(
         num_vectors = (x.shape[1:] if is_batched else x.shape).numel()
     non_collapsed_shape = (num_vectors, *x.shape)
     collapsed_shape = x.shape
+
+    # NOTE if we have a linear layer at the beginning, or any operation whose second
+    # derivative vanishes, the term sum_vmapped(x1 ** 2) will not show up. Therefore
+    # the number of collapsed term will be smaller
+    num_collapsed = 1 if config["id"].endswith("mlp") else 2
     ensure_tensor_constants_collapsed(
-        fast, collapsed_shape, non_collapsed_shape, strict=False
+        fast, collapsed_shape, non_collapsed_shape, at_least=num_collapsed
     )
 
 
@@ -549,16 +559,24 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
     # make sure the `replicate` node from the 0th component made it to the end
     ensure_outputs_replicates(simple_mod.graph, num_outputs=1, num_replicates=0)
 
-    # make sure at least one coefficient was collapsed
+    # NOTE The module creates x1, x2, x3, x4, but torch.fx traces creates tensor
+    # constants for x4**4, x1**2 * x2, x1 * x3, x2 ** 2, and x4 for propagating the
+    # highest component of each jet. If we have a linear layer at the beginning, meaning
+    # all # derivatives of degree larger than two disappear, only the term
+    # sum_vmapped(x4) should show up. Otherwise, there will be summed constants for all
+    # terms.
+    first_op_linear = config["id"].endswith("mlp")
+
+    # make sure that Taylor coefficients were collapsed
     D = (x.shape[1:] if is_batched else x).numel()
 
-    # Taylor coefficient was collapsed
     if randomized:
         num_vectors = num_samples
         collapsed_shape = x.shape
         non_collapsed_shape = (num_vectors, *x.shape)
+        num_collapsed = 1 if first_op_linear else 5
         ensure_tensor_constants_collapsed(
-            simple_mod, collapsed_shape, non_collapsed_shape, strict=False
+            simple_mod, collapsed_shape, non_collapsed_shape, at_least=num_collapsed
         )
 
     else:
@@ -580,13 +598,18 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
             non_collapsed_shape3,
         }
 
+        # for one 4-jet
+        num_collapsed = 1 if first_op_linear else 5
+        if D > 1:  # for D>1 we use three 4-jets
+            num_collapsed *= 3
+
         for non_collapsed in non_collapsed_shapes:
             ensure_tensor_constants_collapsed(
                 simple_mod,
                 collapsed_shape,
                 non_collapsed,
                 other_shapes=list(non_collapsed_shapes - {non_collapsed}),
-                strict=False,
+                at_least=num_collapsed,
             )
 
     # make sure the simplified module still behaves the same

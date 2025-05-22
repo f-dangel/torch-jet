@@ -1,9 +1,11 @@
 """Utility functions for computing jets."""
 
+from collections import defaultdict
 from math import factorial, prod
 from typing import Callable, Optional, Tuple
 
 from torch import Tensor, device, dtype, empty
+from torch.fx import GraphModule, Node
 from torch.nn import Module
 
 # type annotation for arguments and Taylor coefficients in input and output space
@@ -128,3 +130,39 @@ def rademacher(
         .mul_(2)
         .sub_(1)
     )
+
+
+def print_tensor_constants_and_shapes(mod: GraphModule):
+    """Print names, shapes, and usage counts of all tensor constants in a graph module.
+
+    Args:
+        mod: The GraphModule to inspect.
+    """
+    # Count usages of each get_attr node by target name
+    usage_counts = defaultdict(int)
+    for node in mod.graph.nodes:
+        for arg in node.args:
+            if isinstance(arg, Node) and arg.op == "get_attr":
+                usage_counts[arg.target] += 1
+        for kwarg in node.kwargs.values():
+            if isinstance(kwarg, Node) and kwarg.op == "get_attr":
+                usage_counts[kwarg.target] += 1
+
+    # Print the names, shapes, usage counts, and total number of elements of tensor
+    # constants
+    total = 0
+    for node in mod.graph.nodes:
+        if node.op != "get_attr":
+            continue
+        if "_tensor_constant" not in node.target:
+            continue
+
+        tensor = getattr(mod, node.target)
+        if not isinstance(tensor, Tensor):
+            continue
+
+        count = usage_counts[node.target]
+        total += tensor.numel()
+        print(f"Name: {node.target}, Shape: {tuple(tensor.shape)}, Usages: {count}")
+
+    print(f"Total number of elements in tensor constants: {total}")

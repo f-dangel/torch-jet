@@ -79,6 +79,7 @@ def report_relative_performance(
         for combination in product(*[df[col].unique().tolist() for col in columns])
     ]
 
+    print(f"Performancd report for {name}")
     # go over all combinations and report the performance
     for fix in combinations:
         print(f"Processing combination: {fix}")

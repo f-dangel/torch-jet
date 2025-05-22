@@ -582,6 +582,7 @@ def get_function_and_description(
     net: Callable[[Tensor], Tensor],
     X: Tensor,
     is_batched: bool,
+    compiled: bool = False,
 ) -> tuple[Callable[[], Tensor], Callable[[], Tensor], str]:
     """Determine the function and its description based on the operator and strategy.
 
@@ -594,6 +595,8 @@ def get_function_and_description(
         net: The neural network model.
         X: The input tensor.
         is_batched: A flag indicating if the input is batched.
+        compiled: A flag indicating if the function should be compiled.
+            Default: `False``.
 
     Returns:
         A tuple containing the function to compute the operator (differentiable),
@@ -646,13 +649,17 @@ def get_function_and_description(
         return func()
 
     compile_error = operator == "bilaplacian" and strategy == "hessian_trace"
-    if ON_MAC:
-        print("Skipping torch.compile due to MAC-incompatibility.")
-    elif compile_error:
-        print("Skipping torch.compile due to bug in torch.compile error.")
+
+    if compiled:
+        if ON_MAC:
+            print("Skipping torch.compile due to MAC-incompatibility.")
+        elif compile_error:
+            print("Skipping torch.compile due to bug in torch.compile error.")
+        else:
+            print("Using torch.compile")
+            func, func_no = torch_compile(func), torch_compile(func_no)
     else:
-        print("Using torch.compile")
-        func, func_no = torch_compile(func), torch_compile(func_no)
+        print("Not using torch.compile")
 
     return func, func_no, description
 
@@ -706,6 +713,12 @@ def parse_args() -> Namespace:
         choices={"laplacian", "weighted-laplacian", "bilaplacian"},
         required=True,
     )
+    parser.add_argument(
+        "--compiled",
+        action="store_true",
+        default=False,
+        help="Whether to use torch.compile for the functions",
+    )
 
     # parse and check validity
     args = parser.parse_args()
@@ -734,6 +747,7 @@ if __name__ == "__main__":
         net,
         X,
         is_batched,
+        args.compiled,
     )
 
     print(f"Setting up functions took: {perf_counter() - start:.3f} s.")
@@ -755,8 +769,8 @@ if __name__ == "__main__":
     mu, sigma, best = measure_time(func, f"{op} ({description})", is_cuda)
 
     # Sanity check: make sure that the results correspond to the baseline implementation
-    if args.strategy != BASELINE:
-        print("Checking correctness against baseline.")
+    if args.strategy != BASELINE or args.compiled:
+        print("Checking correctness against un-compiled baseline.")
         with no_grad():
             result = func()
 
@@ -769,6 +783,7 @@ if __name__ == "__main__":
             net,
             X,
             is_batched,
+            compiled=False,
         )
         baseline_result = baseline_func_no()
 

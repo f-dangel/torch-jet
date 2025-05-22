@@ -56,6 +56,7 @@ from jet.utils import (
     PrimalAndCoefficients,
     ValueAndCoefficients,
     WrapperModule,
+    recursive_getattr,
     replicate,
     sum_vmapped,
 )
@@ -180,17 +181,17 @@ def ensure_tensor_constants_collapsed(
             + f" ({collapsed_shape}) or non-collapsed ({non_collapsed_shape}) shape."
         )
 
-    constants = [
+    constants = {
         n.target
         for n in mod.graph.nodes
         if n.op == "get_attr" and n.target.startswith("_tensor_constant")
-    ]
+    }
     for c in constants:
-        print(f"Tensor constant {c} has shape {getattr(mod, c).shape}.")
+        print(f"Tensor constant {c} has shape {recursive_getattr(mod, c).shape}.")
 
     num_collapsed = 0
     for c in constants:
-        c_tensor = getattr(mod, c)
+        c_tensor = recursive_getattr(mod, c)
         shape = c_tensor.shape
         if shape == collapsed_shape:
             num_collapsed += 1
@@ -562,9 +563,9 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
     # NOTE The module creates x1, x2, x3, x4, but torch.fx traces creates tensor
     # constants for x4**4, x1**2 * x2, x1 * x3, x2 ** 2, and x4 for propagating the
     # highest component of each jet. If we have a linear layer at the beginning, meaning
-    # all # derivatives of degree larger than two disappear, only the term
+    # all derivatives of degree larger than two disappear, only the term
     # sum_vmapped(x4) should show up. Otherwise, there will be summed constants for all
-    # terms.
+    # terms (some of them will be removed by common tensor constant elimination).
     first_op_linear = config["id"].endswith("mlp")
 
     # make sure that Taylor coefficients were collapsed
@@ -574,7 +575,7 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
         num_vectors = num_samples
         collapsed_shape = x.shape
         non_collapsed_shape = (num_vectors, *x.shape)
-        num_collapsed = 1 if first_op_linear else 5
+        num_collapsed = 1 if first_op_linear else 2
         ensure_tensor_constants_collapsed(
             simple_mod, collapsed_shape, non_collapsed_shape, at_least=num_collapsed
         )
@@ -598,10 +599,12 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
             non_collapsed_shape3,
         }
 
-        # for one 4-jet
-        num_collapsed = 1 if first_op_linear else 5
-        if D > 1:  # for D>1 we use three 4-jets
-            num_collapsed *= 3
+        if D == 1:  # uses only one 4-jet
+            num_collapsed = 1 if first_op_linear else 2
+        elif D in {2, 3}:  # uses three 4-jets, but two of them have same num_vectors
+            num_collapsed = 2 if first_op_linear else 4
+        else:  # uses three 4-jets, all of them have different num_vectors
+            num_collapsed = 1 if first_op_linear else 6
 
         for non_collapsed in non_collapsed_shapes:
             ensure_tensor_constants_collapsed(
@@ -621,13 +624,13 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
         expected_nodes = {
             # NOTE The Bi-Laplacian for a 1d function does not evaluate off-diagonal
             # terms (there are none), hence the number of ops varies
-            "sin": 24 if D == 1 else 62,
-            "sin-sin": 183,
-            "tanh-tanh": 229,
-            "tanh-linear": 89,
-            "two-layer-tanh-mlp": 273,
-            "batched-two-layer-tanh-mlp": 273,
-            "sigmoid-sigmoid": 225,
+            "sin": 20 if D == 1 else 32,
+            "sin-sin": 139,
+            "tanh-tanh": 185,
+            "tanh-linear": 59,
+            "two-layer-tanh-mlp": 255,
+            "batched-two-layer-tanh-mlp": 255,
+            "sigmoid-sigmoid": 181,
         }
         if config["id"] in expected_nodes:
             assert len(list(simple_mod.graph.nodes)) == expected_nodes[config["id"]]

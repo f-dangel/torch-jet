@@ -12,7 +12,12 @@ from torch import sigmoid, sin, sub, tanh
 from torch.fx import Graph, GraphModule, Node
 from torch.nn.functional import linear
 
-from jet.utils import print_tensor_constants_and_shapes, replicate, sum_vmapped
+from jet.utils import (
+    print_tensor_constants_and_shapes,
+    recursive_getattr,
+    replicate,
+    sum_vmapped,
+)
 
 
 class RewriteReplicate:
@@ -517,11 +522,11 @@ def common_tensor_constant_elimination(mod: GraphModule, verbose: bool = False) 
     same: Dict[str, list[str]] = {}
 
     for node in nodes:
-        ref = getattr(mod, node.target)
+        ref = recursive_getattr(mod, node.target)
         matched = False
 
         for const in same:
-            if _same(ref, getattr(mod, const)):
+            if _same(ref, recursive_getattr(mod, const)):
                 same[const].append(node.target)
                 matched = True
                 break

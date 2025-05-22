@@ -35,6 +35,7 @@ def measure(
     distributions: Optional[List[str]] = None,
     nums_samples: Optional[List[int]] = None,
     operator: str = "laplacian",
+    compiled: Optional[List[bool]] = None,
     script_file: str = SCRIPT,
     rawdir: str = RAWDIR,
     gatherdir: str = GATHERDIR,
@@ -56,6 +57,8 @@ def measure(
         nums_samples: List of numbers of samples for the randomized Laplacian. `None`
             means that the exact Laplacian will be benchmarked. Default is `None`.
         operator: The differential operator to benchmark. Default is `'laplacian'`.
+        compiled: List of boolean values indicating whether to use torch.compile.
+            Default is `None` which means only non-compiled versions will be run.
         gatherdir: The directory to save the gathered data into. Default is the gather
             directory of the PyTorch benchmark.
         script_file: The path to the script file that runs the benchmark. Default is the
@@ -65,6 +68,7 @@ def measure(
     """
     _distributions = [None] if distributions is None else distributions
     _nums_samples = [None] if nums_samples is None else nums_samples
+    _compiled = [False] if compiled is None else compiled
 
     combinations = list(
         product(
@@ -75,6 +79,7 @@ def measure(
             devices,
             _distributions,
             _nums_samples,
+            _compiled,
         )
     )
     for idx, (
@@ -85,6 +90,7 @@ def measure(
         device,
         distribution,
         num_samples,
+        is_compiled,
     ) in enumerate(combinations):
         print(f"\n{idx + 1}/{len(combinations)}")
         kwargs = {
@@ -96,6 +102,7 @@ def measure(
             "distribution": distribution,
             "num_samples": num_samples,
             "operator": operator,
+            "compiled": is_compiled,
         }
 
         # maybe skip the computation
@@ -112,8 +119,14 @@ def measure(
 
         if not skip:
             cmd = ["python", script_file] + [
-                f"--{key}={value}" for key, value in kwargs.items() if value is not None
+                f"--{key}={value}"
+                for key, value in kwargs.items()
+                if value is not None and key != "compiled"
             ]
+
+            # Add the compiled flag without a value if it's True
+            if is_compiled:
+                cmd.append("--compiled")
             run_verbose(cmd)
 
         # gather data every few measurements so we can plot even before all are done
@@ -127,6 +140,7 @@ def measure(
                 devices,
                 _distributions,
                 _nums_samples,
+                _compiled,
                 operator,
                 rawdir,
                 allow_missing=not is_last,
@@ -144,6 +158,7 @@ def gather_data(
     devices: List[str],
     distributions: List[Optional[str]],
     nums_samples: List[Optional[int]],
+    compiled: List[bool],
     operator: str,
     rawdir: str,
     allow_missing: bool = False,
@@ -158,6 +173,7 @@ def gather_data(
         devices: List of devices the experiments were run on.
         distributions: List of distributions for the randomized Laplacian.
         nums_samples: List of numbers of samples for the randomized Laplacian.
+        compiled: List of boolean values indicating whether torch.compile was used.
         operator: The differential operator that was benchmarked.
         rawdir: The directory where the raw data is stored.
         allow_missing: Whether to allow missing result files. Default is False.
@@ -176,6 +192,7 @@ def gather_data(
         device,
         distribution,
         num_samples,
+        is_compiled,
     ) in product(
         architectures,
         dims,
@@ -184,6 +201,7 @@ def gather_data(
         devices,
         distributions,
         nums_samples,
+        compiled,
     ):
         # Create a dictionary for each combination
         result = {
@@ -194,6 +212,7 @@ def gather_data(
             "device": [device],
             "distribution": [distribution],
             "num_samples": [num_samples],
+            "compiled": [is_compiled],
         }
         filename = savepath_raw(
             **{key: value[0] for key, value in result.items()},
@@ -250,6 +269,7 @@ EXPERIMENTS = [
             "strategies": SUPPORTED_STRATEGIES,
             "devices": ["cuda"],
             "operator": "laplacian",
+            "compiled": [False, True],
         },
         # what to plot: x-axis is batch_sizes and each strategy is plotted in a curve
         ("batch_size", "strategy"),
@@ -268,6 +288,7 @@ EXPERIMENTS = [
             "operator": "laplacian",
             "distributions": ["normal"],
             "nums_samples": linspace(1, 50, 10).int().unique().tolist(),
+            "compiled": [False, True],
         },
         # what to plot: x-axis is nums_samples and each strategy is plotted in a curve
         ("num_samples", "strategy"),
@@ -284,6 +305,7 @@ EXPERIMENTS = [
             "strategies": SUPPORTED_STRATEGIES,
             "devices": ["cuda"],
             "operator": "weighted-laplacian",
+            "compiled": [False, True],
         },
         # what to plot: x-axis is batch size and each strategy is plotted in a curve
         ("batch_size", "strategy"),
@@ -303,6 +325,7 @@ EXPERIMENTS = [
             "operator": "weighted-laplacian",
             "distributions": ["normal"],
             "nums_samples": linspace(1, 50, 10).int().unique().tolist(),
+            "compiled": [False, True],
         },
         # what to plot: x-axis is nums_samples and each strategy is plotted in a curve
         ("num_samples", "strategy"),
@@ -324,6 +347,7 @@ EXPERIMENTS = [
             # exact takes 4.5 D**2 - 1.5 D + 4 = 109, randomized takes 2 + 3S, so
             # choosing S <= 36 because for S=36 we can compute the Bi-Laplacian exactly
             "nums_samples": linspace(1, 36, 10).int().unique().tolist(),
+            "compiled": [False, True],
         },
         # what to plot: x-axis is nums_samples and each strategy is plotted in a curve
         ("num_samples", "strategy"),
@@ -340,6 +364,7 @@ EXPERIMENTS = [
             "strategies": SUPPORTED_STRATEGIES,
             "devices": ["cuda"],
             "operator": "bilaplacian",
+            "compiled": [False, True],
         },
         # what to plot: x-axis is batch size and each strategy is plotted in a curve
         ("batch_size", "strategy"),

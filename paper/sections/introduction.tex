@@ -1,12 +1,12 @@
-Using neural networks to learn functions constrained by physical laws is a popular trend in scientific machine learning \cite{carleo2017solving,pfau2020ab,hermann2020deep,hu2023hutchinson,karniadakis2021physics, raissi2019physics,sun2020global}.
+Using neural networks to learn functions constrained by physical laws is a popular trend in scientific machine learning \cite{carleo2017solving,pfau2020ab,hermann2020deep,hu2024hutchinson,karniadakis2021physics, raissi2019physics,sun2020global}.
 Typically, the Physics is encoded through partial differential equations (PDEs) that the neural net must satisfy.
 The associated loss functions require evaluating differential operators \wrt the net's input, rather than weights.
 Evaluating these differential operators remains a computational challenge, especially if they contain high-order derivatives.
 
 \paragraph{Computing PDE operators.} Two important fields that build on PDE operators are variational Monte-Carlo (VMC) simulations and Physics-informed neural networks (PINNs).
 VMC employs neural networks as ansatz for the Schr\"odinger equation \cite{carleo2017solving, pfau2020ab, hermann2020deep} and demands computing the net's Laplacian (the Hessian trace) for the Hamiltonian's kinetic term.
-PINNs represent PDE solutions as a neural net and train it by minimizing the residuals of the governing equations \cite{raissi2019physics, karniadakis2021physics}. For instance, Kolmogorov-type equations like the Fokker-Planck and Black-Scholes equation require weighted second-order derivatives on high-dimensional spatial domains \cite{hu2023hutchinson, sun2024dynamical}.
-Other PINNs for elasticity problems use the biharmonic operator \cite{vahab_physics-informed_2022, hu2023hutchinson, vikas_biharm, shi2024stochastic}, which contains fourth-order derivatives.
+PINNs represent PDE solutions as a neural net and train it by minimizing the residuals of the governing equations \cite{raissi2019physics, karniadakis2021physics}. For instance, Kolmogorov-type equations like the Fokker-Planck and Black-Scholes equation require weighted second-order derivatives on high-dimensional spatial domains \cite{hu2024hutchinson, sun2024dynamical}.
+Other PINNs for elasticity problems use the biharmonic operator \cite{vahab_physics-informed_2022, hu2024hutchinson, vikas_biharm, shi2024stochastic}, which contains fourth-order derivatives.
 
 \paragraph{Is backpropagation all we need?}
 % Alternative: The gap between theory and practice

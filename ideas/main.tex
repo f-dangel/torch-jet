@@ -1,0 +1,52 @@
+\documentclass{article}
+
+% use numbers for citations to save space
+\PassOptionsToPackage{numbers, compress, sort}{natbib}
+
+\def\status{preprint}
+\usepackage[\status]{../paper/neurips_2025}
+
+% Load the same preamble files as the paper
+\input{../paper/preamble/custom_early.tex}
+\input{../paper/preamble/neurips_2025.tex}
+\input{../paper/preamble/goodfellow.tex}
+\input{../paper/preamble/custom.tex}
+\input{../paper/preamble/metadata.tex}
+
+% Title and author
+\renewcommand{\papertitle}{Reading Group: Future Research Ideas}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+  This document contains a collection of related topics and future research ideas discussed in a reading group.
+  The goal is to identify executable projects that we can tackle ourselves, or with students.
+\end{abstract}
+
+\tableofcontents
+
+\section{List of Papers}
+
+This section lists papers we think could be discussed.
+
+\section{Brain Dump}
+
+\begin{itemize}
+    \item \textbf{Computing fractional derivatives with AD: are there applications?}
+    This idea is a bit crazy. But assume we want to compute $\nicefrac{\partial^3}{\partial x^2 \partial y}$. We could do this by nesting $\nicefrac{\partial^{3/2}}{\partial x \partial y^{1/2}}$.
+    Is there any literature on automatic fractional differentiation?
+\end{itemize}
+
+\section{Discussed Papers}
+
+\subsection{[Date 1] Paper 1}
+
+
+\end{document}
+
+%%% Local Variables:
+%%% mode: LaTeX
+%%% TeX-master: t
+%%% End:

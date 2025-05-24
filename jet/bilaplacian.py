@@ -20,7 +20,7 @@ class Bilaplacian(Module):
 
     The Bi-Laplacian of a function f(x) ∈ R with x ∈ Rⁿ
     is defined as the Laplacian of the Laplacian, or
-    Δf(x) = ∑ᵢ ∑ⱼ ∂⁴f(x) / ∂xᵢ²∂xⱼ² ∈ R.
+    Δ²f(x) = ∑ᵢ ∑ⱼ ∂⁴f(x) / ∂xᵢ²∂xⱼ² ∈ R.
     For functions that produce vectors or tensors, the Bi-Laplacian
     is defined per output component and has the same shape as f(x).
     """

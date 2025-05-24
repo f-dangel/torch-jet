@@ -10,8 +10,8 @@ This section presents experiments, which show that the graph simplifications we 
   \label{tab:jax-benchmark}
   \vspace{1.5ex}
   % paths where the performances are stored
-  \def\datapathJAXLaplacianExact{../jet/exp/exp04_jax_benchmark/performance/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_jax_laplacian_vary_batch_size}
-  \def\datapathJAXBilaplacianExact{../jet/exp/exp04_jax_benchmark/performance/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_5_name_jax_bilaplacian_vary_batch_size}
+  \def\datapathJAXLaplacianExact{jet/exp/exp04_jax_benchmark/performance/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_jax_laplacian_vary_batch_size}
+  \def\datapathJAXBilaplacianExact{jet/exp/exp04_jax_benchmark/performance/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_5_name_jax_bilaplacian_vary_batch_size}
   % configuration options for the \num command
   \sisetup{%
     % scientific-notation=true,%
@@ -94,8 +94,8 @@ This section presents experiments, which show that the graph simplifications we 
     & \textbf{Biharmonic $(D=5)$}
     \\
     \textbf{Exact}
-    & \includegraphics{../jet/exp/exp04_jax_benchmark/figures/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_jax_laplacian_vary_batch_size.pdf}
-    & \includegraphics{../jet/exp/exp04_jax_benchmark/figures/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_5_name_jax_bilaplacian_vary_batch_size.pdf}
+    & \includegraphics{jet/exp/exp04_jax_benchmark/figures/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_jax_laplacian_vary_batch_size.pdf}
+    & \includegraphics{jet/exp/exp04_jax_benchmark/figures/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_5_name_jax_bilaplacian_vary_batch_size.pdf}
   \end{tabular}
   \captionof{figure}{\textbf{JAX's \texttt{jit} compiler does not apply our graph simplifications to standard Taylor mode.} Colors: \textcolor{tab-green}{Collapsed Taylor mode}, \textcolor{tab-orange}{standard Taylor mode}, and \textcolor{tab-blue}{nested first-order automatic differentiaion}, \textcolor{black!50!white}{opaque} memory consumptions are for non-differentiable computations.
     Results are on GPU and we use a $D \to 768 \to 768 \to 512 \to 512 \to 1$ MLP with tanh activations, varying the batch size.
@@ -142,7 +142,7 @@ From them, we draw the following conclusions:
   Our contribution is to point out that such rewrites could easily be added to the compiler's ability to unlock these performance gains at zero user overhead.
 \end{enumerate}
 
-\paragraph{Results (biharmonic operator).} 
+\paragraph{Results (biharmonic operator).}
 For the biharmonic operator (right column of \cref{fig:jax-benchmark} and \cref{tab:jax-benchmark}), we conclude that (i) the most efficient way to compute biharmonics is by nesting Laplacians (compare with \cref{tab:benchmark} where Taylor mode uses the approach for general linear differential operators) and (ii) that nesting Taylor mode Laplacians is more efficient than nesting 1\textsuperscript{st}-order AD Laplacians, while also allowing to apply our collapsing technique.
 
 % \begin{figure*}[!t]
@@ -155,8 +155,8 @@ For the biharmonic operator (right column of \cref{fig:jax-benchmark} and \cref{
 %     & \textbf{JAX}
 %     \\
 %     \textbf{Exact}
-%     & \includegraphics{../jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_256_device_cuda_name_bilaplacian_vary_dim.pdf}
-%     & \includegraphics{../jet/exp/exp04_jax_benchmark/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_256_device_cuda_name_jax_bilaplacian_vary_dim.pdf}
+%     & \includegraphics{jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_256_device_cuda_name_bilaplacian_vary_dim.pdf}
+%     & \includegraphics{jet/exp/exp04_jax_benchmark/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_256_device_cuda_name_jax_bilaplacian_vary_dim.pdf}
 %   \end{tabular}
 %   \caption{\textbf{Comparison of our proposed approach for computing the Laplacian in PyTorch (left) and by nesting Laplacians in JAX (right).}
 %     The net is the same as before, but we fix the batch size to be $256$ and vary the net's input dimension.

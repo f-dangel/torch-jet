@@ -48,6 +48,7 @@ exp = [
     "jax", # NOTE use "jax[cuda12]" if on GPU
     "jaxlib",
     "folx",
+    "arxiv-collector" # to generate the arXiv submission
 ]
 # Dependencies needed to run the tests (semicolon/line-separated).
 test = [

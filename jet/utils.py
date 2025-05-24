@@ -2,7 +2,7 @@
 
 from collections import defaultdict
 from math import factorial, prod
-from typing import Callable, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple
 
 from torch import Tensor, device, dtype, empty
 from torch.fx import GraphModule, Node
@@ -132,6 +132,29 @@ def rademacher(
     )
 
 
+def recursive_getattr(obj: Any, attr: str) -> Any:
+    """Recursively retrieve a nested attribute from an object.
+
+    This function allows access to attributes that are nested within submodules or objects,
+    using a dot-separated string (e.g., 'foo.bar.baz'). It is useful for retrieving
+    parameters or buffers from submodules in a torch.fx.GraphModule, where attribute names
+    may refer to nested modules (e.g., 'layer1.0.weight').
+
+    Args:
+        obj: The root object from which to retrieve the attribute.
+        attr: Dot-separated string specifying the attribute path.
+
+    Returns:
+        The value of the nested attribute.
+
+    Raises:
+        AttributeError: If any attribute in the path does not exist.
+    """
+    for part in attr.split("."):
+        obj = getattr(obj, part)
+    return obj
+
+
 def print_tensor_constants_and_shapes(mod: GraphModule):
     """Print names, shapes, and usage counts of all tensor constants in a graph module.
 
@@ -157,7 +180,7 @@ def print_tensor_constants_and_shapes(mod: GraphModule):
         if "_tensor_constant" not in node.target:
             continue
 
-        tensor = getattr(mod, node.target)
+        tensor = recursive_getattr(mod, node.target)
         if not isinstance(tensor, Tensor):
             continue
 

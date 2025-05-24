@@ -23,5 +23,6 @@
 **.toc
 **.vrb
 **.pdf-view-restore
+**.deps-*
 paper/main.pdf
 .aider*

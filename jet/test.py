@@ -26,18 +26,23 @@ if __name__ == "__main__":
     ).to(dev)
     X = randn(2048, 5).to(dev)
 
-    for op in ['laplacian', 'bilaplacian']:
+    for op in ["laplacian", "bilaplacian"]:
         for stochastic in [True, False]:
             if stochastic:
-                cls = {"laplacian": RandomizedLaplacian, "bilaplacian": RandomizedBilaplacian}[op]
-                if op == 'laplacian':
+                cls = {
+                    "laplacian": RandomizedLaplacian,
+                    "bilaplacian": RandomizedBilaplacian,
+                }[op]
+                if op == "laplacian":
                     print("\nRandomized Laplacian")
                 else:
                     print("\nRandomized Bilaplacian")
-                lap = cls(model, X, is_batched=True, num_samples=30, distribution="normal")
+                lap = cls(
+                    model, X, is_batched=True, num_samples=30, distribution="normal"
+                )
             else:
                 cls = {"laplacian": Laplacian, "bilaplacian": Bilaplacian}[op]
-                if op == 'laplacian':
+                if op == "laplacian":
                     print("\nExact Laplacian")
                 else:
                     print("\nExact Bilaplacian")
@@ -58,7 +63,11 @@ if __name__ == "__main__":
             measure_time(lambda: f_simple2(X), "collapsed", is_cuda)
             # Now use compilation
             f_simple1, f_simple2 = compile(f_simple1), compile(f_simple2)
-            peakmem = measure_peak_memory(lambda: f_simple1(X), "naive+compile", is_cuda)
-            peakmem = measure_peak_memory(lambda: f_simple2(X), "collapsed+compile", is_cuda)
+            peakmem = measure_peak_memory(
+                lambda: f_simple1(X), "naive+compile", is_cuda
+            )
+            peakmem = measure_peak_memory(
+                lambda: f_simple2(X), "collapsed+compile", is_cuda
+            )
             measure_time(lambda: f_simple1(X), "naive+compile", is_cuda)
             measure_time(lambda: f_simple2(X), "collapsed+compile", is_cuda)

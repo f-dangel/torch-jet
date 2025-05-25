@@ -5,7 +5,7 @@ from functools import partial
 from os import makedirs, path
 from sys import platform
 from time import perf_counter
-from typing import Callable, Optional, Union
+from typing import Callable
 
 from einops import einsum
 from torch import (
@@ -542,7 +542,7 @@ def setup_architecture(
     return SUPPORTED_ARCHITECTURES[architecture](dim).to(device=dev, dtype=dt)
 
 
-def savepath(rawdir: str = RAWDIR, **kwargs: Union[str, int]) -> str:
+def savepath(rawdir: str = RAWDIR, **kwargs: str | int) -> str:
     """Generate a file path for saving measurement results.
 
     Args:
@@ -577,12 +577,12 @@ def check_mutually_required(args: Namespace):
 def get_function_and_description(
     operator: str,
     strategy: str,
-    distribution: Union[str, None],
-    num_samples: Union[int, None],
+    distribution: str | None,
+    num_samples: int | None,
     net: Callable[[Tensor], Tensor],
     X: Tensor,
     is_batched: bool,
-    compiled: bool = False,
+    compiled: bool,
 ) -> tuple[Callable[[], Tensor], Callable[[], Tensor], str]:
     """Determine the function and its description based on the operator and strategy.
 
@@ -596,7 +596,6 @@ def get_function_and_description(
         X: The input tensor.
         is_batched: A flag indicating if the input is batched.
         compiled: A flag indicating if the function should be compiled.
-            Default: `False``.
 
     Returns:
         A tuple containing the function to compute the operator (differentiable),
@@ -612,11 +611,9 @@ def get_function_and_description(
         if is_stochastic
         else (net, X, is_batched, strategy)
     )
-    description = (
-        f"{strategy}, distribution={distribution}, " + f"num_samples={num_samples}"
-        if is_stochastic
-        else f"{strategy}"
-    )
+    description = f"{strategy}, compiled={compiled}"
+    if is_stochastic:
+        description += f", distribution={distribution}, " + f"num_samples={num_samples}"
 
     if operator == "bilaplacian":
         func = (
@@ -648,9 +645,8 @@ def get_function_and_description(
         """
         return func()
 
-    compile_error = operator == "bilaplacian" and strategy == "hessian_trace"
-
     if compiled:
+        compile_error = operator == "bilaplacian" and strategy == "hessian_trace"
         if ON_MAC:
             print("Skipping torch.compile due to MAC-incompatibility.")
         elif compile_error:
@@ -783,7 +779,7 @@ if __name__ == "__main__":
             net,
             X,
             is_batched,
-            compiled=False,
+            False,  # do not use compilation
         )
         baseline_result = baseline_func_no()
 

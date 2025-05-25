@@ -14,13 +14,15 @@ from jax import (
     devices,
     grad,
     hessian,
+    jacrev,
     jit,
+    jvp,
     vmap,
 )
 from jax.example_libraries import stax
 from jax.experimental.jet import jet
 from jax.numpy import allclose, array, eye, float64, size, zeros
-from jax.random import PRNGKey, uniform
+from jax.random import PRNGKey, normal, uniform
 from jax.tree_util import tree_map
 from jax.typing import ArrayLike, DTypeLike
 
@@ -102,6 +104,48 @@ def setup_input(
     shape = (batch_size, dim)
     key = PRNGKey(seed)
     return device_put(uniform(key, shape=shape, dtype=dt), dev)
+
+
+def vector_hessian_vector_product(
+    f: Callable[[list[ArrayLike], ArrayLike], ArrayLike], dummy_x: ArrayLike
+) -> Callable[[list[ArrayLike], ArrayLike, ArrayLike], ArrayLike]:
+    """Generate function to compute the vector-Hessian-vector product of f at x with v.
+
+    Args:
+        f: The function whose vector-Hessian-vector product we want to compute.
+            Takes the params and input tensor as argument and return the output tensor.
+        dummy_x: An un-batched dummy input tensor to determine the input dimensions.
+
+    Returns:
+        A function that computes the vector-Hessian-vector product of f at the input
+        tensor x given params, x and the vector. Has the same shape as f(params, x).
+    """
+    # perform the contraction of the HVP and the vector with einsum to support
+    # functions with non-scalar output
+    sum_dims = dummy_x.ndim
+    in_dims = " ".join([f"d{i}" for i in range(sum_dims)])
+    out_dims = "..."
+    equation = f"{out_dims} {in_dims}, {in_dims} -> {out_dims}"
+
+    def vhv(params: list[ArrayLike], x: ArrayLike, v: ArrayLike) -> ArrayLike:
+        """Compute the vector-Hessian-vector product of f with v evaluated at x.
+
+        Args:
+            params: The parameters of the neural network.
+            x: The input to the function at which the vector-Hessian-vector product
+                is computed.
+            v: The vector to compute the vector-Hessian-vector product with.
+                Has same shape as `x`.
+
+        Returns:
+            The vector-Hessian-vector product. Has the same shape as f(params, x).
+        """
+        grad_func = jacrev(lambda x: f(params, x))
+        _, hvp = jvp(grad_func, (x,), (v,))
+
+        return einsum(hvp, v, equation)
+
+    return vhv
 
 
 def hessian_trace_laplacian(
@@ -223,7 +267,7 @@ def laplacian_function(
     X: ArrayLike,
     is_batched: bool,
     strategy: str,
-) -> tuple[Callable[[], ArrayLike], Callable[[], list[ArrayLike]]]:
+) -> Callable[[list[ArrayLike], ArrayLike], ArrayLike]:
     """Construct a function to compute the Laplacian in JAX using different strategies.
 
     Args:
@@ -241,10 +285,9 @@ def laplacian_function(
               Laplacian library.
 
     Returns:
-        A function that computes the Laplacian of the function f at the input tensor X.
-        The function is expected to be called with no arguments and is jitted.
+        A function that computes the Laplacian of the function f given X and params.
     """
-    params, f = params_and_f
+    _, f = params_and_f
     dummy_X = X[0] if is_batched else X
 
     transforms = {
@@ -256,21 +299,8 @@ def laplacian_function(
 
     if is_batched:
         laplacian = vmap(laplacian, in_axes=[None, 0])
-    laplacian = jit(laplacian)
 
-    # function that computes the Laplacian
-    func = lambda: laplacian(params, X)  # noqa: E731
-    # function that computes the Laplacian's gradient used as proxy for the
-    # computation graph's memory footprint
-    summed_laplacian = lambda params, X: laplacian(params, X).sum()  # noqa: E731
-    grad_func = lambda: grad(summed_laplacian, argnums=0)(params, X)  # noqa: E731
-
-    # jit the functions
-    func = jit(func)
-    grad_func = jit(grad_func)
-
-    # add a trailing statement to wait until the computations are done
-    return lambda: block_until_ready(func()), lambda: block_until_ready(grad_func())
+    return laplacian
 
 
 def bilaplacian_function(
@@ -280,7 +310,7 @@ def bilaplacian_function(
     X: ArrayLike,
     is_batched: bool,
     strategy: str,
-) -> tuple[Callable[[], ArrayLike], Callable[[], list[ArrayLike]]]:
+) -> Callable[[list[ArrayLike], ArrayLike], ArrayLike]:
     """Construct function to compute the Bi-Laplacian in JAX using different strategies.
 
     The Bi-Laplacian is computed by taking the Laplacian of the Laplacian.
@@ -301,10 +331,9 @@ def bilaplacian_function(
               Laplacian library.
 
     Returns:
-        A function that computes the Bi-Laplacian of the function f at the input tensor
-        X. The function is expected to be called with no arguments and is jitted.
+        A function that computes the Bi-Laplacian of the function f given X and params.
     """
-    params, f = params_and_f
+    _, f = params_and_f
     dummy_X = X[0] if is_batched else X
 
     transform = {
@@ -317,21 +346,91 @@ def bilaplacian_function(
 
     if is_batched:
         bilaplacian = vmap(bilaplacian, in_axes=[None, 0])
-    bilaplacian = jit(bilaplacian)
 
-    # function that computes the Laplacian
-    func = lambda: bilaplacian(params, X)  # noqa: E731
-    # function that computes the Laplacian's gradient used as proxy for the
-    # computation graph's memory footprint
-    summed_bilaplacian = lambda params, X: bilaplacian(params, X).sum()  # noqa: E731
-    grad_func = lambda: grad(summed_bilaplacian, argnums=0)(params, X)  # noqa: E731
+    return bilaplacian
 
-    # jit the functions
-    func = jit(func)
-    grad_func = jit(grad_func)
 
-    # add a trailing statement to wait until the computations are done
-    return lambda: block_until_ready(func()), lambda: block_until_ready(grad_func())
+def randomized_bilaplacian_function(
+    params_and_f: tuple[
+        list[ArrayLike], Callable[[list[ArrayLike], ArrayLike], ArrayLike]
+    ],
+    X: ArrayLike,
+    is_batched: bool,
+    strategy: str,
+    distribution: str,
+    num_samples: int,
+) -> Callable[[list[ArrayLike], ArrayLike], ArrayLike]:
+    """Construct function to compute the MC Bi-Laplace in JAX with different strategies.
+
+    The Bi-Laplacian is computed with 4-jets or nested vector-Hessian-vector products.
+
+    Args:
+        params_and_f: The neural net's parameters and the unbatched forward function
+            whose MC Bi-Laplacian we want to compute. The function should take the
+            parameters and the input tensor as arguments and return the output tensor.
+        X: The input tensor at which to compute the Bi-Laplacian.
+        is_batched: Whether the input is a batched tensor.
+        strategy: Which strategy will be used by the returned function to compute
+            the MC Bi-Laplacian. The following strategies are supported:
+            - `'hessian_trace'`: The MC Bi-Laplacian is computed by multiplying the
+              tensor of 4th-order derivatives against random vectors, using VHVPs
+            - `'jet_naive'`: The Bi-Laplacian is approximated using 4-jets.
+        distribution: The distribution to use for the random vectors. Can be `'normal'`.
+        num_samples: The number of samples to use for the random vectors.
+
+    Returns:
+        A function that computes the MC Bi-Laplacian of f given X and params.
+    """
+    _, f = params_and_f
+    dummy_X = X[0] if is_batched else X
+
+    # draw random vectors
+    key = PRNGKey(2)
+    sample_func = {"normal": normal}[distribution]
+    V = device_put(
+        sample_func(key, shape=(num_samples, *X.shape), dtype=dummy_X.dtype),
+        dummy_X.device,
+    )
+
+    if strategy == "hessian_trace":
+        # nest vector-Hessian-vector products to multiply with 4th-order derivatives
+        d2f_vv = vector_hessian_vector_product(f, dummy_X)
+        d4f_vvvv = lambda params, x, v: vector_hessian_vector_product(  # noqa: E731
+            lambda params, x: d2f_vv(params, x, v), dummy_X
+        )(params, x, v)
+
+    elif strategy == "jet_naive":
+
+        def d4f_vvvv(params: list[ArrayLike], x: ArrayLike, v: ArrayLike) -> ArrayLike:
+            """Multiply the 4-th order derivative tensor with v.
+
+            Args:
+                params: The parameters of the neural network.
+                x: The un-batched input tensor.
+                v: The random vector to multiply with.
+
+            Returns:
+                The 4-th order derivative tensor of f at x multiplied with v.
+                Has the same shape as f(params, x).
+            """
+            v234 = zeros(dummy_X.shape, dtype=dummy_X.dtype, device=dummy_X.device)
+            _, (_, _, _, f4) = jet(
+                lambda x: f(params, x), (x,), ((v, v234, v234, v234),)
+            )
+            return f4
+
+    else:
+        raise ValueError(f"Unsupported strategy: {strategy}.")
+
+    # vmap over data points
+    if is_batched:
+        d4f_vvvv = vmap(d4f_vvvv, in_axes=[None, 0, 0])
+
+    # vmap over vectors and fix them
+    d4f_VVVV = vmap(d4f_vvvv, in_axes=[None, None, 0])
+    d4f_fix_V = lambda params, X: d4f_VVVV(params, X, V)  # noqa: E731
+
+    return lambda params, X: d4f_fix_V(params, X).mean(0) / 3
 
 
 def get_function_and_description(
@@ -357,7 +456,7 @@ def get_function_and_description(
         is_batched: A flag indicating if the input is batched.
 
     Returns:
-        A tuple containing the functions to compute the operator w/o being
+        A tuple containing the jitted functions to compute the operator w/o being
         able to differentiate through it, and a description string.
 
     Raises:
@@ -370,23 +469,41 @@ def get_function_and_description(
         if is_stochastic
         else (params_and_net, X, is_batched, strategy)
     )
-    description = (
-        f"{strategy}, distribution={distribution}, " + f"num_samples={num_samples}"
-        if is_stochastic
-        else f"{strategy}"
-    )
-
+    description = f"{strategy}, compiled=True"
     if is_stochastic:
-        raise NotImplementedError("Stochastic operators are not implemented yet.")
+        description += f", {distribution=}, {num_samples=}"
 
     if operator == "laplacian":
-        func_no, func = laplacian_function(*args)
+        if is_stochastic:
+            raise NotImplementedError("Stochastic Laplacian is not implemented yet.")
+        op_func = laplacian_function(*args)
     elif operator == "bilaplacian":
-        func_no, func = bilaplacian_function(*args)
+        op_func = (
+            randomized_bilaplacian_function(*args)
+            if is_stochastic
+            else bilaplacian_function(*args)
+        )
     else:
         raise ValueError(f"Unsupported operator: {operator}.")
 
-    return func_no, func, description
+    op_func = jit(op_func)
+
+    # function that computes the Laplacian
+    func = lambda: op_func(params, X)  # noqa: E731
+    # function that computes the operator's gradient used as proxy for the
+    # computation graph's memory footprint
+    summed_op_func = lambda params, X: op_func(params, X).sum()  # noqa: E731
+    grad_func = lambda: grad(summed_op_func, argnums=0)(params, X)  # noqa: E731
+
+    # jit the functions
+    func, grad_func = jit(func), jit(grad_func)
+
+    # add a trailing statement to wait until the computations are done
+    return (
+        lambda: block_until_ready(func()),
+        lambda: block_until_ready(grad_func()),
+        description,
+    )
 
 
 if __name__ == "__main__":

@@ -611,9 +611,10 @@ def get_function_and_description(
         if is_stochastic
         else (net, X, is_batched, strategy)
     )
-    description = f"{strategy}, compiled={compiled}"
+    description = f"{strategy}, {compiled=}"
     if is_stochastic:
-        description += f", distribution={distribution}, " + f"num_samples={num_samples}"
+        # Can I write this shorter in Python 3.12.? AI!
+        description += f", {distribution=}, {num_samples=}"
 
     if operator == "bilaplacian":
         func = (

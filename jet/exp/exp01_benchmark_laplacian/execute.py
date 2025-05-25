@@ -149,7 +149,7 @@ def laplacian_function(
 
 
 def vector_hessian_vector_product(
-    f: Callable[[Tensor], Tensor], dummy_x: Tensor, num_out_dims: Optional[int] = None
+    f: Callable[[Tensor], Tensor], dummy_x: Tensor
 ) -> Callable[[Tensor, Tensor], Tensor]:
     """Generate function to compute the vector-Hessian-vector product of f at x with v.
 
@@ -157,9 +157,6 @@ def vector_hessian_vector_product(
         f: The function whose vector-Hessian-vector product we want to compute.
             It should take the input tensor as argument and return the output tensor.
         dummy_x: An un-batched dummy input tensor to determine the input dimensions.
-        num_out_dims: The number of un-batched output dimensions. If None, the number
-            of output dimensions is inferred using an ellipsis ('...') inside einsum to
-            perform the trace. This may lead the compiler to crash.
 
     Returns:
         A function that computes the vector-Hessian-vector product of f at the input
@@ -169,9 +166,7 @@ def vector_hessian_vector_product(
     # functions with non-scalar output
     sum_dims = dummy_x.ndim
     in_dims = " ".join([f"d{i}" for i in range(sum_dims)])
-    out_dims = (
-        " ".join([f"o{i}" for i in range(num_out_dims)]) if num_out_dims else "..."
-    )
+    out_dims = "..."
     equation = f"{out_dims} {in_dims}, {in_dims} -> {out_dims}"
 
     def vhv(x: Tensor, v: Tensor) -> Tensor:
@@ -233,13 +228,7 @@ def randomized_laplacian_function(
 
     if strategy == "hessian_trace":
         dummy_x = X[0] if is_batched else X
-
-        # infer the number of output dimensions, which allows not using ellipsis
-        # in the einsum used to perform the VHVP and prevents the compiler from crashing
-        with no_grad():
-            num_out_dims = f(dummy_x).ndim
-
-        vhv = vector_hessian_vector_product(f, dummy_x, num_out_dims=num_out_dims)
+        vhv = vector_hessian_vector_product(f, dummy_x)
 
         # vmap over data points and fix data
         if is_batched:
@@ -384,13 +373,7 @@ def randomized_weighted_laplacian_function(
 
     if strategy == "hessian_trace":
         dummy_x = X[0] if is_batched else X
-
-        # infer the number of output dimensions, which allows not using ellipsis
-        # in the einsum used to perform the VHVP and prevents the compiler from crashing
-        with no_grad():
-            num_out_dims = f(dummy_x).ndim
-
-        vhv = vector_hessian_vector_product(f, dummy_x, num_out_dims=num_out_dims)
+        vhv = vector_hessian_vector_product(f, dummy_x)
 
         # vmap over data points and fix data
         if is_batched:
@@ -509,15 +492,9 @@ def randomized_bilaplacian_function(
 
     if strategy == "hessian_trace":
         dummy_x = X[0] if is_batched else X
-
-        # infer the number of output dimensions, which allows not using ellipsis
-        # in the einsum used to perform the VHVP and prevents the compiler from crashing
-        with no_grad():
-            num_out_dims = f(dummy_x).ndim
-
-        d2f_vv = vector_hessian_vector_product(f, dummy_x, num_out_dims=num_out_dims)
+        d2f_vv = vector_hessian_vector_product(f, dummy_x)
         d4f_vvvv = lambda x, v: vector_hessian_vector_product(  # noqa: E731
-            lambda x: d2f_vv(x, v), dummy_x, num_out_dims=num_out_dims
+            lambda x: d2f_vv(x, v), dummy_x
         )(x, v)
 
         # vmap over data points and fix data

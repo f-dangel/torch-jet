@@ -6,6 +6,7 @@ from previous measurements to leak into the current one. The results are gathere
 specified directory in csv files.
 """
 
+from argparse import ArgumentParser
 from os import makedirs, path
 
 from torch import linspace
@@ -89,12 +90,28 @@ EXPERIMENTS = [
     ),
 ]
 
-if __name__ == "__main__":
-    names = [name for (name, _, _) in EXPERIMENTS]
-    if len(names) != len(set(names)):
-        raise ValueError(f"Experiment names must be unique. Got: {names}.")
+# make sure experiment names are unique
+names = [name for (name, _, _) in EXPERIMENTS]
+if len(names) != len(set(names)):
+    raise ValueError(f"Experiment names must be unique. Got: {names}.")
 
-    for name, experiment, _ in EXPERIMENTS:
+
+if __name__ == "__main__":
+    parser = ArgumentParser(description="Run benchmark experiments")
+    parser.add_argument(
+        "--experiment_idx",
+        type=int,
+        choices=range(len(EXPERIMENTS)),
+        help="Index of the experiment to run (if unspecified, run all experiments)",
+        required=False,
+    )
+    args = parser.parse_args()
+
+    idx = args.experiment_idx
+    run_experiments = EXPERIMENTS if idx is None else [EXPERIMENTS[idx]]
+    print(f"Running {'all experiments' if idx is None else f'experiment {idx}'}.")
+
+    for name, experiment, _ in run_experiments:
         measure(
             **experiment,
             name=name,

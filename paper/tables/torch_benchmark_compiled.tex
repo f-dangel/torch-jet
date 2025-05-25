@@ -1,0 +1,150 @@
+\begin{table}[!b]
+  \centering
+  \caption{\textbf{Same as \cref{tab:benchmark}, but using \texttt{torch.compile}.}}
+  \label{tab:benchmark-compiled}
+  \vspace{1.5ex}
+  % paths where the performances are stored
+  \def\datapathLaplacianExact{jet/exp/exp01_benchmark_laplacian/performance/architecture_tanh_mlp_768_768_512_512_1_compiled_device_cuda_dim_50_name_laplacian_vary_batch_size}
+  \def\datapathLaplacianStochastic{jet/exp/exp01_benchmark_laplacian/performance/architecture_tanh_mlp_768_768_512_512_1_batch_size_2048_compiled_device_cuda_dim_50_distribution_normal_name_laplacian_vary_num_samples}
+  \def\datapathWeightedLaplacianExact{jet/exp/exp01_benchmark_laplacian/performance/architecture_tanh_mlp_768_768_512_512_1_compiled_device_cuda_dim_50_name_weighted_laplacian_vary_batch_size}
+  \def\datapathWeightedLaplacianStochastic{jet/exp/exp01_benchmark_laplacian/performance/architecture_tanh_mlp_768_768_512_512_1_batch_size_2048_compiled_device_cuda_dim_50_distribution_normal_name_weighted_laplacian_vary_num_samples}
+  \def\datapathBilaplacianExact{jet/exp/exp01_benchmark_laplacian/performance/architecture_tanh_mlp_768_768_512_512_1_compiled_device_cuda_dim_5_name_bilaplacian_vary_batch_size}
+  \def\datapathBilaplacianStochastic{jet/exp/exp01_benchmark_laplacian/performance/architecture_tanh_mlp_768_768_512_512_1_batch_size_256_compiled_device_cuda_dim_5_distribution_normal_name_bilaplacian_vary_num_samples}
+  % configuration options for the \num command
+  \sisetup{%
+    % scientific-notation=true,%
+    round-mode=figures,%
+    round-precision=2,%
+    detect-weight, % for bolding to work
+    tight-spacing=true, % less space around \cdot
+  }
+  \begin{small}
+    \begin{tabular}{ccc|cccc}
+      \toprule
+      \textbf{Mode}
+      & \makecell{\textbf{Per-datum or } \\ \textbf{-sample cost}}
+      & \textbf{Implementation}
+      & \textbf{Laplacian}
+      & \makecell{\textbf{Weighted} \\ \textbf{Laplacian}}
+      & \makecell{\textbf{Biharmonic via } \\ \textbf{interpolation \eqref{eq:ttc_for_biharm_final}}}
+      \\
+      \midrule
+      \multirow{9}{*}{\textbf{Exact}}
+      & \multirow{3}{*}{Time [ms]}
+      & \textcolor{tab-blue}{Nested 1\textsuperscript{st}-order}
+      & \input{\datapathLaplacianExact/hessian_trace_best.txt}
+      & \input{\datapathWeightedLaplacianExact/hessian_trace_best.txt}
+      & \input{\datapathBilaplacianExact/hessian_trace_best.txt}
+      \\
+      &
+      & \textcolor{tab-orange}{Standard Taylor}
+      & \input{\datapathLaplacianExact/jet_naive_best.txt}
+      & \input{\datapathWeightedLaplacianExact/jet_naive_best.txt}
+      & \input{\datapathBilaplacianExact/jet_naive_best.txt}
+      \\
+      &
+      & \textcolor{tab-green}{Collapsed (ours)}
+      & \textbf{\input{\datapathLaplacianExact/jet_simplified_best.txt}}
+      & \textbf{\input{\datapathWeightedLaplacianExact/jet_simplified_best.txt}}
+      & \textbf{\input{\datapathBilaplacianExact/jet_simplified_best.txt}}
+      \\ \cmidrule{2-6}
+      & \multirow{3}{*}{\makecell{Mem.\,[MiB] \\ (differentiable)}}
+      & \textcolor{tab-blue}{Nested 1\textsuperscript{st}-order}
+      & \input{\datapathLaplacianExact/hessian_trace_peakmem.txt}
+      & \input{\datapathWeightedLaplacianExact/hessian_trace_peakmem.txt}
+      & \input{\datapathBilaplacianExact/hessian_trace_peakmem.txt}
+      \\
+      &
+      & \textcolor{tab-orange}{Standard Taylor}
+      & \input{\datapathLaplacianExact/jet_naive_peakmem.txt}
+      & \input{\datapathWeightedLaplacianExact/jet_naive_peakmem.txt}
+      & \input{\datapathBilaplacianExact/jet_naive_peakmem.txt}
+      \\
+      &
+      & \textcolor{tab-green}{Collapsed (ours)}
+      & \textbf{\input{\datapathLaplacianExact/jet_simplified_peakmem.txt}}
+      & \textbf{\input{\datapathWeightedLaplacianExact/jet_simplified_peakmem.txt}}
+      & \textbf{\input{\datapathBilaplacianExact/jet_simplified_peakmem.txt}}
+      \\ \cmidrule{2-6}
+      & \multirow{3}{*}{\makecell{Mem.\,[MiB] \\ (non-diff.)}}
+      & \textcolor{tab-blue}{Nested 1\textsuperscript{st}-order}
+      & \input{\datapathLaplacianExact/hessian_trace_peakmem_nondifferentiable.txt}
+      & \input{\datapathWeightedLaplacianExact/hessian_trace_peakmem_nondifferentiable.txt}
+      & \input{\datapathBilaplacianExact/hessian_trace_peakmem_nondifferentiable.txt}
+      \\
+      &
+      & \textcolor{tab-orange}{Standard Taylor}
+      & \input{\datapathLaplacianExact/jet_naive_peakmem_nondifferentiable.txt}
+      & \input{\datapathWeightedLaplacianExact/jet_naive_peakmem_nondifferentiable.txt}
+      & \textbf{\input{\datapathBilaplacianExact/jet_naive_peakmem_nondifferentiable.txt}}
+      \\
+      &
+      & \textcolor{tab-green}{Collapsed (ours)}
+      & \textbf{\input{\datapathLaplacianExact/jet_simplified_peakmem_nondifferentiable.txt}}
+      & \textbf{\input{\datapathWeightedLaplacianExact/jet_simplified_peakmem_nondifferentiable.txt}}
+      & \input{\datapathBilaplacianExact/jet_simplified_peakmem_nondifferentiable.txt}
+      \\
+      \midrule
+      \multirow{9}{*}{\textbf{Stochastic}}
+      & \multirow{3}{*}{Time [ms]}
+      & \textcolor{tab-blue}{Nested 1\textsuperscript{st}-order}
+      & \input{\datapathLaplacianStochastic/hessian_trace_best.txt}
+      & \input{\datapathWeightedLaplacianStochastic/hessian_trace_best.txt}
+      & \input{\datapathBilaplacianStochastic/hessian_trace_best.txt}
+      \\
+      &
+      & \textcolor{tab-orange}{Standard Taylor}
+      & \input{\datapathLaplacianStochastic/jet_naive_best.txt}
+      & \input{\datapathWeightedLaplacianStochastic/jet_naive_best.txt}
+      & \input{\datapathBilaplacianStochastic/jet_naive_best.txt}
+      \\
+      &
+      & \textcolor{tab-green}{Collapsed (ours)}
+      & \textbf{\input{\datapathLaplacianStochastic/jet_simplified_best.txt}}
+      & \textbf{\input{\datapathWeightedLaplacianStochastic/jet_simplified_best.txt}}
+      & \textbf{\input{\datapathBilaplacianStochastic/jet_simplified_best.txt}}
+      \\ \cmidrule{2-6}
+      & \multirow{3}{*}{\makecell{Mem.\,[MiB]\\(differentiable)}}
+      & \textcolor{tab-blue}{Nested 1\textsuperscript{st}-order}
+      & \input{\datapathLaplacianStochastic/hessian_trace_peakmem.txt}
+      & \input{\datapathWeightedLaplacianStochastic/hessian_trace_peakmem.txt}
+      & \input{\datapathBilaplacianStochastic/hessian_trace_peakmem.txt}
+      \\
+      &
+      & \textcolor{tab-orange}{Standard Taylor}
+      & \input{\datapathLaplacianStochastic/jet_naive_peakmem.txt}
+      & \input{\datapathWeightedLaplacianStochastic/jet_naive_peakmem.txt}
+      & \input{\datapathBilaplacianStochastic/jet_naive_peakmem.txt}
+      \\
+      &
+      & \textcolor{tab-green}{Collapsed (ours)}
+      & \textbf{\input{\datapathLaplacianStochastic/jet_simplified_peakmem.txt}}
+      & \textbf{\input{\datapathWeightedLaplacianStochastic/jet_simplified_peakmem.txt}}
+      & \textbf{\input{\datapathBilaplacianStochastic/jet_simplified_peakmem.txt}}
+      \\ \cmidrule{2-6}
+      & \multirow{3}{*}{\makecell{Mem.\,[MiB]\\(non-diff.)}}
+      & \textcolor{tab-blue}{Nested 1\textsuperscript{st}-order}
+      & \input{\datapathLaplacianStochastic/hessian_trace_peakmem_nondifferentiable.txt}
+      & \input{\datapathWeightedLaplacianStochastic/hessian_trace_peakmem_nondifferentiable.txt}
+      & \input{\datapathBilaplacianStochastic/hessian_trace_peakmem_nondifferentiable.txt}
+      \\
+      &
+      & \textcolor{tab-orange}{Standard Taylor}
+      & \input{\datapathLaplacianStochastic/jet_naive_peakmem_nondifferentiable.txt}
+      & \input{\datapathWeightedLaplacianStochastic/jet_naive_peakmem_nondifferentiable.txt}
+      & \input{\datapathBilaplacianStochastic/jet_naive_peakmem_nondifferentiable.txt}
+      \\
+      &
+      & \textcolor{tab-green}{Collapsed (ours)}
+      & \textbf{\input{\datapathLaplacianStochastic/jet_simplified_peakmem_nondifferentiable.txt}}
+      & \textbf{\input{\datapathWeightedLaplacianStochastic/jet_simplified_peakmem_nondifferentiable.txt}}
+      & \textbf{\input{\datapathBilaplacianStochastic/jet_simplified_peakmem_nondifferentiable.txt}}
+      \\
+      \bottomrule
+    \end{tabular}
+  \end{small}
+\end{table}
+%%% Local Variables:
+%%% mode: LaTeX
+%%% TeX-master: "../main"
+%%% End:

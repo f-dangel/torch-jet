@@ -30,7 +30,7 @@ This section presents experiments, which show that the graph simplifications we 
     & \textbf{Per-datum cost}
     & \textbf{Implementation}
     & \textbf{Laplacian}
-    & \textbf{Biharmonic}
+    & \makecell{\textbf{Biharmonic} \\ \textbf{(via nested Laplacians)}}
     \\
     \midrule
     \multirow{9}{*}{\textbf{Exact}}
@@ -91,7 +91,7 @@ This section presents experiments, which show that the graph simplifications we 
   \newcolumntype{D}{ >{\centering\arraybackslash} m{0.4\textwidth} }
   \begin{tabular}{CDD}
     & \textbf{Laplacian $(D=50)$}
-    & \textbf{Biharmonic $(D=5)$}
+    & \makecell{\textbf{Biharmonic $(D=5)$} \\ \textbf{(via nested Laplacians)}}
     \\
     \textbf{Exact}
     & \includegraphics{jet/exp/exp04_jax_benchmark/figures/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_jax_laplacian_vary_batch_size.pdf}

@@ -303,6 +303,83 @@ def laplacian_function(
     return laplacian
 
 
+def randomized_laplacian_function(
+    params_and_f: tuple[
+        list[ArrayLike], Callable[[list[ArrayLike], ArrayLike], ArrayLike]
+    ],
+    X: ArrayLike,
+    is_batched: bool,
+    strategy: str,
+    distribution: str,
+    num_samples: int,
+) -> Callable[[list[ArrayLike], ArrayLike], ArrayLike]:
+    """Construct function to compute the MC Laplacian in JAX with different strategies.
+
+    The MC-Laplacian is computed with 2-jets or nested vector-Hessian-vector products.
+
+    Args:
+        params_and_f: The neural net's parameters and the unbatched forward function
+            whose MC Laplacian we want to compute. The function should take the
+            parameters and the input tensor as arguments and return the output tensor.
+        X: The input tensor at which to compute the Bi-Laplacian.
+        is_batched: Whether the input is a batched tensor.
+        strategy: Which strategy will be used by the returned function to compute
+            the MC Laplacian. The following strategies are supported:
+            - `'hessian_trace'`: The MC Laplacian is computed by multiplying the Hessian
+              against random vectors, using VHVPs.
+            - `'jet_naive'`: The Laplacian is approximated using 2-jets.
+        distribution: The distribution to use for the random vectors. Can be `'normal'`.
+        num_samples: The number of samples to use for the random vectors.
+
+    Returns:
+        A function that computes the MC Bi-Laplacian of f given X and params.
+    """
+    _, f = params_and_f
+    dummy_X = X[0] if is_batched else X
+
+    # draw random vectors
+    key = PRNGKey(2)
+    sample_func = {"normal": normal}[distribution]
+    V = device_put(
+        sample_func(key, shape=(num_samples, *X.shape), dtype=dummy_X.dtype),
+        dummy_X.device,
+    )
+
+    if strategy == "hessian_trace":
+        d2f_vv = vector_hessian_vector_product(f, dummy_X)
+
+    elif strategy == "jet_naive":
+
+        def d2f_vv(params: list[ArrayLike], x: ArrayLike, v: ArrayLike) -> ArrayLike:
+            """Multiply the 2-nd order derivative tensor with v.
+
+            Args:
+                params: The parameters of the neural network.
+                x: The un-batched input tensor.
+                v: The random vector to multiply with.
+
+            Returns:
+                The 2-nd order derivative tensor of f at x multiplied with v.
+                Has the same shape as f(params, x).
+            """
+            v2 = zeros(dummy_X.shape, dtype=dummy_X.dtype, device=dummy_X.device)
+            _, (_, f2) = jet(lambda x: f(params, x), (x,), ((v, v2),))
+            return f2
+
+    else:
+        raise ValueError(f"Unsupported strategy: {strategy}.")
+
+    # vmap over data points
+    if is_batched:
+        d2f_vv = vmap(d2f_vv, in_axes=[None, 0, 0])
+
+    # vmap over vectors and fix them
+    d2f_VV = vmap(d2f_vv, in_axes=[None, None, 0])
+    d2f_fix_V = lambda params, X: d2f_VV(params, X, V)  # noqa: E731
+
+    return lambda params, X: d2f_fix_V(params, X).mean(0) / 3
+
+
 def bilaplacian_function(
     params_and_f: tuple[
         list[ArrayLike], Callable[[list[ArrayLike], ArrayLike], ArrayLike]
@@ -474,9 +551,11 @@ def get_function_and_description(
         description += f", {distribution=}, {num_samples=}"
 
     if operator == "laplacian":
-        if is_stochastic:
-            raise NotImplementedError("Stochastic Laplacian is not implemented yet.")
-        op_func = laplacian_function(*args)
+        op_func = (
+            randomized_laplacian_function(*args)
+            if is_stochastic
+            else laplacian_function(*args)
+        )
     elif operator == "bilaplacian":
         op_func = (
             randomized_bilaplacian_function(*args)

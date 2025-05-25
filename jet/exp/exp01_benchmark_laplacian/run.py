@@ -9,7 +9,7 @@ gathered into a single data frame and saved to a CSV file.
 from argparse import ArgumentParser
 from itertools import product
 from os import makedirs, path
-from typing import List, Optional
+from typing import Optional
 
 from pandas import DataFrame, concat
 from torch import cuda, linspace
@@ -25,18 +25,18 @@ makedirs(GATHERDIR, exist_ok=True)
 
 
 def measure(
-    architectures: List[str],
-    dims: List[int],
-    batch_sizes: List[int],
-    strategies: List[str],
-    devices: List[str],
+    architectures: list[str],
+    dims: list[int],
+    batch_sizes: list[int],
+    strategies: list[str],
+    devices: list[str],
     name: str,
     skip_existing: bool = False,
     gather_every: int = 10,
-    distributions: Optional[List[str]] = None,
-    nums_samples: Optional[List[int]] = None,
+    distributions: Optional[list[str]] = None,
+    nums_samples: Optional[list[int]] = None,
     operator: str = "laplacian",
-    compiled: Optional[List[bool]] = None,
+    compiled: Optional[list[bool]] = None,
     script_file: str = SCRIPT,
     rawdir: str = RAWDIR,
     gatherdir: str = GATHERDIR,
@@ -152,14 +152,14 @@ def measure(
 
 
 def gather_data(
-    architectures: List[str],
-    dims: List[int],
-    batch_sizes: List[int],
-    strategies: List[str],
-    devices: List[str],
-    distributions: List[Optional[str]],
-    nums_samples: List[Optional[int]],
-    compiled: List[bool],
+    architectures: list[str],
+    dims: list[int],
+    batch_sizes: list[int],
+    strategies: list[str],
+    devices: list[str],
+    distributions: list[Optional[str]],
+    nums_samples: list[Optional[int]],
+    compiled: list[bool],
     operator: str,
     rawdir: str,
     allow_missing: bool = False,

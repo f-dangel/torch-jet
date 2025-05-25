@@ -31,6 +31,27 @@ group-minimum-digits={3}%
 \newcommand*{\Ie}{I.e.\@\xspace}
 \newcommand*{\Eg}{E.g.\@\xspace}
 
+\usepackage{catchfile} % for reading files
+
+% Extracts ... from a file of content `... (yyy x)'
+\newcommand{\inputMetricOnly}[1]{%
+  \unskip
+  \CatchFileDef{\filecontent}{#1}{}% Read the file content into \filecontent
+  \StrBefore{\filecontent}{(}[\metricOnly]% Extract content before the first parenthesis
+  {%
+    \sisetup{%
+      % scientific-notation=true,%
+      round-mode=figures,%
+      round-precision=2,%
+      detect-weight, % for bolding to work
+      tight-spacing=true, % less space around \cdot
+    }%
+    \ \metricOnly% Print the processed content
+    \unskip
+  }%
+  \unskip%
+}
+
 % ===================================================================
 % FIGURES & COLORS
 % ===================================================================

@@ -54,7 +54,7 @@
       & \textcolor{tab-blue}{Nested 1\textsuperscript{st}-order}
       & \input{\datapathLaplacianExact/hessian_trace_peakmem.txt}
       & \input{\datapathWeightedLaplacianExact/hessian_trace_peakmem.txt}
-      & \textbf{\input{\datapathBilaplacianExact/hessian_trace_peakmem.txt}}\footnotemark
+      & \input{\datapathBilaplacianExact/hessian_trace_peakmem.txt}
       \\
       &
       & \textcolor{tab-orange}{Standard Taylor}
@@ -66,7 +66,7 @@
       & \textcolor{tab-green}{Collapsed (ours)}
       & \textbf{\input{\datapathLaplacianExact/jet_simplified_peakmem.txt}}
       & \textbf{\input{\datapathWeightedLaplacianExact/jet_simplified_peakmem.txt}}
-      & \input{\datapathBilaplacianExact/jet_simplified_peakmem.txt}
+      & \textbf{\input{\datapathBilaplacianExact/jet_simplified_peakmem.txt}}
       \\ \cmidrule{2-6}
       & \multirow{3}{*}{\makecell{Mem.\,[MiB] \\ (non-diff.)}}
       & \textcolor{tab-blue}{Nested 1\textsuperscript{st}-order}
@@ -76,8 +76,8 @@
       \\
       &
       & \textcolor{tab-orange}{Standard Taylor}
-      & \textbf{\input{\datapathLaplacianExact/jet_naive_peakmem_nondifferentiable.txt}}
-      & \textbf{\input{\datapathWeightedLaplacianExact/jet_naive_peakmem_nondifferentiable.txt}}
+      & \input{\datapathLaplacianExact/jet_naive_peakmem_nondifferentiable.txt}
+      & \input{\datapathWeightedLaplacianExact/jet_naive_peakmem_nondifferentiable.txt}
       & \input{\datapathBilaplacianExact/jet_naive_peakmem_nondifferentiable.txt}
       \\
       &
@@ -132,8 +132,8 @@
       \\
       &
       & \textcolor{tab-orange}{Standard Taylor}
-      & \textbf{\input{\datapathLaplacianStochastic/jet_naive_peakmem_nondifferentiable.txt}}
-      & \textbf{\input{\datapathWeightedLaplacianStochastic/jet_naive_peakmem_nondifferentiable.txt}}
+      & \input{\datapathLaplacianStochastic/jet_naive_peakmem_nondifferentiable.txt}
+      & \input{\datapathWeightedLaplacianStochastic/jet_naive_peakmem_nondifferentiable.txt}
       & \input{\datapathBilaplacianStochastic/jet_naive_peakmem_nondifferentiable.txt}
       \\
       &
@@ -146,12 +146,6 @@
     \end{tabular}
   \end{small}
 \end{table}
-\footnotetext{For the exact biharmonic, the 1\textsuperscript{st}-order AD implementation---unlike our Taylor mode implementations---has a somewhat unfair advantage: it leverages the operator’s special structure by computing it as the Laplacian of the Laplacian, $\Delta^2 \vf(\vx_0) = \Delta ( \Delta \vf(\vx_0) )$.
-Had we instead naively computed, then summed, the fourth-order derivatives by tensor-vector-products (TVPs) with $\partial^4 \vf(\vx_0)$ \cite[\eg done in][]{hu2023hutchinson}, performance would have degraded \emph{dramatically}, similar to the performance gap we observe for the stochastic biharmonic operator which has to use these TVPs.
-Hence, we omit this naive exact approach, which, however, is \emph{necessary for general operators}.
-
-We chose the biharmonic as a case study for a general linear differential operator to show that even here, collapsing Taylor yields improvements, despite increased memory use.
-In \cref{sec:jax-benchmark}, we confirm that incorporating this advantage by nesting Laplacians---also possible in (collapsed) Taylor mode---offers the most efficient approach, achieving roughly 3x better runtime and memory with our collapsing technique (\cref{tab:jax-benchmark,fig:jax-benchmark}).}
 %%% Local Variables:
 %%% mode: LaTeX
 %%% TeX-master: "../main"

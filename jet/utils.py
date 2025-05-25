@@ -135,10 +135,10 @@ def rademacher(
 def recursive_getattr(obj: Any, attr: str) -> Any:
     """Recursively retrieve a nested attribute from an object.
 
-    This function allows access to attributes that are nested within submodules or objects,
-    using a dot-separated string (e.g., 'foo.bar.baz'). It is useful for retrieving
-    parameters or buffers from submodules in a torch.fx.GraphModule, where attribute names
-    may refer to nested modules (e.g., 'layer1.0.weight').
+    This function allows access to attributes that are nested within submodules or
+    objects, using a dot-separated string (e.g., 'foo.bar.baz'). It is useful for
+    retrieving parameters or buffers from submodules in a torch.fx.GraphModule, where
+    attribute names may refer to nested modules (e.g., 'layer1.0.weight').
 
     Args:
         obj: The root object from which to retrieve the attribute.
@@ -146,9 +146,6 @@ def recursive_getattr(obj: Any, attr: str) -> Any:
 
     Returns:
         The value of the nested attribute.
-
-    Raises:
-        AttributeError: If any attribute in the path does not exist.
     """
     for part in attr.split("."):
         obj = getattr(obj, part)
@@ -162,7 +159,7 @@ def print_tensor_constants_and_shapes(mod: GraphModule):
         mod: The GraphModule to inspect.
     """
     # Count usages of each get_attr node by target name
-    usage_counts = defaultdict(int)
+    usage_counts = defaultdict(int)  # noqa: B910
     for node in mod.graph.nodes:
         for arg in node.args:
             if isinstance(arg, Node) and arg.op == "get_attr":

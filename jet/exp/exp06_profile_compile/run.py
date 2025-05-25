@@ -1,3 +1,5 @@
+"""Script for profiling the impact of torch.compile."""
+
 from torch import compile, cuda, device, manual_seed, randn
 from torch.fx import symbolic_trace
 from torch.nn import Linear, Sequential, Tanh
@@ -49,7 +51,7 @@ if __name__ == "__main__":
                 lap = cls(model, X, is_batched=True)
 
             # print number of computation graph nodes
-            f_before = symbolic_trace(lap)
+            f_before = symbolic_trace(lap)  # noqa: B023
             print("Before simplification:", len(list(f_before.graph.nodes)))
             f_simple1 = simplify(symbolic_trace(lap), pull_sum_vmapped=False)
             print("Naive after simplification:", len(list(f_simple1.graph.nodes)))
@@ -57,17 +59,23 @@ if __name__ == "__main__":
             print("Collapsed after simplification:", len(list(f_simple2.graph.nodes)))
 
             # Benchmark memory and time
-            peakmem = measure_peak_memory(lambda: f_simple1(X), "naive", is_cuda)
-            peakmem = measure_peak_memory(lambda: f_simple2(X), "collapsed", is_cuda)
-            measure_time(lambda: f_simple1(X), "naive", is_cuda)
-            measure_time(lambda: f_simple2(X), "collapsed", is_cuda)
+            peakmem = measure_peak_memory(
+                lambda: f_simple1(X), "naive", is_cuda  # noqa: B023
+            )
+            peakmem = measure_peak_memory(
+                lambda: f_simple2(X), "collapsed", is_cuda  # noqa: B023
+            )
+            measure_time(lambda: f_simple1(X), "naive", is_cuda)  # noqa: B023
+            measure_time(lambda: f_simple2(X), "collapsed", is_cuda)  # noqa: B023
             # Now use compilation
             f_simple1, f_simple2 = compile(f_simple1), compile(f_simple2)
             peakmem = measure_peak_memory(
-                lambda: f_simple1(X), "naive+compile", is_cuda
+                lambda: f_simple1(X), "naive+compile", is_cuda  # noqa: B023
             )
             peakmem = measure_peak_memory(
-                lambda: f_simple2(X), "collapsed+compile", is_cuda
+                lambda: f_simple2(X), "collapsed+compile", is_cuda  # noqa: B023
             )
-            measure_time(lambda: f_simple1(X), "naive+compile", is_cuda)
-            measure_time(lambda: f_simple2(X), "collapsed+compile", is_cuda)
+            measure_time(lambda: f_simple1(X), "naive+compile", is_cuda)  # noqa: B023
+            measure_time(
+                lambda: f_simple2(X), "collapsed+compile", is_cuda  # noqa: B023
+            )

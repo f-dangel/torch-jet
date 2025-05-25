@@ -479,7 +479,9 @@ def common_subexpression_elimination(
     return replaced
 
 
-def common_tensor_constant_elimination(mod: GraphModule, verbose: bool = False) -> bool:
+def common_tensor_constant_elimination(  # noqa: C901
+    mod: GraphModule, verbose: bool = False
+) -> bool:
     """Eliminate duplicate tensor constants in a GraphModule by shape and value.
 
     If two or more tensor constants have the same shape and values, all but one are

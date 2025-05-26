@@ -329,6 +329,9 @@ def randomized_laplacian_function(
 
     Returns:
         A function that computes the MC Bi-Laplacian of f given params, X, and V.
+
+    Raises:
+        ValueError: If an unsupported strategy is specified.
     """
     _, f = params_and_f
     dummy_X = X[0] if is_batched else X
@@ -355,7 +358,7 @@ def randomized_laplacian_function(
             return f2
 
     else:
-        raise ValueError(f"Unsupported strategy: {strategy}.")
+        raise ValueError(f"Unsupported {strategy=}.")
 
     # vmap over data points
     if is_batched:
@@ -440,6 +443,9 @@ def randomized_bilaplacian_function(
 
     Returns:
         A function that computes the MC Bi-Laplacian of f given params, X, and V.
+
+    Raises:
+        ValueError: If an unsupported strategy is specified.
     """
     _, f = params_and_f
     dummy_X = X[0] if is_batched else X
@@ -473,7 +479,7 @@ def randomized_bilaplacian_function(
             return f4
 
     else:
-        raise ValueError(f"Unsupported strategy: {strategy}.")
+        raise ValueError(f"Unsupported {strategy=}.")
 
     # vmap over data points
     if is_batched:
@@ -513,7 +519,6 @@ def get_function_and_description(
 
     Raises:
         ValueError: If an unsupported operator is specified.
-        NotImplementedError: If the specified mode is stochastic.
     """
     is_stochastic = distribution is not None and num_samples is not None
     description = f"{strategy}, compiled=True"
@@ -529,7 +534,7 @@ def get_function_and_description(
             randomized_bilaplacian_function if is_stochastic else bilaplacian_function
         )
     else:
-        raise ValueError(f"Unsupported operator: {operator}.")
+        raise ValueError(f"Unsupported {operator=}.")
 
     # Set up the function that computes the operator given (params, X) in the exact,
     # and (params, X, V) in the stochastic setting.

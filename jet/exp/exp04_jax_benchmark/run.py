@@ -6,6 +6,7 @@ from previous measurements to leak into the current one. The results are gathere
 specified directory in csv files.
 """
 
+from argparse import ArgumentParser
 from os import makedirs, path
 
 from torch import linspace
@@ -20,7 +21,7 @@ GATHERDIR = path.join(HEREDIR, "gathered")
 makedirs(GATHERDIR, exist_ok=True)
 
 EXPERIMENTS = [
-    # Experiment 1:  Use the largest MLP from dangel2024kroneckerfactored with 50
+    # Experiment 1: Exact Laplacian, vary batch size
     #                in features; vary the batch size.
     (  # Experiment name, must be unique
         "jax_laplacian_vary_batch_size",
@@ -36,8 +37,43 @@ EXPERIMENTS = [
         # what to plot: x-axis is batch_sizes and each strategy is plotted in a curve
         ("batch_size", "strategy"),
     ),
-    # Experiment 2:  Use the largest MLP from dangel2024kroneckerfactored with 5
-    #                in features; vary the batch size, computing the Bi-Laplacian.
+    # Experiment 2: Stochastic Laplacian, vary MC samples
+    (  # Experiment name, must be unique
+        "jax_laplacian_vary_num_samples",
+        # Experiment parameters
+        {
+            "architectures": ["tanh_mlp_768_768_512_512_1"],
+            "dims": [50],
+            "batch_sizes": [2048],
+            "strategies": [s for s in SUPPORTED_STRATEGIES if s != "jet_simplified"],
+            "devices": ["cuda"],
+            "operator": "laplacian",
+            "distributions": ["normal"],
+            "nums_samples": linspace(1, 50, 10).int().unique().tolist(),
+        },
+        # what to plot: x-axis is nums_samples and each strategy is plotted in a curve
+        ("num_samples", "strategy"),
+    ),
+    # Experiment 3: Stochastic Bi-Laplacian, vary MC samples
+    (  # Experiment name, must be unique
+        "jax_bilaplacian_vary_num_samples",
+        # Experiment parameters
+        {
+            "architectures": ["tanh_mlp_768_768_512_512_1"],
+            "dims": [5],
+            "batch_sizes": [256],
+            "strategies": [s for s in SUPPORTED_STRATEGIES if s != "jet_simplified"],
+            "devices": ["cuda"],
+            "operator": "bilaplacian",
+            "distributions": ["normal"],
+            # exact takes 4.5 D**2 - 1.5 D + 4 = 109, randomized takes 2 + 3S, so
+            # choosing S <= 36 because for S=36 we can compute the Bi-Laplacian exactly
+            "nums_samples": linspace(1, 36, 10).int().unique().tolist(),
+        },
+        # what to plot: x-axis is nums_samples and each strategy is plotted in a curve
+        ("num_samples", "strategy"),
+    ),
+    # Experiment 4: Exact Bi-Laplacian, vary batch size
     (  # Experiment name, must be unique
         "jax_bilaplacian_vary_batch_size",
         # Experiment parameters
@@ -54,12 +90,28 @@ EXPERIMENTS = [
     ),
 ]
 
-if __name__ == "__main__":
-    names = [name for (name, _, _) in EXPERIMENTS]
-    if len(names) != len(set(names)):
-        raise ValueError(f"Experiment names must be unique. Got: {names}.")
+# make sure experiment names are unique
+names = [name for (name, _, _) in EXPERIMENTS]
+if len(names) != len(set(names)):
+    raise ValueError(f"Experiment names must be unique. Got: {names}.")
 
-    for name, experiment, _ in EXPERIMENTS:
+
+if __name__ == "__main__":
+    parser = ArgumentParser(description="Run benchmark experiments")
+    parser.add_argument(
+        "--experiment_idx",
+        type=int,
+        choices=range(len(EXPERIMENTS)),
+        help="Index of the experiment to run (if unspecified, run all experiments)",
+        required=False,
+    )
+    args = parser.parse_args()
+
+    idx = args.experiment_idx
+    run_experiments = EXPERIMENTS if idx is None else [EXPERIMENTS[idx]]
+    print(f"Running {'all experiments' if idx is None else f'experiment {idx}'}.")
+
+    for name, experiment, _ in run_experiments:
         measure(
             **experiment,
             name=name,

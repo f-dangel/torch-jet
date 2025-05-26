@@ -613,7 +613,6 @@ def get_function_and_description(
     )
     description = f"{strategy}, {compiled=}"
     if is_stochastic:
-        # Can I write this shorter in Python 3.12.? AI!
         description += f", {distribution=}, {num_samples=}"
 
     if operator == "bilaplacian":

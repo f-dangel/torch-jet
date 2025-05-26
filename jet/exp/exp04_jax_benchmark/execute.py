@@ -310,9 +310,7 @@ def randomized_laplacian_function(
     X: ArrayLike,
     is_batched: bool,
     strategy: str,
-    distribution: str,
-    num_samples: int,
-) -> Callable[[list[ArrayLike], ArrayLike], ArrayLike]:
+) -> Callable[[list[ArrayLike], ArrayLike, ArrayLike], ArrayLike]:
     """Construct function to compute the MC Laplacian in JAX with different strategies.
 
     The MC-Laplacian is computed with 2-jets or nested vector-Hessian-vector products.
@@ -328,27 +326,18 @@ def randomized_laplacian_function(
             - `'hessian_trace'`: The MC Laplacian is computed by multiplying the Hessian
               against random vectors, using VHVPs.
             - `'jet_naive'`: The Laplacian is approximated using 2-jets.
-        distribution: The distribution to use for the random vectors. Can be `'normal'`.
-        num_samples: The number of samples to use for the random vectors.
 
     Returns:
-        A function that computes the MC Bi-Laplacian of f given X and params.
+        A function that computes the MC Bi-Laplacian of f given params, X, and V.
     """
     _, f = params_and_f
     dummy_X = X[0] if is_batched else X
-
-    # draw random vectors
-    key = PRNGKey(2)
-    sample_func = {"normal": normal}[distribution]
-    V = device_put(
-        sample_func(key, shape=(num_samples, *X.shape), dtype=dummy_X.dtype),
-        dummy_X.device,
-    )
 
     if strategy == "hessian_trace":
         d2f_vv = vector_hessian_vector_product(f, dummy_X)
 
     elif strategy == "jet_naive":
+        v2 = zeros(dummy_X.shape, dtype=dummy_X.dtype, device=dummy_X.device)
 
         def d2f_vv(params: list[ArrayLike], x: ArrayLike, v: ArrayLike) -> ArrayLike:
             """Multiply the 2-nd order derivative tensor with v.
@@ -362,7 +351,6 @@ def randomized_laplacian_function(
                 The 2-nd order derivative tensor of f at x multiplied with v.
                 Has the same shape as f(params, x).
             """
-            v2 = zeros(dummy_X.shape, dtype=dummy_X.dtype, device=dummy_X.device)
             _, (_, f2) = jet(lambda x: f(params, x), (x,), ((v, v2),))
             return f2
 
@@ -373,11 +361,10 @@ def randomized_laplacian_function(
     if is_batched:
         d2f_vv = vmap(d2f_vv, in_axes=[None, 0, 0])
 
-    # vmap over vectors and fix them
+    # vmap over vectors
     d2f_VV = vmap(d2f_vv, in_axes=[None, None, 0])
-    d2f_fix_V = lambda params, X: d2f_VV(params, X, V)  # noqa: E731
 
-    return lambda params, X: d2f_fix_V(params, X).mean(0) / 3
+    return lambda params, X, V: d2f_VV(params, X, V).mean(0) / 3
 
 
 def bilaplacian_function(
@@ -434,9 +421,7 @@ def randomized_bilaplacian_function(
     X: ArrayLike,
     is_batched: bool,
     strategy: str,
-    distribution: str,
-    num_samples: int,
-) -> Callable[[list[ArrayLike], ArrayLike], ArrayLike]:
+) -> Callable[[list[ArrayLike], ArrayLike, ArrayLike], ArrayLike]:
     """Construct function to compute the MC Bi-Laplace in JAX with different strategies.
 
     The Bi-Laplacian is computed with 4-jets or nested vector-Hessian-vector products.
@@ -452,22 +437,12 @@ def randomized_bilaplacian_function(
             - `'hessian_trace'`: The MC Bi-Laplacian is computed by multiplying the
               tensor of 4th-order derivatives against random vectors, using VHVPs
             - `'jet_naive'`: The Bi-Laplacian is approximated using 4-jets.
-        distribution: The distribution to use for the random vectors. Can be `'normal'`.
-        num_samples: The number of samples to use for the random vectors.
 
     Returns:
-        A function that computes the MC Bi-Laplacian of f given X and params.
+        A function that computes the MC Bi-Laplacian of f given params, X, and V.
     """
     _, f = params_and_f
     dummy_X = X[0] if is_batched else X
-
-    # draw random vectors
-    key = PRNGKey(2)
-    sample_func = {"normal": normal}[distribution]
-    V = device_put(
-        sample_func(key, shape=(num_samples, *X.shape), dtype=dummy_X.dtype),
-        dummy_X.device,
-    )
 
     if strategy == "hessian_trace":
         # nest vector-Hessian-vector products to multiply with 4th-order derivatives
@@ -477,6 +452,8 @@ def randomized_bilaplacian_function(
         )(params, x, v)
 
     elif strategy == "jet_naive":
+
+        v234 = zeros(dummy_X.shape, dtype=dummy_X.dtype, device=dummy_X.device)
 
         def d4f_vvvv(params: list[ArrayLike], x: ArrayLike, v: ArrayLike) -> ArrayLike:
             """Multiply the 4-th order derivative tensor with v.
@@ -490,7 +467,6 @@ def randomized_bilaplacian_function(
                 The 4-th order derivative tensor of f at x multiplied with v.
                 Has the same shape as f(params, x).
             """
-            v234 = zeros(dummy_X.shape, dtype=dummy_X.dtype, device=dummy_X.device)
             _, (_, _, _, f4) = jet(
                 lambda x: f(params, x), (x,), ((v, v234, v234, v234),)
             )
@@ -503,11 +479,10 @@ def randomized_bilaplacian_function(
     if is_batched:
         d4f_vvvv = vmap(d4f_vvvv, in_axes=[None, 0, 0])
 
-    # vmap over vectors and fix them
+    # vmap over vectors
     d4f_VVVV = vmap(d4f_vvvv, in_axes=[None, None, 0])
-    d4f_fix_V = lambda params, X: d4f_VVVV(params, X, V)  # noqa: E731
 
-    return lambda params, X: d4f_fix_V(params, X).mean(0) / 3
+    return lambda params, X, V: d4f_VVVV(params, X, V).mean(0) / 3
 
 
 def get_function_and_description(
@@ -541,46 +516,50 @@ def get_function_and_description(
         NotImplementedError: If the specified mode is stochastic.
     """
     is_stochastic = distribution is not None and num_samples is not None
-    args = (
-        (params_and_net, X, is_batched, strategy, distribution, num_samples)
-        if is_stochastic
-        else (params_and_net, X, is_batched, strategy)
-    )
     description = f"{strategy}, compiled=True"
     if is_stochastic:
         description += f", {distribution=}, {num_samples=}"
 
     if operator == "laplacian":
-        op_func = (
-            randomized_laplacian_function(*args)
-            if is_stochastic
-            else laplacian_function(*args)
+        make_func = (
+            randomized_laplacian_function if is_stochastic else laplacian_function
         )
     elif operator == "bilaplacian":
-        op_func = (
-            randomized_bilaplacian_function(*args)
-            if is_stochastic
-            else bilaplacian_function(*args)
+        make_func = (
+            randomized_bilaplacian_function if is_stochastic else bilaplacian_function
         )
     else:
         raise ValueError(f"Unsupported operator: {operator}.")
 
-    op_func = jit(op_func)
+    # Set up the function that computes the operator given (params, X) in the exact,
+    # and (params, X, V) in the stochastic setting.
+    args = (params_and_net, X, is_batched, strategy)
+    func = make_func(*args)
 
-    # function that computes the Laplacian
-    func = lambda: op_func(params, X)  # noqa: E731
-    # function that computes the operator's gradient used as proxy for the
-    # computation graph's memory footprint
-    summed_op_func = lambda params, X: op_func(params, X).sum()  # noqa: E731
-    grad_func = lambda: grad(summed_op_func, argnums=0)(params, X)  # noqa: E731
+    # Set up the function that computes the gradient w.r.t. params.
+    # Used as proxy for the computation graph's memory footprint.
+    grad_func = grad(lambda *args: func(*args).sum(), argnums=0)
 
     # jit the functions
     func, grad_func = jit(func), jit(grad_func)
 
+    # prepare the function arguments
+    func_args = (params, X)
+
+    if is_stochastic:
+        # draw random vectors and append them to the function arguments
+        key = PRNGKey(2)
+        sample_func = {"normal": normal}[distribution]
+        V = device_put(
+            sample_func(key, shape=(num_samples, *X.shape), dtype=X.dtype),
+            X.device,
+        )
+        func_args += (V,)
+
     # add a trailing statement to wait until the computations are done
     return (
-        lambda: block_until_ready(func()),
-        lambda: block_until_ready(grad_func()),
+        lambda: block_until_ready(func(*func_args)),
+        lambda: block_until_ready(grad_func(*func_args)),
         description,
     )
 

@@ -42,7 +42,7 @@ from test.test_weighted_laplacian import weighted_laplacian
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 from pytest import mark, skip
-from torch import Size, Tensor, arange, manual_seed, rand, rand_like
+from torch import Size, Tensor, arange, manual_seed, rand
 from torch.fx import Graph, GraphModule, symbolic_trace, wrap
 from torch.nn import Module
 
@@ -521,6 +521,55 @@ def test_common_subexpression_elimination():
     report_nonclose(f_x, f_traced(x), name="f(x)")
 
 
+class Collapsed(Module):
+    """Layer that computes a collapsed K-jet of a function along random directions."""
+
+    def __init__(
+        self,
+        f: Callable[[Tensor], Tensor],
+        dummy_x: Tensor,
+        is_batched: bool,
+        k: int,
+        num_vectors: int = 3,
+    ) -> None:
+        """Trace-able layer that computes a collapsed K-jet along random directions.
+
+        Args:
+            f: The function whose K-jet to compute.
+            dummy_x: A dummy input tensor to determine the shape and dtype of the
+                input tensor.
+            is_batched: Whether the input tensor is batched.
+            k: The order of the Taylor expansion.
+            num_vectors: The number of vectors to use for the K-jet. Default: `3`.
+        """
+        super().__init__()
+        self.jet_f = jet(f, k, vmap=is_batched)
+        self.x_shape = dummy_x.shape
+        self.x_kwargs = {"dtype": dummy_x.dtype, "device": dummy_x.device}
+        self.k = k
+        self.num_vectors = num_vectors
+
+    def forward(self, x: Tensor) -> Tuple[Tensor, ...]:
+        """Compute the collapsed K-jet along random directions.
+
+        Args:
+            x: The input tensor.
+
+        Returns:
+            A tuple containing the non-collapsed K-jet components and the collapsed
+            K-jet component, which is the sum of all non-collapsed components.
+        """
+        vs = [
+            rand(self.num_vectors, *self.x_shape, **self.x_kwargs)
+            for _ in range(self.k)
+        ]
+        x_replicated = replicate(x, self.num_vectors)
+        jet_out = self.jet_f(x_replicated, *vs)
+        non_collapsed = jet_out[: self.k]
+        collapsed = sum_vmapped(jet_out[self.k])
+        return (*non_collapsed, collapsed)
+
+
 @mark.parametrize("config", ATOMIC_CASES, ids=ATOMIC_CASE_IDS)
 @mark.parametrize(
     "k", list(range(1, K_MAX + 1)), ids=[f"{k=}" for k in range(1, K_MAX + 1)]
@@ -528,37 +577,16 @@ def test_common_subexpression_elimination():
 def test_simplify_collapsed_K_jet(
     config: Dict[str, Any], k: int, num_vectors: int = 3
 ) -> None:
+    """Sum backpropagation through a summed K-jet.
+
+    Args:
+        config: The configuration of the test case.
+        k: The order of the Taylor expansion.
+        num_vectors: The number of vectors to use for the K-jet. Default: `3`.
+    """
     f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
     if config["k_max"] < k:
-        skip(f"Skipping {config['id']} for k={k} because k_max={config['k_max']}.")
-
-    class Collapsed(Module):
-        def __init__(
-            self,
-            f: Callable[[Tensor], Tensor],
-            dummy_x: Tensor,
-            is_batched: bool,
-            k: int,
-            num_vectors: int = 3,
-        ) -> None:
-            """Initialize the `Collapsed` module."""
-            super().__init__()
-            self.jet_f = jet(f, k, vmap=is_batched)
-            self.x_shape = dummy_x.shape
-            self.x_kwargs = {"dtype": dummy_x.dtype, "device": dummy_x.device}
-            self.k = k
-            self.num_vectors = num_vectors
-
-        def forward(self, x):
-            """Compute the collapsed K-jet."""
-            vs = [
-                rand(num_vectors, *self.x_shape, **self.x_kwargs) for _ in range(self.k)
-            ]
-            x_replicated = replicate(x, num_vectors)
-            jet_out = self.jet_f(x_replicated, *vs)
-            non_collapsed = jet_out[: self.k]
-            collapsed = sum_vmapped(jet_out[self.k])
-            return (*non_collapsed, collapsed)
+        skip(f"Skipping {config['id']} for {k=} because k_max={config['k_max']}.")
 
     collapsed = Collapsed(f, x, is_batched, k)
     traced = symbolic_trace(collapsed)

@@ -82,13 +82,32 @@ def check_jet(f: Callable[[Primal], Value], arg: PrimalAndCoefficients, vmap: bo
 
 
 INF = float("inf")
-CASES_COMPACT = [
+
+# contains only atomic functions
+ATOMIC_CASES = [
     # 1d sine function
-    {"f": lambda x: sin(x), "shape": (1,), "k_max": INF, "id": "sin"},
+    {"f": sin, "shape": (1,), "k_max": INF, "id": "sin"},
+    # 2d sine function
+    {"f": sin, "shape": (2,), "k_max": INF, "id": "sin"},
+    # 3d tanh function
+    {"f": tanh, "shape": (5,), "k_max": INF, "id": "tanh"},
+    # 4d sigmoid function
+    {"f": sigmoid, "shape": (4,), "k_max": INF, "id": "sigmoid"},
+    # linear layer
+    {"f": Linear(4, 2), "shape": (4,), "k_max": INF, "id": "linear"},
+]
+ATOMIC_CASE_IDS = []
+for atomic in ATOMIC_CASES:
+    shape = atomic["shape"]
+    ID = f"{atomic['id']}-{'_'.join([str(s) for s in shape])}d"
+    atomic["is_batched"] = atomic.get("is_batched", False)
+    ATOMIC_CASE_IDS.append(ID)
+
+# contains only composed atomic functions
+CASES_COMPACT = [
+    *ATOMIC_CASES,
     # 2d sin(sin) function
     {"f": lambda x: sin(sin(x)), "shape": (2,), "k_max": INF, "id": "sin-sin"},
-    # 2d sine function
-    {"f": lambda x: sin(x), "shape": (2,), "k_max": INF, "id": "sin"},
     # 2d tanh(tanh) function
     {"f": lambda x: tanh(tanh(x)), "shape": (2,), "k_max": INF, "id": "tanh-tanh"},
     # 2d linear(tanh) function

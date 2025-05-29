@@ -25,10 +25,13 @@ There are three kinds of tests:
 
 from functools import partial
 from test.test___init__ import (
+    ATOMIC_CASE_IDS,
+    ATOMIC_CASES,
     CASE_IDS,
     CASES,
     CASES_COMPACT,
     CASES_COMPACT_IDS,
+    K_MAX,
     compare_jet_results,
     report_nonclose,
     setup_case,
@@ -38,8 +41,8 @@ from test.test_laplacian import DISTRIBUTION_IDS, DISTRIBUTIONS, laplacian
 from test.test_weighted_laplacian import weighted_laplacian
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
-from pytest import mark
-from torch import Size, Tensor, arange, manual_seed
+from pytest import mark, skip
+from torch import Size, Tensor, arange, manual_seed, rand, rand_like
 from torch.fx import Graph, GraphModule, symbolic_trace, wrap
 from torch.nn import Module
 
@@ -56,6 +59,7 @@ from jet.utils import (
     PrimalAndCoefficients,
     ValueAndCoefficients,
     WrapperModule,
+    integer_partitions,
     recursive_getattr,
     replicate,
     sum_vmapped,
@@ -515,6 +519,63 @@ def test_common_subexpression_elimination():
     assert len(list(f_traced.graph.nodes)) == 5
 
     report_nonclose(f_x, f_traced(x), name="f(x)")
+
+
+@mark.parametrize("config", ATOMIC_CASES, ids=ATOMIC_CASE_IDS)
+@mark.parametrize(
+    "k", list(range(1, K_MAX + 1)), ids=[f"{k=}" for k in range(1, K_MAX + 1)]
+)
+def test_simplify_collapsed_K_jet(
+    config: Dict[str, Any], k: int, num_vectors: int = 3
+) -> None:
+    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    if config["k_max"] < k:
+        skip(f"Skipping {config['id']} for k={k} because k_max={config['k_max']}.")
+
+    class Collapsed(Module):
+        def __init__(
+            self,
+            f: Callable[[Tensor], Tensor],
+            dummy_x: Tensor,
+            is_batched: bool,
+            k: int,
+            num_vectors: int = 3,
+        ) -> None:
+            """Initialize the `Collapsed` module."""
+            super().__init__()
+            self.jet_f = jet(f, k, vmap=is_batched)
+            self.x_shape = dummy_x.shape
+            self.x_kwargs = {"dtype": dummy_x.dtype, "device": dummy_x.device}
+            self.k = k
+            self.num_vectors = num_vectors
+
+        def forward(self, x):
+            """Compute the collapsed K-jet."""
+            vs = [
+                rand(num_vectors, *self.x_shape, **self.x_kwargs) for _ in range(self.k)
+            ]
+            x_replicated = replicate(x, num_vectors)
+            jet_out = self.jet_f(x_replicated, *vs)
+            non_collapsed = jet_out[: self.k]
+            collapsed = sum_vmapped(jet_out[self.k])
+            return (*non_collapsed, collapsed)
+
+    collapsed = Collapsed(f, x, is_batched, k)
+    traced = symbolic_trace(collapsed)
+    simple = simplify(traced, test_x=x, verbose=True)
+
+    # figure out how many tensor constants were collapsed
+    terms = list(integer_partitions(k))
+    if config["id"] == "linear":
+        terms = [t for t in terms if len(t) == 1]
+    num_collapsed = len(terms)
+
+    ensure_tensor_constants_collapsed(
+        simple,
+        collapsed_shape=x.shape,
+        non_collapsed_shape=(num_vectors, *x.shape),
+        at_least=num_collapsed,
+    )
 
 
 @mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)

@@ -89,6 +89,12 @@ def bilaplacian_naive(
     f_X = f(X)
     bilap = zeros_like(f_X).flatten()
 
+    grad_kwargs = {
+        "allow_unused": True,
+        "materialize_grads": True,
+        "create_graph": True,
+    }
+
     # loop over all components of f(X) and compute their bi-Laplacian
     for k, f_k in enumerate(f_X.flatten()):
 
@@ -98,12 +104,12 @@ def bilaplacian_naive(
             e_i[i] = 1
             e_i = e_i.view_as(X)
 
-            (df,) = grad(f_k, X, create_graph=True)
-            (d2f,) = grad((df * e_i).sum(), X, create_graph=True)
+            (df,) = grad(f_k, X, **grad_kwargs)
+            (d2f,) = grad((df * e_i).sum(), X, **grad_kwargs)
 
             # the third derivative can be re-cycled for all xⱼ
             d2f_ii = (d2f * e_i).sum()
-            (d3f,) = grad(d2f_ii, X, create_graph=True)
+            (d3f,) = grad(d2f_ii, X, **grad_kwargs)
 
             # differentiate twice w.r.t. xⱼ
             for j in range(D):
@@ -111,7 +117,7 @@ def bilaplacian_naive(
                 e_j[j] = 1
                 e_j = e_j.view_as(X)
 
-                (d4f,) = grad((d3f * e_j).sum(), X, create_graph=True)
+                (d4f,) = grad((d3f * e_j).sum(), X, **grad_kwargs)
                 d4f_ii_jj = (d4f * e_j).sum()
 
                 bilap[k] += d4f_ii_jj.detach() if detach else d4f_ii_jj

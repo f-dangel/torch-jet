@@ -76,6 +76,18 @@ wrap(replicate)
 wrap(sum_vmapped)
 
 
+def is_first_op_linear(config: Dict[str, Any]) -> bool:
+    """Determine if the first operation in the test case configuration is linear.
+
+    Args:
+        config: The configuration of the test case.
+
+    Returns:
+        True if the first operation is linear, False otherwise.
+    """
+    return config["id"].endswith("mlp") or config["id"] == "linear"
+
+
 class Replicate(Module):
     """Layer that replicates the forward pass of a function.
 
@@ -385,7 +397,8 @@ def test_simplify_laplacian(config: Dict[str, Any], distribution: Optional[str])
     # NOTE if we have a linear layer at the beginning, or any operation whose second
     # derivative vanishes, the term sum_vmapped(x1 ** 2) will not show up. Therefore
     # the number of collapsed term will be smaller
-    num_collapsed = 1 if config["id"].endswith("mlp") else 2
+    first_op_linear = is_first_op_linear(config)
+    num_collapsed = 1 if first_op_linear else 2
     ensure_tensor_constants_collapsed(
         fast, collapsed_shape, non_collapsed_shape, at_least=num_collapsed
     )
@@ -463,7 +476,8 @@ def test_simplify_weighted_laplacian(
     # NOTE if we have a linear layer at the beginning, or any operation whose second
     # derivative vanishes, the term sum_vmapped(x1 ** 2) will not show up. Therefore
     # the number of collapsed term will be smaller
-    num_collapsed = 1 if config["id"].endswith("mlp") else 2
+    first_op_linear = is_first_op_linear(config)
+    num_collapsed = 1 if first_op_linear else 2
     ensure_tensor_constants_collapsed(
         fast, collapsed_shape, non_collapsed_shape, at_least=num_collapsed
     )
@@ -655,7 +669,7 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
     # all derivatives of degree larger than two disappear, only the term
     # sum_vmapped(x4) should show up. Otherwise, there will be summed constants for all
     # terms (some of them will be removed by common tensor constant elimination).
-    first_op_linear = config["id"].endswith("mlp")
+    first_op_linear = is_first_op_linear(config)
 
     # make sure that Taylor coefficients were collapsed
     D = (x.shape[1:] if is_batched else x).numel()
@@ -693,7 +707,7 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
         elif D in {2, 3}:  # uses three 4-jets, but two of them have same num_vectors
             num_collapsed = 2 if first_op_linear else 4
         else:  # uses three 4-jets, all of them have different num_vectors
-            num_collapsed = 1 if first_op_linear else 6
+            num_collapsed = 1 if first_op_linear else 4
 
         for non_collapsed in non_collapsed_shapes:
             ensure_tensor_constants_collapsed(

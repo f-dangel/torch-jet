@@ -602,7 +602,7 @@ def test_simplify_collapsed_K_jet(
     if config["k_max"] < k:
         skip(f"Skipping {config['id']} for {k=} because k_max={config['k_max']}.")
 
-    collapsed = Collapsed(f, x, is_batched, k)
+    collapsed = Collapsed(f, x, is_batched, k, num_vectors=num_vectors)
     traced = symbolic_trace(collapsed)
     simple = simplify(traced, test_x=x, verbose=True)
 

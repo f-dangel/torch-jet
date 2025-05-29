@@ -115,12 +115,16 @@ def _check_mc_convergence(
     estimate = 0.0
     converged = False
 
+    norm_truth = norm(truth)
+    if norm_truth == 0.0:  # add a small damping value
+        norm_truth = 1e-10
+
     for i in range(max_num_chunks):
         estimate_i = sample(i)
         # update the Monte-Carlo estimator with the current chunk
         estimate = (estimate * i + estimate_i.detach()) / (i + 1.0)
 
-        rel_error = (norm(estimate - truth) / norm(truth)).item()
+        rel_error = (norm(estimate - truth) / norm_truth).item()
         print(f"Relative error at {(i + 1) * chunk_size} samples: {rel_error:.3e}.")
 
         # check for convergence

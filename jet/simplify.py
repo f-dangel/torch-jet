@@ -162,7 +162,7 @@ class RewriteReplicate:
                 return pattern
 
     def maybe_erase(self, node: Node) -> bool:
-        """Remove a node if it has no children.
+        """Remove a node if it has no children and does not represent a variable.
 
         Args:
             node: The node to be checked for removal.
@@ -172,6 +172,9 @@ class RewriteReplicate:
         """
         if node.op == "output":
             self.maybe_print(f"Not removing {node} because it is an output node.")
+            return False
+        elif node.op == "placeholder":
+            self.maybe_print(f"Not removing {node} because it is a placeholder.")
             return False
 
         children = self.children(node)

@@ -278,7 +278,7 @@ def test_randomized_bilaplacian_functions_converge(
     strategy: str,
     distribution: str,
     max_num_chunks: int = 128,
-    chunk_size: int = 64,
+    chunk_size: int = 128,
     target_rel_error: float = 5e-2,
 ):
     """Test that the benchmarked MC-Bi-Laplacian functions converge.
@@ -288,7 +288,7 @@ def test_randomized_bilaplacian_functions_converge(
         strategy: The strategy to test.
         distribution: The distribution from which to draw random vectors.
         max_num_chunks: Maximum number of chunks to accumulate. Default: `128`.
-        chunk_size: Number of samples per chunk. Default: `64`.
+        chunk_size: Number of samples per chunk. Default: `128`.
         target_rel_error: Target relative error for convergence. Default: `5e-2`.
     """
     f, X, _, is_batched = setup_case(config, taylor_coefficients=False)

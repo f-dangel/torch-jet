@@ -117,7 +117,11 @@ def bilaplacian_naive(
                 e_j[j] = 1
                 e_j = e_j.view_as(X)
 
-                (d4f,) = grad((d3f * e_j).sum(), X, **grad_kwargs)
+                (d4f,) = (
+                    grad((d3f * e_j).sum(), X, **grad_kwargs)
+                    if d3f.requires_grad
+                    else (zeros_like(X),)
+                )
                 d4f_ii_jj = (d4f * e_j).sum()
 
                 bilap[k] += d4f_ii_jj.detach() if detach else d4f_ii_jj

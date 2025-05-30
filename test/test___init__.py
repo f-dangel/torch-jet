@@ -95,6 +95,12 @@ ATOMIC_CASES = [
     {"f": sigmoid, "shape": (4,), "k_max": INF, "id": "sigmoid"},
     # linear layer
     {"f": Linear(4, 2), "shape": (4,), "k_max": INF, "id": "linear"},
+    # 5d power function, two non-vanishing derivatives
+    {"f": lambda x: x**2, "shape": (5,), "k_max": INF, "id": "pow-2"},
+    # 5d power function, ten non-vanishing derivatives
+    {"f": lambda x: x**10, "shape": (5,), "k_max": INF, "id": "pow-10"},
+    # 5d power function, non-vanishing derivatives
+    {"f": lambda x: x**1.5, "shape": (5,), "k_max": INF, "id": "pow-1.5"},
 ]
 ATOMIC_CASE_IDS = []
 for atomic in ATOMIC_CASES:

@@ -610,6 +610,10 @@ def test_simplify_collapsed_K_jet(
     terms = list(integer_partitions(k))
     if config["id"] == "linear":
         terms = [t for t in terms if len(t) == 1]
+    elif config["id"] == "pow-2":
+        terms = [t for t in terms if len(t) <= 2]
+    elif config["id"] == "pow-10":
+        terms = [t for t in terms if len(t) <= 10]
     num_collapsed = len(terms)
 
     ensure_tensor_constants_collapsed(

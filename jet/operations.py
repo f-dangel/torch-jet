@@ -1,5 +1,6 @@
 """Implementation of AD primitives in Taylor-mode arithmetic."""
 
+import operator
 from typing import Dict, List, Optional, Tuple
 
 from scipy.special import factorial, stirling2
@@ -30,6 +31,9 @@ def _faa_di_bruno(vs: Tuple[Primal, ...], K: int, dn: Dict[int, Primal]) -> List
     vs_out = []
     for k in range(K):
         for idx, sigma in enumerate(integer_partitions(k + 1)):
+            if dn[len(sigma)] is None:
+                continue
+
             vs_count = {i: sigma.count(i) for i in sigma}
             vs_contract = [
                 vs[i - 1] ** count if count > 1 else vs[i - 1]
@@ -198,9 +202,48 @@ def jet_linear(
     return (linear_x, *vs_out)
 
 
+def jet_pow(
+    s: PrimalAndCoefficients, exponent: float | int, K: int, vmap: bool
+) -> ValueAndCoefficients:
+    """Taylor-mode arithmetic for the power function with integer exponent.
+
+    Args:
+        s: The primal and its Taylor coefficients.
+        exponent: The integer exponent.
+        K: The order of the Taylor expansion.
+        vmap: Whether to `vmap` the primal value and its Taylor coefficients.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    x, vs = s[0], s[1:]
+
+    # Compute the primal value
+    pow_x = x**exponent
+
+    # Pre-compute derivatives
+    dpow = {0: pow_x}
+    for k in range(1, K + 1):
+        if exponent - k < 0 and int(exponent) == exponent:
+            dpow[k] = None
+        elif exponent == k:
+            dpow[k] = factorial(exponent, exact=True)
+        else:
+            scale = 1
+            for i in range(1, k + 1):
+                scale *= exponent + 1 - i
+            dpow[k] = scale * x if exponent - k == 1 else scale * x ** (exponent - k)
+
+    # Compute Taylor coefficients using Faà di Bruno's formula
+    vs_out = _faa_di_bruno(vs, K, dpow)
+
+    return (pow_x, *vs_out)
+
+
 MAPPING = {
     sin: jet_sin,
     tanh: jet_tanh,
     sigmoid: jet_sigmoid,
     linear: jet_linear,
+    operator.pow: jet_pow,
 }

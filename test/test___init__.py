@@ -86,21 +86,69 @@ INF = float("inf")
 # contains only atomic functions
 ATOMIC_CASES = [
     # 1d sine function
-    {"f": sin, "shape": (1,), "k_max": INF, "id": "sin"},
+    {
+        "f": sin,
+        "shape": (1,),
+        "k_max": INF,
+        "id": "sin",
+        "first_op_vanishing_derivatives": None,
+    },
     # 2d sine function
-    {"f": sin, "shape": (2,), "k_max": INF, "id": "sin"},
+    {
+        "f": sin,
+        "shape": (2,),
+        "k_max": INF,
+        "id": "sin",
+        "first_op_vanishing_derivatives": None,
+    },
     # 3d tanh function
-    {"f": tanh, "shape": (5,), "k_max": INF, "id": "tanh"},
+    {
+        "f": tanh,
+        "shape": (5,),
+        "k_max": INF,
+        "id": "tanh",
+        "first_op_vanishing_derivatives": None,
+    },
     # 4d sigmoid function
-    {"f": sigmoid, "shape": (4,), "k_max": INF, "id": "sigmoid"},
+    {
+        "f": sigmoid,
+        "shape": (4,),
+        "k_max": INF,
+        "id": "sigmoid",
+        "first_op_vanishing_derivatives": None,
+    },
     # linear layer
-    {"f": Linear(4, 2), "shape": (4,), "k_max": INF, "id": "linear"},
+    {
+        "f": Linear(4, 2),
+        "shape": (4,),
+        "k_max": INF,
+        "id": "linear",
+        "first_op_vanishing_derivatives": 2,
+    },
     # 5d power function, two non-vanishing derivatives
-    {"f": lambda x: x**2, "shape": (5,), "k_max": INF, "id": "pow-2"},
+    {
+        "f": lambda x: x**2,
+        "shape": (5,),
+        "k_max": INF,
+        "id": "pow-2",
+        "first_op_vanishing_derivatives": 3,
+    },
     # 5d power function, ten non-vanishing derivatives
-    {"f": lambda x: x**10, "shape": (5,), "k_max": INF, "id": "pow-10"},
+    {
+        "f": lambda x: x**10,
+        "shape": (5,),
+        "k_max": INF,
+        "id": "pow-10",
+        "first_op_vanishing_derivatives": 11,
+    },
     # 5d power function, non-vanishing derivatives
-    {"f": lambda x: x**1.5, "shape": (5,), "k_max": INF, "id": "pow-1.5"},
+    {
+        "f": lambda x: x**1.5,
+        "shape": (5,),
+        "k_max": INF,
+        "id": "pow-1.5",
+        "first_op_vanishing_derivatives": None,
+    },
 ]
 ATOMIC_CASE_IDS = []
 for atomic in ATOMIC_CASES:
@@ -113,9 +161,21 @@ for atomic in ATOMIC_CASES:
 CASES_COMPACT = [
     *ATOMIC_CASES,
     # 2d sin(sin) function
-    {"f": lambda x: sin(sin(x)), "shape": (2,), "k_max": INF, "id": "sin-sin"},
+    {
+        "f": lambda x: sin(sin(x)),
+        "shape": (2,),
+        "k_max": INF,
+        "id": "sin-sin",
+        "first_op_vanishing_derivatives": None,
+    },
     # 2d tanh(tanh) function
-    {"f": lambda x: tanh(tanh(x)), "shape": (2,), "k_max": INF, "id": "tanh-tanh"},
+    {
+        "f": lambda x: tanh(tanh(x)),
+        "shape": (2,),
+        "k_max": INF,
+        "id": "tanh-tanh",
+        "first_op_vanishing_derivatives": None,
+    },
     # 2d linear(tanh) function
     {
         "f": lambda x: linear(
@@ -126,6 +186,7 @@ CASES_COMPACT = [
         "shape": (3,),
         "k_max": INF,
         "id": "tanh-linear",
+        "first_op_vanishing_derivatives": None,
     },
     # 5d tanh-activated two-layer MLP
     {
@@ -135,6 +196,7 @@ CASES_COMPACT = [
         "shape": (5,),
         "k_max": INF,
         "id": "two-layer-tanh-mlp",
+        "first_op_vanishing_derivatives": 2,
     },
     # 5d tanh-activated two-layer MLP with batched input
     {
@@ -145,6 +207,7 @@ CASES_COMPACT = [
         "k_max": INF,
         "is_batched": True,
         "id": "batched-two-layer-tanh-mlp",
+        "first_op_vanishing_derivatives": 2,
     },
     # 3d sigmoid(sigmoid) function
     {
@@ -152,6 +215,7 @@ CASES_COMPACT = [
         "shape": (3,),
         "k_max": INF,
         "id": "sigmoid-sigmoid",
+        "first_op_vanishing_derivatives": None,
     },
 ]
 CASES_COMPACT_IDS = []

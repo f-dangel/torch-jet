@@ -76,16 +76,23 @@ wrap(replicate)
 wrap(sum_vmapped)
 
 
-def is_first_op_linear(config: Dict[str, Any]) -> bool:
-    """Determine if the first operation in the test case configuration is linear.
+def num_collapsed_tensor_constants(
+    K: int, first_op_vanishing_derivatives: int | None
+) -> int:
+    """Determine the number of collapsed tensor constants in a collapsed K-jet.
 
     Args:
-        config: The configuration of the test case.
+        K: The order of the Taylor expansion.
+        first_op_vanishing_derivatives: The number of vanishing derivatives of the
+            first operation. If `None`, all derivatives are non-zero.
 
     Returns:
-        True if the first operation is linear, False otherwise.
+        The number of collapsed tensor constants.
     """
-    return config["id"].endswith("mlp") or config["id"] == "linear"
+    terms = list(integer_partitions(K))
+    if first_op_vanishing_derivatives is not None:
+        terms = [t for t in terms if len(t) < first_op_vanishing_derivatives]
+    return len(terms)
 
 
 class Replicate(Module):
@@ -394,11 +401,10 @@ def test_simplify_laplacian(config: Dict[str, Any], distribution: Optional[str])
     non_collapsed_shape = (num_vectors, *x.shape)
     collapsed_shape = x.shape
 
-    # NOTE if we have a linear layer at the beginning, or any operation whose second
-    # derivative vanishes, the term sum_vmapped(x1 ** 2) will not show up. Therefore
-    # the number of collapsed term will be smaller
-    first_op_linear = is_first_op_linear(config)
-    num_collapsed = 1 if first_op_linear else 2
+    K = 2
+    num_collapsed = num_collapsed_tensor_constants(
+        K, config["first_op_vanishing_derivatives"]
+    )
     ensure_tensor_constants_collapsed(
         fast, collapsed_shape, non_collapsed_shape, at_least=num_collapsed
     )
@@ -473,11 +479,10 @@ def test_simplify_weighted_laplacian(
     non_collapsed_shape = (num_vectors, *x.shape)
     collapsed_shape = x.shape
 
-    # NOTE if we have a linear layer at the beginning, or any operation whose second
-    # derivative vanishes, the term sum_vmapped(x1 ** 2) will not show up. Therefore
-    # the number of collapsed term will be smaller
-    first_op_linear = is_first_op_linear(config)
-    num_collapsed = 1 if first_op_linear else 2
+    K = 2
+    num_collapsed = num_collapsed_tensor_constants(
+        K, config["first_op_vanishing_derivatives"]
+    )
     ensure_tensor_constants_collapsed(
         fast, collapsed_shape, non_collapsed_shape, at_least=num_collapsed
     )
@@ -606,16 +611,9 @@ def test_simplify_collapsed_K_jet(
     traced = symbolic_trace(collapsed)
     simple = simplify(traced, test_x=x, verbose=True)
 
-    # figure out how many tensor constants were collapsed
-    terms = list(integer_partitions(k))
-    if config["id"] == "linear":
-        terms = [t for t in terms if len(t) == 1]
-    elif config["id"] == "pow-2":
-        terms = [t for t in terms if len(t) <= 2]
-    elif config["id"] == "pow-10":
-        terms = [t for t in terms if len(t) <= 10]
-    num_collapsed = len(terms)
-
+    num_collapsed = num_collapsed_tensor_constants(
+        k, config["first_op_vanishing_derivatives"]
+    )
     ensure_tensor_constants_collapsed(
         simple,
         collapsed_shape=x.shape,
@@ -662,27 +660,26 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
     if randomized:
         manual_seed(seed)
     simple_mod = symbolic_trace(bilap_mod)
-    simple_mod = simplify(simple_mod, verbose=True, test_x=x)
+    simple_mod = simplify(
+        simple_mod, verbose=True, eliminate_tensor_constants=False, test_x=x
+    )
 
     # make sure the `replicate` node from the 0th component made it to the end
     ensure_outputs_replicates(simple_mod.graph, num_outputs=1, num_replicates=0)
 
-    # NOTE The module creates x1, x2, x3, x4, but torch.fx traces creates tensor
-    # constants for x4**4, x1**2 * x2, x1 * x3, x2 ** 2, and x4 for propagating the
-    # highest component of each jet. If we have a linear layer at the beginning, meaning
-    # all derivatives of degree larger than two disappear, only the term
-    # sum_vmapped(x4) should show up. Otherwise, there will be summed constants for all
-    # terms (some of them will be removed by common tensor constant elimination).
-    first_op_linear = is_first_op_linear(config)
+    K = 4
+    num_collapsed = num_collapsed_tensor_constants(
+        K, config["first_op_vanishing_derivatives"]
+    )
 
     # make sure that Taylor coefficients were collapsed
     D = (x.shape[1:] if is_batched else x).numel()
 
+    collapsed_shape = x.shape
+
     if randomized:
         num_vectors = num_samples
-        collapsed_shape = x.shape
         non_collapsed_shape = (num_vectors, *x.shape)
-        num_collapsed = 1 if first_op_linear else 2
         ensure_tensor_constants_collapsed(
             simple_mod, collapsed_shape, non_collapsed_shape, at_least=num_collapsed
         )
@@ -699,19 +696,14 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
         num_vectors3 = D * (D - 1) // 2
         non_collapsed_shape3 = (num_vectors3, *x.shape)
 
-        collapsed_shape = x.shape
         non_collapsed_shapes = {
             non_collapsed_shape1,
             non_collapsed_shape2,
             non_collapsed_shape3,
         }
 
-        if D == 1:  # uses only one 4-jet
-            num_collapsed = 1 if first_op_linear else 2
-        elif D in {2, 3}:  # uses three 4-jets, but two of them have same num_vectors
-            num_collapsed = 2 if first_op_linear else 4
-        else:  # uses three 4-jets, all of them have different num_vectors
-            num_collapsed = 1 if first_op_linear else 4
+        if D > 1:  # uses three 4-jets
+            num_collapsed *= 3
 
         for non_collapsed in non_collapsed_shapes:
             ensure_tensor_constants_collapsed(
@@ -725,6 +717,11 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
     # make sure the simplified module still behaves the same
     bilap_simple = simple_mod(x)
     report_nonclose(bilap, bilap_simple, name="Bi-Laplacians")
+
+    # also remove duplicate tensor_constants
+    simpler_mod = simplify(
+        simple_mod, verbose=True, eliminate_tensor_constants=True, test_x=x
+    )
 
     # check for a bunch of configs that the number of nodes remains the same
     if not randomized:
@@ -740,4 +737,4 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
             "sigmoid-sigmoid": 181,
         }
         if config["id"] in expected_nodes:
-            assert len(list(simple_mod.graph.nodes)) == expected_nodes[config["id"]]
+            assert len(list(simpler_mod.graph.nodes)) == expected_nodes[config["id"]]

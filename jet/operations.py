@@ -264,7 +264,7 @@ def jet_add(
     """
     if all(isinstance(s, (float, int)) for s in [s1, s2]):
         raise TypeError(
-            f"Only one argument can be float | int, got {type(s1)}, {type(s2)}."
+            f"Both arguments cannot be float | int. Got {type(s1)} and {type(s2)}."
         )
 
     if isinstance(s1, (float, int)):

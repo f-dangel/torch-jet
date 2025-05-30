@@ -157,6 +157,14 @@ ATOMIC_CASES = [
         "id": "add-2.0",
         "first_op_vanishing_derivatives": 2,
     },
+    # subtraction of a tensor and a float
+    {
+        "f": lambda x: x - 2.0,
+        "shape": (5,),
+        "k_max": INF,
+        "id": "sub-2.0",
+        "first_op_vanishing_derivatives": 2,
+    },
 ]
 ATOMIC_CASE_IDS = []
 for atomic in ATOMIC_CASES:
@@ -231,6 +239,14 @@ CASES_COMPACT = [
         "shape": (3,),
         "k_max": INF,
         "id": "sin-residual",
+        "first_op_vanishing_derivatives": None,
+    },
+    # 3d sin function with negative residual connection
+    {
+        "f": lambda x: sin(x) - x,
+        "shape": (3,),
+        "k_max": INF,
+        "id": "sin-neg-residual",
         "first_op_vanishing_derivatives": None,
     },
 ]

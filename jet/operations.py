@@ -282,6 +282,46 @@ def jet_add(
     return (add_x, *vs_out)
 
 
+def jet_sub(
+    s1: PrimalAndCoefficients | float | int,
+    s2: PrimalAndCoefficients | float | int,
+    K: int,
+    vmap: bool,
+) -> ValueAndCoefficients:
+    """Taylor-mode arithmetic for subtraction.
+
+    Args:
+        s1: The first primal and its Taylor coefficients, or a scalar.
+        s2: The second primal and its Taylor coefficients, or a scalar.
+        K: The order of the Taylor expansion.
+        vmap: Whether to `vmap` the primal value and its Taylor coefficients.
+
+    Returns:
+        The value and its Taylor coefficients.
+
+    Raises:
+        TypeError: If both arguments are of type `float` or `int`,
+            or if the types are incompatible. One of them must represent a primal and
+            its Taylor coefficients.
+    """
+    if all(isinstance(s, (float, int)) for s in [s1, s2]):
+        raise TypeError(
+            f"Both arguments cannot be float | int. Got {type(s1)} and {type(s2)}."
+        )
+
+    if isinstance(s1, (float, int)):
+        return jet_add(s2, -s1, K, vmap)
+    elif isinstance(s2, (float, int)):
+        return jet_add(s1, -s2, K, vmap)
+    else:
+        x1, vs1 = s1[0], s1[1:]
+        x2, vs2 = s2[0], s2[1:]
+        sub_x = x1 - x2
+        vs_out = [vs1[k] - vs2[k] for k in range(K)]
+
+    return (sub_x, *vs_out)
+
+
 MAPPING = {
     sin: jet_sin,
     tanh: jet_tanh,
@@ -289,4 +329,5 @@ MAPPING = {
     linear: jet_linear,
     operator.pow: jet_pow,
     operator.add: jet_add,
+    operator.sub: jet_sub,
 }

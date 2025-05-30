@@ -103,18 +103,19 @@ def _replace_operations_with_taylor(
     with graph.inserting_after(x):
         vs = [graph.placeholder(name=f"v{i}") for i in reversed(range(1, k + 1))][::-1]
 
-    # find the node that consumes the original input, replace it with a new node whose
+    # find the nodes that consume the original input, replace each with a new node whose
     # argument argument is the tuple of original input and Taylor coefficients
-    (child_x,) = [node for node in graph.nodes if x in node.args]
-    with graph.inserting_after(child_x):
-        where = child_x.args.index(x)
-        new_args = list(child_x.args)
-        new_args[where] = (x, *vs)
-        new_node = graph.call_function(
-            child_x.target, args=tuple(new_args), kwargs=child_x.kwargs
-        )
-    child_x.replace_all_uses_with(new_node)
-    graph.erase_node(child_x)
+    children_x = [node for node in graph.nodes if x in node.args]
+    for child_x in children_x:
+        with graph.inserting_after(child_x):
+            where = child_x.args.index(x)
+            new_args = list(child_x.args)
+            new_args[where] = (x, *vs)
+            new_node = graph.call_function(
+                child_x.target, args=tuple(new_args), kwargs=child_x.kwargs
+            )
+        child_x.replace_all_uses_with(new_node)
+        graph.erase_node(child_x)
 
     # replace all operations (including that of new_node) their Taylor mode equivalents
     for node in tuple(graph.nodes):

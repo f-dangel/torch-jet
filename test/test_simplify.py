@@ -702,7 +702,8 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
             non_collapsed_shape3,
         }
 
-        if D > 1:  # uses three 4-jets
+        # uses three 4-jets
+        if D > 1 and config["id"] != "add-2.0":
             num_collapsed *= 3
 
         for non_collapsed in non_collapsed_shapes:

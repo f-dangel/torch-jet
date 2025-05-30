@@ -96,7 +96,16 @@ def bilaplacian_naive(
     }
 
     def _maybe_grad(f: Tensor, X: Tensor) -> Tensor:
-        """Compute the gradient if f requires grad, otherwise return zeros."""
+        """Compute the gradient if f requires grad, otherwise return zeros.
+
+        Args:
+            f: The function output for which to compute the gradient.
+            X: The input tensor at which to compute the gradient.
+
+        Returns:
+            The gradient of f w.r.t. X if f requires grad, otherwise a tensor of zeros.
+            Has the same shape as X.
+        """
         return grad(f, X, **grad_kwargs)[0] if f.requires_grad else zeros_like(X)
 
     # loop over all components of f(X) and compute their bi-Laplacian

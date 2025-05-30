@@ -95,6 +95,10 @@ def bilaplacian_naive(
         "create_graph": True,
     }
 
+    def _maybe_grad(f: Tensor, X: Tensor) -> Tensor:
+        """Compute the gradient if f requires grad, otherwise return zeros."""
+        return grad(f, X, **grad_kwargs)[0] if f.requires_grad else zeros_like(X)
+
     # loop over all components of f(X) and compute their bi-Laplacian
     for k, f_k in enumerate(f_X.flatten()):
 
@@ -104,12 +108,11 @@ def bilaplacian_naive(
             e_i[i] = 1
             e_i = e_i.view_as(X)
 
-            (df,) = grad(f_k, X, **grad_kwargs)
-            (d2f,) = grad((df * e_i).sum(), X, **grad_kwargs)
+            df = _maybe_grad(f_k, X)
+            d2f = _maybe_grad((df * e_i).sum(), X)
 
             # the third derivative can be re-cycled for all xⱼ
-            d2f_ii = (d2f * e_i).sum()
-            (d3f,) = grad(d2f_ii, X, **grad_kwargs)
+            d3f = _maybe_grad((d2f * e_i).sum(), X)
 
             # differentiate twice w.r.t. xⱼ
             for j in range(D):
@@ -117,11 +120,7 @@ def bilaplacian_naive(
                 e_j[j] = 1
                 e_j = e_j.view_as(X)
 
-                (d4f,) = (
-                    grad((d3f * e_j).sum(), X, **grad_kwargs)
-                    if d3f.requires_grad
-                    else (zeros_like(X),)
-                )
+                d4f = _maybe_grad((d3f * e_j).sum(), X)
                 d4f_ii_jj = (d4f * e_j).sum()
 
                 bilap[k] += d4f_ii_jj.detach() if detach else d4f_ii_jj

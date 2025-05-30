@@ -310,7 +310,7 @@ def jet_sub(
         )
 
     if isinstance(s1, (float, int)):
-        return jet_add(s2, -s1, K, vmap)
+        return jet_add(-s2, s1, K, vmap)
     elif isinstance(s2, (float, int)):
         return jet_add(s1, -s2, K, vmap)
     else:

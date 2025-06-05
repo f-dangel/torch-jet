@@ -44,7 +44,6 @@ exp = [
     "pandas",
     "matplotlib",
     "tueplots",
-    "pydot", # visualizing torch.fx compute graphs
     "jax", # NOTE use "jax[cuda12]" if on GPU
     "jaxlib",
     "folx",

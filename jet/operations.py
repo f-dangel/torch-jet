@@ -80,6 +80,35 @@ def jet_sin(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficient
     return (sin_x, *vs_out)
 
 
+def jet_cos(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficients:
+    """Taylor-mode arithmetic for the cosine function.
+
+    Args:
+        s: The primal and its Taylor coefficients.
+        K: The order of the Taylor expansion.
+        vmap: Whether to `vmap` the primal value and its Taylor coefficients.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    x, vs = s[0], s[1:]
+
+    # pre-compute derivatives
+    cos_x = cos(x)
+    dcos = {0: cos_x}
+    for k in range(1, K + 1):
+        if k == 1:
+            dcos[k] = -1 * sin(x)
+        elif k in {2, 3}:
+            dcos[k] = -1 * dcos[k - 2]
+        else:
+            dcos[k] = dcos[k - 4]
+
+    vs_out = _faa_di_bruno(vs, K, dcos)
+
+    return (cos_x, *vs_out)
+
+
 def jet_tanh(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the hyperbolic tangent function.
 
@@ -324,6 +353,7 @@ def jet_sub(
 
 MAPPING = {
     sin: jet_sin,
+    cos: jet_cos,
     tanh: jet_tanh,
     sigmoid: jet_sigmoid,
     linear: jet_linear,

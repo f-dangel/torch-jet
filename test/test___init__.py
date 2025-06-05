@@ -4,7 +4,7 @@ from test.utils import VMAP_IDS, VMAPS
 from typing import Any, Callable, Dict, Tuple
 
 from pytest import mark
-from torch import Tensor, manual_seed, rand, sigmoid, sin, stack, tanh, tensor
+from torch import Tensor, cos, manual_seed, rand, sigmoid, sin, stack, tanh, tensor
 from torch.fx import symbolic_trace
 from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
@@ -99,6 +99,14 @@ ATOMIC_CASES = [
         "shape": (2,),
         "k_max": INF,
         "id": "sin",
+        "first_op_vanishing_derivatives": None,
+    },
+    # 3d cosine function
+    {
+        "f": cos,
+        "shape": (3,),
+        "k_max": INF,
+        "id": "cos",
         "first_op_vanishing_derivatives": None,
     },
     # 3d tanh function

@@ -96,6 +96,7 @@ def _replace_operations_with_taylor(
     Raises:
         NotImplementedError: If an unsupported operation or node is encountered while
             carrying out the overloading.
+        RuntimeError: If the multiplication type cannot be detected for a node.
     """
     graph = mod.graph
 

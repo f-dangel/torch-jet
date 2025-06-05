@@ -173,6 +173,14 @@ ATOMIC_CASES = [
         "id": "sub-2.0",
         "first_op_vanishing_derivatives": 2,
     },
+    # multiplication of a tensor and a float
+    {
+        "f": lambda x: x * 3.0,
+        "shape": (5,),
+        "k_max": INF,
+        "id": "mul-3.0",
+        "first_op_vanishing_derivatives": 2,
+    },
 ]
 ATOMIC_CASE_IDS = []
 for atomic in ATOMIC_CASES:
@@ -180,6 +188,20 @@ for atomic in ATOMIC_CASES:
     ID = f"{atomic['id']}-{'_'.join([str(s) for s in shape])}d"
     atomic["is_batched"] = atomic.get("is_batched", False)
     ATOMIC_CASE_IDS.append(ID)
+
+
+def f_multiply(x: Tensor) -> Tensor:
+    """Test function for multiplication of two variables.
+
+    Args:
+        x: Input tensor.
+
+    Returns:
+        Tensor resulting from the multiplication of sin(x) and cos(sin(x)).
+    """
+    y = sin(x)
+    return sin(y) * cos(y)
+
 
 # contains only composed atomic functions
 CASES_COMPACT = [
@@ -255,6 +277,14 @@ CASES_COMPACT = [
         "shape": (3,),
         "k_max": INF,
         "id": "sin-neg-residual",
+        "first_op_vanishing_derivatives": None,
+    },
+    # multiplication two variables
+    {
+        "f": f_multiply,
+        "shape": (5,),
+        "k_max": INF,
+        "id": "multiply-variables",
         "first_op_vanishing_derivatives": None,
     },
 ]

@@ -382,7 +382,7 @@ def test_simplify_laplacian(config: Dict[str, Any], distribution: Optional[str])
     if randomized:
         manual_seed(seed)
     fast = symbolic_trace(mod)
-    fast = simplify(fast, verbose=True)
+    fast = simplify(fast, verbose=True, test_x=x)
 
     # make sure the simplified module still behaves the same
     fast_out = fast(x)
@@ -703,7 +703,7 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
         }
 
         # uses three 4-jets
-        if D > 1 and config["id"] not in {"add-2.0", "sub-2.0"}:
+        if D > 1 and config["id"] not in {"add-2.0", "sub-2.0", "mul-3.0"}:
             num_collapsed *= 3
 
         for non_collapsed in non_collapsed_shapes:

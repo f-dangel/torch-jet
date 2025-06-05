@@ -3,7 +3,7 @@
 import operator
 from typing import Dict, List, Optional, Tuple
 
-from scipy.special import factorial, stirling2
+from scipy.special import comb, factorial, stirling2
 from torch import Tensor, cos, mul, sigmoid, sin, tanh
 from torch.nn.functional import linear
 
@@ -351,6 +351,59 @@ def jet_sub(
     return (sub_x, *vs_out)
 
 
+def jet_mul(
+    s1: PrimalAndCoefficients,
+    s2: PrimalAndCoefficients,
+    K: int,
+    vmap: bool,
+) -> ValueAndCoefficients:
+    """Taylor-mode arithmetic for multiplication of two variables.
+
+    Args:
+        s1: The first primal and its Taylor coefficients.
+        s2: The second primal and its Taylor coefficients.
+        K: The order of the Taylor expansion.
+        vmap: Whether to `vmap` the primal value and its Taylor coefficients.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    s_out = ()
+    for k in range(K + 1):
+        term = None
+        for j in range(k + 1):
+            term_j = comb(k, j, exact=True) * s1[j] * s2[k - j]
+            term = term_j if term is None else term + term_j
+        s_out = s_out + (term,)
+
+    return s_out
+
+
+def jet_mul_constant(
+    s: PrimalAndCoefficients,
+    constant: float | int | Tensor,
+    K: int,
+    vmap: bool,
+) -> ValueAndCoefficients:
+    """Taylor-mode arithmetic for multiplication of a variable and a constant.
+
+    Args:
+        s: The primal and its Taylor coefficients.
+        constant: The constant multiplier.
+        K: The order of the Taylor expansion.
+        vmap: Whether to `vmap` the primal value and its Taylor coefficients.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    x, vs = s[0], s[1:]
+
+    mul_x = x * constant
+    vs_out = [vs[k] * constant for k in range(K)]
+
+    return (mul_x, *vs_out)
+
+
 MAPPING = {
     sin: jet_sin,
     cos: jet_cos,
@@ -360,4 +413,6 @@ MAPPING = {
     operator.pow: jet_pow,
     operator.add: jet_add,
     operator.sub: jet_sub,
+    # NOTE operator.mul has to be treated by the overloading function because it depends
+    # on the argument type
 }

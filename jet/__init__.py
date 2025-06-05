@@ -1,14 +1,15 @@
 """Taylor-mode automatic differentiation (jets) in PyTorch."""
 
+import operator
 from math import factorial
 from typing import Callable, Optional
 
 from torch import Tensor, tensor, zeros_like
 from torch.autograd import grad
-from torch.fx import GraphModule, Tracer
+from torch.fx import GraphModule, Node, Tracer
 from torch.nn import Linear, Module, Sigmoid, Tanh
 
-from jet.operations import MAPPING
+from jet.operations import MAPPING, jet_mul, jet_mul_constant
 from jet.utils import (
     Primal,
     PrimalAndCoefficients,
@@ -121,22 +122,51 @@ def _replace_operations_with_taylor(
     for node in tuple(graph.nodes):
         if node.op == "call_function":
             f = node.target
-            if f not in MAPPING.keys():
+            if f in MAPPING.keys():
+                f_taylor = MAPPING[f]
+                args_taylor = node.args
+
+            elif f == operator.mul:
+                # depending on the argument types, we either need to multiply two
+                # variables, or a variable and a constant
+                constants = [
+                    c
+                    for c in node.args
+                    if isinstance(c, (int, float))
+                    or isinstance(c, Node)
+                    and c.op == "get_attr"
+                ]
+                variables = [c for c in node.args if c not in constants]
+                if len(constants) == len(variables) == 1:
+                    f_taylor = jet_mul_constant
+                    (v,), (c,) = variables, constants
+                    args_taylor = (v, c)
+                elif not constants and len(variables) == 2:
+                    f_taylor = jet_mul
+                    args_taylor = tuple(variables)
+                else:
+                    raise RuntimeError(
+                        f"Could not detect multiplication type for {node.args=}."
+                    )
+            else:
                 raise NotImplementedError(f"Unsupported node target: {node.target}")
+
             with graph.inserting_after(node):
                 new_node = graph.call_function(
-                    MAPPING[f],
-                    args=node.args,
+                    f_taylor,
+                    args=args_taylor,
                     kwargs={**node.kwargs, "K": k, "vmap": vmap},
                 )
             node.replace_all_uses_with(new_node)
             graph.erase_node(node)
+
         elif node.op == "call_module":
             module = graph.get_submodule(node.target)
             raise NotImplementedError(
                 f"Unsupported module: {module}. Consider adding it to the"
                 " `JetTracer.is_leaf_module` function."
             )
+
         elif node.op not in ["output", "placeholder", "get_attr"]:
             raise NotImplementedError(f"Unsupported node operation: {node.op}")
 

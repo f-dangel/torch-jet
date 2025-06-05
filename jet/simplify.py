@@ -723,6 +723,8 @@ def simplify(  # noqa: C901
                 "fuse_with_tensor_constant",
             ]
         )
+    if eliminate_common_subexpressions:
+        round_three.append("common_subexpression_elimination")
     _exhaust_incrementally(
         {s: strategies[s] for s in round_three}, mod, test_x, verbose
     )

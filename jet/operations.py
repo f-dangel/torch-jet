@@ -369,7 +369,7 @@ def jet_sub(
     elif (coeff1, coeff2) == (True, False):
         return (s1[0] - s2,) + tuple(s1[k] for k in range(1, K + 1))
     elif (coeff1, coeff2) == (False, True):
-        return (s2[0] - s1,) + tuple(s2[k] for k in range(1, K + 1))
+        return (s1 - s2[0],) + tuple(-s2[k] for k in range(1, K + 1))
 
 
 def jet_mul(

@@ -31,7 +31,7 @@ def test_nested_jet(config: Dict[str, Any]):
     jet_rev_f = rev_jet(f, order=k1, detach=False)
     jet_rev_f_x = lambda x: jet_rev_f(x, *vs1)[k1]  # noqa: E731
 
-    nested_jet_rev_f = rev_jet(jet_rev_f_x, order=k2, detach=True)
+    nested_jet_rev_f = rev_jet(jet_rev_f_x, order=k2)
     nested_jet_rev_f_x = lambda x: nested_jet_rev_f(x, *vs2)[k2]  # noqa: E731
 
     truth = nested_jet_rev_f_x(x)

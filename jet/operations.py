@@ -249,6 +249,9 @@ def jet_linear(
 
     Returns:
         The value and its Taylor coefficients.
+
+    Raises:
+        NotImplementedError: If Taylor coefficients are passed as weights or bias.
     """
     if is_taylor not in {(True, False, False), (True, False)}:
         raise NotImplementedError(f"Not implemented for {is_taylor=}.")
@@ -277,10 +280,13 @@ def jet_pow(
 
     Returns:
         The value and its Taylor coefficients.
+
+    Raises:
+        NotImplementedError: If a Taylor coefficient is passed as exponent.
     """
+    assert isinstance(exponent, (float, int))
     if is_taylor != (True, False):
         raise NotImplementedError
-    assert isinstance(exponent, (float, int))
 
     x, vs = s[0], s[1:]
 

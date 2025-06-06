@@ -112,7 +112,7 @@ def jet(
     return jet_mod
 
 
-def _replace_operations_with_taylor(
+def _replace_operations_with_taylor(  # noqa: C901
     mod: GraphModule, k: int, vmap: bool
 ) -> GraphModule:
     """Replace operations in the graph with Taylor-mode equivalents.

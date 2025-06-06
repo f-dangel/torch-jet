@@ -51,7 +51,9 @@ def _faa_di_bruno(vs: Tuple[Primal, ...], K: int, dn: Dict[int, Primal]) -> List
     return vs_out
 
 
-def jet_sin(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficients:
+def jet_sin(
+    s: PrimalAndCoefficients, K: int, vmap: bool, is_taylor
+) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the sine function.
 
     Args:
@@ -62,6 +64,8 @@ def jet_sin(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficient
     Returns:
         The value and its Taylor coefficients.
     """
+    assert is_taylor == (True,)
+
     x, vs = s[0], s[1:]
 
     # pre-compute derivatives
@@ -80,7 +84,9 @@ def jet_sin(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficient
     return (sin_x, *vs_out)
 
 
-def jet_cos(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficients:
+def jet_cos(
+    s: PrimalAndCoefficients, K: int, vmap: bool, is_taylor
+) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the cosine function.
 
     Args:
@@ -91,6 +97,8 @@ def jet_cos(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficient
     Returns:
         The value and its Taylor coefficients.
     """
+    assert is_taylor == (True,)
+
     x, vs = s[0], s[1:]
 
     # pre-compute derivatives
@@ -109,7 +117,9 @@ def jet_cos(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficient
     return (cos_x, *vs_out)
 
 
-def jet_tanh(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficients:
+def jet_tanh(
+    s: PrimalAndCoefficients, K: int, vmap: bool, is_taylor
+) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the hyperbolic tangent function.
 
     Args:
@@ -120,6 +130,8 @@ def jet_tanh(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficien
     Returns:
         The value and its Taylor coefficients.
     """
+    assert is_taylor == (True,)
+
     x, vs = s[0], s[1:]
 
     # pre-compute derivatives
@@ -158,7 +170,9 @@ def jet_tanh(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficien
     return (tanh_x, *vs_out)
 
 
-def jet_sigmoid(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoefficients:
+def jet_sigmoid(
+    s: PrimalAndCoefficients, K: int, vmap: bool, is_taylor
+) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the sigmoid function.
 
     Args:
@@ -169,6 +183,8 @@ def jet_sigmoid(s: PrimalAndCoefficients, K: int, vmap: bool) -> ValueAndCoeffic
     Returns:
         The value and its Taylor coefficients.
     """
+    assert is_taylor == (True,)
+
     x, vs = s[0], s[1:]
 
     # pre-compute derivatives
@@ -210,6 +226,7 @@ def jet_linear(
     bias: Optional[Tensor] = None,
     K=None,
     vmap: bool = False,
+    is_taylor=(True, False, False),
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the linear function.
 
@@ -223,16 +240,16 @@ def jet_linear(
     Returns:
         The value and its Taylor coefficients.
     """
-    x, vs = s[0], s[1:]
+    if is_taylor not in {(True, False, False), (True, False)}:
+        raise NotImplementedError(f"Not implemented for {is_taylor=}.")
 
-    linear_x = linear(x, weight, bias=bias)
-    vs_out = [linear(vs[k], weight) for k in range(K)]
-
-    return (linear_x, *vs_out)
+    return tuple(
+        linear(s[k], weight, bias=bias if k == 0 else None) for k in range(K + 1)
+    )
 
 
 def jet_pow(
-    s: PrimalAndCoefficients, exponent: float | int, K: int, vmap: bool
+    s: PrimalAndCoefficients, exponent: float | int, K: int, vmap: bool, is_taylor
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the power function with integer exponent.
 
@@ -245,6 +262,10 @@ def jet_pow(
     Returns:
         The value and its Taylor coefficients.
     """
+    if is_taylor != (True, False):
+        raise NotImplementedError
+    assert isinstance(exponent, (float, int))
+
     x, vs = s[0], s[1:]
 
     # Compute the primal value
@@ -274,6 +295,7 @@ def jet_add(
     s2: PrimalAndCoefficients | float | int,
     K: int,
     vmap: bool,
+    is_taylor,
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for addition.
 
@@ -285,30 +307,15 @@ def jet_add(
 
     Returns:
         The value and its Taylor coefficients.
-
-    Raises:
-        TypeError: If both arguments are of type `float` or `int`,
-            or if the types are incompatible. One of them must represent a primal and
-            its Taylor coefficients.
     """
-    if all(isinstance(s, (float, int)) for s in [s1, s2]):
-        raise TypeError(
-            f"Both arguments cannot be float | int. Got {type(s1)} and {type(s2)}."
-        )
+    coeff1, coeff2 = is_taylor
 
-    if isinstance(s1, (float, int)):
-        x2, v2s = s2[0], s2[1:]
-        add_x, vs_out = x2 + s1, v2s
-    elif isinstance(s2, (float, int)):
-        x1, v1s = s1[0], s1[1:]
-        add_x, vs_out = x1 + s2, v1s
-    else:
-        x1, vs1 = s1[0], s1[1:]
-        x2, vs2 = s2[0], s2[1:]
-        add_x = x1 + x2
-        vs_out = [vs1[k] + vs2[k] for k in range(K)]
-
-    return (add_x, *vs_out)
+    if (coeff1, coeff2) == (True, True):
+        return tuple(s1[k] + s2[k] for k in range(K + 1))
+    elif (coeff1, coeff2) == (True, False):
+        return (s1[0] + s2,) + tuple(s1[k] for k in range(1, K + 1))
+    elif (coeff1, coeff2) == (False, True):
+        return (s2[0] + s1,) + tuple(s2[k] for k in range(1, K + 1))
 
 
 def jet_sub(
@@ -316,6 +323,7 @@ def jet_sub(
     s2: PrimalAndCoefficients | float | int,
     K: int,
     vmap: bool,
+    is_taylor,
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for subtraction.
 
@@ -327,35 +335,19 @@ def jet_sub(
 
     Returns:
         The value and its Taylor coefficients.
-
-    Raises:
-        TypeError: If both arguments are of type `float` or `int`,
-            or if the types are incompatible. One of them must represent a primal and
-            its Taylor coefficients.
     """
-    if all(isinstance(s, (float, int)) for s in [s1, s2]):
-        raise TypeError(
-            f"Both arguments cannot be float | int. Got {type(s1)} and {type(s2)}."
-        )
+    (coeff1, coeff2) = is_taylor
 
-    if isinstance(s1, (float, int)):
-        return jet_add(-s2, s1, K, vmap)
-    elif isinstance(s2, (float, int)):
-        return jet_add(s1, -s2, K, vmap)
-    else:
-        x1, vs1 = s1[0], s1[1:]
-        x2, vs2 = s2[0], s2[1:]
-        sub_x = x1 - x2
-        vs_out = [vs1[k] - vs2[k] for k in range(K)]
-
-    return (sub_x, *vs_out)
+    if (coeff1, coeff2) == (True, True):
+        return tuple(s1[k] - s2[k] for k in range(K + 1))
+    elif (coeff1, coeff2) == (True, False):
+        return (s1[0] - s2,) + tuple(s1[k] for k in range(1, K + 1))
+    elif (coeff1, coeff2) == (False, True):
+        return (s2[0] - s1,) + tuple(s2[k] for k in range(1, K + 1))
 
 
 def jet_mul(
-    s1: PrimalAndCoefficients,
-    s2: PrimalAndCoefficients,
-    K: int,
-    vmap: bool,
+    s1: PrimalAndCoefficients, s2: PrimalAndCoefficients, K: int, vmap: bool, is_taylor
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for multiplication of two variables.
 
@@ -368,40 +360,23 @@ def jet_mul(
     Returns:
         The value and its Taylor coefficients.
     """
-    s_out = ()
-    for k in range(K + 1):
-        term = None
-        for j in range(k + 1):
-            term_j = comb(k, j, exact=True) * s1[j] * s2[k - j]
-            term = term_j if term is None else term + term_j
-        s_out = s_out + (term,)
+    (coeff1, coeff2) = is_taylor
 
-    return s_out
+    if (coeff1, coeff2) == (True, True):
+        s_out = ()
+        for k in range(K + 1):
+            term = None
+            for j in range(k + 1):
+                term_j = comb(k, j, exact=True) * s1[j] * s2[k - j]
+                term = term_j if term is None else term + term_j
+            s_out = s_out + (term,)
 
+        return s_out
 
-def jet_mul_constant(
-    s: PrimalAndCoefficients,
-    constant: float | int | Tensor,
-    K: int,
-    vmap: bool,
-) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for multiplication of a variable and a constant.
-
-    Args:
-        s: The primal and its Taylor coefficients.
-        constant: The constant multiplier.
-        K: The order of the Taylor expansion.
-        vmap: Whether to `vmap` the primal value and its Taylor coefficients.
-
-    Returns:
-        The value and its Taylor coefficients.
-    """
-    x, vs = s[0], s[1:]
-
-    mul_x = x * constant
-    vs_out = [vs[k] * constant for k in range(K)]
-
-    return (mul_x, *vs_out)
+    elif (coeff1, coeff2) == (True, False):
+        return tuple(s2 * s1[k] for k in range(K + 1))
+    elif (coeff1, coeff2) == (False, True):
+        return tuple(s1 * s2[k] for k in range(K + 1))
 
 
 MAPPING = {
@@ -413,6 +388,6 @@ MAPPING = {
     operator.pow: jet_pow,
     operator.add: jet_add,
     operator.sub: jet_sub,
-    # NOTE operator.mul has to be treated by the overloading function because it depends
-    # on the argument type
+    operator.mul: jet_mul,
+    mul: jet_mul,
 }

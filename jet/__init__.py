@@ -1,6 +1,5 @@
 """Taylor-mode automatic differentiation (jets) in PyTorch."""
 
-import operator
 from math import factorial
 from typing import Callable, Optional
 
@@ -9,7 +8,7 @@ from torch.autograd import grad
 from torch.fx import GraphModule, Node, Tracer
 from torch.nn import Linear, Module, Sigmoid, Tanh
 
-from jet.operations import MAPPING, jet_mul, jet_mul_constant
+from jet.operations import MAPPING
 from jet.utils import (
     Primal,
     PrimalAndCoefficients,
@@ -17,6 +16,39 @@ from jet.utils import (
     ValueAndCoefficients,
     WrapperModule,
 )
+
+
+def analyze_dependencies(mod: GraphModule) -> tuple[set[Node], set[Node]]:
+    """Determine nodes that depend on placeholders or only on constants.
+
+    Args:
+        mod: The GraphModule to analyze.
+
+    Returns:
+        A tuple containing two sets:
+        - The first set contains nodes that depend on placeholder nodes.
+        - The second set contains nodes that depend only on constants.
+
+    Raises:
+        RuntimeError: If the dependencies cannot be determined for a node.
+    """
+    placeholder_nodes = {node for node in mod.graph.nodes if node.op == "placeholder"}
+    constant_nodes = {node for node in mod.graph.nodes if node.op == "get_attr"}
+
+    for node in mod.graph.nodes:
+        if node.op in ["placeholder", "get_attr"]:
+            continue
+
+        if any(n in placeholder_nodes for n in node.all_input_nodes):
+            placeholder_nodes.add(node)
+        elif all(n in constant_nodes for n in node.all_input_nodes):
+            constant_nodes.add(node)
+        else:
+            raise RuntimeError(
+                f"Could not detect dependencies for {node=}. Graph:\n{mod.graph}"
+            )
+
+    return placeholder_nodes, constant_nodes
 
 
 class JetTracer(Tracer):
@@ -100,13 +132,17 @@ def _replace_operations_with_taylor(
     """
     graph = mod.graph
 
+    # find the nodes that depend on the placeholder nodes and those that depend
+    # only on constants
+    dependent_on_placeholders, dependent_on_constants = analyze_dependencies(mod)
+
     # find the input node and insert nodes for the Taylor coefficients
     (x,) = [node for node in graph.nodes if node.op == "placeholder"]
     with graph.inserting_after(x):
         vs = [graph.placeholder(name=f"v{i}") for i in reversed(range(1, k + 1))][::-1]
 
     # find the nodes that consume the original input, replace each with a new node whose
-    # argument argument is the tuple of original input and Taylor coefficients
+    # argument is the tuple of original input and Taylor coefficients
     children_x = [node for node in graph.nodes if x in node.args]
     for child_x in children_x:
         with graph.inserting_after(child_x):
@@ -118,48 +154,58 @@ def _replace_operations_with_taylor(
             )
         child_x.replace_all_uses_with(new_node)
         graph.erase_node(child_x)
+        dependent_on_placeholders.add(new_node)
 
-    # replace all operations (including that of new_node) their Taylor mode equivalents
+    # replace all ops (including that of new_node) with their Taylor mode equivalents
     for node in tuple(graph.nodes):
         if node.op == "call_function":
-            f = node.target
-            if f in MAPPING.keys():
-                f_taylor = MAPPING[f]
-                args_taylor = node.args
 
-            elif f == operator.mul:
-                # depending on the argument types, we either need to multiply two
-                # variables, or a variable and a constant
-                constants = [
-                    c
-                    for c in node.args
-                    if isinstance(c, (int, float))
-                    or isinstance(c, Node)
-                    and c.op == "get_attr"
-                ]
-                variables = [c for c in node.args if c not in constants]
-                if len(constants) == len(variables) == 1:
-                    f_taylor = jet_mul_constant
-                    (v,), (c,) = variables, constants
-                    args_taylor = (v, c)
-                elif not constants and len(variables) == 2:
-                    f_taylor = jet_mul
-                    args_taylor = tuple(variables)
+            # figure out which arguments are constants, and which depend on placeholders
+            is_taylor = []
+            for arg in node.args:
+                if isinstance(arg, Node):
+                    in_placeholders = arg in dependent_on_placeholders
+                    in_constants = arg in dependent_on_constants
+                    assert int(in_placeholders) + int(in_constants) == 1
+                    is_taylor.append(in_placeholders)
+
+                elif isinstance(arg, tuple) and all(isinstance(a, Node) for a in arg):
+                    is_taylor.append(True)
+
+                elif isinstance(arg, (int, float)) or arg is None:
+                    is_taylor.append(False)
+
                 else:
                     raise RuntimeError(
-                        f"Could not detect multiplication type for {node.args=}."
+                        f"Could not detect dependency of {arg} for {node.target=}."
                     )
-            else:
-                raise NotImplementedError(f"Unsupported node target: {node.target}")
+            is_taylor = tuple(is_taylor)
+
+            f = node.target
+
+            # if all arguments are constants, we don't have to replace
+            if not any(is_taylor):
+                # add the node to constant dependencies
+                dependent_on_constants.add(node)
+                continue
+
+            elif f not in MAPPING.keys():
+                raise NotImplementedError(f"Unsupported {node.target=}.")
 
             with graph.inserting_after(node):
                 new_node = graph.call_function(
-                    f_taylor,
-                    args=args_taylor,
-                    kwargs={**node.kwargs, "K": k, "vmap": vmap},
+                    MAPPING[f],
+                    args=node.args,
+                    kwargs={
+                        **node.kwargs,
+                        "K": k,
+                        "vmap": vmap,
+                        "is_taylor": is_taylor,
+                    },
                 )
             node.replace_all_uses_with(new_node)
             graph.erase_node(node)
+            dependent_on_placeholders.add(new_node)
 
         elif node.op == "call_module":
             module = graph.get_submodule(node.target)

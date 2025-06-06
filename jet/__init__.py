@@ -140,6 +140,7 @@ def _replace_operations_with_taylor(  # noqa: C901
     # If the output only depends on constants, the Taylor coefficients will be zero
     (output_node,) = [node for node in graph.nodes if node.op == "output"]
     if output_node not in dependent_on_placeholders:
+        assert output_node in dependent_on_constants
         warn(
             f"The {output_node=} does not depend on the placeholder nodes. "
             f"The resulting jet will be trivially zero. {graph}"

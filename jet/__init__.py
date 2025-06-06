@@ -2,6 +2,7 @@
 
 from math import factorial
 from typing import Callable, Optional
+from warnings import warn
 
 from torch import Tensor, tensor, zeros_like
 from torch.autograd import grad
@@ -136,6 +137,28 @@ def _replace_operations_with_taylor(  # noqa: C901
     # only on constants
     dependent_on_placeholders, dependent_on_constants = analyze_dependencies(mod)
 
+    # If the output only depends on constants, the Taylor coefficients will be zero
+    (output_node,) = [node for node in graph.nodes if node.op == "output"]
+    if output_node not in dependent_on_placeholders:
+        assert output_node in dependent_on_constants
+        warn(
+            f"The {output_node=} does not depend on the placeholder nodes. "
+            f"The resulting jet will be trivially zero. {graph}"
+        )
+        # insert a node that generates the trivial Taylor components based on the
+        # function value
+        (out_tensor,) = output_node.args
+        assert isinstance(out_tensor, Node)
+        with graph.inserting_before(output_node):
+            trivial_node = graph.call_function(
+                lambda *args: tuple(
+                    args[0] if i == 0 else zeros_like(args[0]) for i in range(k + 1)
+                ),
+                args=(out_tensor,),
+            )
+            output_node.replace_input_with(out_tensor, trivial_node)
+        dependent_on_placeholders.add(trivial_node)
+
     # find the input node and insert nodes for the Taylor coefficients
     (x,) = [node for node in graph.nodes if node.op == "placeholder"]
     with graph.inserting_after(x):
@@ -224,13 +247,15 @@ def _replace_operations_with_taylor(  # noqa: C901
 
 
 def rev_jet(
-    f: Callable[[Primal], Value], order: Optional[int] = None
+    f: Callable[[Primal], Value], order: Optional[int] = None, detach: bool = True
 ) -> Callable[[PrimalAndCoefficients], ValueAndCoefficients]:
     """Implement Taylor-mode via nested reverse-mode autodiff.
 
     Args:
         f: Function to overload. Maps a tensor to another tensor.
         order: Order of the Taylor expansion. Default: `None`.
+        detach: Whether to detach the output of the function and its Taylor coefficients
+            from the computation graph. Default: `True`.
 
     Returns:
         The overloaded function that computes the function and its Taylor coefficients
@@ -269,11 +294,17 @@ def rev_jet(
 
         for i, dnf_dt in enumerate(f_x.flatten()):
             for n in range(order):
-                (dnf_dt,) = grad(dnf_dt, t, create_graph=True)
-                vs_out[n][i] = dnf_dt.detach()
+                (dnf_dt,) = grad(
+                    dnf_dt,
+                    t,
+                    create_graph=True,
+                    allow_unused=True,
+                    materialize_grads=True,
+                )
+                vs_out[n][i] = dnf_dt.detach() if detach else dnf_dt
 
-        f_x = f_x.detach()
-        vs_out = tuple(v.detach().reshape_as(f_x) for v in vs_out)
+        f_x = f_x.detach() if detach else f_x
+        vs_out = tuple((v.detach() if detach else v).reshape_as(f_x) for v in vs_out)
 
         return (f_x, *vs_out)
 

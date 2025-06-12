@@ -6,7 +6,7 @@ from warnings import warn
 
 from torch import Tensor, tensor, zeros_like
 from torch.autograd import grad
-from torch.fx import GraphModule, Node, Tracer
+from torch.fx import Graph, GraphModule, Node, Tracer
 from torch.nn import Linear, Module, Sigmoid, Tanh
 
 from jet.operations import MAPPING
@@ -19,11 +19,11 @@ from jet.utils import (
 )
 
 
-def analyze_dependencies(mod: GraphModule) -> tuple[set[Node], set[Node]]:
+def analyze_dependencies(graph: Graph) -> tuple[set[Node], set[Node]]:
     """Determine nodes that depend on placeholders or only on constants.
 
     Args:
-        mod: The GraphModule to analyze.
+        graph: The graph to analyze.
 
     Returns:
         A tuple containing two sets:
@@ -33,10 +33,10 @@ def analyze_dependencies(mod: GraphModule) -> tuple[set[Node], set[Node]]:
     Raises:
         RuntimeError: If the dependencies cannot be determined for a node.
     """
-    placeholder_nodes = {node for node in mod.graph.nodes if node.op == "placeholder"}
-    constant_nodes = {node for node in mod.graph.nodes if node.op == "get_attr"}
+    placeholder_nodes = {node for node in graph.nodes if node.op == "placeholder"}
+    constant_nodes = {node for node in graph.nodes if node.op == "get_attr"}
 
-    for node in mod.graph.nodes:
+    for node in graph.nodes:
         if node.op in ["placeholder", "get_attr"]:
             continue
 
@@ -45,9 +45,7 @@ def analyze_dependencies(mod: GraphModule) -> tuple[set[Node], set[Node]]:
         elif all(n in constant_nodes for n in node.all_input_nodes):
             constant_nodes.add(node)
         else:
-            raise RuntimeError(
-                f"Could not detect dependencies for {node=}. Graph:\n{mod.graph}"
-            )
+            raise RuntimeError(f"Could not detect dependencies for {node=}.\n{graph}")
 
     return placeholder_nodes, constant_nodes
 
@@ -135,7 +133,7 @@ def _replace_operations_with_taylor(  # noqa: C901
 
     # find the nodes that depend on the placeholder nodes and those that depend
     # only on constants
-    dependent_on_placeholders, dependent_on_constants = analyze_dependencies(mod)
+    dependent_on_placeholders, dependent_on_constants = analyze_dependencies(mod.graph)
 
     # If the output only depends on constants, the Taylor coefficients will be zero
     (output_node,) = [node for node in graph.nodes if node.op == "output"]

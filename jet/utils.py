@@ -84,18 +84,20 @@ class WrapperModule(Module):
         return self.f(x)
 
 
-def replicate(x: Tensor, times: int) -> Tensor:
-    """Repeat a tensor along a new leading axis.
+def replicate(x: Tensor, times: int, pos: int = 0) -> Tensor:
+    """Repeat a tensor along a new axis.
 
     Args:
         x: Tensor to repeat.
         times: Number of times to repeat the tensor.
+        pos: Position of the new axis. Default: `0`.
 
     Returns:
-        Tensor with a new leading axis repeated `times` times.
+        Tensor with a new axis repeated `times` times.
     """
-    repeat = [times] + x.ndim * [-1]
-    return x.unsqueeze(0).expand(*repeat)
+    repeat = x.ndim * [-1]
+    repeat = repeat[:pos] + [times] + repeat[pos:]
+    return x.unsqueeze(pos).expand(*repeat)
 
 
 def sum_vmapped(x: Tensor) -> Tensor:

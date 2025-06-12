@@ -100,16 +100,17 @@ def replicate(x: Tensor, times: int, pos: int = 0) -> Tensor:
     return x.unsqueeze(pos).expand(*repeat)
 
 
-def sum_vmapped(x: Tensor) -> Tensor:
+def sum_vmapped(x: Tensor, pos: int = 0) -> Tensor:
     """Sum out a vmap-ed axis.
 
     Args:
         x: Vmap-ed tensor.
+        pos: Position of the vmap-ed axis to sum out. Default: `0`.
 
     Returns:
         Sum of the vmap-ed tensor.
     """
-    return x.sum(0)
+    return x.sum(pos)
 
 
 def rademacher(

@@ -4,10 +4,15 @@ from typing import Any
 
 from pytest import mark
 from torch import Tensor, cos, manual_seed, ones, rand, sigmoid, sin, tanh, vmap
+from torch.fx import wrap
 from torch.nn import Linear, Sequential, Tanh
 from torch.nn.functional import linear
 
+from jet.utils import replicate, sum_vmapped
 from jet.vmap import traceable_vmap
+
+wrap(replicate)
+wrap(sum_vmapped)
 
 CASES = [
     # output does not depend on placeholder
@@ -44,6 +49,11 @@ CASES = [
         "shape": (4,),
         "id": "tanh-mlp-4-3-2",
     },
+    # replicate
+    {"f": lambda x: replicate(x, 5), "shape": (2,), "id": "replicate-5"},
+    # sum_vmapped
+    {"f": lambda x: sum_vmapped(x), "shape": (6, 2), "id": "sum_vmapped_pos0"},
+    {"f": lambda x: sum_vmapped(x, pos=1), "shape": (6, 2), "id": "sum_vmapped_pos1"},
 ]
 
 

@@ -21,7 +21,7 @@ from torch.nn import Module
 from torch.nn.functional import linear
 
 from jet import JetTracer, analyze_dependencies
-from jet.utils import WrapperModule, replicate
+from jet.utils import WrapperModule, replicate, sum_vmapped
 
 
 def vmap_basic_binary(
@@ -108,11 +108,49 @@ def vmap_elementwise(
     return vmap_f
 
 
+vmap_add = vmap_basic_binary(operator.add)
+vmap_sub = vmap_basic_binary(operator.sub)
+vmap_mul = vmap_basic_binary(operator.mul)
+
+
+def vmap_pow(
+    x: Tensor, exponent: float | int, is_const: tuple[bool, bool], vmapsize: int
+) -> Tensor:
+    """Vectorized power operation.
+
+    Args:
+        x: Input tensor.
+        exponent: Exponent tensor or scalar.
+        is_const: Tuple indicating which arguments are constant (and therefore do not
+            have a batch axis).
+        vmapsize: Size of the vmapped axis.
+
+    Returns:
+        A tensor containing the result of the power operation.
+
+    Raises:
+        NotImplementedError: If the input tensor x is constant or if the exponent is not
+            constant.
+    """
+    if is_const != (False, True):
+        raise NotImplementedError("x must be non-constant, exponent must be constant.")
+    if not isinstance(exponent, (float, int)):
+        raise NotImplementedError("Exponent must be a float or int.")
+
+    return x**exponent
+
+
+vmap_cos = vmap_elementwise(cos)
+vmap_sin = vmap_elementwise(sin)
+vmap_sigmoid = vmap_elementwise(sigmoid)
+vmap_tanh = vmap_elementwise(tanh)
+
+
 def vmap_linear(
     x: Tensor,
     weight: Tensor,
     bias: Optional[None] = None,
-    is_const: tuple[bool, ...] = (False, False, False),
+    is_const: tuple[bool, ...] = (True, True, True),
     vmapsize: int = 0,
 ) -> Tensor:
     """Vectorized linear transformation.
@@ -143,40 +181,63 @@ def vmap_linear(
     return linear(x, weight, bias)
 
 
-def vmap_pow(
-    x: Tensor, exponent: float | int, is_const: tuple[bool, bool], vmapsize: int
+def vmap_replicate(
+    x: Tensor,
+    times: int,
+    pos: int = 0,
+    is_const: tuple[bool, ...] = (True, True),
+    vmapsize: int = 0,
 ) -> Tensor:
-    """Vectorized power operation.
+    """Vectorized replicate operation.
 
     Args:
         x: Input tensor.
-        exponent: Exponent tensor or scalar.
+        times: Number of times to replicate the tensor.
+        pos: Position of the new axis. Default: `0`.
         is_const: Tuple indicating which arguments are constant (and therefore do not
             have a batch axis).
         vmapsize: Size of the vmapped axis.
 
     Returns:
-        A tensor containing the result of the power operation.
+        A tensor containing the vmap-ed replicated input tensor.
 
     Raises:
-        NotImplementedError: If the input tensor x is constant or if the exponent is not
-            constant.
+        NotImplementedError: If the input tensor x is constant.
+        ValueError: If vmapsize is not positive.
     """
-    if is_const != (False, True):
-        raise NotImplementedError("x must be non-constant, exponent must be constant.")
-    if not isinstance(exponent, (float, int)):
-        raise NotImplementedError("Exponent must be a float or int.")
+    if is_const[0]:
+        raise NotImplementedError("x must be non-constant.")
+    if vmapsize <= 0:
+        raise ValueError(f"vmapsize must be positive, got {vmapsize=}.")
 
-    return x**exponent
+    return replicate(x, times, pos=pos + 1)
 
 
-vmap_add = vmap_basic_binary(operator.add)
-vmap_sub = vmap_basic_binary(operator.sub)
-vmap_mul = vmap_basic_binary(operator.mul)
-vmap_cos = vmap_elementwise(cos)
-vmap_sin = vmap_elementwise(sin)
-vmap_sigmoid = vmap_elementwise(sigmoid)
-vmap_tanh = vmap_elementwise(tanh)
+def vmap_sum_vmapped(
+    x: Tensor, pos: int = 0, is_const: tuple[bool, ...] = (True,), vmapsize: int = 0
+) -> Tensor:
+    """Vectorized sum operation for vmapped tensors.
+
+    Args:
+        x: Vmap-ed tensor.
+        pos: Position of the vmap-ed axis to sum out. Default: `0`.
+        is_const: Tuple indicating which arguments are constant (and therefore do not
+            have a batch axis).
+        vmapsize: Size of the vmapped axis.
+
+    Returns:
+        A tensor containing the sum of the vmap-ed tensor.
+
+    Raises:
+        NotImplementedError: If the input tensor x is constant.
+        ValueError: If vmapsize is not positive.
+    """
+    if is_const[0]:
+        raise NotImplementedError("x must be non-constant.")
+    if vmapsize <= 0:
+        raise ValueError(f"vmapsize must be positive, got {vmapsize=}.")
+
+    return sum_vmapped(x, pos=pos + 1)
 
 
 MAPPING = {
@@ -193,6 +254,10 @@ MAPPING = {
     sin: vmap_sin,
     sigmoid: vmap_sigmoid,
     tanh: vmap_tanh,
+    # replicate
+    replicate: vmap_replicate,
+    # sum_vmapped
+    sum_vmapped: vmap_sum_vmapped,
 }
 
 

@@ -3,7 +3,9 @@
 from typing import Any
 
 from pytest import mark
-from torch import Tensor, manual_seed, ones, rand, vmap
+from torch import Tensor, cos, manual_seed, ones, rand, sigmoid, sin, tanh, vmap
+from torch.nn import Linear, Sequential, Tanh
+from torch.nn.functional import linear
 
 from jet.vmap import traceable_vmap
 
@@ -14,6 +16,34 @@ CASES = [
     {"f": lambda x: x + 5, "shape": (2,), "id": "add-5"},
     # returns a tuple
     {"f": lambda x: (x + 5, x + 3), "shape": (2,), "id": "return-tuple"},
+    # subtraction
+    {"f": lambda x: x - 5, "shape": (2,), "id": "sub-5"},
+    # multiplication
+    {"f": lambda x: 5 * x, "shape": (2,), "id": "mul-5"},
+    # element-wise functions
+    {"f": cos, "shape": (2,), "id": "cos"},
+    {"f": sin, "shape": (2,), "id": "sin"},
+    {"f": tanh, "shape": (2,), "id": "tanh"},
+    {"f": sigmoid, "shape": (2,), "id": "sigmoid"},
+    # power function
+    {"f": lambda x: x**2, "shape": (2,), "id": "pow-2"},
+    {"f": lambda x: x**2.5, "shape": (2,), "id": "pow-2.5"},
+    # linear function
+    {
+        "f": lambda x: linear(
+            x, Tensor([[1.0, -2.0], [3.0, 4.0], [-5.0, 6.0], [7.0, 8.0]])
+        ),
+        "shape": (2,),
+        "id": "linear-4-2",
+    },
+    # neural network
+    {
+        "f": Sequential(
+            Linear(4, 3, bias=False), Tanh(), Linear(3, 2, bias=True), Tanh()
+        ),
+        "shape": (4,),
+        "id": "tanh-mlp-4-3-2",
+    },
 ]
 
 

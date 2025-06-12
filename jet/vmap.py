@@ -8,50 +8,191 @@ I.e., if we try torch.fx.symbolic_trace(torch.vmap(f)), we get an error.
 
 Solution: We implement our own vmap that allows the FX tracer to trace it.
 To achieve this, we must make some simplifying assumptions.
+For instance, operations like addition/subtraction must avoid broadcasting.
 """
 
 import operator
-from typing import Callable
+from typing import Callable, Optional
 from warnings import warn
 
-from torch import Tensor, add
+from torch import Tensor, cos, sigmoid, sin, tanh
 from torch.fx import GraphModule, Node
 from torch.nn import Module
+from torch.nn.functional import linear
 
 from jet import JetTracer, analyze_dependencies
 from jet.utils import WrapperModule, replicate
 
 
-def vmap_add(
-    a: Tensor | float | int,
-    b: Tensor | float | int,
-    is_const: tuple[bool, bool],
-    vmapsize: int,
-) -> Tensor:
-    """Vectorized addition of two tensors or scalars.
+def vmap_basic_binary(
+    op: Callable[[Tensor | float | int, Tensor | float | int], Tensor],
+) -> Callable[
+    [Tensor | float | int, Tensor | float | int, tuple[bool, bool], int], Tensor
+]:
+    """Create a vectorized basic binary operation.
+
+    Used to vmap basic operations like addition, subtraction, and multiplication.
 
     Args:
-        a: First operand, can be a tensor or scalar.
-        b: Second operand, can be a tensor or scalar.
+        op: The binary operation to be vectorized, e.g., operator.add. Takes two
+            arguments, each of which can be a Tensor, float, or int. Produces a tensor.
+
+    Returns:
+        The operation that corresponds to the vectorized operation and satisfies the
+        signature assumed by the traceable_vmap function.
+    """
+
+    def vmap_op(
+        a: Tensor | float | int,
+        b: Tensor | float | int,
+        is_const: tuple[bool, bool],
+        vmapsize: int,
+    ) -> Tensor:
+        """Vectorized operation for basic binary operations.
+
+        Args:
+            a: First argument, can be a Tensor, float, or int.
+            b: Second argument, can be a Tensor, float, or int.
+            is_const: Tuple indicating which arguments are constant (and therefore do
+                not have a batch axis).
+            vmapsize: Size of the vmapped axis.
+
+        Returns:
+            A tensor containing the result of the vmap-ed operation.
+        """
+        a_new = (
+            replicate(a, vmapsize)
+            if isinstance(a, (Node, Tensor)) and is_const[0]
+            else a
+        )
+        b_new = (
+            replicate(b, vmapsize)
+            if isinstance(b, (Node, Tensor)) and is_const[1]
+            else b
+        )
+        return op(a_new, b_new)
+
+    return vmap_op
+
+
+def vmap_elementwise(
+    f: Callable[[Tensor], Tensor],
+) -> Callable[[Tensor, tuple[bool], int], Tensor]:
+    """Create a vectorized element-wise operation.
+
+    Used to vmap element-wise operations like cos, sin, sigmoid, and tanh.
+
+    Args:
+        f: The element-wise operation to be vectorized. Takes a single argument,
+            which is a Tensor, and produces a tensor.
+
+    Returns:
+        The operation that corresponds to the vectorized operation and satisfies the
+        signature assumed by the traceable_vmap function.
+    """
+
+    def vmap_f(x: Tensor, is_const: tuple[bool], vmapsize: int) -> Tensor:
+        """Vectorized element-wise operation.
+
+        Args:
+            x: Input tensor.
+            is_const: Tuple indicating which arguments are constant (and therefore do
+                not have a batch axis).
+            vmapsize: Size of the vmapped axis.
+
+        Returns:
+            A tensor containing the result of the element-wise vmap-ed operation.
+        """
+        return f(x)
+
+    return vmap_f
+
+
+def vmap_linear(
+    x: Tensor,
+    weight: Tensor,
+    bias: Optional[None] = None,
+    is_const: tuple[bool, ...] = (False, False, False),
+    vmapsize: int = 0,
+) -> Tensor:
+    """Vectorized linear transformation.
+
+    Args:
+        x: Input tensor.
+        weight: Weight tensor.
+        bias: Optional bias tensor.
         is_const: Tuple indicating which arguments are constant (and therefore do not
             have a batch axis).
         vmapsize: Size of the vmapped axis.
 
     Returns:
-        A tensor containing the result of the addition.
+        A tensor containing the result of the vmap-ed linear transformation.
+
+    Raises:
+        NotImplementedError: If the input tensor x is constant or if the weight tensor
+            W is not constant, or if the bias is not constant.
+        ValueError: If vmapsize is not positive.
     """
-    a_new = (
-        replicate(a, vmapsize) if isinstance(a, (Node, Tensor)) and is_const[0] else a
-    )
-    b_new = (
-        replicate(b, vmapsize) if isinstance(b, (Node, Tensor)) and is_const[1] else b
-    )
-    return a_new + b_new
+    if is_const[0] or not is_const[1]:
+        raise NotImplementedError("x must be non-constant, W must be constant.")
+    if bias is not None and not is_const[2]:
+        raise NotImplementedError("bias must be constant.")
+    if vmapsize <= 0:
+        raise ValueError(f"vmapsize must be positive, got {vmapsize=}.")
+
+    return linear(x, weight, bias)
+
+
+def vmap_pow(
+    x: Tensor, exponent: float | int, is_const: tuple[bool, bool], vmapsize: int
+) -> Tensor:
+    """Vectorized power operation.
+
+    Args:
+        x: Input tensor.
+        exponent: Exponent tensor or scalar.
+        is_const: Tuple indicating which arguments are constant (and therefore do not
+            have a batch axis).
+        vmapsize: Size of the vmapped axis.
+
+    Returns:
+        A tensor containing the result of the power operation.
+
+    Raises:
+        NotImplementedError: If the input tensor x is constant or if the exponent is not
+            constant.
+    """
+    if is_const != (False, True):
+        raise NotImplementedError("x must be non-constant, exponent must be constant.")
+    if not isinstance(exponent, (float, int)):
+        raise NotImplementedError("Exponent must be a float or int.")
+
+    return x**exponent
+
+
+vmap_add = vmap_basic_binary(operator.add)
+vmap_sub = vmap_basic_binary(operator.sub)
+vmap_mul = vmap_basic_binary(operator.mul)
+vmap_cos = vmap_elementwise(cos)
+vmap_sin = vmap_elementwise(sin)
+vmap_sigmoid = vmap_elementwise(sigmoid)
+vmap_tanh = vmap_elementwise(tanh)
 
 
 MAPPING = {
-    add: vmap_add,
+    # addition, subtraction, multiplication
     operator.add: vmap_add,
+    operator.sub: vmap_sub,
+    operator.mul: vmap_mul,
+    # power
+    operator.pow: vmap_pow,
+    # linear layer
+    linear: vmap_linear,
+    # element-wise functions
+    cos: vmap_cos,
+    sin: vmap_sin,
+    sigmoid: vmap_sigmoid,
+    tanh: vmap_tanh,
 }
 
 
@@ -117,7 +258,7 @@ def traceable_vmap(  # noqa: C901
 
             elif node.op == "call_function":
                 is_const = tuple(
-                    isinstance(arg, (float, int)) or arg in constant_deps
+                    isinstance(arg, (float, int)) or arg in constant_deps or arg is None
                     for arg in node.args
                 )
                 f = node.target

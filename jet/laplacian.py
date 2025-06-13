@@ -44,7 +44,7 @@ class Laplacian(Module):
         self.is_batched = is_batched
 
         jet_f = jet(f, 2)
-        self.jet_f = traceable_vmap(jet_f, vmapsize=self.unbatched_dim)
+        self.jet_f = traceable_vmap(jet_f, self.unbatched_dim)
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """Compute the Laplacian of the function at the input tensor.
@@ -139,7 +139,7 @@ class RandomizedLaplacian(Laplacian):
         self.num_samples = num_samples
 
         jet_f = jet(f, 2)
-        self.jet_f = traceable_vmap(jet_f, vmapsize=self.num_samples)
+        self.jet_f = traceable_vmap(jet_f, self.num_samples)
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """Compute the MC-Laplacian of the function at the input tensor.

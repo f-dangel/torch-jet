@@ -8,6 +8,7 @@ from torch.nn import Module
 
 from jet import jet
 from jet.utils import replicate, sum_vmapped
+from jet.vmap import traceable_vmap
 
 # tell `torch.fx` to trace `replicate` as one node (required for simplification)
 wrap(replicate)
@@ -40,7 +41,6 @@ class Bilaplacian(Module):
                 the leading dimension of tensors.
         """
         super().__init__()
-        self.jet_f = jet(f, 4, vmap=True)
         # data that needs to be inferred explicitly from a dummy input
         # because `torch.fx` cannot do this.
         self.x_shape = dummy_x.shape
@@ -49,6 +49,9 @@ class Bilaplacian(Module):
         self.unbatched_dim = (self.x_shape[1:] if is_batched else self.x_shape).numel()
         self.batched_dim = self.x_shape[0] if is_batched else 1
         self.is_batched = is_batched
+
+        jet_f = jet(f, 4)
+        self.jet_f = traceable_vmap(jet_f, self.unbatched_dim)
 
     def forward(self, x: Tensor) -> Tensor:
         """Compute the Bi-Laplacian of the function at the input tensor.
@@ -67,7 +70,6 @@ class Bilaplacian(Module):
         gamma_4_0 = 13 / 192
         # first summand
         _, _, _, _, F4_1 = self.jet_f(*C1)
-        # NOTE Needs a 1/24 here to match the current write-up in the paper
         factor1 = (gamma_4_4 + 2 * (self.unbatched_dim - 1) * gamma_4_0) / 24
         term1 = factor1 * sum_vmapped(F4_1)
 
@@ -78,14 +80,12 @@ class Bilaplacian(Module):
         # second summand
         gamma_3_1 = -1 / 3
         _, _, _, _, F4_2 = self.jet_f(*C2)
-        # NOTE Needs a 1/24 here to match the current write-up in the paper
         factor2 = 2 * gamma_3_1 / 24
         term2 = factor2 * sum_vmapped(F4_2)
 
         # third term
         gamma_2_2 = 5 / 8
         _, _, _, _, F4_3 = self.jet_f(*C3)
-        # NOTE Needs a 1/24 here to match the current write-up in the paper
         factor3 = 2 * gamma_2_2 / 24
         term3 = factor3 * sum_vmapped(F4_3)
 
@@ -221,6 +221,9 @@ class RandomizedBilaplacian(Bilaplacian):
         self.distribution = distribution
         self.sample_func = {"normal": randn}[distribution]
         self.num_samples = num_samples
+
+        jet_f = jet(f, 4)
+        self.jet_f = traceable_vmap(jet_f, self.num_samples)
 
     def forward(self, x: Tensor) -> Tensor:
         """Compute the MC-Bi-Laplacian of the function at the input tensor.

@@ -676,6 +676,18 @@ def simplify(  # noqa: C901
     if verbose:
         print(f"Traced graph before simplification:\n{mod.graph}")
 
+    # Replace all call_method[mul] with call_function[operator.mul] because the
+    # simplification logic is only supported for call_function nodes at the moment
+    for node in tuple(mod.graph.nodes):
+        if node.op == "call_method" and node.target == "mul":
+            # replace the node with a call_function node
+            with mod.graph.inserting_before(node):
+                new_node = mod.graph.call_function(
+                    operator.mul, args=node.args, kwargs=node.kwargs
+                )
+                node.replace_all_uses_with(new_node)
+                mod.graph.erase_node(node)
+
     replicate_rewriter = RewriteReplicate(mod, verbose=verbose)
     sum_vmapped_rewriter = RewriteSumVmapped(mod, verbose=verbose)
 

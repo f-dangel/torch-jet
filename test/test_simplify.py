@@ -33,12 +33,12 @@ from test.test___init__ import (
     CASES_COMPACT_IDS,
     K_MAX,
     compare_jet_results,
-    report_nonclose,
     setup_case,
 )
 from test.test_bilaplacian import bilaplacian
 from test.test_laplacian import DISTRIBUTION_IDS, DISTRIBUTIONS, laplacian
 from test.test_weighted_laplacian import weighted_laplacian
+from test.utils import report_nonclose
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 from pytest import mark, skip
@@ -64,6 +64,7 @@ from jet.utils import (
     replicate,
     sum_vmapped,
 )
+from jet.vmap import traceable_vmap
 from jet.weighted_laplacian import (
     C_func_diagonal_increments,
     RandomizedWeightedLaplacian,
@@ -284,7 +285,8 @@ class ReplicateJet(Module):
                 Default: `False`.
         """
         super().__init__()
-        self.jet_f = jet(f, k, vmap=True, verbose=verbose)
+        jet_f = jet(f, k, verbose=verbose)
+        self.jet_f = traceable_vmap(jet_f, num_replica)
         self.k = k
         self.num_replica = num_replica
 
@@ -562,7 +564,8 @@ class Collapsed(Module):
             num_vectors: The number of vectors to use for the K-jet. Default: `3`.
         """
         super().__init__()
-        self.jet_f = jet(f, k, vmap=is_batched)
+        jet_f = jet(f, k)
+        self.jet_f = traceable_vmap(jet_f, num_vectors) if is_batched else jet_f
         self.x_shape = dummy_x.shape
         self.x_kwargs = {"dtype": dummy_x.dtype, "device": dummy_x.device}
         self.k = k

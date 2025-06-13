@@ -15,7 +15,7 @@ import operator
 from typing import Callable, Optional
 from warnings import warn
 
-from torch import Tensor, cos, sigmoid, sin, tanh
+from torch import Tensor, cos, mul, sigmoid, sin, tanh
 from torch.fx import GraphModule, Node
 from torch.nn import Module
 from torch.nn.functional import linear
@@ -245,6 +245,7 @@ MAPPING = {
     operator.add: vmap_add,
     operator.sub: vmap_sub,
     operator.mul: vmap_mul,
+    mul: vmap_mul,
     # power
     operator.pow: vmap_pow,
     # linear layer
@@ -322,9 +323,10 @@ def traceable_vmap(  # noqa: C901
                 constant_deps.add(node)
 
             elif node.op == "call_function":
+                # FIXME Brittle if kwargs are supplied in random order
                 is_const = tuple(
                     isinstance(arg, (float, int)) or arg in constant_deps or arg is None
-                    for arg in node.args
+                    for arg in list(node.args) + list(node.kwargs.values())
                 )
                 f = node.target
                 if f not in MAPPING.keys():

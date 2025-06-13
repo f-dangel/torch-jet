@@ -73,18 +73,13 @@ class JetTracer(Tracer):
 
 
 def jet(
-    f: Callable[[Primal], Value],
-    k: int,
-    vmap: bool = False,
-    verbose: bool = False,
+    f: Callable[[Primal], Value], k: int, verbose: bool = False
 ) -> Callable[[PrimalAndCoefficients], ValueAndCoefficients]:
     """Overload a function with its Taylor-mode equivalent.
 
     Args:
         f: Function to overload. Maps a tensor to another tensor.
         k: The order of the Taylor expansion.
-        vmap: Whether to `vmap` the primal value and its Taylor coefficients.
-            Default: `False`.
         verbose: Whether to print the traced graphs before and after overloading.
             Default: `False`.
 
@@ -103,7 +98,7 @@ def jet(
     if verbose:
         print(f"Traced graph before jet overloading:\n{mod.graph}")
 
-    jet_mod = _replace_operations_with_taylor(mod, k, vmap=vmap)
+    jet_mod = _replace_operations_with_taylor(mod, k)
 
     if verbose:
         print(f"Traced graph after jet overloading:\n{jet_mod.graph}")
@@ -112,14 +107,13 @@ def jet(
 
 
 def _replace_operations_with_taylor(  # noqa: C901
-    mod: GraphModule, k: int, vmap: bool
+    mod: GraphModule, k: int
 ) -> GraphModule:
     """Replace operations in the graph with Taylor-mode equivalents.
 
     Args:
         mod: Traced PyTorch computation graph module.
         k: The order of the Taylor expansion.
-        vmap: Whether to `vmap` the primal value and its Taylor coefficients.
 
     Returns:
         The overloaded computation graph module with Taylor arithmetic.
@@ -217,12 +211,7 @@ def _replace_operations_with_taylor(  # noqa: C901
                 new_node = graph.call_function(
                     MAPPING[f],
                     args=node.args,
-                    kwargs={
-                        **node.kwargs,
-                        "K": k,
-                        "vmap": vmap,
-                        "is_taylor": is_taylor,
-                    },
+                    kwargs={**node.kwargs, "K": k, "is_taylor": is_taylor},
                 )
             node.replace_all_uses_with(new_node)
             graph.erase_node(node)

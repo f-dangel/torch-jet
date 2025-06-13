@@ -678,15 +678,15 @@ def simplify(  # noqa: C901
 
     # Replace all call_method[mul] with call_function[operator.mul] because the
     # simplification logic is only supported for call_function nodes at the moment
-    for node in tuple(mod.graph.nodes):
-        if node.op == "call_method" and node.target == "mul":
+    graph = mod.graph
+    for node in [n for n in graph.nodes if n.op == "call_method" and n.target == "mul"]:
+        with check_unaltered(mod, test_x), graph.inserting_before(node):
             # replace the node with a call_function node
-            with mod.graph.inserting_before(node):
-                new_node = mod.graph.call_function(
-                    operator.mul, args=node.args, kwargs=node.kwargs
-                )
-                node.replace_all_uses_with(new_node)
-                mod.graph.erase_node(node)
+            new_node = graph.call_function(
+                operator.mul, args=node.args, kwargs=node.kwargs
+            )
+            node.replace_all_uses_with(new_node)
+            graph.erase_node(node)
 
     replicate_rewriter = RewriteReplicate(mod, verbose=verbose)
     sum_vmapped_rewriter = RewriteSumVmapped(mod, verbose=verbose)

@@ -52,14 +52,13 @@ def _faa_di_bruno(vs: Tuple[Primal, ...], K: int, dn: Dict[int, Primal]) -> List
 
 
 def jet_sin(
-    s: PrimalAndCoefficients, K: int, vmap: bool, is_taylor: tuple[bool, ...]
+    s: PrimalAndCoefficients, K: int, is_taylor: tuple[bool, ...]
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the sine function.
 
     Args:
         s: The primal and its Taylor coefficients.
         K: The order of the Taylor expansion.
-        vmap: Whether to `vmap` the primal value and its Taylor coefficients.
         is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
 
@@ -87,14 +86,13 @@ def jet_sin(
 
 
 def jet_cos(
-    s: PrimalAndCoefficients, K: int, vmap: bool, is_taylor: tuple[bool, ...]
+    s: PrimalAndCoefficients, K: int, is_taylor: tuple[bool, ...]
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the cosine function.
 
     Args:
         s: The primal and its Taylor coefficients.
         K: The order of the Taylor expansion.
-        vmap: Whether to `vmap` the primal value and its Taylor coefficients.
         is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
 
@@ -122,14 +120,13 @@ def jet_cos(
 
 
 def jet_tanh(
-    s: PrimalAndCoefficients, K: int, vmap: bool, is_taylor: tuple[bool, ...]
+    s: PrimalAndCoefficients, K: int, is_taylor: tuple[bool, ...]
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the hyperbolic tangent function.
 
     Args:
         s: The primal and its Taylor coefficients.
         K: The order of the Taylor expansion.
-        vmap: Whether to `vmap` the primal value and its Taylor coefficients.
         is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
 
@@ -177,14 +174,13 @@ def jet_tanh(
 
 
 def jet_sigmoid(
-    s: PrimalAndCoefficients, K: int, vmap: bool, is_taylor: tuple[bool, ...]
+    s: PrimalAndCoefficients, K: int, is_taylor: tuple[bool, ...]
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the sigmoid function.
 
     Args:
         s: The primal and its Taylor coefficients.
         K: The order of the Taylor expansion.
-        vmap: Whether to `vmap` the primal value and its Taylor coefficients.
         is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
 
@@ -233,7 +229,6 @@ def jet_linear(
     weight: Tensor,
     bias: Optional[Tensor] = None,
     K=None,
-    vmap: bool = False,
     is_taylor: tuple[bool, ...] = (True, False, False),
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the linear function.
@@ -243,7 +238,6 @@ def jet_linear(
         weight: The weight matrix.
         bias: The (optional) bias vector.
         K: The order of the Taylor expansion.
-        vmap: Whether to `vmap` the primal value and its Taylor coefficients.
         is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
 
@@ -265,7 +259,6 @@ def jet_pow(
     s: PrimalAndCoefficients,
     exponent: float | int,
     K: int,
-    vmap: bool,
     is_taylor: tuple[bool, ...],
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the power function with integer exponent.
@@ -274,7 +267,6 @@ def jet_pow(
         s: The primal and its Taylor coefficients.
         exponent: The integer exponent.
         K: The order of the Taylor expansion.
-        vmap: Whether to `vmap` the primal value and its Taylor coefficients.
         is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
 
@@ -316,7 +308,6 @@ def jet_add(
     s1: Primal | PrimalAndCoefficients | float | int,
     s2: Primal | PrimalAndCoefficients | float | int,
     K: int,
-    vmap: bool,
     is_taylor: tuple[bool, ...],
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for addition.
@@ -325,7 +316,6 @@ def jet_add(
         s1: The first primal and its Taylor coefficients, or a scalar.
         s2: The second primal and its Taylor coefficients, or a scalar.
         K: The order of the Taylor expansion.
-        vmap: Whether to `vmap` the primal value and its Taylor coefficients.
         is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
 
@@ -346,7 +336,6 @@ def jet_sub(
     s1: Primal | PrimalAndCoefficients | float | int,
     s2: Primal | PrimalAndCoefficients | float | int,
     K: int,
-    vmap: bool,
     is_taylor: tuple[bool, ...],
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for subtraction.
@@ -355,7 +344,6 @@ def jet_sub(
         s1: The first primal and its Taylor coefficients, or a scalar.
         s2: The second primal and its Taylor coefficients, or a scalar.
         K: The order of the Taylor expansion.
-        vmap: Whether to `vmap` the primal value and its Taylor coefficients.
         is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
 
@@ -376,7 +364,6 @@ def jet_mul(
     s1: Primal | PrimalAndCoefficients,
     s2: Primal | PrimalAndCoefficients,
     K: int,
-    vmap: bool,
     is_taylor: tuple[bool, ...],
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for multiplication of two variables.
@@ -385,7 +372,6 @@ def jet_mul(
         s1: The first primal and its Taylor coefficients.
         s2: The second primal and its Taylor coefficients.
         K: The order of the Taylor expansion.
-        vmap: Whether to `vmap` the primal value and its Taylor coefficients.
         is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
 

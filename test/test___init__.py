@@ -1,10 +1,10 @@
 """Tests for jet/__init__.py."""
 
-from test.utils import VMAP_IDS, VMAPS
+from test.utils import report_nonclose
 from typing import Any, Callable, Dict, Tuple
 
 from pytest import mark
-from torch import Tensor, cos, manual_seed, rand, sigmoid, sin, stack, tanh, tensor
+from torch import Tensor, cos, manual_seed, rand, sigmoid, sin, tanh, tensor
 from torch.fx import symbolic_trace
 from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
@@ -23,59 +23,13 @@ def compare_jet_results(out1: ValueAndCoefficients, out2: ValueAndCoefficients):
         report_nonclose(s1, s2, name=f"Coefficients {i + 1}")
 
 
-def report_nonclose(
-    a: Tensor, b: Tensor, rtol: float = 1e-5, atol: float = 1e-8, name: str = "Tensors"
-):
-    """Report non-closeness of two tensors.
-
-    Args:
-        a: First tensor.
-        b: Second tensor.
-        rtol: Relative tolerance. Default: `1e-5`.
-        atol: Absolute tolerance. Default: `1e-8`.
-        name: Name of the tensors. Default: `"Tensors"`.
-    """
-    assert a.shape == b.shape, f"Shapes are not equal: {a.shape} != {b.shape}"
-    close = a.allclose(b, rtol=rtol, atol=atol)
-    if not close:
-        for idx, (x, y) in enumerate(zip(a.flatten(), b.flatten())):
-            if not x.isclose(y, rtol=rtol, atol=atol):
-                print(f"Index {idx}: {x} != {y} (ratio: {x / y})")
-    else:
-        print(f"{name} are close.")
-    assert close, f"{name} are not close."
-
-
-def check_jet(f: Callable[[Primal], Value], arg: PrimalAndCoefficients, vmap: bool):
+def check_jet(f: Callable[[Primal], Value], arg: PrimalAndCoefficients):
     x, vs = arg
 
-    # create a function that manually vmaps `rev_jet` (calling `torch.vmap` fails)
-    if not vmap:
-        rev_jet_f = rev_jet(f)
-    else:
-        _rev_jet_f = rev_jet(f)
-
-        def rev_jet_f(x, *vs):
-            (num,) = set([x.shape[0]] + [v.shape[0] for v in vs])
-            out, vs_out = [], [[] for _ in range(len(vs))]
-
-            # loop over vmap dimension
-            for n in range(num):
-                print("Hello", x[n].shape, [v[n].shape for v in vs])
-                result_n = _rev_jet_f(x[n], *[v[n] for v in vs])
-                out.append(result_n[0])
-                for i, v_out_n in enumerate(result_n[1:]):
-                    vs_out[i].append(v_out_n)
-
-            # stack results
-            out = stack(out)
-            vs_out = tuple(stack(v) for v in vs_out)
-
-            return (out, *vs_out)
-
+    rev_jet_f = rev_jet(f)
     rev_jet_out = rev_jet_f(x, *vs)
 
-    jet_f = jet(f, k=len(vs), vmap=vmap, verbose=True)
+    jet_f = jet(f, k=len(vs), verbose=True)
     jet_out = jet_f(x, *vs)
 
     compare_jet_results(jet_out, rev_jet_out)
@@ -202,6 +156,9 @@ def f_multiply(x: Tensor) -> Tensor:
     y = sin(x)
     return sin(y) * cos(y)
 
+
+# fix seed when creating test cases with NN functions
+manual_seed(1)
 
 # contains only composed atomic functions
 CASES_COMPACT = [
@@ -351,38 +308,28 @@ def setup_case(
     return f, x, vs, config["is_batched"]
 
 
-VMAPSIZES = [0, 4]
-VMAPSIZE_IDS = ["novmap" if v == 0 else f"vmapsize={v}" for v in VMAPSIZES]
-
-
 @mark.parametrize("config", CASES, ids=CASE_IDS)
-@mark.parametrize("vmapsize", VMAPSIZES, ids=VMAPSIZE_IDS)
-def test_jet(config: Dict[str, Any], vmapsize: int):
+def test_jet(config: Dict[str, Any]):
     """Compare forward jet with reverse-mode reference implementation.
 
     Args:
         config: Configuration dictionary of the test case.
-        vmapsize: The size of the vmaped dimension. `0` means no vmap.
     """
-    f, x, vs, _ = setup_case(config, vmapsize=vmapsize)
-    check_jet(f, (x, vs), vmapsize != 0)
+    f, x, vs, _ = setup_case(config)
+    check_jet(f, (x, vs))
 
 
 @mark.parametrize("config", CASES, ids=CASE_IDS)
-@mark.parametrize("vmap", VMAPS, ids=VMAP_IDS)
-def test_symbolic_trace_jet(config: Dict[str, Any], vmap: bool):
+def test_symbolic_trace_jet(config: Dict[str, Any]):
     """Test whether the function produced by jet can be traced.
 
     Args:
         config: Configuration dictionary of the test case.
-        vmap: Whether to use vmap.
     """
     f, _, _, _ = setup_case(config, taylor_coefficients=False)
     k = config["k"]
     # generate the jet's compute graph
-    jet_f = jet(f, k, vmap=vmap)
+    jet_f = jet(f, k)
 
     # try tracing it
-    print("Compute graph of jet function:")
-    mod = symbolic_trace(jet_f)
-    print(mod.graph)
+    symbolic_trace(jet_f)

@@ -219,15 +219,6 @@ class RewriteReplicate:
         if self.verbose:
             print(message)
 
-    def remove_unused_nodes(self) -> bool:
-        """Find and remove unused nodes from the graph.
-
-        Returns:
-            Whether nodes were removed.
-        """
-        removed = [self.maybe_erase(node) for node in list(self.graph.nodes)]
-        return any(removed)
-
 
 class RewriteSumVmapped(RewriteReplicate):
     """Propagates summations over a vmaped axis up a computation graph."""
@@ -676,11 +667,23 @@ def simplify(  # noqa: C901
     if verbose:
         print(f"Traced graph before simplification:\n{mod.graph}")
 
+    # Replace all call_method[mul] with call_function[operator.mul] because the
+    # simplification logic is only supported for call_function nodes at the moment
+    graph = mod.graph
+    for node in [n for n in graph.nodes if n.op == "call_method" and n.target == "mul"]:
+        with check_unaltered(mod, test_x), graph.inserting_before(node):
+            # replace the node with a call_function node
+            new_node = graph.call_function(
+                operator.mul, args=node.args, kwargs=node.kwargs
+            )
+            node.replace_all_uses_with(new_node)
+            graph.erase_node(node)
+
     replicate_rewriter = RewriteReplicate(mod, verbose=verbose)
     sum_vmapped_rewriter = RewriteSumVmapped(mod, verbose=verbose)
 
     strategies = {
-        "remove_unused": replicate_rewriter.remove_unused_nodes,
+        "remove_unused": graph.eliminate_dead_code,
         "common_subexpression_elimination_get_attr": partial(
             common_subexpression_elimination,
             mod.graph,

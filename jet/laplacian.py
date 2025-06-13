@@ -8,6 +8,7 @@ from torch.nn import Module
 
 from jet import jet
 from jet.utils import rademacher, replicate, sum_vmapped
+from jet.vmap import traceable_vmap
 
 # tell `torch.fx` to trace `replicate` as one node (required for simplification)
 wrap(replicate)
@@ -33,7 +34,6 @@ class Laplacian(Module):
                 the leading dimension of tensors.
         """
         super().__init__()
-        self.jet_f = jet(f, 2, vmap=True)
         # data that needs to be inferred explicitly from a dummy input
         # because `torch.fx` cannot do this.
         self.x_shape = dummy_x.shape
@@ -42,6 +42,9 @@ class Laplacian(Module):
         self.unbatched_dim = (self.x_shape[1:] if is_batched else self.x_shape).numel()
         self.batched_dim = self.x_shape[0] if is_batched else 1
         self.is_batched = is_batched
+
+        jet_f = jet(f, 2)
+        self.jet_f = traceable_vmap(jet_f, self.unbatched_dim)
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """Compute the Laplacian of the function at the input tensor.
@@ -134,6 +137,9 @@ class RandomizedLaplacian(Laplacian):
         self.distribution = distribution
         self.sample_func = {"normal": randn, "rademacher": rademacher}[distribution]
         self.num_samples = num_samples
+
+        jet_f = jet(f, 2)
+        self.jet_f = traceable_vmap(jet_f, self.num_samples)
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """Compute the MC-Laplacian of the function at the input tensor.

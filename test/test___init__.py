@@ -4,7 +4,7 @@ from test.utils import report_nonclose
 from typing import Any, Callable, Dict, Tuple
 
 from pytest import mark
-from torch import Tensor, cos, manual_seed, rand, sigmoid, sin, stack, tanh, tensor
+from torch import Tensor, cos, manual_seed, rand, sigmoid, sin, tanh, tensor
 from torch.fx import symbolic_trace
 from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear

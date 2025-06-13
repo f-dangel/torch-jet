@@ -219,15 +219,6 @@ class RewriteReplicate:
         if self.verbose:
             print(message)
 
-    def remove_unused_nodes(self) -> bool:
-        """Find and remove unused nodes from the graph.
-
-        Returns:
-            Whether nodes were removed.
-        """
-        removed = [self.maybe_erase(node) for node in list(self.graph.nodes)]
-        return any(removed)
-
 
 class RewriteSumVmapped(RewriteReplicate):
     """Propagates summations over a vmaped axis up a computation graph."""
@@ -692,7 +683,7 @@ def simplify(  # noqa: C901
     sum_vmapped_rewriter = RewriteSumVmapped(mod, verbose=verbose)
 
     strategies = {
-        "remove_unused": replicate_rewriter.remove_unused_nodes,
+        "remove_unused": graph.eliminate_dead_code,
         "common_subexpression_elimination_get_attr": partial(
             common_subexpression_elimination,
             mod.graph,

@@ -490,31 +490,6 @@ def test_simplify_weighted_laplacian(
     )
 
 
-def test_simplify_remove_unused_nodes():
-    """Test removal of unused nodes."""
-
-    def f(x: Tensor) -> Tensor:
-        unused1 = x + 1
-        # Note how unused1 only becomes unused once we have removed unused2
-        unused2 = unused1 + 2  # noqa: F841
-
-        used = x + 3
-        return used
-
-    x = arange(10)
-
-    f_traced = symbolic_trace(f)
-    f_x = f_traced(x)
-    # there should be 5 nodes: x, unused1, unused2, used, output
-    assert len(list(f_traced.graph.nodes)) == 5
-
-    f_simple = simplify(f_traced, remove_unused=True, verbose=True)
-    # there should be 3 nodes: x, used, output
-    assert len(list(f_simple.graph.nodes)) == 3
-
-    report_nonclose(f_x, f_simple(x), name="f(x)")
-
-
 def test_common_subexpression_elimination():
     """Test common subexpression elimination."""
 

@@ -5,8 +5,10 @@ from typing import Callable, Tuple
 from torch import Tensor, arange, cat, einsum, randn, zeros
 from torch.fx import wrap
 
+from jet import jet
 from jet.laplacian import Laplacian
 from jet.utils import rademacher, replicate, sum_vmapped
+from jet.vmap import traceable_vmap
 
 # tell `torch.fx` to trace `replicate` as one node (required for simplification)
 wrap(replicate)
@@ -50,6 +52,9 @@ class WeightedLaplacian(Laplacian):
         # determine how many columns S has, i.e. the rank of C, which determines the
         # number of vectors we have to feed into the jet
         self.num_vectors = self.S_func(dummy_x).shape[-1]
+
+        jet_f = jet(f, 2)
+        self.jet_f = traceable_vmap(jet_f, self.num_vectors)
 
     def set_up_taylor_coefficients(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """Create the Taylor coefficients for the MC-Laplacian computation.

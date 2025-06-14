@@ -51,7 +51,7 @@ class Laplacian(Module):
                 passed in the constructor.
 
         Returns:
-            Tuple containing the jet.utils.replicated function value, the Jacobian, and the
+            Tuple containing the replicated function value, the Jacobian, and the
             Laplacian.
         """
         X0, X1, X2 = self.set_up_taylor_coefficients(x)
@@ -146,7 +146,7 @@ class RandomizedLaplacian(Laplacian):
                 passed in the constructor.
 
         Returns:
-            Tuple containing the jet.utils.replicated function value, the randomized Jacobian,
+            Tuple containing the replicated function value, the randomized Jacobian,
             and the randomized Laplacian.
         """
         F0, F1, F2 = super().forward(x)

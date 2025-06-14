@@ -10,9 +10,12 @@ from torch import Tensor, add, cos, cosh, div, mul
 from torch import pow as torch_pow
 from torch import sigmoid, sin, sub, tanh
 from torch.fx import Graph, GraphModule, Node
+from torch.nn import Module
 from torch.nn.functional import linear
 
+from jet import JetTracer
 from jet.utils import (
+    WrapperModule,
     print_tensor_constants_and_shapes,
     recursive_getattr,
     replicate,
@@ -663,6 +666,11 @@ def simplify(  # noqa: C901
     Returns:
         The simplified graph module.
     """
+    if not isinstance(mod, GraphModule):
+        mod = mod if isinstance(mod, Module) else WrapperModule(mod)
+        graph = JetTracer().trace(mod)
+        mod = GraphModule(mod, graph)
+
     nodes_before = len(list(mod.graph.nodes))
     if verbose:
         print(f"Traced graph before simplification:\n{mod.graph}")

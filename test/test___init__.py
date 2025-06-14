@@ -5,11 +5,10 @@ from typing import Any, Callable, Dict, Tuple
 
 from pytest import mark
 from torch import Tensor, cos, manual_seed, rand, sigmoid, sin, tanh, tensor
-from torch.fx import symbolic_trace
 from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
 
-from jet import jet, rev_jet
+from jet import JetTracer, jet, rev_jet
 from jet.utils import Primal, PrimalAndCoefficients, Value, ValueAndCoefficients
 
 
@@ -332,4 +331,4 @@ def test_symbolic_trace_jet(config: Dict[str, Any]):
     jet_f = jet(f, k)
 
     # try tracing it
-    symbolic_trace(jet_f)
+    JetTracer().trace(jet_f)

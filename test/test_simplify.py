@@ -43,7 +43,7 @@ from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 from pytest import mark, skip
 from torch import Size, Tensor, arange, manual_seed, rand
-from torch.fx import Graph, GraphModule, symbolic_trace, wrap
+from torch.fx import Graph, GraphModule, wrap
 from torch.nn import Module
 
 from jet import JetTracer, jet, rev_jet
@@ -253,8 +253,7 @@ def test_propagate_replication(config: Dict[str, Any], num_replicas: int = 3):
     print("Replicate module works as expected.")
 
     # check that the `Replicate` module can be traced and simplified
-    fast = symbolic_trace(f_rep)
-    fast = simplify(fast, verbose=True)
+    fast = simplify(f_rep, verbose=True)
     assert ref.allclose(fast(x))
     print("After simplifying, Replicate module still behaves the same.")
 
@@ -332,8 +331,7 @@ def test_propagate_replication_jet(config: Dict[str, Any], num_replicas: int = 3
     print("ReplicateJet module works as expected.")
 
     # simplify the traced module
-    fast = symbolic_trace(mod)
-    fast = simplify(fast, verbose=True)
+    fast = simplify(mod, verbose=True)
     fast_result = fast((x, *vs))
     compare_jet_results(jet_f_result, fast_result)
 
@@ -383,8 +381,7 @@ def test_simplify_laplacian(config: Dict[str, Any], distribution: Optional[str])
     # draw random vectors and stores them as tensor constants
     if randomized:
         manual_seed(seed)
-    fast = symbolic_trace(mod)
-    fast = simplify(fast, verbose=True, test_x=x)
+    fast = simplify(mod, verbose=True, test_x=x)
 
     # make sure the simplified module still behaves the same
     fast_out = fast(x)
@@ -459,8 +456,7 @@ def test_simplify_weighted_laplacian(
     # draw random vectors and stores them as tensor constants
     if randomized:
         manual_seed(seed)
-    fast = symbolic_trace(mod)
-    fast = simplify(fast, verbose=True)
+    fast = simplify(mod, verbose=True)
 
     # make sure the simplified module still behaves the same
     fast_out = fast(x)
@@ -503,9 +499,12 @@ def test_common_subexpression_elimination():
         z = y1 + y2
         return z
 
+    f = WrapperModule(f)
+
     x = arange(10)
 
-    f_traced = symbolic_trace(f)
+    graph = JetTracer().trace(f)
+    f_traced = GraphModule(f, graph)
     f_x = f_traced(x)
     # there should be 7 nodes: x, x1, x2, y1, y2, z, output
     assert len(list(f_traced.graph.nodes)) == 7
@@ -586,8 +585,7 @@ def test_simplify_collapsed_K_jet(
         skip(f"Skipping {config['id']} for {k=} because k_max={config['k_max']}.")
 
     collapsed = Collapsed(f, x, is_batched, k, num_vectors=num_vectors)
-    traced = symbolic_trace(collapsed)
-    simple = simplify(traced, test_x=x, verbose=True)
+    simple = simplify(collapsed, test_x=x, verbose=True)
 
     num_collapsed = num_collapsed_tensor_constants(
         k, config["first_op_vanishing_derivatives"]
@@ -637,9 +635,8 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
     # draw random vectors and stores them as tensor constants
     if randomized:
         manual_seed(seed)
-    simple_mod = symbolic_trace(bilap_mod)
     simple_mod = simplify(
-        simple_mod, verbose=True, eliminate_tensor_constants=False, test_x=x
+        bilap_mod, verbose=True, eliminate_tensor_constants=False, test_x=x
     )
 
     # make sure the `replicate` node from the 0th component made it to the end

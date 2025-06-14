@@ -3,17 +3,11 @@
 from typing import Callable, Tuple
 
 from torch import Tensor, eye, randn, zeros
-from torch.fx import wrap
 from torch.nn import Module
 
-from jet import jet
-from jet.utils import rademacher, replicate, sum_vmapped
+import jet
+from jet.utils import rademacher
 from jet.vmap import traceable_vmap
-
-# tell `torch.fx` to trace `replicate` as one node (required for simplification)
-wrap(replicate)
-# tell `torch.fx` to trace `sum_vmapped` as one node (required for simplification)
-wrap(sum_vmapped)
 
 
 class Laplacian(Module):
@@ -43,7 +37,7 @@ class Laplacian(Module):
         self.batched_dim = self.x_shape[0] if is_batched else 1
         self.is_batched = is_batched
 
-        jet_f = jet(f, 2)
+        jet_f = jet.jet(f, 2)
         self.jet_f = traceable_vmap(jet_f, self.unbatched_dim)
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
@@ -57,12 +51,12 @@ class Laplacian(Module):
                 passed in the constructor.
 
         Returns:
-            Tuple containing the replicated function value, the Jacobian, and the
+            Tuple containing the jet.utils.replicated function value, the Jacobian, and the
             Laplacian.
         """
         X0, X1, X2 = self.set_up_taylor_coefficients(x)
         F0, F1, F2 = self.jet_f(X0, X1, X2)
-        return F0, F1, sum_vmapped(F2)
+        return F0, F1, jet.utils.sum_vmapped(F2)
 
     def set_up_taylor_coefficients(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """Create the Taylor coefficients for the Laplacian computation.
@@ -74,7 +68,7 @@ class Laplacian(Module):
         Returns:
             The three input tensors to the 2-jet that computes the Laplacian.
         """
-        X0 = replicate(x, self.unbatched_dim)
+        X0 = jet.utils.replicate(x, self.unbatched_dim)
         X2 = zeros(self.unbatched_dim, *self.x_shape, **self.x_kwargs)
 
         X1 = eye(self.unbatched_dim, **self.x_kwargs)
@@ -138,7 +132,7 @@ class RandomizedLaplacian(Laplacian):
         self.sample_func = {"normal": randn, "rademacher": rademacher}[distribution]
         self.num_samples = num_samples
 
-        jet_f = jet(f, 2)
+        jet_f = jet.jet(f, 2)
         self.jet_f = traceable_vmap(jet_f, self.num_samples)
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
@@ -152,7 +146,7 @@ class RandomizedLaplacian(Laplacian):
                 passed in the constructor.
 
         Returns:
-            Tuple containing the replicated function value, the randomized Jacobian,
+            Tuple containing the jet.utils.replicated function value, the randomized Jacobian,
             and the randomized Laplacian.
         """
         F0, F1, F2 = super().forward(x)
@@ -170,7 +164,7 @@ class RandomizedLaplacian(Laplacian):
         Returns:
             The three input tensors to the 2-jet that computes the MC-Laplacian.
         """
-        X0 = replicate(x, self.num_samples)
+        X0 = jet.utils.replicate(x, self.num_samples)
         X2 = zeros(self.num_samples, *self.x_shape, **self.x_kwargs)
 
         # sample the random vectors

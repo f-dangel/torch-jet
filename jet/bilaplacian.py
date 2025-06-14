@@ -3,17 +3,10 @@
 from typing import Callable, Tuple
 
 from torch import Tensor, eye, randn, zeros
-from torch.fx import wrap
 from torch.nn import Module
 
-from jet import jet
-from jet.utils import replicate, sum_vmapped
+import jet
 from jet.vmap import traceable_vmap
-
-# tell `torch.fx` to trace `replicate` as one node (required for simplification)
-wrap(replicate)
-# tell `torch.fx` to trace `sum_vmapped` as one node (required for simplification)
-wrap(sum_vmapped)
 
 
 class Bilaplacian(Module):
@@ -50,7 +43,7 @@ class Bilaplacian(Module):
         self.batched_dim = self.x_shape[0] if is_batched else 1
         self.is_batched = is_batched
 
-        jet_f = jet(f, 4)
+        jet_f = jet.jet(f, 4)
         self.jet_f = traceable_vmap(jet_f, self.unbatched_dim)
 
     def forward(self, x: Tensor) -> Tensor:
@@ -71,7 +64,7 @@ class Bilaplacian(Module):
         # first summand
         _, _, _, _, F4_1 = self.jet_f(*C1)
         factor1 = (gamma_4_4 + 2 * (self.unbatched_dim - 1) * gamma_4_0) / 24
-        term1 = factor1 * sum_vmapped(F4_1)
+        term1 = factor1 * jet.utils.sum_vmapped(F4_1)
 
         # there are no off-diagonal terms if the dimension is 1
         if self.unbatched_dim == 1:
@@ -81,13 +74,13 @@ class Bilaplacian(Module):
         gamma_3_1 = -1 / 3
         _, _, _, _, F4_2 = self.jet_f(*C2)
         factor2 = 2 * gamma_3_1 / 24
-        term2 = factor2 * sum_vmapped(F4_2)
+        term2 = factor2 * jet.utils.sum_vmapped(F4_2)
 
         # third term
         gamma_2_2 = 5 / 8
         _, _, _, _, F4_3 = self.jet_f(*C3)
         factor3 = 2 * gamma_2_2 / 24
-        term3 = factor3 * sum_vmapped(F4_3)
+        term3 = factor3 * jet.utils.sum_vmapped(F4_3)
 
         return term1 + term2 + term3
 
@@ -108,7 +101,7 @@ class Bilaplacian(Module):
         D = self.unbatched_dim
 
         # first 4-jet
-        X1_0 = replicate(x, D)
+        X1_0 = jet.utils.replicate(x, D)
         X1_2 = zeros(D, *self.x_shape, **self.x_kwargs)
         X1_3 = zeros(D, *self.x_shape, **self.x_kwargs)
         X1_4 = zeros(D, *self.x_shape, **self.x_kwargs)
@@ -124,7 +117,7 @@ class Bilaplacian(Module):
         C1 = (X1_0, X1_1, X1_2, X1_3, X1_4)
 
         # second 4-jet
-        X2_0 = replicate(x, D * (D - 1))
+        X2_0 = jet.utils.replicate(x, D * (D - 1))
         X2_2 = zeros(D * (D - 1), *self.x_shape, **self.x_kwargs)
         X2_3 = zeros(D * (D - 1), *self.x_shape, **self.x_kwargs)
         X2_4 = zeros(D * (D - 1), *self.x_shape, **self.x_kwargs)
@@ -146,7 +139,7 @@ class Bilaplacian(Module):
         C2 = (X2_0, X2_1, X2_2, X2_3, X2_4)
 
         # third 4-jet
-        X3_0 = replicate(x, D * (D - 1) // 2)
+        X3_0 = jet.utils.replicate(x, D * (D - 1) // 2)
         X3_2 = zeros(D * (D - 1) // 2, *self.x_shape, **self.x_kwargs)
         X3_3 = zeros(D * (D - 1) // 2, *self.x_shape, **self.x_kwargs)
         X3_4 = zeros(D * (D - 1) // 2, *self.x_shape, **self.x_kwargs)
@@ -222,7 +215,7 @@ class RandomizedBilaplacian(Bilaplacian):
         self.sample_func = {"normal": randn}[distribution]
         self.num_samples = num_samples
 
-        jet_f = jet(f, 4)
+        jet_f = jet.jet(f, 4)
         self.jet_f = traceable_vmap(jet_f, self.num_samples)
 
     def forward(self, x: Tensor) -> Tensor:
@@ -242,7 +235,7 @@ class RandomizedBilaplacian(Bilaplacian):
         _, _, _, _, F4 = self.jet_f(X0, X1, X2, X3, X4)
 
         # need to divide the Laplacian by number of MC samples
-        return sum_vmapped(F4) / (3 * self.num_samples)
+        return jet.utils.sum_vmapped(F4) / (3 * self.num_samples)
 
     def set_up_taylor_coefficients(
         self, x: Tensor
@@ -256,7 +249,7 @@ class RandomizedBilaplacian(Bilaplacian):
         Returns:
             The five input tensors to the 4-jet that computes the MC-Bi-Laplacian.
         """
-        X0 = replicate(x, self.num_samples)
+        X0 = jet.utils.replicate(x, self.num_samples)
         X2 = zeros(self.num_samples, *self.x_shape, **self.x_kwargs)
         X3 = zeros(self.num_samples, *self.x_shape, **self.x_kwargs)
         X4 = zeros(self.num_samples, *self.x_shape, **self.x_kwargs)

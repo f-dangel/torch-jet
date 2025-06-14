@@ -1,5 +1,6 @@
 """Taylor-mode automatic differentiation (jets) in PyTorch."""
 
+import math
 from math import factorial
 from typing import Callable, Optional
 from warnings import warn
@@ -9,6 +10,7 @@ from torch.autograd import grad
 from torch.fx import Graph, GraphModule, Node, Tracer
 from torch.nn import Linear, Module, Sigmoid, Tanh
 
+import jet.utils
 from jet.operations import MAPPING
 from jet.utils import (
     Primal,
@@ -52,6 +54,21 @@ def analyze_dependencies(graph: Graph) -> tuple[set[Node], set[Node]]:
 
 class JetTracer(Tracer):
     """Custom tracer for overloading functions with Taylor-mode arithmetic."""
+
+    def __init__(
+        self, autowrap_modules=(math, jet.utils), autowrap_functions=()
+    ) -> None:
+        """Initialize the JetTracer.
+
+        Args:
+            autowrap_modules: Modules to autowrap. Default: `(math, jet.utils)`.
+                The `jet.utils` module is included to autowrap the `replicate` and
+                `sum_vmapped` functions, which are used in the simplification logic.
+            autowrap_functions: Functions to autowrap. Default: `()`.
+        """
+        super().__init__(
+            autowrap_modules=autowrap_modules, autowrap_functions=autowrap_functions
+        )
 
     def is_leaf_module(self, m: Module, module_qualified_name: str) -> bool:
         """Determine whether a module is a leaf module or should be traced through.

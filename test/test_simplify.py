@@ -43,7 +43,7 @@ from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 from pytest import mark, skip
 from torch import Size, Tensor, arange, manual_seed, rand
-from torch.fx import Graph, GraphModule, wrap
+from torch.fx import Graph, GraphModule
 from torch.nn import Module
 
 from jet import JetTracer, jet, rev_jet
@@ -70,11 +70,6 @@ from jet.weighted_laplacian import (
     RandomizedWeightedLaplacian,
     WeightedLaplacian,
 )
-
-# tell `torch.fx` to trace `replicate` as one node
-wrap(replicate)
-# tell `torch.fx` to trace `sum_vmapped` as one node
-wrap(sum_vmapped)
 
 
 def num_collapsed_tensor_constants(

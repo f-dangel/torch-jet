@@ -5,7 +5,6 @@ from typing import Any, Callable, Dict
 
 from pytest import mark
 from torch import Tensor, manual_seed
-from torch.fx import symbolic_trace
 from torch.nn import Module
 
 from jet import jet, rev_jet
@@ -70,14 +69,12 @@ def test_nested_jet(config: Dict[str, Any]):
     # Compute the first jet and evaluate it at the first set of vectors
     jet_f = JetModule(f, vs1, k1)
     # Simplify the module
-    jet_f = symbolic_trace(jet_f)
     jet_f = simplify(jet_f)
     print(f"Jet: {jet_f.graph}")
 
     # Compute the second jet and evaluate it at the second set of vectors
     nested_jet_f = JetModule(jet_f, vs2, k2)
     # Simplify the nested module
-    nested_jet_f = symbolic_trace(nested_jet_f)
     nested_jet_f = simplify(nested_jet_f)
     print(f"Nested Jet: {nested_jet_f.graph}")
 

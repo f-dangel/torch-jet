@@ -23,7 +23,6 @@ from torch import (
     randn,
 )
 from torch.func import hessian, jacrev, jvp, vmap
-from torch.fx import symbolic_trace
 from torch.nn import Linear, Sequential, Tanh
 
 from jet.bilaplacian import Bilaplacian, RandomizedBilaplacian
@@ -136,9 +135,7 @@ def laplacian_function(
     elif strategy in {"jet_naive", "jet_simplified"}:
         laplacian = Laplacian(f, X, is_batched)
         pull_sum_vmapped = strategy == "jet_simplified"
-        laplacian = simplify(
-            symbolic_trace(laplacian), pull_sum_vmapped=pull_sum_vmapped
-        )
+        laplacian = simplify(laplacian, pull_sum_vmapped=pull_sum_vmapped)
 
         return lambda: laplacian(X)[2]
 
@@ -246,9 +243,7 @@ def randomized_laplacian_function(
     if strategy in {"jet_naive", "jet_simplified"}:
         laplacian = RandomizedLaplacian(f, X, is_batched, num_samples, distribution)
         pull_sum_vmapped = strategy == "jet_simplified"
-        laplacian = simplify(
-            symbolic_trace(laplacian), pull_sum_vmapped=pull_sum_vmapped
-        )
+        laplacian = simplify(laplacian, pull_sum_vmapped=pull_sum_vmapped)
         return lambda: laplacian(X)[2]
 
     else:
@@ -316,7 +311,7 @@ def weighted_laplacian_function(
         weighted_laplacian = WeightedLaplacian(f, X, is_batched, "diagonal_increments")
         pull_sum_vmapped = strategy == "jet_simplified"
         weighted_laplacian = simplify(
-            symbolic_trace(weighted_laplacian), pull_sum_vmapped=pull_sum_vmapped
+            weighted_laplacian, pull_sum_vmapped=pull_sum_vmapped
         )
 
         return lambda: weighted_laplacian(X)[2]
@@ -397,7 +392,7 @@ def randomized_weighted_laplacian_function(
 
     if strategy in {"jet_naive", "jet_simplified"}:
         pull_sum_vmapped = strategy == "jet_simplified"
-        H_dot_C = simplify(symbolic_trace(H_dot_C), pull_sum_vmapped=pull_sum_vmapped)
+        H_dot_C = simplify(H_dot_C, pull_sum_vmapped=pull_sum_vmapped)
         return lambda: H_dot_C(X)[2]
 
     else:
@@ -441,9 +436,7 @@ def bilaplacian_function(
     elif strategy in {"jet_naive", "jet_simplified"}:
         bilaplacian = Bilaplacian(f, X, is_batched)
         pull_sum_vmapped = strategy == "jet_simplified"
-        bilaplacian = simplify(
-            symbolic_trace(bilaplacian), pull_sum_vmapped=pull_sum_vmapped
-        )
+        bilaplacian = simplify(bilaplacian, pull_sum_vmapped=pull_sum_vmapped)
 
     else:
         raise ValueError(f"Unsupported strategy: {strategy}.")
@@ -514,7 +507,7 @@ def randomized_bilaplacian_function(
     if strategy in {"jet_naive", "jet_simplified"}:
         pull_sum_vmapped = strategy == "jet_simplified"
         bilap = RandomizedBilaplacian(f, X, is_batched, num_samples, distribution)
-        bilap = simplify(symbolic_trace(bilap), pull_sum_vmapped=pull_sum_vmapped)
+        bilap = simplify(bilap, pull_sum_vmapped=pull_sum_vmapped)
         return lambda: bilap(X)
 
     else:

@@ -10,9 +10,12 @@ from torch import Tensor, add, cos, cosh, div, mul
 from torch import pow as torch_pow
 from torch import sigmoid, sin, sub, tanh
 from torch.fx import Graph, GraphModule, Node
+from torch.nn import Module
 from torch.nn.functional import linear
 
+from jet import JetTracer
 from jet.utils import (
+    WrapperModule,
     print_tensor_constants_and_shapes,
     recursive_getattr,
     replicate,
@@ -618,7 +621,7 @@ def check_unaltered(
 
 
 def simplify(  # noqa: C901
-    mod: GraphModule,
+    mod: GraphModule | Module | Callable,
     push_replicate: bool = True,
     remove_unused: bool = True,
     pull_sum_vmapped: bool = True,
@@ -644,7 +647,7 @@ def simplify(  # noqa: C901
       This avoids redundant computations on summed tensors.
 
     Args:
-        mod: A graph module whose computation graph will be simplified.
+        mod: A (graph) module or function whose computation graph will be simplified.
         push_replicate: Whether to push `replicate` nodes down the graph.
             Default: `True`.
         remove_unused: Whether to remove unused nodes from the graph. Default: `True`.
@@ -663,6 +666,11 @@ def simplify(  # noqa: C901
     Returns:
         The simplified graph module.
     """
+    if not isinstance(mod, GraphModule):
+        mod = mod if isinstance(mod, Module) else WrapperModule(mod)
+        graph = JetTracer().trace(mod)
+        mod = GraphModule(mod, graph)
+
     nodes_before = len(list(mod.graph.nodes))
     if verbose:
         print(f"Traced graph before simplification:\n{mod.graph}")

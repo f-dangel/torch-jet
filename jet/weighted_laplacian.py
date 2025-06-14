@@ -3,17 +3,11 @@
 from typing import Callable, Tuple
 
 from torch import Tensor, arange, cat, einsum, randn, zeros
-from torch.fx import wrap
 
-from jet import jet
+import jet
 from jet.laplacian import Laplacian
-from jet.utils import rademacher, replicate, sum_vmapped
+from jet.utils import rademacher
 from jet.vmap import traceable_vmap
-
-# tell `torch.fx` to trace `replicate` as one node (required for simplification)
-wrap(replicate)
-# tell `torch.fx` to trace `sum_vmapped` as one node (required for simplification)
-wrap(sum_vmapped)
 
 
 class WeightedLaplacian(Laplacian):
@@ -53,7 +47,7 @@ class WeightedLaplacian(Laplacian):
         # number of vectors we have to feed into the jet
         self.num_vectors = self.S_func(dummy_x).shape[-1]
 
-        jet_f = jet(f, 2)
+        jet_f = jet.jet(f, 2)
         self.jet_f = traceable_vmap(jet_f, self.num_vectors)
 
     def set_up_taylor_coefficients(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
@@ -66,7 +60,7 @@ class WeightedLaplacian(Laplacian):
         Returns:
             The three input tensors to the 2-jet that computes the MC-Laplacian.
         """
-        X0 = replicate(x, self.num_vectors)
+        X0 = jet.utils.replicate(x, self.num_vectors)
         X2 = zeros(self.num_vectors, *self.x_shape, **self.x_kwargs)
 
         # compute the coefficient's factorization C = S @ S.T
@@ -167,6 +161,9 @@ class RandomizedWeightedLaplacian(WeightedLaplacian):
         }[weighting]
         self.rank_C = {"diagonal_increments": self.unbatched_dim}[weighting]
 
+        jet_f = jet.jet(f, 2)
+        self.jet_f = traceable_vmap(jet_f, self.num_samples)
+
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """Compute the MC weighted Laplacian of the function at the input tensor.
 
@@ -197,7 +194,7 @@ class RandomizedWeightedLaplacian(WeightedLaplacian):
             The three input tensors to the 2-jet that computes the weighted
             MC-Laplacian.
         """
-        X0 = replicate(x, self.num_samples)
+        X0 = jet.utils.replicate(x, self.num_samples)
         X2 = zeros(self.num_samples, *self.x_shape, **self.x_kwargs)
 
         # sample the random vectors

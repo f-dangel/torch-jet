@@ -621,7 +621,7 @@ def check_unaltered(
 
 
 def simplify(  # noqa: C901
-    mod: GraphModule,
+    mod: GraphModule | Module | Callable,
     push_replicate: bool = True,
     remove_unused: bool = True,
     pull_sum_vmapped: bool = True,
@@ -647,7 +647,7 @@ def simplify(  # noqa: C901
       This avoids redundant computations on summed tensors.
 
     Args:
-        mod: A graph module whose computation graph will be simplified.
+        mod: A (graph) module or function whose computation graph will be simplified.
         push_replicate: Whether to push `replicate` nodes down the graph.
             Default: `True`.
         remove_unused: Whether to remove unused nodes from the graph. Default: `True`.

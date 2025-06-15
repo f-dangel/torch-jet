@@ -9,6 +9,7 @@ from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
 
 import jet
+import jet.utils
 from jet import JetTracer, rev_jet
 from jet.utils import Primal, PrimalAndCoefficients, Value, ValueAndCoefficients
 
@@ -133,6 +134,13 @@ ATOMIC_CASES = [
         "shape": (5,),
         "k_max": INF,
         "id": "mul-3.0",
+        "first_op_vanishing_derivatives": 2,
+    },
+    {
+        "f": lambda x: jet.utils.replicate(x, 6),
+        "shape": (5,),
+        "k_max": INF,
+        "id": "replicate-6",
         "first_op_vanishing_derivatives": 2,
     },
 ]

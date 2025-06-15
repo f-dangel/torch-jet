@@ -7,6 +7,7 @@ from scipy.special import comb, factorial, stirling2
 from torch import Tensor, cos, mul, sigmoid, sin, tanh
 from torch.nn.functional import linear
 
+import jet.utils
 from jet.utils import (
     Primal,
     PrimalAndCoefficients,
@@ -397,6 +398,35 @@ def jet_mul(
         return tuple(s1 * s2[k] for k in range(K + 1))
 
 
+def jet_replicate(
+    s: PrimalAndCoefficients,
+    times: int,
+    pos: int = 0,
+    K=None,
+    is_taylor: tuple[bool, ...] = (False, False, False),
+) -> ValueAndCoefficients:
+    """Taylor-mode arithmetic for the replicate function.
+
+    Args:
+        s: The primal and its Taylor coefficients.
+        times: The number of times to replicate the tensor.
+        pos: The position along which to replicate.
+        K: The order of the Taylor expansion.
+        is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
+            and which are constants (`False`).
+
+    Returns:
+        The value and its Taylor coefficients.
+
+    Raises:
+        NotImplementedError: If `is_taylor` is not one of the supported configurations.
+    """
+    if is_taylor not in [(True, False, False), (True, False)]:
+        raise NotImplementedError(f"{is_taylor=} is not implemented.")
+
+    return tuple(jet.utils.replicate(s[k], times, pos) for k in range(K + 1))
+
+
 MAPPING = {
     sin: jet_sin,
     cos: jet_cos,
@@ -408,4 +438,5 @@ MAPPING = {
     operator.sub: jet_sub,
     operator.mul: jet_mul,
     mul: jet_mul,
+    jet.utils.replicate: jet_replicate,
 }

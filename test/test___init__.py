@@ -8,7 +8,8 @@ from torch import Tensor, cos, manual_seed, rand, sigmoid, sin, tanh, tensor
 from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
 
-from jet import JetTracer, jet, rev_jet
+import jet
+from jet import JetTracer, rev_jet
 from jet.utils import Primal, PrimalAndCoefficients, Value, ValueAndCoefficients
 
 
@@ -28,7 +29,7 @@ def check_jet(f: Callable[[Primal], Value], arg: PrimalAndCoefficients):
     rev_jet_f = rev_jet(f)
     rev_jet_out = rev_jet_f(x, *vs)
 
-    jet_f = jet(f, k=len(vs), verbose=True)
+    jet_f = jet.jet(f, k=len(vs), verbose=True)
     jet_out = jet_f(x, *vs)
 
     compare_jet_results(jet_out, rev_jet_out)
@@ -328,7 +329,7 @@ def test_symbolic_trace_jet(config: Dict[str, Any]):
     f, _, _, _ = setup_case(config, taylor_coefficients=False)
     k = config["k"]
     # generate the jet's compute graph
-    jet_f = jet(f, k)
+    jet_f = jet.jet(f, k)
 
     # try tracing it
     JetTracer().trace(jet_f)

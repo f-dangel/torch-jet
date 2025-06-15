@@ -20,8 +20,9 @@ from torch.fx import GraphModule, Node
 from torch.nn import Module
 from torch.nn.functional import linear
 
+import jet.utils
 from jet import JetTracer, analyze_dependencies
-from jet.utils import WrapperModule, replicate, sum_vmapped
+from jet.utils import WrapperModule
 
 
 def vmap_basic_binary(
@@ -61,12 +62,12 @@ def vmap_basic_binary(
             A tensor containing the result of the vmap-ed operation.
         """
         a_new = (
-            replicate(a, vmapsize)
+            jet.utils.replicate(a, vmapsize)
             if isinstance(a, (Node, Tensor)) and is_const[0]
             else a
         )
         b_new = (
-            replicate(b, vmapsize)
+            jet.utils.replicate(b, vmapsize)
             if isinstance(b, (Node, Tensor)) and is_const[1]
             else b
         )
@@ -210,7 +211,7 @@ def vmap_replicate(
     if vmapsize <= 0:
         raise ValueError(f"vmapsize must be positive, got {vmapsize=}.")
 
-    return replicate(x, times, pos=pos + 1)
+    return jet.utils.replicate(x, times, pos=pos + 1)
 
 
 def vmap_sum_vmapped(
@@ -237,7 +238,7 @@ def vmap_sum_vmapped(
     if vmapsize <= 0:
         raise ValueError(f"vmapsize must be positive, got {vmapsize=}.")
 
-    return sum_vmapped(x, pos=pos + 1)
+    return jet.utils.sum_vmapped(x, pos=pos + 1)
 
 
 MAPPING = {
@@ -256,9 +257,9 @@ MAPPING = {
     sigmoid: vmap_sigmoid,
     tanh: vmap_tanh,
     # replicate
-    replicate: vmap_replicate,
+    jet.utils.replicate: vmap_replicate,
     # sum_vmapped
-    sum_vmapped: vmap_sum_vmapped,
+    jet.utils.sum_vmapped: vmap_sum_vmapped,
 }
 
 
@@ -310,7 +311,7 @@ def traceable_vmap(  # noqa: C901
         # replicate the output tensors before returning them
         for t_old in out_tensors:
             with graph.inserting_before(output):
-                t_new = graph.call_function(replicate, args=(t_old, vmapsize))
+                t_new = graph.call_function(jet.utils.replicate, args=(t_old, vmapsize))
                 output.replace_input_with(t_old, t_new)
 
     # Replace all nodes with their vmap-ed versions

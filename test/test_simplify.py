@@ -96,7 +96,7 @@ def count_replicate_nodes(f: Callable | Module | GraphModule) -> int:
 
     Args:
         f: The function or module to analyze. If a `GraphModule`, it is used directly.
-           If a `Module`, it is traced first.
+            If a `Module` or function, it is traced first.
 
     Returns:
         The number of `replicate` nodes in the compute graph of the function.

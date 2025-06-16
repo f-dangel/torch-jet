@@ -19,6 +19,7 @@ from jet.utils import (
     print_tensor_constants_and_shapes,
     recursive_getattr,
     replicate,
+    standardize_signature,
     sum_vmapped,
 )
 
@@ -686,6 +687,14 @@ def simplify(  # noqa: C901
             )
             node.replace_all_uses_with(new_node)
             graph.erase_node(node)
+
+    # Unify the args/kwargs of replicate and sum_vmapped nodes
+    for node in [
+        n
+        for n in graph.nodes
+        if n.op == "call_function" and n.target in {replicate, sum_vmapped}
+    ]:
+        standardize_signature(node, verbose=verbose)
 
     replicate_rewriter = RewriteReplicate(mod, verbose=verbose)
     sum_vmapped_rewriter = RewriteSumVmapped(mod, verbose=verbose)

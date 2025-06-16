@@ -143,6 +143,13 @@ ATOMIC_CASES = [
         "id": "replicate-6",
         "first_op_vanishing_derivatives": 2,
     },
+    {
+        "f": lambda x: jet.utils.sum_vmapped(x),
+        "shape": (3, 5),
+        "k_max": INF,
+        "id": "sum_vmapped-3",
+        "first_op_vanishing_derivatives": 2,
+    },
 ]
 ATOMIC_CASE_IDS = []
 for atomic in ATOMIC_CASES:

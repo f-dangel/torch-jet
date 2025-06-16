@@ -427,6 +427,35 @@ def jet_replicate(
     return tuple(jet.utils.replicate(s[k], times, pos) for k in range(K + 1))
 
 
+def jet_sum_vmapped(
+    s: PrimalAndCoefficients,
+    pos: int = 0,
+    K=None,
+    is_taylor: tuple[bool, ...] = (False, False),
+) -> ValueAndCoefficients:
+    """Taylor-mode arithmetic for the sum_vmapped function.
+
+    Args:
+        s: The primal and its Taylor coefficients.
+        pos: The position along which to sum.
+        K: The order of the Taylor expansion.
+        is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
+            and which are constants (`False`).
+
+    Returns:
+        The value and its Taylor coefficients.
+
+    Raises:
+        NotImplemented: If `is_taylor` is not `(True, False)`.
+    """
+    if is_taylor not in [(True, False), (True,)]:
+        raise NotImplementedError(
+            f"Got {is_taylor=}. Only supports (True, False) and (True,)."
+        )
+
+    return tuple(jet.utils.sum_vmapped(s[k], pos=pos) for k in range(K + 1))
+
+
 MAPPING = {
     sin: jet_sin,
     cos: jet_cos,
@@ -439,4 +468,5 @@ MAPPING = {
     operator.mul: jet_mul,
     mul: jet_mul,
     jet.utils.replicate: jet_replicate,
+    jet.utils.sum_vmapped: jet_sum_vmapped,
 }

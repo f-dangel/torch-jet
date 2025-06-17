@@ -58,28 +58,6 @@ class RewriteReplicate:
             and arg.target == replicate
         )
 
-    def parents(self, node: Node) -> List[Node]:
-        """Get the parent nodes of a given node.
-
-        Args:
-            node: The node whose parents to find.
-
-        Returns:
-            The parent nodes of the given node.
-        """
-        return [n for n in self.graph.nodes if n in node.all_input_nodes]
-
-    def children(self, node: Node) -> List[Node]:
-        """Get the children nodes of a given node.
-
-        Args:
-            node: The node whose children to find.
-
-        Returns:
-            The children nodes of the given node.
-        """
-        return [n for n in self.graph.nodes if node in n.all_input_nodes]
-
     def rewrite_pattern(self) -> bool:
         """Try to find the next replicate node and rewrite it.
 
@@ -109,7 +87,7 @@ class RewriteReplicate:
                 continue
 
             pattern = None
-            parents = self.parents(node)
+            parents = node.all_input_nodes
 
             # operations that consume a single replicate tensor `x_rep = replicate(x)`
             if (
@@ -181,7 +159,7 @@ class RewriteReplicate:
 
         # rewire the arguments
         for rep in replicates:
-            (parent,) = self.parents(rep)
+            (parent,) = rep.all_input_nodes
             op.replace_input_with(rep, parent)
 
         # remove the old replicate nodes if possible
@@ -239,16 +217,17 @@ class RewriteSumVmapped(RewriteReplicate):
         for node in self.graph.nodes:
             if not self.is_sum_vmapped(node):
                 continue
-            (op,) = self.parents(node)
+            (op,) = node.all_input_nodes
             if op.op != "call_function":
                 continue
 
             # Can only replace nodes that are not consumed by others
-            if self.children(op) != [node]:
+            children = list(op.users.keys())
+            if children != [node]:
                 continue
 
             pattern = None
-            parents = self.parents(op)
+            parents = op.all_input_nodes
 
             # operations that produce a tensor from a single tensor `x`, which is then
             # `sum_vmapped`
@@ -296,7 +275,7 @@ class RewriteSumVmapped(RewriteReplicate):
         sum_node.replace_all_uses_with(op)
 
         # generate new `sum_vmapped` nodes above `op` and rewire the arguments
-        parents = [op.args[0]] if op.target == linear else self.parents(op)
+        parents = [op.args[0]] if op.target == linear else op.all_input_nodes
         for parent in parents:
             with self.graph.inserting_before(op):
                 new_sum = self.graph.call_function(sum_vmapped, args=(parent,))
@@ -317,11 +296,11 @@ class RewriteSumVmapped(RewriteReplicate):
         for node in list(self.graph.nodes):
             if not self.is_sum_vmapped(node):
                 continue
-            (op,) = self.parents(node)
+            (op,) = node.all_input_nodes
             if op.op not in {"call_function", "call_method"}:
                 continue
 
-            parents = self.parents(op)
+            parents = op.all_input_nodes
             if not any(self.is_replicate(p) for p in parents):
                 continue
 
@@ -332,7 +311,7 @@ class RewriteSumVmapped(RewriteReplicate):
             ):
                 # need to replace replicate(y) with y
                 (replicate,) = replicates
-                (replicated,) = self.parents(replicate)
+                (replicated,) = replicate.all_input_nodes
                 op.replace_input_with(replicate, replicated)
 
                 # need to replace x with sum_vmapped(x)
@@ -365,7 +344,8 @@ class RewriteSumVmapped(RewriteReplicate):
         attributes = defaultdict(dict)
         for n in self.graph.nodes:
             if n.op == "get_attr":
-                attributes[n.target][n] = self.children(n)
+                children = list(n.users.keys())
+                attributes[n.target][n] = children
 
         fused = False
 

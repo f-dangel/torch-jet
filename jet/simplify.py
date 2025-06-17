@@ -164,31 +164,6 @@ class RewriteReplicate:
                 self.last_pattern_pos = max(0, pos - 1)
                 return pattern
 
-    def maybe_erase(self, node: Node) -> bool:
-        """Remove a node if it has no children and does not represent a variable.
-
-        Args:
-            node: The node to be checked for removal.
-
-        Returns:
-            Whether the node was removed.
-        """
-        if node.op == "output":
-            self.maybe_print(f"Not removing {node} because it is an output node.")
-            return False
-        elif node.op == "placeholder":
-            self.maybe_print(f"Not removing {node} because it is a placeholder.")
-            return False
-
-        children = self.children(node)
-        if len(children) == 0:
-            self.maybe_print(f"Erasing {node}.")
-            self.graph.erase_node(node)
-            return True
-        else:
-            self.maybe_print(f"Not removing {node} because it has children {children}.")
-            return False
-
     def replace_pattern(self, pattern: Tuple[List[Node], Node]):
         """Replace a pattern in the graph.
 
@@ -210,8 +185,7 @@ class RewriteReplicate:
             op.replace_input_with(rep, parent)
 
         # remove the old replicate nodes if possible
-        for rep in replicates:
-            self.maybe_erase(rep)
+        self.graph.eliminate_dead_code()
 
     def maybe_print(self, message: str):
         """Print a message if verbose mode is enabled.
@@ -320,7 +294,6 @@ class RewriteSumVmapped(RewriteReplicate):
         """
         sum_node, op = pattern
         sum_node.replace_all_uses_with(op)
-        self.maybe_erase(sum_node)
 
         # generate new `sum_vmapped` nodes above `op` and rewire the arguments
         parents = [op.args[0]] if op.target == linear else self.parents(op)
@@ -328,7 +301,8 @@ class RewriteSumVmapped(RewriteReplicate):
             with self.graph.inserting_before(op):
                 new_sum = self.graph.call_function(sum_vmapped, args=(parent,))
             op.replace_input_with(parent, new_sum)
-            self.maybe_erase(parent)
+
+        self.graph.eliminate_dead_code()
 
     def simplify_vmapped_sum_with_replicate(self) -> bool:
         """Simplify nodes that use `sum_vmapped` and `replicate` nodes.
@@ -360,20 +334,20 @@ class RewriteSumVmapped(RewriteReplicate):
                 (replicate,) = replicates
                 (replicated,) = self.parents(replicate)
                 op.replace_input_with(replicate, replicated)
-                self.maybe_erase(replicate)
 
                 # need to replace x with sum_vmapped(x)
                 (other_node,) = [p for p in parents if not self.is_replicate(p)]
                 with self.graph.inserting_after(other_node):
                     new_sum = self.graph.call_function(sum_vmapped, args=(other_node,))
                 op.replace_input_with(other_node, new_sum)
-                self.maybe_erase(other_node)
 
                 # replace the sum_vmapped node with the operation node
                 node.replace_all_uses_with(op)
-                self.maybe_erase(node)
 
                 simplified = True
+
+        if simplified:
+            self.graph.eliminate_dead_code()
 
         return simplified
 
@@ -404,7 +378,6 @@ class RewriteSumVmapped(RewriteReplicate):
                 for sum_node in all_children:
                     if sum_node != replacement:
                         sum_node.replace_all_uses_with(replacement)
-                        self.maybe_erase(sum_node)
 
                 # sum the tensor constant
                 old = getattr(self.mod, target)
@@ -415,9 +388,8 @@ class RewriteSumVmapped(RewriteReplicate):
                 )
                 fused = True
 
-            # remove the get_attr nodes that are not referenced any more
-            for get_attr in get_attr_to_children:
-                self.maybe_erase(get_attr)
+        if fused:
+            self.graph.eliminate_dead_code()
 
         return fused
 
@@ -452,23 +424,19 @@ def common_subexpression_elimination(
             if verbose:
                 print(
                     f"Replacing {node}"
-                    + f" ({node.op}, {node.target}, {node.args}, {node.kwargs})"
-                )
-                print(
-                    f"with {replacement} ({replacement.op}, {replacement.target},"
+                    + f" ({node.op}, {node.target}, {node.args}, {node.kwargs})\nwith"
+                    + f" {replacement} ({replacement.op}, {replacement.target},"
                     + f" {replacement.args}, {replacement.kwargs})"
                 )
             node.replace_all_uses_with(replacement)
-
-            # remove the node from the graph
-            if verbose:
-                print(f"Erasing {node}.")
-            graph.erase_node(node)
 
             replaced = True
             num_replacements += 1
         else:
             nodes[node_hash] = node
+
+    if replaced:
+        graph.eliminate_dead_code()
 
     if verbose:
         print(f"Replacements: {num_replacements}")

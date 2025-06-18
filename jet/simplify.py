@@ -58,6 +58,22 @@ class RewriteReplicate:
             and arg.target == replicate
         )
 
+    @staticmethod
+    def is_sum_vmapped(arg: Any) -> bool:
+        """Check if an argument of a node is a `sum_vmapped` node.
+
+        Args:
+            arg: An entry from a `Node.arg` tuple.
+
+        Returns:
+            Whether the argument is a `sum_vmapped` node.
+        """
+        return (
+            isinstance(arg, Node)
+            and arg.op == "call_function"
+            and arg.target == sum_vmapped
+        )
+
     def rewrite_pattern(self) -> bool:
         """Try to find the next replicate node and rewrite it.
 
@@ -108,6 +124,7 @@ class RewriteReplicate:
                     add,  # torch.add(x_rep, 2) -> replicate(torch.add(x, 2))
                     operator.sub,  # x_rep - 2 -> replicate(x - 2)
                     sub,  # torch.sub(x_rep, 2) -> replicate(torch.sub(x, 2))
+                    sum_vmapped,  # sum_vmapped(x_rep) -> sum_vmapped(x) (+ modify pos)
                 }
                 and len(parents) == 1
                 and all(self.is_replicate(p) for p in parents)
@@ -133,7 +150,10 @@ class RewriteReplicate:
                     operator.sub,  # x_rep1 - x_rep2 -> replicate(x1 - x2)
                 }
                 and len(parents) == 2
-                and all(self.is_replicate(arg) for arg in node.all_input_nodes)
+                and all(self.is_replicate(n) for n in node.all_input_nodes)
+                # replication must occur along the same axis
+                and all("pos" in n.kwargs for n in node.all_input_nodes)
+                and len({n.kwargs["pos"] for n in node.all_input_nodes}) == 1
             ):
                 pattern = [parents, node]
 
@@ -150,20 +170,71 @@ class RewriteReplicate:
         """
         replicates, op = pattern
 
-        # create a new replicate node that replaces the old one and is located after
-        # the operation node
-        with self.graph.inserting_after(op):
-            new_rep = self.graph.call_function(replicate, kwargs=replicates[0].kwargs)
-        op.replace_all_uses_with(new_rep)
-        new_rep.args = (op,) + replicates[0].args[1:]
+        if self.is_sum_vmapped(op):
+            (rep,) = replicates
+            self.push_replicate_through_sum_vmapped(rep, op)
 
-        # rewire the arguments
-        for rep in replicates:
-            (parent,) = rep.all_input_nodes
-            op.replace_input_with(rep, parent)
+        else:
+            # create a new replicate node that replaces the old one and is located after
+            # the operation node
+            with self.graph.inserting_after(op):
+                (kwargs,) = {rep.kwargs for rep in replicates}
+                new_rep = self.graph.call_function(replicate, kwargs=kwargs)
+            op.replace_all_uses_with(new_rep)
+            new_rep.args = (op,) + replicates[0].args[1:]
+
+            # rewire the arguments
+            for rep in replicates:
+                (parent,) = rep.all_input_nodes
+                op.replace_input_with(rep, parent)
 
         # remove the old replicate nodes if possible
         self.graph.eliminate_dead_code()
+
+    def push_replicate_through_sum_vmapped(self, n_rep: Node, n_sum: Node):
+        """Push a `replicate` node through a `sum_vmapped` node.
+
+        Consider `sum_vmapped(replicate(x, times, pos1), pos2)`.
+        This constellation is implemented in the `SumVmappedReplicate` module.
+        There are three different scenarios how to simplify this:
+
+        1. `pos1 == pos2`: `times * x`
+        2. `pos1 > pos2`: `replicate(sum_vmapped(x, pos2), times, pos1 - 1)`
+        3. `pos1 < pos2`: `replicate(sum_vmapped(x, pos2 - 1), times, pos1)`
+
+        Args:
+            n_rep: The `replicate` node to be pushed through the `sum_vmapped` node.
+            n_sum: The `sum_vmapped` node through which the `replicate` node is pushed.
+        """
+        pos_rep: int = n_rep.kwargs["pos"]
+        pos_sum: int = n_sum.kwargs["pos"]
+
+        if pos_sum == pos_rep:
+            # insert a multiplication node before the replicate node
+            with self.graph.inserting_before(n_rep):
+                n_mul = self.graph.call_function(operator.mul, args=n_rep.args)
+            n_sum.replace_all_uses_with(n_mul)
+
+        else:
+            # make sure the sum node is replicate node's only child is the sum node
+            n_rep_children = list(n_rep.users.keys())
+            if n_rep_children != [n_sum]:
+                raise RuntimeError(
+                    f"Sum must be replicate's only child, got {n_rep_children}."
+                )
+
+            # insert a new  and replication node after the sum node
+            with self.graph.inserting_after(n_sum):
+                times = n_rep.args[1]
+                n_rep_new = self.graph.call_function(
+                    replicate,
+                    args=(n_sum, times),
+                    kwargs={"pos": pos_rep - 1 if pos_rep > pos_sum else pos_rep},
+                )
+            n_sum.replace_all_uses_with(n_rep_new)
+            n_rep_new.args = (n_sum, times)
+            n_sum.args = (n_rep.args[0],)
+            n_sum.kwargs = {"pos": pos_sum if pos_rep > pos_sum else pos_sum - 1}
 
     def maybe_print(self, message: str):
         """Print a message if verbose mode is enabled.
@@ -177,22 +248,6 @@ class RewriteReplicate:
 
 class RewriteSumVmapped(RewriteReplicate):
     """Propagates summations over a vmaped axis up a computation graph."""
-
-    @staticmethod
-    def is_sum_vmapped(arg: Any) -> bool:
-        """Check if an argument of a node is a `sum_vmapped` node.
-
-        Args:
-            arg: An entry from a `Node.arg` tuple.
-
-        Returns:
-            Whether the argument is a `sum_vmapped` node.
-        """
-        return (
-            isinstance(arg, Node)
-            and arg.op == "call_function"
-            and arg.target == sum_vmapped
-        )
 
     def rewrite_pattern(self) -> bool:
         """Try to find the next sum_vmapped node and rewrite it.
@@ -236,6 +291,10 @@ class RewriteSumVmapped(RewriteReplicate):
                 in {
                     operator.mul,  # sum_vmapped(x * 2) -> 2 * sum_vmapped(x)
                     operator.truediv,  # sum_vmapped(x / 2) -> sum_vmapped(x) / 2
+                    # sum_vmapped(replicate(x, times, pos1), pos2)
+                    # (pos1 != pos2) -> replicate(sum_vmapped(x, pos2'), times, pos1')
+                    # (pos1 == pos2) -> times * x
+                    replicate,
                 }
                 and len(parents) == 1
             ):
@@ -272,14 +331,25 @@ class RewriteSumVmapped(RewriteReplicate):
                 it can be propagated up.
         """
         sum_node, op = pattern
-        sum_node.replace_all_uses_with(op)
 
-        # generate new `sum_vmapped` nodes above `op` and rewire the arguments
-        parents = [op.args[0]] if op.target == linear else op.all_input_nodes
-        for parent in parents:
-            with self.graph.inserting_before(op):
-                new_sum = self.graph.call_function(sum_vmapped, args=(parent,))
-            op.replace_input_with(parent, new_sum)
+        if self.is_replicate(op):
+            # pulling the sum_vmapped node up through the replicate node is the same
+            # as pushing the replicate node through the sum_vmapped node.
+            self.push_replicate_through_sum_vmapped(op, sum_node)
+
+        else:
+            sum_node.replace_all_uses_with(op)
+
+            # generate new `sum_vmapped` nodes above `op` and rewire the arguments
+            parents = [op.args[0]] if op.target == linear else op.all_input_nodes
+            for parent in parents:
+                with self.graph.inserting_before(op):
+                    new_sum = self.graph.call_function(
+                        sum_vmapped,
+                        args=(parent,),
+                        kwargs={"pos": sum_node.kwargs["pos"]},
+                    )
+                op.replace_input_with(parent, new_sum)
 
         self.graph.eliminate_dead_code()
 

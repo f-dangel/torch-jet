@@ -19,6 +19,7 @@ from jet.utils import (
     print_tensor_constants_and_shapes,
     recursive_getattr,
     replicate,
+    standardize_signature,
     sum_vmapped,
 )
 
@@ -205,6 +206,10 @@ class RewriteReplicate:
         Args:
             n_rep: The `replicate` node to be pushed through the `sum_vmapped` node.
             n_sum: The `sum_vmapped` node through which the `replicate` node is pushed.
+
+        Raises:
+            RuntimeError: If the `sum_vmapped` node is not the only child of the
+                `replicate` node.
         """
         pos_rep: int = n_rep.kwargs["pos"]
         pos_sum: int = n_sum.kwargs["pos"]
@@ -356,16 +361,14 @@ class RewriteSumVmapped(RewriteReplicate):
     def simplify_vmapped_sum_with_replicate(self) -> bool:
         """Simplify nodes that use `sum_vmapped` and `replicate` nodes.
 
-        For instance, `sum_vmapped(x * replicate(y))` can be simplified into
-        `sum_vmapped(x) * y`.
+        For instance, `sum_vmapped(x * replicate(y, times, pos=pos), pos=pos)` can be
+        simplified into `sum_vmapped(x, pos=pos) * y`.
 
         Returns:
             Whether a `sum_vmapped` was fused with a `replicate`.
         """
         simplified = False
-        for node in list(self.graph.nodes):
-            if not self.is_sum_vmapped(node):
-                continue
+        for node in [n for n in self.graph.nodes if self.is_sum_vmapped(n)]:
             (op,) = node.all_input_nodes
             if op.op not in {"call_function", "call_method"}:
                 continue
@@ -375,9 +378,13 @@ class RewriteSumVmapped(RewriteReplicate):
                 continue
 
             replicates = [p for p in parents if self.is_replicate(p)]
+            pos = node.kwargs["pos"]
 
             if (  # sum_vmapped(x * replicate(y)) -> sum_vmapped(x) * y
-                op.target in {mul, operator.mul} and len(parents) == 2
+                op.target in {mul, operator.mul}
+                and len(parents) == 2
+                and len(replicates) == 1
+                and replicates[0].kwargs["pos"] == pos
             ):
                 # need to replace replicate(y) with y
                 (replicate,) = replicates
@@ -387,7 +394,9 @@ class RewriteSumVmapped(RewriteReplicate):
                 # need to replace x with sum_vmapped(x)
                 (other_node,) = [p for p in parents if not self.is_replicate(p)]
                 with self.graph.inserting_after(other_node):
-                    new_sum = self.graph.call_function(sum_vmapped, args=(other_node,))
+                    new_sum = self.graph.call_function(
+                        sum_vmapped, args=(other_node,), kwargs={"pos": pos}
+                    )
                 op.replace_input_with(other_node, new_sum)
 
                 # replace the sum_vmapped node with the operation node
@@ -704,6 +713,15 @@ def simplify(  # noqa: C901
             )
             node.replace_all_uses_with(new_node)
             graph.erase_node(node)
+
+    # standardize `replicate and `sum_vmapped` nodes
+    for node in [
+        n
+        for n in graph.nodes
+        if n.op == "call_function" and n.target in {replicate, sum_vmapped}
+    ]:
+        with check_unaltered(mod, test_x):
+            standardize_signature(node, verbose=verbose)
 
     replicate_rewriter = RewriteReplicate(mod, verbose=verbose)
     sum_vmapped_rewriter = RewriteSumVmapped(mod, verbose=verbose)

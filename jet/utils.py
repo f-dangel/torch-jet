@@ -1,6 +1,7 @@
 """Utility functions for computing jets."""
 
 from collections import defaultdict
+from inspect import signature
 from math import factorial, prod
 from typing import Any, Callable, Optional, Tuple
 
@@ -189,3 +190,50 @@ def print_tensor_constants_and_shapes(mod: GraphModule):
         print(f"Name: {node.target}, Shape: {tuple(tensor.shape)}, Usages: {count}")
 
     print(f"Total number of elements in tensor constants: {total}")
+
+
+def standardize_signature(node: Node, verbose: bool = False):
+    """Standardize the args and kwargs of a node (inplace).
+
+    This function modifies the node's args and kwargs to match the signature of the
+    function it calls. It ensures that positional arguments are grouped together and
+    keyword arguments are separated, with defaults applied where necessary.
+
+    E.g., the call `replicate(x, times=4)` is standardized to `replicate(x, 4, pos=0)`.
+
+    Args:
+        node: The node to standardize. It should be a call_function node with a target
+            that has a signature.
+        verbose: If True, print the node's args and kwargs before and after.
+            Default: `False`.
+
+    Raises:
+        ValueError: If the node is not a call_function node.
+    """
+    if node.op != "call_function":
+        raise ValueError(f"{node=} is not a call_function node {node.op=}.")
+
+    sig = signature(node.target)
+    bound_args = sig.bind(*node.args, **node.kwargs)
+
+    positional = tuple(
+        bound_args.arguments[name]
+        for name, param in sig.parameters.items()
+        if name in bound_args.arguments and param.default is param.empty
+    )
+    optional = {
+        name: (
+            bound_args.arguments[name]
+            if name in bound_args.arguments
+            else param.default
+        )
+        for name, param in sig.parameters.items()
+        if param.default is not param.empty
+    }
+
+    if verbose:
+        print(f"Standardizing {node=}: {node.args=}, {node.kwargs=} ->", end=" ")
+    node.args = positional
+    node.kwargs = optional
+    if verbose:
+        print(f"{node.args=}, {node.kwargs=}.")

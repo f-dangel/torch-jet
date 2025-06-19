@@ -108,7 +108,7 @@ class SwapReplicateElementwise(Rule):
         f_node.replace_all_uses_with(new_rep_node)
 
 
-class SwapReplicateArithmetic(Rule):
+class SwapReplicateScalarArithmetic(Rule):
     """Rule for simplifying `replicate(x ∘ y)` with ∘ an arithmetic op (+, -, *, /, **).
 
     We assume that one of `x, y` is a float or integer.
@@ -188,6 +188,91 @@ class SwapReplicateArithmetic(Rule):
                 jet.utils.replicate,
                 args=(new_arith_node, *rep_node.args[1:]),
                 kwargs=rep_node.kwargs,
+            )
+
+        # replace the old node with its simplified node in the entire graph
+        arith_node.replace_all_uses_with(new_rep_node)
+
+
+class SwapReplicateTensorArithmetic(Rule):
+    """Rule for simplifying `f(replicate(x1), replicate(x2))` into `replicate(f(x1, x2))`.
+
+    This rule applies when both `replicate` nodes have the same `times` and `pos` values.
+
+    Attributes:
+        OPERATIONS: List of arithmetic operations that can be simplified.
+            Includes addition, subtraction, multiplication, division & exponentiation.
+    """
+
+    OPERATIONS: list[Callable[[Tensor, Tensor], Tensor]] = [
+        # addition
+        add,
+        operator.add,
+        # subtraction
+        sub,
+        operator.sub,
+        # multiplication
+        mul,
+        operator.mul,
+        # division
+        div,
+        operator.truediv,
+        # exponentiation
+        torch_pow,
+        operator.pow,
+    ]
+
+    def match(self, node: Node) -> bool:
+        """Match for arithmetic operations that consume two replicate nodes.
+
+        Args:
+            node: A node in a computation graph.
+
+        Returns:
+            True if the node matches the pattern `f(replicate(x1), replicate(x2))` with
+            identical `times` and `pos` values, False otherwise.
+        """
+        return (
+            node.op == "call_function"
+            and node.users
+            and node.target in self.OPERATIONS
+            and len(node.args) == 2
+            and node.kwargs == {}
+            and all(is_replicate(arg) for arg in node.args)
+            # same `times` argument
+            and len({arg.args[1] for arg in node.args}) == 1
+            # same `pos` argument
+            and len({arg.kwargs["pos"] for arg in node.args}) == 1
+        )
+
+    def apply(self, arith_node: Node, graph: Graph) -> None:
+        """Apply the simplification rule.
+
+        Args:
+            arith_node: A node in a computation graph that represents the arithmetic
+                operation that consumes two replicate tensors.
+            graph: The computation graph to which the rule is applied.
+        """
+        # find the tensors that are being replicated
+        mapping = {}
+        for rep in arith_node.all_input_nodes:
+            (x,) = rep.all_input_nodes
+            mapping[rep] = x
+
+        # determine the times and pos arguments
+        (times,) = {rep.args[1] for rep in arith_node.all_input_nodes}
+        (pos,) = {rep.kwargs["pos"] for rep in arith_node.all_input_nodes}
+
+        # swap the order of the `replicate` and the arithmetic operation
+        with graph.inserting_before(arith_node):
+            new_args = tuple(mapping[rep] for rep in arith_node.args)
+            new_arith_node = graph.call_function(
+                arith_node.target, args=new_args, kwargs={}
+            )
+
+        with graph.inserting_after(new_arith_node):
+            new_rep_node = graph.call_function(
+                jet.utils.replicate, args=(new_arith_node, times), kwargs={"pos": pos}
             )
 
         # replace the old node with its simplified node in the entire graph

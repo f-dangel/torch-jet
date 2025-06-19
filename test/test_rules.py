@@ -1,17 +1,18 @@
 """Test individual simplification rules."""
 
-import operator
 from typing import Any
 
 from pytest import mark
-from torch import add, cos, cosh, div, manual_seed, mul
-from torch import pow as torch_pow
-from torch import rand, sigmoid, sin, sub, tanh
+from torch import manual_seed, rand
 from torch.fx import Graph, GraphModule, Node
 
 import jet.utils
 from jet import JetTracer
-from jet.rules import SwapReplicateArithmetic, SwapReplicateElementwise
+from jet.rules import (
+    SwapReplicateElementwise,
+    SwapReplicateScalarArithmetic,
+    SwapReplicateTensorArithmetic,
+)
 
 
 def compare_graphs(graph1: Graph, graph2: Graph):
@@ -62,11 +63,37 @@ CASES = [
         {
             "f": lambda x: f(jet.utils.replicate(x, 5, pos=0), 3.0),
             "f_simple": lambda x: jet.utils.replicate(f(x, 3.0), 5, pos=0),
-            "rules": lambda: [SwapReplicateArithmetic()],
+            "rules": lambda: [SwapReplicateScalarArithmetic()],
             "shape": (4,),
             "id": f"replicate-{f.__module__}.{f.__name__}-float",
         }
-        for f in SwapReplicateArithmetic.OPERATIONS
+        for f in SwapReplicateScalarArithmetic.OPERATIONS
+    ],
+    # swapping arithmetic operations that consume two replicate nodes
+    *[
+        {
+            "f": lambda x: f(  # y = x + 1 here
+                jet.utils.replicate(x, 5, pos=0), jet.utils.replicate(x + 1, 5, pos=0)
+            ),
+            "f_simple": lambda x: jet.utils.replicate(f(x, x + 1), 5, pos=0),
+            "rules": lambda: [SwapReplicateTensorArithmetic()],
+            "shape": (4,),
+            "id": f"replicate-{f.__module__}.{f.__name__}-two-tensors",
+        }
+        for f in SwapReplicateTensorArithmetic.OPERATIONS
+    ],
+    # swapping arithmetic operations that consume the same replicate node twice
+    *[
+        {
+            "f": lambda x: f(
+                jet.utils.replicate(x, 5, pos=0), jet.utils.replicate(x, 5, pos=0)
+            ),
+            "f_simple": lambda x: jet.utils.replicate(f(x, x), 5, pos=0),
+            "rules": lambda: [SwapReplicateTensorArithmetic()],
+            "shape": (4,),
+            "id": f"replicate-{f.__module__}.{f.__name__}-same-tensor",
+        }
+        for f in SwapReplicateTensorArithmetic.OPERATIONS
     ],
 ]
 

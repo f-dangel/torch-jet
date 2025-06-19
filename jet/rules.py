@@ -339,3 +339,72 @@ class SwapReplicateLinear(Rule):
 
         # Replace the old node with its simplified node in the entire graph
         linear_node.replace_all_uses_with(new_rep_node)
+
+
+class SwapReplicateSumVmapped(Rule):
+    """Rule for simplifying `sum_vmapped(replicate(x, times, pos=pos1), pos=pos2)`.
+
+    Consider `sum_vmapped(replicate(x, times, pos1), pos2)`.
+    There are three different scenarios how to simplify this:
+
+    1. `pos1 == pos2`: `times * x`
+    2. `pos1 > pos2`: `replicate(sum_vmapped(x, pos2), times, pos1 - 1)`
+    3. `pos1 < pos2`: `replicate(sum_vmapped(x, pos2 - 1), times, pos1)`
+    """
+
+    def match(self, node: Node) -> bool:
+        """Match for a `sum_vmapped` node that consumes a `replicate` node.
+
+        Args:
+            node: A node in a computation graph.
+
+        Returns:
+            True if the node matches the pattern
+            `sum_vmapped(replicate(x, times, pos=pos1), pos=pos2)`, False otherwise.
+        """
+        return (
+            node.op == "call_function"
+            and node.users
+            and node.target == jet.utils.sum_vmapped
+            and len(node.args) == 1
+            and list(node.kwargs.keys()) == ["pos"]
+            and is_replicate(node.args[0])
+        )
+
+    def apply(self, sum_node: Node, graph: Graph) -> None:
+        """Apply the simplification rule.
+
+        Args:
+            sum_node: The `sum_vmapped` node that consumes a `replicate` node.
+            graph: The computation graph to which the rule is applied.
+        """
+        (rep_node,) = sum_node.all_input_nodes
+        (x,) = rep_node.all_input_nodes
+        pos_rep = rep_node.kwargs["pos"]
+        pos_sum = sum_node.kwargs["pos"]
+        times = rep_node.args[1]
+
+        if pos_sum == pos_rep:
+            # Insert a multiplication node before the replicate node
+            with graph.inserting_before(rep_node):
+                mul_node = graph.call_function(operator.mul, args=(x, times))
+            sum_node.replace_all_uses_with(mul_node)
+
+        else:
+            # Insert a new sum node before the sum node
+            with graph.inserting_before(sum_node):
+                new_sum_node = graph.call_function(
+                    jet.utils.sum_vmapped,
+                    args=(x,),
+                    kwargs={"pos": pos_sum if pos_rep > pos_sum else pos_sum - 1},
+                )
+            # Insert a new replicate node after the new sum node
+            with graph.inserting_after(new_sum_node):
+                new_rep_node = graph.call_function(
+                    jet.utils.replicate,
+                    args=(new_sum_node, times),
+                    kwargs={"pos": pos_rep - 1 if pos_rep > pos_sum else pos_rep},
+                )
+
+            # Replace the old node with its simplified node in the entire graph
+            sum_node.replace_all_uses_with(new_rep_node)

@@ -13,6 +13,7 @@ from jet.rules import (
     SwapReplicateElementwise,
     SwapReplicateLinear,
     SwapReplicateScalarArithmetic,
+    SwapReplicateSumVmapped,
     SwapReplicateTensorArithmetic,
 )
 from jet.utils import WrapperModule
@@ -118,6 +119,27 @@ CASES = [
         "shape": (4,),
         "id": "replicate-linear",
     },
+    # Pushing a replicate node through a sum_vmapped node
+    *[
+        {
+            "f": lambda x: jet.utils.sum_vmapped(
+                jet.utils.replicate(x, 5, pos=pos1), pos=pos2
+            ),
+            "f_simple": lambda x: (
+                x * 5
+                if pos1 == pos2
+                else jet.utils.replicate(
+                    jet.utils.sum_vmapped(x, pos=pos2 if pos1 > pos2 else pos2 - 1),
+                    5,
+                    pos=pos1 - 1 if pos1 > pos2 else pos1,
+                )
+            ),
+            "rules": lambda: [SwapReplicateSumVmapped()],
+            "shape": (4, 3),
+            "id": f"replicate{pos1}-sum_vmapped{pos2}",
+        }
+        for pos1, pos2 in [(2, 2), (2, 0), (0, 2)]
+    ],
 ]
 
 

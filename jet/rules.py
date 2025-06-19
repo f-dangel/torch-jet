@@ -30,6 +30,22 @@ def is_replicate(arg: Any) -> bool:
     )
 
 
+def is_sum_vmapped(arg: Any) -> bool:
+    """Check if an argument of a node is a `sum_vmapped` node.
+
+    Args:
+        arg: An entry from a `Node.arg` tuple.
+
+    Returns:
+        Whether the argument is a `sum_vmapped` node.
+    """
+    return (
+        isinstance(arg, Node)
+        and arg.op == "call_function"
+        and arg.target == jet.utils.sum_vmapped
+    )
+
+
 class Rule(ABC):
     """Base class for simplification rules."""
 
@@ -53,7 +69,7 @@ class Rule(ABC):
         pass
 
 
-class SwapReplicateElementwise(Rule):
+class PushReplicateElementwise(Rule):
     """Rule for simplifying `replicate(f(x))` into `f(replicate(x))`.
 
     `f` is an elementwise function, such as `sin`, `cos`, or `tanh`, `sigmoid`.
@@ -110,7 +126,7 @@ class SwapReplicateElementwise(Rule):
         f_node.replace_all_uses_with(new_rep_node)
 
 
-class SwapReplicateScalarArithmetic(Rule):
+class PushReplicateScalarArithmetic(Rule):
     """Rule for simplifying `replicate(x ∘ y)` with ∘ an arithmetic op (+, -, *, /, **).
 
     We assume that one of `x, y` is a float or integer.
@@ -196,7 +212,7 @@ class SwapReplicateScalarArithmetic(Rule):
         arith_node.replace_all_uses_with(new_rep_node)
 
 
-class SwapReplicateTensorArithmetic(Rule):
+class PushReplicateTensorArithmetic(Rule):
     """Rule for simplifying `f(replicate(x1), replicate(x2))` into `replicate(f(x1, x2))`.
 
     This rule applies when both `replicate` nodes have the same `times` and `pos` values.
@@ -281,7 +297,7 @@ class SwapReplicateTensorArithmetic(Rule):
         arith_node.replace_all_uses_with(new_rep_node)
 
 
-class SwapReplicateLinear(Rule):
+class PushReplicateLinear(Rule):
     """Rule to simplify `linear(replicate(x), W, b)` to `replicate(linear(x, W, b))`."""
 
     def match(self, node: Node) -> bool:
@@ -321,7 +337,7 @@ class SwapReplicateLinear(Rule):
 
         if pos > 0:
             warn(
-                "The `SwapReplicateLinear` rule assumes that the replicated axis is not "
+                "The `PushReplicateLinear` rule assumes that the replicated axis is not "
                 f"the last axis. If it is, the rule will fail. Got {pos=}.",
             )
 
@@ -341,7 +357,7 @@ class SwapReplicateLinear(Rule):
         linear_node.replace_all_uses_with(new_rep_node)
 
 
-class SwapReplicateSumVmapped(Rule):
+class PushReplicateSumVmapped(Rule):
     """Rule for simplifying `sum_vmapped(replicate(x, times, pos=pos1), pos=pos2)`.
 
     Consider `sum_vmapped(replicate(x, times, pos1), pos2)`.
@@ -408,3 +424,82 @@ class SwapReplicateSumVmapped(Rule):
 
             # Replace the old node with its simplified node in the entire graph
             sum_node.replace_all_uses_with(new_rep_node)
+
+
+class PullSumVmappedScalarMultiplication(Rule):
+    """Rule for simplifying `sum_vmapped(x * y)` with one scalar argument.
+
+    The following two cases simplify to the same result (for * and /):
+
+    1. `x` scalar: `sum_vmapped(x * y)` -> `x * sum_vmapped(y)`.
+    2. `y` scalar: `sum_vmapped(x * y)` -> `replicate(x) * y`.
+
+    Attributes:
+        OPERATIONS: List of operations that can be simplified.
+            Includes multiplication and division.
+    """
+
+    OPERATIONS: list[Callable[[Tensor | float | int, Tensor | float | int], Tensor]] = [
+        # multiplication
+        mul,
+        operator.mul,
+        # division
+        div,
+        operator.truediv,
+    ]
+
+    def match(self, node: Node) -> bool:
+        """Match for sum_vmapped nodes that consume multiplications with a scalar.
+
+        Args:
+            node: A node in a computation graph.
+
+        Returns:
+            True if the node matches the pattern `sum_vmapped(x * y)`, where * is
+            multiplication/division and either `x` or `y` a scalar, False otherwise.
+        """
+        node_is_sum_vmapped = (
+            node.op == "call_function" and node.users and is_sum_vmapped(node)
+        )
+        if not node_is_sum_vmapped:
+            return False
+
+        (in_node,) = node.all_input_nodes
+        return (
+            in_node.op == "call_function"
+            and in_node.target in self.OPERATIONS
+            and len(in_node.args) == 2
+            and in_node.kwargs == {}
+            and sum(isinstance(a, (float, int)) for a in in_node.args) == 1
+        )
+
+    def apply(self, sum_node: Node, graph: Graph) -> None:
+        """Apply the simplification rule to the node, modifying the graph.
+
+        Args:
+            sum_node: A `sum_vmapped` node that consumes a node representing multipli-
+                cation operation with a scalar/float. Must satisfy the match condition.
+            graph: The computation graph to which the rule is applied.
+        """
+        # find the arithmetic node and its input tensor
+        (mul_node,) = sum_node.all_input_nodes
+        (x,) = mul_node.all_input_nodes
+        x_pos = mul_node.args.index(x)
+
+        # swap the order of the `sum_vmapped` and the arithmetic operation
+        with graph.inserting_after(sum_node):
+            new_sum_node = graph.call_function(
+                jet.utils.sum_vmapped, args=(x,), kwargs=sum_node.kwargs
+            )
+        # Insert a new multiplication node after the new sum node
+        with graph.inserting_after(new_sum_node):
+            new_args = tuple(
+                new_sum_node if idx == x_pos else arg
+                for idx, arg in enumerate(mul_node.args)
+            )
+            new_mul_node = graph.call_function(
+                mul_node.target, args=new_args, kwargs={}
+            )
+
+        # replace the old node with its simplified node in the entire graph
+        sum_node.replace_all_uses_with(new_mul_node)

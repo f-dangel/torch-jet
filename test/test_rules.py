@@ -10,11 +10,12 @@ from torch.nn.functional import linear
 import jet.utils
 from jet import JetTracer
 from jet.rules import (
-    SwapReplicateElementwise,
-    SwapReplicateLinear,
-    SwapReplicateScalarArithmetic,
-    SwapReplicateSumVmapped,
-    SwapReplicateTensorArithmetic,
+    PullSumVmappedScalarMultiplication,
+    PushReplicateElementwise,
+    PushReplicateLinear,
+    PushReplicateScalarArithmetic,
+    PushReplicateSumVmapped,
+    PushReplicateTensorArithmetic,
 )
 from jet.utils import WrapperModule
 
@@ -56,22 +57,22 @@ CASES = [
         {
             "f": lambda x: f(jet.utils.replicate(x, 5, pos=0)),
             "f_simple": lambda x: jet.utils.replicate(f(x), 5, pos=0),
-            "rules": lambda: [SwapReplicateElementwise()],
+            "rules": lambda: [PushReplicateElementwise()],
             "shape": (3,),
             "id": f"replicate-{f.__module__}.{f.__name__}",
         }
-        for f in SwapReplicateElementwise.OPERATIONS
+        for f in PushReplicateElementwise.OPERATIONS
     ],
     # swapping replicate nodes with arithmetic operations involving one integer/float
     *[
         {
             "f": lambda x: f(jet.utils.replicate(x, 5, pos=0), 3.0),
             "f_simple": lambda x: jet.utils.replicate(f(x, 3.0), 5, pos=0),
-            "rules": lambda: [SwapReplicateScalarArithmetic()],
+            "rules": lambda: [PushReplicateScalarArithmetic()],
             "shape": (4,),
-            "id": f"replicate-{f.__module__}.{f.__name__}-float",
+            "id": f"replicate-{f.__module__}.{f.__name__}-scalar",
         }
-        for f in SwapReplicateScalarArithmetic.OPERATIONS
+        for f in PushReplicateScalarArithmetic.OPERATIONS
     ],
     # swapping arithmetic operations that consume two replicate nodes
     *[
@@ -80,11 +81,11 @@ CASES = [
                 jet.utils.replicate(x, 5, pos=0), jet.utils.replicate(x + 1, 5, pos=0)
             ),
             "f_simple": lambda x: jet.utils.replicate(f(x, x + 1), 5, pos=0),
-            "rules": lambda: [SwapReplicateTensorArithmetic()],
+            "rules": lambda: [PushReplicateTensorArithmetic()],
             "shape": (4,),
             "id": f"replicate-{f.__module__}.{f.__name__}-two-tensors",
         }
-        for f in SwapReplicateTensorArithmetic.OPERATIONS
+        for f in PushReplicateTensorArithmetic.OPERATIONS
     ],
     # swapping arithmetic operations that consume the same replicate node twice
     *[
@@ -93,11 +94,11 @@ CASES = [
                 jet.utils.replicate(x, 5, pos=0), jet.utils.replicate(x, 5, pos=0)
             ),
             "f_simple": lambda x: jet.utils.replicate(f(x, x), 5, pos=0),
-            "rules": lambda: [SwapReplicateTensorArithmetic()],
+            "rules": lambda: [PushReplicateTensorArithmetic()],
             "shape": (4,),
             "id": f"replicate-{f.__module__}.{f.__name__}-same-tensor",
         }
-        for f in SwapReplicateTensorArithmetic.OPERATIONS
+        for f in PushReplicateTensorArithmetic.OPERATIONS
     ],
     # Simplify linear operation with replicated input
     {
@@ -115,7 +116,7 @@ CASES = [
             5,
             pos=0,
         ),
-        "rules": lambda: [SwapReplicateLinear()],
+        "rules": lambda: [PushReplicateLinear()],
         "shape": (4,),
         "id": "replicate-linear",
     },
@@ -134,11 +135,22 @@ CASES = [
                     pos=pos1 - 1 if pos1 > pos2 else pos1,
                 )
             ),
-            "rules": lambda: [SwapReplicateSumVmapped()],
+            "rules": lambda: [PushReplicateSumVmapped()],
             "shape": (4, 3),
             "id": f"replicate{pos1}-sum_vmapped{pos2}",
         }
         for pos1, pos2 in [(2, 2), (2, 0), (0, 2)]
+    ],
+    # Pulling a sum_vmapped node through an arithmetic operation with an integer/float
+    *[
+        {
+            "f": lambda x: jet.utils.sum_vmapped(f(x, 3.0), pos=0),
+            "f_simple": lambda x: f(jet.utils.sum_vmapped(x, pos=0), 3.0),
+            "rules": lambda: [PullSumVmappedScalarMultiplication()],
+            "shape": (4,),
+            "id": f"sum_vmapped-{f.__module__}.{f.__name__}-scalar",
+        }
+        for f in PullSumVmappedScalarMultiplication.OPERATIONS
     ],
 ]
 

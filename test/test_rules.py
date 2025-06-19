@@ -3,16 +3,19 @@
 from typing import Any
 
 from pytest import mark
-from torch import manual_seed, rand
+from torch import linspace, manual_seed, rand
 from torch.fx import Graph, GraphModule, Node
+from torch.nn.functional import linear
 
 import jet.utils
 from jet import JetTracer
 from jet.rules import (
     SwapReplicateElementwise,
+    SwapReplicateLinear,
     SwapReplicateScalarArithmetic,
     SwapReplicateTensorArithmetic,
 )
+from jet.utils import WrapperModule
 
 
 def compare_graphs(graph1: Graph, graph2: Graph):
@@ -95,6 +98,26 @@ CASES = [
         }
         for f in SwapReplicateTensorArithmetic.OPERATIONS
     ],
+    # Simplify linear operation with replicated input
+    {
+        "f": lambda x: linear(
+            jet.utils.replicate(x, 5, pos=0),
+            linspace(-2.0, 10, 12).reshape(3, 4),  # weight
+            linspace(-1.0, 2.0, 3),  # bias
+        ),
+        "f_simple": lambda x: jet.utils.replicate(
+            linear(
+                x,
+                linspace(-2.0, 10, 12).reshape(3, 4),  # weight
+                linspace(-1.0, 2.0, 3),  # bias
+            ),
+            5,
+            pos=0,
+        ),
+        "rules": lambda: [SwapReplicateLinear()],
+        "shape": (4,),
+        "id": "replicate-linear",
+    },
 ]
 
 
@@ -111,7 +134,8 @@ def test_simplification_rules(config: dict[str, Any]):
     rules = config["rules"]()
 
     # simplify the function
-    f_simplified = GraphModule({}, JetTracer().trace(f))
+    f_mod = WrapperModule(f)
+    f_simplified = GraphModule(f_mod, JetTracer().trace(f_mod))
 
     do_simplify = True
     while do_simplify:
@@ -124,7 +148,6 @@ def test_simplification_rules(config: dict[str, Any]):
     f_simplified.graph.eliminate_dead_code()
 
     # make sure all functions yield the same result
-    x = rand(10)
     f_x = f(x)
     assert f_x.allclose(f_simple(x))
     assert f_x.allclose(f_simplified(x))

@@ -3,11 +3,13 @@
 import operator
 from abc import ABC, abstractmethod
 from typing import Any, Callable
+from warnings import warn
 
 from torch import Tensor, add, cos, cosh, div, mul
 from torch import pow as torch_pow
 from torch import sigmoid, sin, sub, tanh
 from torch.fx import Graph, Node
+from torch.nn.functional import linear
 
 import jet.utils
 
@@ -277,3 +279,63 @@ class SwapReplicateTensorArithmetic(Rule):
 
         # replace the old node with its simplified node in the entire graph
         arith_node.replace_all_uses_with(new_rep_node)
+
+
+class SwapReplicateLinear(Rule):
+    """Rule to simplify `linear(replicate(x), W, b)` to `replicate(linear(x, W, b))`."""
+
+    def match(self, node: Node) -> bool:
+        """Detect a linear operation that consumes a replicated input.
+
+        Args:
+            node: A node in a computation graph.
+
+        Returns:
+            True if the node matches the pattern `torch.nn.linear(replicate(x), W, b)`,
+            False otherwise.
+        """
+        return (
+            node.op == "call_function"
+            and node.users
+            and node.target == linear
+            and is_replicate(node.args[0])  # first argument must be a replicate node
+        )
+
+    def apply(self, linear_node: Node, graph: Graph) -> None:
+        """Apply the simplification rule.
+
+        Warning:
+            This simplification rule will fail if the replication happens along the
+            last axis. The current implementation has no means to figure out if the
+            replicated axis represents the last; it always assumes it is not.
+
+        Args:
+            linear_node: A node in a computation graph that represents the linear
+                operation consuming a replicate node.
+            graph: The computation graph to which the rule is applied.
+        """
+        # find the tensors that are being replicated
+        rep_node = linear_node.args[0]
+        (x,) = rep_node.all_input_nodes
+        times, pos = rep_node.args[1], rep_node.kwargs["pos"]
+
+        if pos > 0:
+            warn(
+                "The `SwapReplicateLinear` rule assumes that the replicated axis is not "
+                f"the last axis. If it is, the rule will fail. Got {pos=}.",
+            )
+
+        # Create a new linear node
+        with graph.inserting_after(linear_node):
+            new_linear_node = graph.call_function(
+                linear, args=(x, *linear_node.args[1:]), kwargs=linear_node.kwargs
+            )
+
+        # Create a new replicate node
+        with graph.inserting_after(new_linear_node):
+            new_rep_node = graph.call_function(
+                jet.utils.replicate, args=(new_linear_node, times), kwargs={"pos": pos}
+            )
+
+        # Replace the old node with its simplified node in the entire graph
+        linear_node.replace_all_uses_with(new_rep_node)

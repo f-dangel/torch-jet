@@ -1,14 +1,17 @@
 """Test individual simplification rules."""
 
+import operator
 from typing import Any
 
 from pytest import mark
-from torch import cos, manual_seed, rand, sigmoid, sin, tanh
+from torch import add, cos, cosh, div, manual_seed, mul
+from torch import pow as torch_pow
+from torch import rand, sigmoid, sin, sub, tanh
 from torch.fx import Graph, GraphModule, Node
 
 import jet.utils
 from jet import JetTracer
-from jet.rules import SwapReplicateElementwise
+from jet.rules import SwapReplicateArithmetic, SwapReplicateElementwise
 
 
 def compare_graphs(graph1: Graph, graph2: Graph):
@@ -18,6 +21,7 @@ def compare_graphs(graph1: Graph, graph2: Graph):
         graph1: First computation graph.
         graph2: Second computation graph.
     """
+    print(f"Comparing graphs: {graph1}\n{graph2}")
     assert len(graph1.nodes) == len(graph2.nodes)
 
     # maps nodes in graph1 to their equivalents in graph2
@@ -42,16 +46,28 @@ def compare_graphs(graph1: Graph, graph2: Graph):
 
 
 CASES = [
+    # swapping replicate nodes with elementwise functions
     *[
         {
             "f": lambda x: f(jet.utils.replicate(x, 5, pos=0)),
             "f_simple": lambda x: jet.utils.replicate(f(x), 5, pos=0),
             "rules": lambda: [SwapReplicateElementwise()],
             "shape": (3,),
-            "id": f"replicate-{f.__name__}",
+            "id": f"replicate-{f.__module__}.{f.__name__}",
         }
-        for f in [cos, sin, tanh, sigmoid]
-    ]
+        for f in SwapReplicateElementwise.OPERATIONS
+    ],
+    # swapping replicate nodes with arithmetic operations involving one integer/float
+    *[
+        {
+            "f": lambda x: f(jet.utils.replicate(x, 5, pos=0), 3.0),
+            "f_simple": lambda x: jet.utils.replicate(f(x, 3.0), 5, pos=0),
+            "rules": lambda: [SwapReplicateArithmetic()],
+            "shape": (4,),
+            "id": f"replicate-{f.__module__}.{f.__name__}-float",
+        }
+        for f in SwapReplicateArithmetic.OPERATIONS
+    ],
 ]
 
 

@@ -1,9 +1,12 @@
 """Implements individual simplification rules."""
 
+import operator
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Callable
 
-from torch import cos, sigmoid, sin, tanh
+from torch import Tensor, add, cos, cosh, div, mul
+from torch import pow as torch_pow
+from torch import sigmoid, sin, sub, tanh
 from torch.fx import Graph, Node
 
 import jet.utils
@@ -52,7 +55,12 @@ class SwapReplicateElementwise(Rule):
     """Rule for simplifying `replicate(f(x))` into `f(replicate(x))`.
 
     `f` is an elementwise function, such as `sin`, `cos`, or `tanh`, `sigmoid`.
+
+    Attributes:
+        OPERATIONS: List of elementwise operations that can be simplified.
     """
+
+    OPERATIONS: list[Callable[[Tensor], Tensor]] = [cos, sin, tanh, sigmoid, cosh]
 
     def match(self, node: Node) -> bool:
         """Detect a match with the simplification's entry point.
@@ -66,7 +74,9 @@ class SwapReplicateElementwise(Rule):
         return (
             node.op == "call_function"
             and node.users  # must be used by other nodes
-            and node.target in {cos, sin, tanh, sigmoid}  # must be elementwise
+            and len(node.args) == 1
+            and node.kwargs == {}
+            and node.target in self.OPERATIONS  # must be elementwise
             and len(node.all_input_nodes) == 1  # must consume a single input tensor...
             and is_replicate(node.all_input_nodes[0])  # ... which is a replicate tensor
         )
@@ -79,11 +89,13 @@ class SwapReplicateElementwise(Rule):
                 node.
             graph: The computation graph to which the rule is applied.
         """
+        # find the `replicate` node and its input tensor
         (rep_node,) = f_node.all_input_nodes
         (x,) = rep_node.all_input_nodes
 
+        # swap the order of the `replicate` and the elementwise function `f`
         with graph.inserting_after(rep_node):
-            new_f_node = graph.call_function(f_node.target, args=(x,))
+            new_f_node = graph.call_function(f_node.target, args=(x,), kwargs={})
 
         with graph.inserting_after(new_f_node):
             new_rep_node = graph.call_function(
@@ -92,4 +104,91 @@ class SwapReplicateElementwise(Rule):
                 kwargs=rep_node.kwargs,
             )
 
+        # replace the old node with its simplified node in the entire graph
         f_node.replace_all_uses_with(new_rep_node)
+
+
+class SwapReplicateArithmetic(Rule):
+    """Rule for simplifying `replicate(x ∘ y)` with ∘ an arithmetic op (+, -, *, /, **).
+
+    We assume that one of `x, y` is a float or integer.
+
+    The following two cases simplify to the same result:
+
+    1. `x` scalar, `y` tensor: `replicate(x ∘ y) -> replicate(x ∘ y)`.
+    2. `x` tensor, `y` scalar: `replicate(x ∘ y) -> replicate(x ∘ y)`.
+
+    Attributes:
+        OPERATIONS: List of arithmetic operations that can be simplified.
+            Includes addition, subtraction, multiplication, division & exponentiation.
+    """
+
+    OPERATIONS: list[Callable[[Tensor | float | int, Tensor | float | int], Tensor]] = [
+        # addition
+        add,
+        operator.add,
+        # subtraction
+        sub,
+        operator.sub,
+        # multiplication
+        mul,
+        operator.mul,
+        # division
+        div,
+        operator.truediv,
+        # exponentiation
+        torch_pow,
+        operator.pow,
+    ]
+
+    def match(self, node: Node) -> bool:
+        """Match for arithmetic operations with of scalar and a replicate tensor.
+
+        Args:
+            node: A node in a computation graph.
+
+        Returns:
+            True if the node matches the pattern `replicate(x ∘ y)`, where ∘ is an
+            arithmetic operation, False otherwise.
+        """
+        return (
+            node.op == "call_function"
+            and node.users
+            and node.target in self.OPERATIONS
+            and len(node.args) == 2
+            and node.kwargs == {}
+            and sum(is_replicate(a) for a in node.args) == 1
+            and sum(isinstance(a, (float, int)) for a in node.args) == 1
+        )
+
+    def apply(self, arith_node: Node, graph: Graph) -> None:
+        """Apply the simplification rule to the node, modifying the graph.
+
+        Args:
+            arith_node: An arithmetic operation node in the graph that consumes a
+                `replicate` node and a scalar. Must satisfy the match condition.
+            graph: The computation graph to which the rule is applied.
+        """
+        # find the `replicate` node and its input tensor
+        (rep_node,) = arith_node.all_input_nodes
+        rep_pos = arith_node.args.index(rep_node)
+        (x,) = rep_node.all_input_nodes
+
+        # swap the order of the `replicate` and the arithmetic operation
+        with graph.inserting_after(rep_node):
+            new_args = tuple(
+                x if idx == rep_pos else arg for idx, arg in enumerate(arith_node.args)
+            )
+            new_arith_node = graph.call_function(
+                arith_node.target, args=new_args, kwargs={}
+            )
+
+        with graph.inserting_after(new_arith_node):
+            new_rep_node = graph.call_function(
+                jet.utils.replicate,
+                args=(new_arith_node, *rep_node.args[1:]),
+                kwargs=rep_node.kwargs,
+            )
+
+        # replace the old node with its simplified node in the entire graph
+        arith_node.replace_all_uses_with(new_rep_node)

@@ -584,3 +584,67 @@ class PullSumVmappedTensorAddition(Rule):
 
         # replace the old node with its simplified node in the entire graph
         sum_node.replace_all_uses_with(new_add_node)
+
+
+class PullSumVmappedLinear(Rule):
+    """Simplify `sum_vmapped(linear(x, W, 0))` into `linear(sum_vmapped(x), W, 0)`."""
+
+    def match(self, node: Node) -> bool:
+        """Match for sum_vmapped nodes that consume a linear operation.
+
+        Args:
+            node: A node in a computation graph.
+
+        Returns:
+            True if the node matches the pattern `sum_vmapped(linear(x, W, b))`, False
+            otherwise.
+        """
+        node_is_sum_vmapped = (
+            node.op == "call_function" and node.users and is_sum_vmapped(node)
+        )
+        if not node_is_sum_vmapped:
+            return False
+
+        (in_node,) = node.all_input_nodes
+        is_linear = in_node.op == "call_function" and in_node.target == linear
+
+        if not is_linear:
+            return False
+
+        # check that the linear node has no bias (b = 0)
+        if len(in_node.args) < 3:
+            return in_node.kwargs.get("bias", None) is None
+
+        return in_node.args[2] is None
+
+    def apply(self, sum_node: Node, graph: Graph) -> None:
+        """Apply the simplification rule to the node, modifying the graph.
+
+        Args:
+            sum_node: A `sum_vmapped` node that consumes a `linear` node. Must satisfy
+                the match condition.
+            graph: The computation graph to which the rule is applied.
+        """
+        (linear_node,) = sum_node.all_input_nodes
+        x = linear_node.args[0]
+        pos = sum_node.kwargs["pos"]
+
+        warn(
+            "The `PullSumVmappedLinear` rule assumes that the summed axis is not "
+            f"the last axis. If it is, the rule will fail. Got {pos=}.",
+        )
+
+        # swap the order of the `sum_vmapped` and the linear operation
+        with graph.inserting_after(x):
+            new_sum_node = graph.call_function(
+                jet.utils.sum_vmapped, args=(x,), kwargs=sum_node.kwargs
+            )
+        with graph.inserting_after(linear_node):
+            new_linear_node = graph.call_function(
+                linear,
+                args=(new_sum_node, *linear_node.args[1:]),
+                kwargs=linear_node.kwargs,
+            )
+
+        # replace the old node with its simplified node in the entire graph
+        sum_node.replace_all_uses_with(new_linear_node)

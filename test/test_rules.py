@@ -11,6 +11,7 @@ from torch.nn.functional import linear
 import jet.utils
 from jet import JetTracer
 from jet.rules import (
+    PullSumVmappedLinear,
     PullSumVmappedScalarMultiplication,
     PullSumVmappedTensorAddition,
     PushReplicateElementwise,
@@ -299,6 +300,23 @@ CASES.extend(
     ]
 )
 
+# Pull a sum_vmapped node through a linear layer
+CASES.append(
+    {
+        "f": lambda x: jet.utils.sum_vmapped(
+            linear(x, linspace(-2.0, 10, 12).reshape(3, 4)),  # weight
+            pos=0,
+        ),
+        "f_simple": lambda x: linear(
+            jet.utils.sum_vmapped(x, pos=0),
+            linspace(-2.0, 10, 12).reshape(3, 4),  # weight
+        ),
+        "rules": lambda: [PullSumVmappedLinear()],
+        "shape": (5, 4),
+        "id": "sum_vmapped-linear",
+    }
+)
+
 
 @mark.parametrize("config", CASES, ids=lambda conf: conf["id"])
 def test_simplification_rules(config: dict[str, Any]):
@@ -327,7 +345,6 @@ def test_simplification_rules(config: dict[str, Any]):
     f_simplified.graph.eliminate_dead_code()
 
     # make sure all functions yield the same result
-    print(config["id"])
     f_x = f(x)
     assert f_x.allclose(f_simple(x))
     assert f_x.allclose(f_simplified(x))

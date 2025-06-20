@@ -11,6 +11,7 @@ import jet.utils
 from jet import JetTracer
 from jet.rules import (
     PullSumVmappedScalarMultiplication,
+    PullSumVmappedTensorAddition,
     PushReplicateElementwise,
     PushReplicateLinear,
     PushReplicateScalarArithmetic,
@@ -154,6 +155,26 @@ CASES = [
     ],
 ]
 
+for op in PullSumVmappedTensorAddition.OPERATIONS:
+
+    def f(x):
+        return jet.utils.sum_vmapped(op(x, x + 1), pos=0)
+
+    def f_simple(x):
+        return op(jet.utils.sum_vmapped(x, pos=0), jet.utils.sum_vmapped(x + 1, pos=0))
+
+    def rules():
+        return [PullSumVmappedTensorAddition()]
+
+    config = {  # here y = x + 1
+        "f": f,
+        "f_simple": f_simple,
+        "rules": rules,
+        "shape": (4,),
+        "id": f"sum_vmapped-{op.__module__}.{op.__name__}-two-tensors",
+    }
+    CASES.append(config)
+
 
 @mark.parametrize("config", CASES, ids=lambda conf: conf["id"])
 def test_simplification_rules(config: dict[str, Any]):
@@ -182,6 +203,7 @@ def test_simplification_rules(config: dict[str, Any]):
     f_simplified.graph.eliminate_dead_code()
 
     # make sure all functions yield the same result
+    print(config["id"])
     f_x = f(x)
     assert f_x.allclose(f_simple(x))
     assert f_x.allclose(f_simplified(x))

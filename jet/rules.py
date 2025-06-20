@@ -481,7 +481,7 @@ class PullSumVmappedScalarMultiplication(Rule):
                 cation operation with a scalar/float. Must satisfy the match condition.
             graph: The computation graph to which the rule is applied.
         """
-        # find the arithmetic node and its input tensor
+        # find the multiplication node and its input tensor
         (mul_node,) = sum_node.all_input_nodes
         (x,) = mul_node.all_input_nodes
         x_pos = mul_node.args.index(x)
@@ -503,3 +503,84 @@ class PullSumVmappedScalarMultiplication(Rule):
 
         # replace the old node with its simplified node in the entire graph
         sum_node.replace_all_uses_with(new_mul_node)
+
+
+class PullSumVmappedTensorAddition(Rule):
+    """Rule for simplifying `sum_vmapped(x + y)` where x and y are tensors.
+
+    The simplified result is `sum_vmapped(x) + sum_vmapped(y)`.
+    Same for subtraction.
+
+    Warning:
+        This rule assumes no broadcasting, i.e. `x` and `y` must have the same shape.
+
+    The following two cases simplify to the same result (for * and /):
+
+    Attributes:
+        OPERATIONS: List of operations that can be simplified.
+            Includes addition and subtraction.
+    """
+
+    OPERATIONS: list[Callable[[Tensor | float | int, Tensor | float | int], Tensor]] = [
+        # addition
+        add,
+        operator.add,
+        # subtraction
+        sub,
+        operator.sub,
+    ]
+
+    def match(self, node: Node) -> bool:
+        """Match for sum_vmapped nodes that consumes a summation/subtraction node.
+
+        Args:
+            node: A node in a computation graph.
+
+        Returns:
+            True if the node matches the pattern `sum_vmapped(x + y)` (or -), where
+            `x` and `y` are tensors, False otherwise.
+        """
+        node_is_sum_vmapped = (
+            node.op == "call_function" and node.users and is_sum_vmapped(node)
+        )
+        if not node_is_sum_vmapped:
+            return False
+
+        (in_node,) = node.all_input_nodes
+        return (
+            in_node.op == "call_function"
+            and in_node.target in self.OPERATIONS
+            and len(in_node.args) == 2
+            and in_node.kwargs == {}
+            and sum(isinstance(a, Node) for a in in_node.args) == 2
+        )
+
+    def apply(self, sum_node: Node, graph: Graph) -> None:
+        """Apply the simplification rule to the node, modifying the graph.
+
+        Args:
+            sum_node: A `sum_vmapped` node that consumes a node representing addition/
+                subtraction of two tensors. Must satisfy the match condition.
+            graph: The computation graph to which the rule is applied.
+        """
+        # find the addition/subtraction node and its input tensor
+        (add_node,) = sum_node.all_input_nodes
+
+        mapping = {}
+        # swap the order of the `sum_vmapped` and the addition/subtraction operation
+        for x in add_node.all_input_nodes:
+            with graph.inserting_after(x):
+                new_sum_node = graph.call_function(
+                    jet.utils.sum_vmapped, args=(x,), kwargs=sum_node.kwargs
+                )
+            mapping[x] = new_sum_node
+
+        # Insert a new addition/subtraction node after the new sum nodes
+        with graph.inserting_after(add_node):
+            new_args = tuple(mapping[x] for x in add_node.args)
+            new_add_node = graph.call_function(
+                add_node.target, args=new_args, kwargs={}
+            )
+
+        # replace the old node with its simplified node in the entire graph
+        sum_node.replace_all_uses_with(new_add_node)

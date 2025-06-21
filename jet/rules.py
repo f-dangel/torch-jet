@@ -80,7 +80,7 @@ class ModuleRule(ABC):
         """Detect a match with a simplification's entry point.
 
         Args:
-            module: A GraphModule representing the computation graph.
+            node: A node in a computation graph.
         """
         pass
 
@@ -89,7 +89,7 @@ class ModuleRule(ABC):
         """Apply the simplification rule.
 
         Args:
-           node: A node in a computation graph that represents the rule's entry point.
+            node: A node in a computation graph that represents the rule's entry point.
             module: A GraphModule representing the computation graph.
         """
         pass
@@ -239,9 +239,10 @@ class PushReplicateScalarArithmetic(Rule):
 
 
 class PushReplicateTensorArithmetic(Rule):
-    """Rule for simplifying `f(replicate(x1), replicate(x2))` into `replicate(f(x1, x2))`.
+    """Rule to simplify `f(replicate(x1), replicate(x2))` into `replicate(f(x1, x2))`.
 
-    This rule applies when both `replicate` nodes have the same `times` and `pos` values.
+    This rule applies when both `replicate` nodes have the same `times` and `pos`
+    values.
 
     Attributes:
         OPERATIONS: List of arithmetic operations that can be simplified.
@@ -363,8 +364,8 @@ class PushReplicateLinear(Rule):
 
         if pos > 0:
             warn(
-                "The `PushReplicateLinear` rule assumes that the replicated axis is not "
-                f"the last axis. If it is, the rule will fail. Got {pos=}.",
+                "The `PushReplicateLinear` rule assumes that the replicated axis is"
+                f" not the last axis. If it is, the rule will fail. Got {pos=}.",
             )
 
         # Create a new linear node
@@ -753,8 +754,8 @@ class MergeSumVmappedConstant(ModuleRule):
             node: A node in a computation graph.
 
         Returns:
-            True if the node matches the pattern `sum_vmapped(constant_tensor, pos=pos)`,
-            False otherwise.
+            True if the node matches the pattern
+            `sum_vmapped(constant_tensor, pos=pos)`, False otherwise.
         """
         return (
             is_sum_vmapped(node)

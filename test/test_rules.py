@@ -364,7 +364,10 @@ def test_simplification_rules(config: dict[str, Any]):
     """Test simplification rules.
 
     Args:
-      config: A dictionary specifying the test case.
+        config: A dictionary specifying the test case.
+
+    Raises:
+        TypeError: If an unknown rule type is encountered.
     """
     manual_seed(0)
     f, f_simple, shape = config["f"], config["f_simple"], config["shape"]

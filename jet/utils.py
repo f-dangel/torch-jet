@@ -176,7 +176,7 @@ def recursive_setattr(obj: Any, attr: str, value: Any) -> None:
 
     if hasattr(obj, parts[-1]):
         raise RuntimeError(
-            f"Attribute '{parts[-1]}' already exists in '{'.'.join(parts[:-1])}'. "
+            f"Attribute {parts[-1]!r} already exists in {'.'.join(parts[:-1])!r}. "
         )
     setattr(obj, parts[-1], value)
 

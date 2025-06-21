@@ -720,8 +720,9 @@ class PullSumVmappedReplicateMultiplication(Rule):
 
         # Create a new multiplication node for `sum_vmapped(y) * x`
         with graph.inserting_after(new_sum_node):
+            mapping = {rep_node: x_node, other_node: new_sum_node}
             new_mul_node = graph.call_function(
-                mul_node.target, args=(x_node, new_sum_node)
+                mul_node.target, args=tuple(mapping[arg] for arg in mul_node.args)
             )
 
         # Replace the old node with the simplified node

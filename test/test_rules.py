@@ -3,7 +3,7 @@
 from typing import Any
 
 from pytest import mark
-from torch import linspace, manual_seed, rand
+from torch import Size, linspace, manual_seed, rand
 from torch.fx import Graph, GraphModule, Node
 from torch.nn import Module
 from torch.nn.functional import linear
@@ -12,6 +12,7 @@ import jet.utils
 from jet import JetTracer
 from jet.rules import (
     PullSumVmappedLinear,
+    PullSumVmappedReplicateMultiplication,
     PullSumVmappedScalarMultiplication,
     PullSumVmappedTensorAddition,
     PushReplicateElementwise,
@@ -318,6 +319,38 @@ CASES.append(
 )
 
 
+# Pull a sum_vmapped through a multiplication, one of whose arguments is a replicate
+class SumVmappedReplicateMultiplication(Module):
+    def __init__(self, times=5, shape=(4,)):
+        super().__init__()
+        self.times = times
+        self.shape = Size(shape)
+        self.y = linspace(-2.0, 6.0, self.times * self.shape.numel()).reshape(
+            times, *shape
+        )
+
+    def forward(self, x):
+        return jet.utils.sum_vmapped(
+            jet.utils.replicate(x, self.times, pos=0) * self.y, pos=0
+        )
+
+
+class SimpleSumVmappedReplicateMultiplication(SumVmappedReplicateMultiplication):
+    def forward(self, x):
+        return x * jet.utils.sum_vmapped(self.y, pos=0)
+
+
+CASES.append(
+    {
+        "f": SumVmappedReplicateMultiplication(),
+        "f_simple": SimpleSumVmappedReplicateMultiplication(),
+        "rules": lambda: [PullSumVmappedReplicateMultiplication()],
+        "shape": (4,),
+        "id": "sum_vmapped-replicate-multiplication",
+    }
+)
+
+
 @mark.parametrize("config", CASES, ids=lambda conf: conf["id"])
 def test_simplification_rules(config: dict[str, Any]):
     """Test simplification rules.
@@ -334,14 +367,17 @@ def test_simplification_rules(config: dict[str, Any]):
     f_mod = WrapperModule(f)
     f_simplified = GraphModule(f_mod, JetTracer().trace(f_mod))
 
+    num_matches = 0
     do_simplify = True
     while do_simplify:
         do_simplify = False
         for rule in rules:
             for node in f_simplified.graph.nodes:
                 if rule.match(node):
+                    num_matches += 1
                     rule.apply(node, f_simplified.graph)
                     do_simplify = True
+    print(f"Got {num_matches=}.")
     f_simplified.graph.eliminate_dead_code()
 
     # make sure all functions yield the same result

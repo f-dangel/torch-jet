@@ -458,10 +458,7 @@ class PullSumVmappedScalarMultiplication(Rule):
             True if the node matches the pattern `sum_vmapped(x * y)`, where * is
             multiplication/division and either `x` or `y` a scalar, False otherwise.
         """
-        node_is_sum_vmapped = (
-            node.op == "call_function" and node.users and is_sum_vmapped(node)
-        )
-        if not node_is_sum_vmapped:
+        if not is_sum_vmapped(node) or not node.users:
             return False
 
         (in_node,) = node.all_input_nodes
@@ -540,10 +537,7 @@ class PullSumVmappedTensorAddition(Rule):
             True if the node matches the pattern `sum_vmapped(x + y)` (or -), where
             `x` and `y` are tensors, False otherwise.
         """
-        node_is_sum_vmapped = (
-            node.op == "call_function" and node.users and is_sum_vmapped(node)
-        )
-        if not node_is_sum_vmapped:
+        if not is_sum_vmapped(node) or not node.users:
             return False
 
         (in_node,) = node.all_input_nodes
@@ -599,10 +593,7 @@ class PullSumVmappedLinear(Rule):
             True if the node matches the pattern `sum_vmapped(linear(x, W, b))`, False
             otherwise.
         """
-        node_is_sum_vmapped = (
-            node.op == "call_function" and node.users and is_sum_vmapped(node)
-        )
-        if not node_is_sum_vmapped:
+        if not is_sum_vmapped(node) or not node.users:
             return False
 
         (in_node,) = node.all_input_nodes
@@ -648,3 +639,76 @@ class PullSumVmappedLinear(Rule):
 
         # replace the old node with its simplified node in the entire graph
         sum_node.replace_all_uses_with(new_linear_node)
+
+
+class PullSumVmappedReplicateMultiplication(Rule):
+    """Simplify `sum_vmapped(y * replicate(x, times, pos=pos1), pos=pos2)`.
+
+    This rule applies when `pos1 == pos2` and simplifies the expression into
+    `sum_vmapped(y, pos=pos2) * x`.
+    It also assumes that both tensors that are being multiplied have the same shape.
+
+    Attributes:
+        OPERATIONS: List of multiplication operations that can be simplified.
+    """
+
+    OPERATIONS = [operator.mul, mul]
+
+    def match(self, node: Node) -> bool:
+        """Detect a match with sum_vmapped(y * replicate(x, times, pos=pos), pos=pos).
+
+        Args:
+            node: A node in a computation graph.
+
+        Returns:
+            True if the node matches the pattern
+            `sum_vmapped(y * replicate(x, times, pos=pos1), pos=pos2)` with
+            `pos1 == pos2`, False otherwise.
+        """
+        if not is_sum_vmapped(node) or not node.users:
+            return False
+
+        (in_node,) = node.all_input_nodes
+        if in_node.op != "call_function" or in_node.target not in self.OPERATIONS:
+            return False
+
+        if (
+            in_node.kwargs == {}
+            and len([arg for arg in in_node.args if is_replicate(arg)]) == 1
+            and len([arg for arg in in_node.args if isinstance(arg, Node)]) == 2
+        ):
+            (rep_node,) = [arg for arg in in_node.args if is_replicate(arg)]
+            sum_pos = node.kwargs["pos"]
+            rep_pos = rep_node.kwargs["pos"]
+            return sum_pos == rep_pos
+
+        return False
+
+    def apply(self, sum_node: Node, graph: Graph) -> None:
+        """Apply the simplification rule.
+
+        Args:
+            sum_node: The `sum_vmapped` node that consumes a multiplication node.
+            graph: The computation graph to which the rule is applied.
+        """
+        (mul_node,) = sum_node.all_input_nodes
+        (rep_node,) = [n for n in mul_node.all_input_nodes if is_replicate(n)]
+        (x_node,) = rep_node.all_input_nodes
+        (other_node,) = [n for n in mul_node.all_input_nodes if not is_replicate(n)]
+
+        (pos,) = {rep_node.kwargs["pos"], sum_node.kwargs["pos"]}
+
+        # Create a new sum_vmapped node for
+        with graph.inserting_after(other_node):
+            new_sum_node = graph.call_function(
+                jet.utils.sum_vmapped, args=(other_node,), kwargs={"pos": pos}
+            )
+
+        # Create a new multiplication node for `sum_vmapped(y) * x`
+        with graph.inserting_after(new_sum_node):
+            new_mul_node = graph.call_function(
+                mul_node.target, args=(new_sum_node, x_node), kwargs={}
+            )
+
+        # Replace the old node with the simplified node
+        sum_node.replace_all_uses_with(new_mul_node)

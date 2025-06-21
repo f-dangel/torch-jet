@@ -139,7 +139,7 @@ class PushReplicateElementwise(Rule):
 
         # swap the order of the `replicate` and the elementwise function `f`
         with graph.inserting_after(rep_node):
-            new_f_node = graph.call_function(f_node.target, args=(x,), kwargs={})
+            new_f_node = graph.call_function(f_node.target, args=(x,))
 
         with graph.inserting_after(new_f_node):
             new_rep_node = graph.call_function(
@@ -159,8 +159,8 @@ class PushReplicateScalarArithmetic(Rule):
 
     The following two cases simplify to the same result:
 
-    1. `x` scalar, `y` tensor: `replicate(x ∘ y) -> replicate(x ∘ y)`.
-    2. `x` tensor, `y` scalar: `replicate(x ∘ y) -> replicate(x ∘ y)`.
+    1. `x` scalar, `y` tensor: `replicate(x ∘ y) -> x ∘ replicate(y)`.
+    2. `x` tensor, `y` scalar: `replicate(x ∘ y) -> replicate(x) ∘ y`.
 
     Attributes:
         OPERATIONS: List of arithmetic operations that can be simplified.
@@ -193,7 +193,7 @@ class PushReplicateScalarArithmetic(Rule):
 
         Returns:
             True if the node matches the pattern `replicate(x ∘ y)`, where ∘ is an
-            arithmetic operation, False otherwise.
+            arithmetic operation and either `x` or `y` is a scalar, False otherwise.
         """
         return (
             node.op == "call_function"
@@ -223,9 +223,7 @@ class PushReplicateScalarArithmetic(Rule):
             new_args = tuple(
                 x if idx == rep_pos else arg for idx, arg in enumerate(arith_node.args)
             )
-            new_arith_node = graph.call_function(
-                arith_node.target, args=new_args, kwargs={}
-            )
+            new_arith_node = graph.call_function(arith_node.target, args=new_args)
 
         with graph.inserting_after(new_arith_node):
             new_rep_node = graph.call_function(
@@ -311,9 +309,7 @@ class PushReplicateTensorArithmetic(Rule):
         # swap the order of the `replicate` and the arithmetic operation
         with graph.inserting_before(arith_node):
             new_args = tuple(mapping[rep] for rep in arith_node.args)
-            new_arith_node = graph.call_function(
-                arith_node.target, args=new_args, kwargs={}
-            )
+            new_arith_node = graph.call_function(arith_node.target, args=new_args)
 
         with graph.inserting_after(new_arith_node):
             new_rep_node = graph.call_function(
@@ -341,7 +337,7 @@ class PushReplicateLinear(Rule):
             node.op == "call_function"
             and node.users
             and node.target == linear
-            and is_replicate(node.args[0])  # first argument must be a replicate node
+            and is_replicate(node.args[0])  # x must be a replicate node
         )
 
     def apply(self, linear_node: Node, graph: Graph) -> None:
@@ -456,23 +452,18 @@ class PushReplicateSumVmapped(Rule):
 class PullSumVmappedScalarMultiplication(Rule):
     """Rule for simplifying `sum_vmapped(x * y)` with one scalar argument.
 
-    The following two cases simplify to the same result (for * and /):
+    The following two cases simplify to the same result:
 
     1. `x` scalar: `sum_vmapped(x * y)` -> `x * sum_vmapped(y)`.
     2. `y` scalar: `sum_vmapped(x * y)` -> `replicate(x) * y`.
 
     Attributes:
         OPERATIONS: List of operations that can be simplified.
-            Includes multiplication and division.
     """
 
     OPERATIONS: list[Callable[[Tensor | float | int, Tensor | float | int], Tensor]] = [
-        # multiplication
         mul,
         operator.mul,
-        # division
-        div,
-        operator.truediv,
     ]
 
     def match(self, node: Node) -> bool:
@@ -483,7 +474,7 @@ class PullSumVmappedScalarMultiplication(Rule):
 
         Returns:
             True if the node matches the pattern `sum_vmapped(x * y)`, where * is
-            multiplication/division and either `x` or `y` a scalar, False otherwise.
+            multiplication and either `x` or `y` a scalar, False otherwise.
         """
         if not is_sum_vmapped(node) or not node.users:
             return False
@@ -521,9 +512,7 @@ class PullSumVmappedScalarMultiplication(Rule):
                 new_sum_node if idx == x_pos else arg
                 for idx, arg in enumerate(mul_node.args)
             )
-            new_mul_node = graph.call_function(
-                mul_node.target, args=new_args, kwargs={}
-            )
+            new_mul_node = graph.call_function(mul_node.target, args=new_args)
 
         # replace the old node with its simplified node in the entire graph
         sum_node.replace_all_uses_with(new_mul_node)
@@ -599,9 +588,7 @@ class PullSumVmappedTensorAddition(Rule):
         # Insert a new addition/subtraction node after the new sum nodes
         with graph.inserting_after(add_node):
             new_args = tuple(mapping[x] for x in add_node.args)
-            new_add_node = graph.call_function(
-                add_node.target, args=new_args, kwargs={}
-            )
+            new_add_node = graph.call_function(add_node.target, args=new_args)
 
         # replace the old node with its simplified node in the entire graph
         sum_node.replace_all_uses_with(new_add_node)
@@ -701,8 +688,8 @@ class PullSumVmappedReplicateMultiplication(Rule):
 
         if (
             in_node.kwargs == {}
-            and len([arg for arg in in_node.args if is_replicate(arg)]) == 1
-            and len([arg for arg in in_node.args if isinstance(arg, Node)]) == 2
+            and sum(is_replicate(arg) for arg in in_node.args) == 1
+            and sum(isinstance(arg, Node) for arg in in_node.args) == 2
         ):
             (rep_node,) = [arg for arg in in_node.args if is_replicate(arg)]
             sum_pos = node.kwargs["pos"]
@@ -734,7 +721,7 @@ class PullSumVmappedReplicateMultiplication(Rule):
         # Create a new multiplication node for `sum_vmapped(y) * x`
         with graph.inserting_after(new_sum_node):
             new_mul_node = graph.call_function(
-                mul_node.target, args=(x_node, new_sum_node), kwargs={}
+                mul_node.target, args=(x_node, new_sum_node)
             )
 
         # Replace the old node with the simplified node

@@ -8,7 +8,7 @@ from warnings import warn
 from torch import Tensor, add, cos, cosh, div, mul
 from torch import pow as torch_pow
 from torch import sigmoid, sin, sub, tanh
-from torch.fx import Graph, Node
+from torch.fx import Graph, GraphModule, Node
 from torch.nn.functional import linear
 
 import jet.utils
@@ -47,7 +47,7 @@ def is_sum_vmapped(arg: Any) -> bool:
 
 
 class Rule(ABC):
-    """Base class for simplification rules."""
+    """Base class for graph-based simplification rules."""
 
     @abstractmethod
     def match(self, node: Node) -> bool:
@@ -65,6 +65,32 @@ class Rule(ABC):
         Args:
             node: A node in a computation graph that represents the rule's entry point.
             graph: The computation graph to which the rule is applied.
+        """
+        pass
+
+
+class ModuleRule(ABC):
+    """Base class for simplification rules that act on a GraphModule.
+
+    Such rules can access and modify tensor constants of the module.
+    """
+
+    @abstractmethod
+    def match(self, node: Node) -> bool:
+        """Detect a match with a simplification's entry point.
+
+        Args:
+            module: A GraphModule representing the computation graph.
+        """
+        pass
+
+    @abstractmethod
+    def apply(self, node: Node, module: GraphModule) -> None:
+        """Apply the simplification rule.
+
+        Args:
+           node: A node in a computation graph that represents the rule's entry point.
+            module: A GraphModule representing the computation graph.
         """
         pass
 
@@ -707,8 +733,63 @@ class PullSumVmappedReplicateMultiplication(Rule):
         # Create a new multiplication node for `sum_vmapped(y) * x`
         with graph.inserting_after(new_sum_node):
             new_mul_node = graph.call_function(
-                mul_node.target, args=(new_sum_node, x_node), kwargs={}
+                mul_node.target, args=(x_node, new_sum_node), kwargs={}
             )
 
         # Replace the old node with the simplified node
         sum_node.replace_all_uses_with(new_mul_node)
+
+
+class MergeSumVmappedConstant(ModuleRule):
+    """Simplify `sum_vmapped(constant_tensor, pos=pos)` by precomputing the sum.
+
+    This rule applies when the input to `sum_vmapped` is a constant tensor.
+    """
+
+    def match(self, node: Node) -> bool:
+        """Detect a match with the simplification's entry point.
+
+        Args:
+            node: A node in a computation graph.
+
+        Returns:
+            True if the node matches the pattern `sum_vmapped(constant_tensor, pos=pos)`,
+            False otherwise.
+        """
+        return (
+            is_sum_vmapped(node)
+            and node.users
+            and node.all_input_nodes[0].op == "get_attr"
+        )
+
+    def apply(self, sum_node: Node, mod: GraphModule) -> None:
+        """Apply the simplification rule.
+
+        Args:
+            sum_node: The `sum_vmapped` node that consumes a constant tensor.
+            mod: A GraphModule representing the computation graph.
+        """
+        (const_node,) = sum_node.all_input_nodes
+        sum_pos = sum_node.kwargs["pos"]
+
+        const = jet.utils.recursive_getattr(mod, const_node.target)
+        prefix = ".".join(const_node.target.split(".")[:-1])
+        name = const_node.target.split(".")[-1]
+
+        new_const = const.sum(dim=sum_pos)
+        new_name = f"{name}sum{sum_pos}"
+        jet.utils.recursive_setattr(mod, f"{prefix}.{new_name}", new_const)
+
+        # add a new node
+        with mod.graph.inserting_after(const_node):
+            new_const_node = mod.graph.create_node("get_attr", f"{prefix}.{new_name}")
+        # replace the old node with the new constant node
+        sum_node.replace_all_uses_with(new_const_node)
+
+        # if the sum node is not used, remove it from the graph
+        if not sum_node.users:
+            mod.graph.erase_node(sum_node)
+        # if the constant node is not used anymore, remove the tensor from the module
+        if not const_node.users:
+            mod.graph.erase_node(const_node)
+            jet.utils.recursive_delattr(mod, f"{prefix}.{name}")

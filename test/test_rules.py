@@ -11,6 +11,8 @@ from torch.nn.functional import linear
 import jet.utils
 from jet import JetTracer
 from jet.rules import (
+    MergeSumVmappedConstant,
+    ModuleRule,
     PullSumVmappedLinear,
     PullSumVmappedReplicateMultiplication,
     PullSumVmappedScalarMultiplication,
@@ -20,6 +22,7 @@ from jet.rules import (
     PushReplicateScalarArithmetic,
     PushReplicateSumVmapped,
     PushReplicateTensorArithmetic,
+    Rule,
 )
 from jet.utils import WrapperModule
 
@@ -39,13 +42,15 @@ def compare_graphs(graph1: Graph, graph2: Graph):
 
     for node1, node2 in zip(graph1.nodes, graph2.nodes):
         assert node1.op == node2.op
-        assert node1.target == node2.target
+        if not node1.op == node2.op == "get_attr":
+            assert node1.target == node2.target
         assert len(node1.args) == len(node2.args)
         for arg1, arg2 in zip(node1.args, node2.args):
             if isinstance(arg1, Node) and isinstance(arg2, Node):
                 # node comparison
                 assert arg1.op == arg2.op
-                assert arg1.target == arg2.target
+                if not arg1.op == arg2.op == "get_attr":
+                    assert arg1.target == arg2.target
                 assert node_mapping[arg1] == arg2
             else:
                 assert arg1 == arg2
@@ -344,7 +349,10 @@ CASES.append(
     {
         "f": SumVmappedReplicateMultiplication(),
         "f_simple": SimpleSumVmappedReplicateMultiplication(),
-        "rules": lambda: [PullSumVmappedReplicateMultiplication()],
+        "rules": lambda: [
+            PullSumVmappedReplicateMultiplication(),
+            MergeSumVmappedConstant(),
+        ],
         "shape": (4,),
         "id": "sum_vmapped-replicate-multiplication",
     }
@@ -375,7 +383,12 @@ def test_simplification_rules(config: dict[str, Any]):
             for node in f_simplified.graph.nodes:
                 if rule.match(node):
                     num_matches += 1
-                    rule.apply(node, f_simplified.graph)
+                    if isinstance(rule, Rule):
+                        rule.apply(node, f_simplified.graph)
+                    elif isinstance(rule, ModuleRule):
+                        rule.apply(node, f_simplified)
+                    else:
+                        raise TypeError(f"Unknown rule type: {type(rule)=}.")
                     do_simplify = True
     print(f"Got {num_matches=}.")
     f_simplified.graph.eliminate_dead_code()

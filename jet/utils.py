@@ -156,6 +156,48 @@ def recursive_getattr(obj: Any, attr: str) -> Any:
     return obj
 
 
+def recursive_setattr(obj: Any, attr: str, value: Any) -> None:
+    """Recursively set a nested attribute on an object.
+
+    This function allows setting attributes that are nested within submodules or
+    objects, using a dot-separated string (e.g., 'foo.bar.baz').
+
+    Args:
+        obj: The root object on which to set the attribute.
+        attr: Dot-separated string specifying the attribute path.
+        value: The value to set for the nested attribute.
+
+    Raises:
+        RuntimeError: If the attribute already exists.
+    """
+    parts = attr.split(".")
+    for part in parts[:-1]:
+        obj = getattr(obj, part)
+
+    if hasattr(obj, parts[-1]):
+        raise RuntimeError(
+            f"Attribute '{parts[-1]}' already exists in '{'.'.join(parts[:-1])}'. "
+        )
+    setattr(obj, parts[-1], value)
+
+
+def recursive_delattr(obj: Any, attr: str) -> None:
+    """Recursively delete a nested attribute from an object.
+
+    This function allows deleting attributes that are nested within submodules or
+    objects, using a dot-separated string (e.g., 'foo.bar.baz').
+
+    Args:
+        obj: The root object from which to delete the attribute.
+        attr: Dot-separated string specifying the attribute path.
+    """
+    parts = attr.split(".")
+    for part in parts[:-1]:
+        obj = getattr(obj, part)
+
+    delattr(obj, parts[-1])
+
+
 def print_tensor_constants_and_shapes(mod: GraphModule):
     """Print names, shapes, and usage counts of all tensor constants in a graph module.
 

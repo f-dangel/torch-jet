@@ -13,7 +13,6 @@ import jet.utils
 from jet import JetTracer
 from jet.rules import (
     MergeSumVmappedConstant,
-    ModuleRule,
     PullSumVmappedLinear,
     PullSumVmappedReplicateMultiplication,
     PullSumVmappedScalarMultiplication,
@@ -23,8 +22,8 @@ from jet.rules import (
     PushReplicateScalarArithmetic,
     PushReplicateSumVmapped,
     PushReplicateTensorArithmetic,
-    Rule,
 )
+from jet.simplify import apply_once
 from jet.utils import WrapperModule
 
 
@@ -405,9 +404,6 @@ def test_simplification_rules(config: dict[str, Any]):
 
     Args:
         config: A dictionary specifying the test case.
-
-    Raises:
-        TypeError: If an unknown rule type is encountered.
     """
     manual_seed(0)
     f, f_simple, shape = config["f"], config["f_simple"], config["shape"]
@@ -418,22 +414,9 @@ def test_simplification_rules(config: dict[str, Any]):
     f_mod = WrapperModule(f)
     f_simplified = GraphModule(f_mod, JetTracer().trace(f_mod))
 
-    num_matches = 0
     do_simplify = True
     while do_simplify:
-        do_simplify = False
-        for rule in rules:
-            for node in f_simplified.graph.nodes:
-                if rule.match(node):
-                    num_matches += 1
-                    if isinstance(rule, Rule):
-                        rule.apply(node, f_simplified.graph)
-                    elif isinstance(rule, ModuleRule):
-                        rule.apply(node, f_simplified)
-                    else:
-                        raise TypeError(f"Unknown rule type: {type(rule)=}.")
-                    do_simplify = True
-    print(f"Got {num_matches=}.")
+        do_simplify = apply_once(rules, f_simplified, verbose=True)
     f_simplified.graph.eliminate_dead_code()
 
     # make sure all functions yield the same result

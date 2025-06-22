@@ -713,7 +713,7 @@ class PullSumVmappedReplicateMultiplication(Rule):
         (pos,) = {rep_node.kwargs["pos"], sum_node.kwargs["pos"]}
 
         # Create a new sum_vmapped node for
-        with graph.inserting_after(other_node):
+        with graph.inserting_before(sum_node):
             new_sum_node = graph.call_function(
                 jet.utils.sum_vmapped, args=(other_node,), kwargs={"pos": pos}
             )
@@ -767,11 +767,18 @@ class MergeSumVmappedConstant(ModuleRule):
 
         new_const = const.sum(dim=sum_pos)
         new_name = f"{name}sum{sum_pos}"
-        jet.utils.recursive_setattr(mod, f"{prefix}.{new_name}", new_const)
+        if prefix != "":
+            new_name = f"{prefix}.{new_name}"
+
+        # add the new constant if it does not already exist
+        if not jet.utils.recursive_hasattr(mod, new_name) or not new_const.allclose(
+            jet.utils.recursive_getattr(mod, new_name)
+        ):
+            jet.utils.recursive_setattr(mod, new_name, new_const)
 
         # add a new node
         with mod.graph.inserting_after(const_node):
-            new_const_node = mod.graph.create_node("get_attr", f"{prefix}.{new_name}")
+            new_const_node = mod.graph.create_node("get_attr", new_name)
         # replace the old node with the new constant node
         sum_node.replace_all_uses_with(new_const_node)
 
@@ -781,4 +788,4 @@ class MergeSumVmappedConstant(ModuleRule):
         # if the constant node is not used anymore, remove the tensor from the module
         if not const_node.users:
             mod.graph.erase_node(const_node)
-            jet.utils.recursive_delattr(mod, f"{prefix}.{name}")
+            jet.utils.recursive_delattr(mod, const_node.target)

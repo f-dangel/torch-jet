@@ -51,12 +51,8 @@ import jet.utils
 from jet import JetTracer, rev_jet
 from jet.bilaplacian import Bilaplacian, RandomizedBilaplacian
 from jet.laplacian import Laplacian, RandomizedLaplacian
-from jet.simplify import (
-    RewriteReplicate,
-    RewriteSumVmapped,
-    common_subexpression_elimination,
-    simplify,
-)
+from jet.rules import is_replicate, is_sum_vmapped
+from jet.simplify import common_subexpression_elimination, simplify
 from jet.utils import (
     PrimalAndCoefficients,
     ValueAndCoefficients,
@@ -108,7 +104,7 @@ def count_replicate_nodes(f: Callable | Module | GraphModule) -> int:
     else:
         mod = f
 
-    return len([n for n in mod.graph.nodes if RewriteReplicate.is_replicate(n)])
+    return len([n for n in mod.graph.nodes if is_replicate(n)])
 
 
 class Replicate(Module):
@@ -155,7 +151,7 @@ def ensure_outputs_replicates(graph: Graph, num_outputs: int, num_replicates: in
     output = list(graph.nodes)[-1]  # -1 is the output node
     parents = [n for n in graph.nodes if n in output.all_input_nodes]
     assert len(parents) == num_outputs
-    replicates = [n for n in parents if RewriteReplicate.is_replicate(n)]
+    replicates = [n for n in parents if is_replicate(n)]
     assert len(replicates) == num_replicates
 
 
@@ -166,7 +162,7 @@ def ensure_num_replicates(graph: Graph, num_replicates: int):
         graph: The compute graph to check.
         num_replicates: The number of `replicate` nodes to check for.
     """
-    replicates = [n for n in graph.nodes if RewriteReplicate.is_replicate(n)]
+    replicates = [n for n in graph.nodes if is_replicate(n)]
     assert len(replicates) == num_replicates
 
 
@@ -177,7 +173,7 @@ def ensure_num_sum_vmapped(graph: Graph, num_sum_vmapped: int):
         graph: The compute graph to check.
         num_sum_vmapped: The number of `sum_vmapped` nodes to check for.
     """
-    sum_nodes = [n for n in graph.nodes if RewriteSumVmapped.is_sum_vmapped(n)]
+    sum_nodes = [n for n in graph.nodes if is_sum_vmapped(n)]
     assert len(sum_nodes) == num_sum_vmapped
 
 

@@ -4,16 +4,24 @@ import operator
 from collections import defaultdict
 from contextlib import contextmanager
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from itertools import product
+from typing import Any, Callable, Dict, Optional, Set, Tuple
 
-from torch import Tensor, add, cos, cosh, div, mul
-from torch import pow as torch_pow
-from torch import sigmoid, sin, sub, tanh
+from torch import Tensor, mul
 from torch.fx import Graph, GraphModule, Node
 from torch.nn import Module
 from torch.nn.functional import linear
 
 from jet import JetTracer
+from jet.rules import (
+    ModuleRule,
+    PushReplicateElementwise,
+    PushReplicateLinear,
+    PushReplicateScalarArithmetic,
+    PushReplicateSumVmapped,
+    PushReplicateTensorArithmetic,
+    Rule,
+)
 from jet.utils import (
     WrapperModule,
     print_tensor_constants_and_shapes,
@@ -24,12 +32,8 @@ from jet.utils import (
 )
 
 
-class RewriteReplicate:
-    """Class for propagating `replicate` nodes down a compute graph.
-
-    Allows to simplify the compute graph by avoiding redundant computations on
-    replicated tensors.
-    """
+class RewriteSumVmapped:
+    """Propagates summations over a vmaped axis up a computation graph."""
 
     def __init__(self, mod: GraphModule, verbose: bool = False):
         """Store the module .
@@ -59,174 +63,6 @@ class RewriteReplicate:
             and arg.target == replicate
         )
 
-    def parents(self, node: Node) -> List[Node]:
-        """Get the parent nodes of a given node.
-
-        Args:
-            node: The node whose parents to find.
-
-        Returns:
-            The parent nodes of the given node.
-        """
-        return [n for n in self.graph.nodes if n in node.all_input_nodes]
-
-    def children(self, node: Node) -> List[Node]:
-        """Get the children nodes of a given node.
-
-        Args:
-            node: The node whose children to find.
-
-        Returns:
-            The children nodes of the given node.
-        """
-        return [n for n in self.graph.nodes if node in n.all_input_nodes]
-
-    def rewrite_pattern(self) -> bool:
-        """Try to find the next replicate node and rewrite it.
-
-        Returns:
-            Whether a pattern was found and rewritten.
-        """
-        rewritten = False
-
-        if pattern := self.find_pattern():
-            self.replace_pattern(pattern)
-            rewritten = True
-
-        return rewritten
-
-    def find_pattern(self) -> Optional[Tuple[List[Node], Node]]:  # noqa: C901
-        """Find a pattern that can be simplified.
-
-        Returns:
-            A pattern that can be simplified, or `None` if no such pattern is found.
-            A pattern consists of two parts: a list of nodes that can be swapped with
-            the node returned as second part.
-        """
-        for pos, node in enumerate(
-            list(self.graph.nodes)[self.last_pattern_pos :], start=self.last_pattern_pos
-        ):
-            if node.op != "call_function":
-                continue
-
-            pattern = None
-            parents = self.parents(node)
-
-            # operations that consume a single replicate tensor `x_rep = replicate(x)`
-            if (
-                node.target
-                in {
-                    cos,  # torch.cos(x_rep) -> replicate(torch.cos(x))
-                    tanh,  # torch.tanh(x_rep) -> replicate(torch.tanh(x))
-                    sigmoid,  # torch.sigmoid(x_rep) -> replicate(torch.sigmoid(x))
-                    cosh,  # torch.cosh(x_rep) -> replicate(torch.cosh(x))
-                    torch_pow,  # torch.pow(x_rep, 2) -> replicate(torch.pow(x, 2))
-                    sin,  # torch.sin(x_rep) -> replicate(torch.sin(x))
-                    operator.pow,  # x_rep ** 2 -> replicate(x ** 2)
-                    mul,  # torch.mul(x_rep, 2) -> replicate(torch.mul(x, 2))
-                    operator.mul,  # x_rep * 2 -> replicate(x * 2)
-                    div,  # torch.div(x_rep, 2) -> replicate(torch.div(x, 2))
-                    operator.truediv,  # x_rep / 2 -> replicate(x / 2)
-                    operator.add,  # x_rep + 2 -> replicate(x + 2)
-                    add,  # torch.add(x_rep, 2) -> replicate(torch.add(x, 2))
-                    operator.sub,  # x_rep - 2 -> replicate(x - 2)
-                    sub,  # torch.sub(x_rep, 2) -> replicate(torch.sub(x, 2))
-                }
-                and len(parents) == 1
-                and all(self.is_replicate(p) for p in parents)
-            ):
-                pattern = [parents, node]
-
-            # a linear layer that processes a replicated input tensor
-            # `x_rep = replicate(x)`:
-            # `linear(x_rep, W, bias=b)` -> `replicate(linear(x), W, bias=b)`
-            elif node.target == linear and self.is_replicate(node.args[0]):
-                pattern = [[node.args[0]], node]
-
-            # operations that consume two replicate tensors `x_rep1 = replicate(x1)`,
-            # `x_rep2 = replicate(x2)`
-            elif (
-                node.target
-                in {
-                    add,  # torch.add(x_rep1, x_rep2) -> replicate(torch.add(x1, x2))
-                    operator.add,  # x_rep1 + x_rep2 -> replicate(x1 + x2)
-                    mul,  # torch.mul(x_rep1, x_rep2) -> replicate(torch.mul(x1, x2))
-                    operator.mul,  # x_rep1 * x_rep2 -> replicate(x1 * x2)
-                    sub,  # torch.sub(x_rep1, x_rep2) -> replicate(torch.sub(x1, x2))
-                    operator.sub,  # x_rep1 - x_rep2 -> replicate(x1 - x2)
-                }
-                and len(parents) == 2
-                and all(self.is_replicate(arg) for arg in node.all_input_nodes)
-            ):
-                pattern = [parents, node]
-
-            if pattern is not None:
-                self.maybe_print(f"Can swap {pattern[0]} and {pattern[1]}")
-                self.last_pattern_pos = max(0, pos - 1)
-                return pattern
-
-    def maybe_erase(self, node: Node) -> bool:
-        """Remove a node if it has no children and does not represent a variable.
-
-        Args:
-            node: The node to be checked for removal.
-
-        Returns:
-            Whether the node was removed.
-        """
-        if node.op == "output":
-            self.maybe_print(f"Not removing {node} because it is an output node.")
-            return False
-        elif node.op == "placeholder":
-            self.maybe_print(f"Not removing {node} because it is a placeholder.")
-            return False
-
-        children = self.children(node)
-        if len(children) == 0:
-            self.maybe_print(f"Erasing {node}.")
-            self.graph.erase_node(node)
-            return True
-        else:
-            self.maybe_print(f"Not removing {node} because it has children {children}.")
-            return False
-
-    def replace_pattern(self, pattern: Tuple[List[Node], Node]):
-        """Replace a pattern in the graph.
-
-        Args:
-            pattern: A pattern returned by `find_pattern`.
-        """
-        replicates, op = pattern
-
-        # create a new replicate node that replaces the old one and is located after
-        # the operation node
-        with self.graph.inserting_after(op):
-            new_rep = self.graph.call_function(replicate, kwargs=replicates[0].kwargs)
-        op.replace_all_uses_with(new_rep)
-        new_rep.args = (op,) + replicates[0].args[1:]
-
-        # rewire the arguments
-        for rep in replicates:
-            (parent,) = self.parents(rep)
-            op.replace_input_with(rep, parent)
-
-        # remove the old replicate nodes if possible
-        for rep in replicates:
-            self.maybe_erase(rep)
-
-    def maybe_print(self, message: str):
-        """Print a message if verbose mode is enabled.
-
-        Args:
-            message: The message to print.
-        """
-        if self.verbose:
-            print(message)
-
-
-class RewriteSumVmapped(RewriteReplicate):
-    """Propagates summations over a vmaped axis up a computation graph."""
-
     @staticmethod
     def is_sum_vmapped(arg: Any) -> bool:
         """Check if an argument of a node is a `sum_vmapped` node.
@@ -242,6 +78,15 @@ class RewriteSumVmapped(RewriteReplicate):
             and arg.op == "call_function"
             and arg.target == sum_vmapped
         )
+
+    def maybe_print(self, message: str):
+        """Print a message if verbose mode is enabled.
+
+        Args:
+            message: The message to print.
+        """
+        if self.verbose:
+            print(message)
 
     def rewrite_pattern(self) -> bool:
         """Try to find the next sum_vmapped node and rewrite it.
@@ -266,16 +111,17 @@ class RewriteSumVmapped(RewriteReplicate):
         for node in self.graph.nodes:
             if not self.is_sum_vmapped(node):
                 continue
-            (op,) = self.parents(node)
+            (op,) = node.all_input_nodes
             if op.op != "call_function":
                 continue
 
             # Can only replace nodes that are not consumed by others
-            if self.children(op) != [node]:
+            children = list(op.users.keys())
+            if children != [node]:
                 continue
 
             pattern = None
-            parents = self.parents(op)
+            parents = op.all_input_nodes
 
             # operations that produce a tensor from a single tensor `x`, which is then
             # `sum_vmapped`
@@ -284,6 +130,10 @@ class RewriteSumVmapped(RewriteReplicate):
                 in {
                     operator.mul,  # sum_vmapped(x * 2) -> 2 * sum_vmapped(x)
                     operator.truediv,  # sum_vmapped(x / 2) -> sum_vmapped(x) / 2
+                    # sum_vmapped(replicate(x, times, pos1), pos2)
+                    # (pos1 != pos2) -> replicate(sum_vmapped(x, pos2'), times, pos1')
+                    # (pos1 == pos2) -> times * x
+                    replicate,
                 }
                 and len(parents) == 1
             ):
@@ -320,61 +170,71 @@ class RewriteSumVmapped(RewriteReplicate):
                 it can be propagated up.
         """
         sum_node, op = pattern
-        sum_node.replace_all_uses_with(op)
-        self.maybe_erase(sum_node)
 
-        # generate new `sum_vmapped` nodes above `op` and rewire the arguments
-        parents = [op.args[0]] if op.target == linear else self.parents(op)
-        for parent in parents:
-            with self.graph.inserting_before(op):
-                new_sum = self.graph.call_function(sum_vmapped, args=(parent,))
-            op.replace_input_with(parent, new_sum)
-            self.maybe_erase(parent)
+        if not self.is_replicate(op):
+            sum_node.replace_all_uses_with(op)
+
+            # generate new `sum_vmapped` nodes above `op` and rewire the arguments
+            parents = [op.args[0]] if op.target == linear else op.all_input_nodes
+            for parent in parents:
+                with self.graph.inserting_before(op):
+                    new_sum = self.graph.call_function(
+                        sum_vmapped,
+                        args=(parent,),
+                        kwargs={"pos": sum_node.kwargs["pos"]},
+                    )
+                op.replace_input_with(parent, new_sum)
+
+        self.graph.eliminate_dead_code()
 
     def simplify_vmapped_sum_with_replicate(self) -> bool:
         """Simplify nodes that use `sum_vmapped` and `replicate` nodes.
 
-        For instance, `sum_vmapped(x * replicate(y))` can be simplified into
-        `sum_vmapped(x) * y`.
+        For instance, `sum_vmapped(x * replicate(y, times, pos=pos), pos=pos)` can be
+        simplified into `sum_vmapped(x, pos=pos) * y`.
 
         Returns:
             Whether a `sum_vmapped` was fused with a `replicate`.
         """
         simplified = False
-        for node in list(self.graph.nodes):
-            if not self.is_sum_vmapped(node):
-                continue
-            (op,) = self.parents(node)
+        for node in [n for n in self.graph.nodes if self.is_sum_vmapped(n)]:
+            (op,) = node.all_input_nodes
             if op.op not in {"call_function", "call_method"}:
                 continue
 
-            parents = self.parents(op)
+            parents = op.all_input_nodes
             if not any(self.is_replicate(p) for p in parents):
                 continue
 
             replicates = [p for p in parents if self.is_replicate(p)]
+            pos = node.kwargs["pos"]
 
             if (  # sum_vmapped(x * replicate(y)) -> sum_vmapped(x) * y
-                op.target in {mul, operator.mul} and len(parents) == 2
+                op.target in {mul, operator.mul}
+                and len(parents) == 2
+                and len(replicates) == 1
+                and replicates[0].kwargs["pos"] == pos
             ):
                 # need to replace replicate(y) with y
                 (replicate,) = replicates
-                (replicated,) = self.parents(replicate)
+                (replicated,) = replicate.all_input_nodes
                 op.replace_input_with(replicate, replicated)
-                self.maybe_erase(replicate)
 
                 # need to replace x with sum_vmapped(x)
                 (other_node,) = [p for p in parents if not self.is_replicate(p)]
                 with self.graph.inserting_after(other_node):
-                    new_sum = self.graph.call_function(sum_vmapped, args=(other_node,))
+                    new_sum = self.graph.call_function(
+                        sum_vmapped, args=(other_node,), kwargs={"pos": pos}
+                    )
                 op.replace_input_with(other_node, new_sum)
-                self.maybe_erase(other_node)
 
                 # replace the sum_vmapped node with the operation node
                 node.replace_all_uses_with(op)
-                self.maybe_erase(node)
 
                 simplified = True
+
+        if simplified:
+            self.graph.eliminate_dead_code()
 
         return simplified
 
@@ -392,7 +252,8 @@ class RewriteSumVmapped(RewriteReplicate):
         attributes = defaultdict(dict)
         for n in self.graph.nodes:
             if n.op == "get_attr":
-                attributes[n.target][n] = self.children(n)
+                children = list(n.users.keys())
+                attributes[n.target][n] = children
 
         fused = False
 
@@ -405,7 +266,6 @@ class RewriteSumVmapped(RewriteReplicate):
                 for sum_node in all_children:
                     if sum_node != replacement:
                         sum_node.replace_all_uses_with(replacement)
-                        self.maybe_erase(sum_node)
 
                 # sum the tensor constant
                 old = getattr(self.mod, target)
@@ -416,9 +276,8 @@ class RewriteSumVmapped(RewriteReplicate):
                 )
                 fused = True
 
-            # remove the get_attr nodes that are not referenced any more
-            for get_attr in get_attr_to_children:
-                self.maybe_erase(get_attr)
+        if fused:
+            self.graph.eliminate_dead_code()
 
         return fused
 
@@ -453,23 +312,19 @@ def common_subexpression_elimination(
             if verbose:
                 print(
                     f"Replacing {node}"
-                    + f" ({node.op}, {node.target}, {node.args}, {node.kwargs})"
-                )
-                print(
-                    f"with {replacement} ({replacement.op}, {replacement.target},"
+                    + f" ({node.op}, {node.target}, {node.args}, {node.kwargs})\nwith"
+                    + f" {replacement} ({replacement.op}, {replacement.target},"
                     + f" {replacement.args}, {replacement.kwargs})"
                 )
             node.replace_all_uses_with(replacement)
-
-            # remove the node from the graph
-            if verbose:
-                print(f"Erasing {node}.")
-            graph.erase_node(node)
 
             replaced = True
             num_replacements += 1
         else:
             nodes[node_hash] = node
+
+    if replaced:
+        graph.eliminate_dead_code()
 
     if verbose:
         print(f"Replacements: {num_replacements}")
@@ -566,6 +421,38 @@ def common_tensor_constant_elimination(  # noqa: C901
         print_tensor_constants_and_shapes(mod)
 
     return replaced
+
+
+def apply_once(
+    rules: list[Rule | ModuleRule], mod: GraphModule, verbose: bool = False
+) -> bool:
+    """Apply one of the supplied rules once to a module.
+
+    Args:
+        rules: A list of rules to be applied.
+        mod: The module to which the rules will be applied.
+        verbose: Whether to print debug information. Default: `False`.
+
+    Returns:
+        True if any rule was applied, False otherwise.
+
+    Raises:
+        TypeError: If a rule is not an instance of `Rule` or `ModuleRule`.
+    """
+    for node, rule in product(mod.graph.nodes, rules):
+        if rule.match(node):
+            if verbose:
+                print(f"Applying rule {rule} to {node=}.")
+
+            if isinstance(rule, Rule):
+                rule.apply(node, mod.graph)
+            elif isinstance(rule, ModuleRule):
+                rule.apply(node, mod)
+            else:
+                raise TypeError(f"Unknown rule type: {type(rule)}.")
+            return True
+
+    return False
 
 
 @contextmanager
@@ -694,10 +581,17 @@ def simplify(  # noqa: C901
         for n in graph.nodes
         if n.op == "call_function" and n.target in {replicate, sum_vmapped}
     ]:
-        standardize_signature(node, verbose=verbose)
+        with check_unaltered(mod, test_x):
+            standardize_signature(node, verbose=verbose)
 
-    replicate_rewriter = RewriteReplicate(mod, verbose=verbose)
-    sum_vmapped_rewriter = RewriteSumVmapped(mod, verbose=verbose)
+    # Initialize PushReplicate* rules
+    replicate_rules = [
+        PushReplicateElementwise(),
+        PushReplicateScalarArithmetic(),
+        PushReplicateTensorArithmetic(),
+        PushReplicateLinear(),
+        PushReplicateSumVmapped(),
+    ]
 
     strategies = {
         "remove_unused": graph.eliminate_dead_code,
@@ -713,7 +607,7 @@ def simplify(  # noqa: C901
         "eliminate_tensor_constants": partial(
             common_tensor_constant_elimination, mod, verbose=verbose
         ),
-        "push_replicate": replicate_rewriter.rewrite_pattern,
+        "push_replicate": lambda: apply_once(replicate_rules, mod, verbose=verbose),
         "pull_sum_vmapped": sum_vmapped_rewriter.rewrite_pattern,
         "simplify_vmapped_sum_with_replicate": sum_vmapped_rewriter.simplify_vmapped_sum_with_replicate,  # noqa: B950
         "fuse_with_tensor_constant": sum_vmapped_rewriter.fuse_vmapped_sum_with_tensor_constants,  # noqa: B950

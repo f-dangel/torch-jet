@@ -5,7 +5,7 @@ from collections import defaultdict
 from contextlib import contextmanager
 from functools import partial
 from itertools import product
-from typing import Callable, Dict, Optional, Set
+from typing import Callable, Optional
 
 from torch import Tensor
 from torch.fx import Graph, GraphModule
@@ -121,7 +121,7 @@ def common_tensor_constant_elimination(  # noqa: C901
         return tensor1.allclose(tensor2)
 
     # Figure out which tensors are the same
-    same: Dict[str, list[str]] = {}
+    same: dict[str, list[str]] = {}
 
     for node in nodes:
         ref = recursive_getattr(mod, node.target)
@@ -407,7 +407,7 @@ def simplify(  # noqa: C901
 
 
 def _exhaust_incrementally(
-    strategies: Dict[str, Callable[[], None]],
+    strategies: dict[str, Callable[[], None]],
     mod: GraphModule,
     test_x: Optional[Tensor],
     verbose: bool,

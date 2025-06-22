@@ -285,3 +285,24 @@ def standardize_signature(node: Node, verbose: bool = False):
     node.kwargs = optional
     if verbose:
         print(f"{node.args=}, {node.kwargs=}.")
+
+
+def recursive_hasattr(obj: Any, attr: str) -> bool:
+    """Recursively check if a nested attribute exists in an object.
+
+    This function allows checking for attributes that are nested within submodules or
+    objects, using a dot-separated string (e.g., 'foo.bar.baz').
+
+    Args:
+        obj: The root object to check for the attribute.
+        attr: Dot-separated string specifying the attribute path.
+
+    Returns:
+        True if the nested attribute exists, False otherwise.
+    """
+    try:
+        for part in attr.split("."):
+            obj = getattr(obj, part)
+        return True
+    except AttributeError:
+        return False

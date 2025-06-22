@@ -162,6 +162,9 @@ def recursive_setattr(obj: Any, attr: str, value: Any) -> None:
     This function allows setting attributes that are nested within submodules or
     objects, using a dot-separated string (e.g., 'foo.bar.baz').
 
+    If the object is an `nn.Module` and the attribute is a `Tensor`, it registers the
+    tensor as a buffer.
+
     Args:
         obj: The root object on which to set the attribute.
         attr: Dot-separated string specifying the attribute path.
@@ -178,7 +181,10 @@ def recursive_setattr(obj: Any, attr: str, value: Any) -> None:
         raise RuntimeError(
             f"Attribute {parts[-1]!r} already exists in {'.'.join(parts[:-1])!r}. "
         )
-    setattr(obj, parts[-1], value)
+    if isinstance(obj, Module) and isinstance(value, Tensor):
+        obj.register_buffer(parts[-1], value)
+    else:
+        setattr(obj, parts[-1], value)
 
 
 def recursive_delattr(obj: Any, attr: str) -> None:

@@ -1,19 +1,15 @@
 """Tests for exp01 (Laplacian benchmark)."""
 
 from functools import partial
-from test.test___init__ import (
-    CASES_COMPACT,
-    CASES_COMPACT_IDS,
-    report_nonclose,
-    setup_case,
-)
+from test.test___init__ import report_nonclose, setup_case
 from test.test_bilaplacian import bilaplacian
 from test.test_laplacian import _check_mc_convergence, laplacian
 from test.test_weighted_laplacian import weighted_laplacian
-from typing import Any, Dict
+from typing import Any
 
 from pytest import mark
-from torch import Tensor, manual_seed
+from torch import Tensor, manual_seed, sigmoid
+from torch.nn import Linear, Sequential, Tanh
 
 from jet.bilaplacian import RandomizedBilaplacian
 from jet.exp.exp01_benchmark_laplacian.execute import (
@@ -39,17 +35,47 @@ BILAPLACIAN_DISTRIBUTION_IDS = [
     f"distribution={d}" for d in RandomizedBilaplacian.SUPPORTED_DISTRIBUTIONS
 ]
 
+# make generation of test cases deterministic
+manual_seed(0)
+
+EXP01_CASES = [
+    # 5d tanh-activated two-layer MLP
+    {
+        "f": Sequential(
+            Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
+        ),
+        "shape": (5,),
+        "id": "two-layer-tanh-mlp",
+    },
+    # 5d tanh-activated two-layer MLP with batched input
+    {
+        "f": Sequential(
+            Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
+        ),
+        "shape": (10, 5),
+        "is_batched": True,
+        "id": "batched-two-layer-tanh-mlp",
+    },
+    # 3d sigmoid(sigmoid) function
+    {"f": lambda x: sigmoid(sigmoid(x)), "shape": (3,), "id": "sigmoid-sigmoid"},
+]
+# set the `is_batched` flag for all cases
+for config in EXP01_CASES:
+    config["is_batched"] = config.get("is_batched", False)
+
+EXP01_IDS = [config["id"] for config in EXP01_CASES]
+
 
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
-@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
-def test_laplacian_functions(config: Dict[str, Any], strategy: str):
+@mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
+def test_laplacian_functions(config: dict[str, Any], strategy: str):
     """Test that the benchmarked Laplacian functions produce the correct result.
 
     Args:
         config: Configuration dictionary of the test case.
         strategy: The strategy to test.
     """
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, x, _, is_batched = setup_case(config)
     lap = laplacian(f, x)
     lap_func = laplacian_function(f, x, is_batched, strategy)()
 
@@ -61,9 +87,9 @@ def test_laplacian_functions(config: Dict[str, Any], strategy: str):
     RandomizedLaplacian.SUPPORTED_DISTRIBUTIONS,
     ids=LAPLACIAN_DISTRIBUTION_IDS,
 )
-@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
+@mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
 def test_randomized_laplacian_functions_identical(
-    config: Dict[str, Any], distribution: str, num_samples: int = 42
+    config: dict[str, Any], distribution: str, num_samples: int = 42
 ):
     """Test that the benchmarked MC-Laplacian functions are identical when seeding.
 
@@ -72,7 +98,7 @@ def test_randomized_laplacian_functions_identical(
         distribution: The distribution from which to draw random vectors.
         num_samples: Number of samples to draw. Default: `42`.
     """
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, x, _, is_batched = setup_case(config)
 
     laps = {}
     for strategy in SUPPORTED_STRATEGIES:
@@ -92,9 +118,9 @@ def test_randomized_laplacian_functions_identical(
     RandomizedLaplacian.SUPPORTED_DISTRIBUTIONS,
     ids=LAPLACIAN_DISTRIBUTION_IDS,
 )
-@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
+@mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
 def test_randomized_laplacian_functions_converge(
-    config: Dict[str, Any],
+    config: dict[str, Any],
     strategy: str,
     distribution: str,
     max_num_chunks: int = 128,
@@ -111,7 +137,7 @@ def test_randomized_laplacian_functions_converge(
         chunk_size: Number of samples per chunk. Default: `64`.
         target_rel_error: Target relative error for convergence. Default: `5e-2`.
     """
-    f, X, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, X, _, is_batched = setup_case(config)
 
     lap = laplacian(f, X)
 
@@ -129,15 +155,15 @@ def test_randomized_laplacian_functions_converge(
 
 
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
-@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
-def test_weighted_laplacian_functions(config: Dict[str, Any], strategy: str):
+@mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
+def test_weighted_laplacian_functions(config: dict[str, Any], strategy: str):
     """Test that the benchmarked weighted Laplacians produce the correct result.
 
     Args:
         config: Configuration dictionary of the test case.
         strategy: The strategy to test.
     """
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, x, _, is_batched = setup_case(config)
     C_func = partial(C_func_diagonal_increments, is_batched=is_batched)
     weighted_lap = weighted_laplacian(f, x, is_batched, C_func)
     weighted_lap_func = weighted_laplacian_function(f, x, is_batched, strategy)()
@@ -150,9 +176,9 @@ def test_weighted_laplacian_functions(config: Dict[str, Any], strategy: str):
     RandomizedWeightedLaplacian.SUPPORTED_DISTRIBUTIONS,
     ids=LAPLACIAN_DISTRIBUTION_IDS,
 )
-@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
+@mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
 def test_randomized_weighted_laplacian_functions_identical(
-    config: Dict[str, Any], distribution: str, num_samples: int = 42
+    config: dict[str, Any], distribution: str, num_samples: int = 42
 ):
     """Test that the weighted MC-Laplacian functions are identical when seeding.
 
@@ -161,7 +187,7 @@ def test_randomized_weighted_laplacian_functions_identical(
         distribution: The distribution from which to draw random vectors.
         num_samples: Number of samples to draw. Default: `42`.
     """
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, x, _, is_batched = setup_case(config)
 
     h_dot_cs = {}
     for strategy in SUPPORTED_STRATEGIES:
@@ -181,9 +207,9 @@ def test_randomized_weighted_laplacian_functions_identical(
     RandomizedWeightedLaplacian.SUPPORTED_DISTRIBUTIONS,
     ids=LAPLACIAN_DISTRIBUTION_IDS,
 )
-@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
+@mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
 def test_randomized_weighted_laplacian_functions_converge(
-    config: Dict[str, Any],
+    config: dict[str, Any],
     strategy: str,
     distribution: str,
     max_num_chunks: int = 128,
@@ -200,7 +226,7 @@ def test_randomized_weighted_laplacian_functions_converge(
         chunk_size: Number of samples per chunk. Default: `64`.
         target_rel_error: Target relative error for convergence. Default: `5e-2`.
     """
-    f, X, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, X, _, is_batched = setup_case(config)
 
     C_func = partial(C_func_diagonal_increments, is_batched=is_batched)
     h_dot_c = weighted_laplacian(f, X, is_batched, C_func)
@@ -221,15 +247,15 @@ def test_randomized_weighted_laplacian_functions_converge(
 
 
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
-@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
-def test_bilaplacian_functions(config: Dict[str, Any], strategy: str):
+@mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
+def test_bilaplacian_functions(config: dict[str, Any], strategy: str):
     """Test that the benchmarked Bi-Laplacians produce the correct result.
 
     Args:
         config: Configuration dictionary of the test case.
         strategy: The strategy to test.
     """
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, x, _, is_batched = setup_case(config)
     bilap = bilaplacian(f, x, is_batched)
     bilap_func = bilaplacian_function(f, x, is_batched, strategy)()
 
@@ -241,9 +267,9 @@ def test_bilaplacian_functions(config: Dict[str, Any], strategy: str):
     RandomizedBilaplacian.SUPPORTED_DISTRIBUTIONS,
     ids=BILAPLACIAN_DISTRIBUTION_IDS,
 )
-@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
+@mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
 def test_randomized_bilaplacian_functions_identical(
-    config: Dict[str, Any], distribution: str, num_samples: int = 42
+    config: dict[str, Any], distribution: str, num_samples: int = 42
 ):
     """Test that the weighted MC-Bi-Laplacian functions are identical when seeding.
 
@@ -252,7 +278,7 @@ def test_randomized_bilaplacian_functions_identical(
         distribution: The distribution from which to draw random vectors.
         num_samples: Number of samples to draw. Default: `42`.
     """
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, x, _, is_batched = setup_case(config)
 
     bilaps = {}
     for strategy in SUPPORTED_STRATEGIES:
@@ -272,9 +298,9 @@ def test_randomized_bilaplacian_functions_identical(
     RandomizedBilaplacian.SUPPORTED_DISTRIBUTIONS,
     ids=BILAPLACIAN_DISTRIBUTION_IDS,
 )
-@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
+@mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
 def test_randomized_bilaplacian_functions_converge(
-    config: Dict[str, Any],
+    config: dict[str, Any],
     strategy: str,
     distribution: str,
     max_num_chunks: int = 128,
@@ -291,7 +317,7 @@ def test_randomized_bilaplacian_functions_converge(
         chunk_size: Number of samples per chunk. Default: `128`.
         target_rel_error: Target relative error for convergence. Default: `5e-2`.
     """
-    f, X, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, X, _, is_batched = setup_case(config)
 
     bilap = bilaplacian(f, X, is_batched)
 

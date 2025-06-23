@@ -1,7 +1,7 @@
 """Tests for jet/__init__.py."""
 
 from test.utils import report_nonclose
-from typing import Any, Callable, Dict, Tuple
+from typing import Any, Callable, Optional
 
 from pytest import mark
 from torch import Tensor, cos, manual_seed, rand, sigmoid, sin, tanh, tensor
@@ -38,126 +38,6 @@ def check_jet(f: Callable[[Primal], Value], arg: PrimalAndCoefficients):
 
 INF = float("inf")
 
-# contains only atomic functions
-ATOMIC_CASES = [
-    # 1d sine function
-    {
-        "f": sin,
-        "shape": (1,),
-        "k_max": INF,
-        "id": "sin",
-        "first_op_vanishing_derivatives": None,
-    },
-    # 2d sine function
-    {
-        "f": sin,
-        "shape": (2,),
-        "k_max": INF,
-        "id": "sin",
-        "first_op_vanishing_derivatives": None,
-    },
-    # 3d cosine function
-    {
-        "f": cos,
-        "shape": (3,),
-        "k_max": INF,
-        "id": "cos",
-        "first_op_vanishing_derivatives": None,
-    },
-    # 3d tanh function
-    {
-        "f": tanh,
-        "shape": (5,),
-        "k_max": INF,
-        "id": "tanh",
-        "first_op_vanishing_derivatives": None,
-    },
-    # 4d sigmoid function
-    {
-        "f": sigmoid,
-        "shape": (4,),
-        "k_max": INF,
-        "id": "sigmoid",
-        "first_op_vanishing_derivatives": None,
-    },
-    # linear layer
-    {
-        "f": Linear(4, 2),
-        "shape": (4,),
-        "k_max": INF,
-        "id": "linear",
-        "first_op_vanishing_derivatives": 2,
-    },
-    # 5d power function, two non-vanishing derivatives
-    {
-        "f": lambda x: x**2,
-        "shape": (5,),
-        "k_max": INF,
-        "id": "pow-2",
-        "first_op_vanishing_derivatives": 3,
-    },
-    # 5d power function, ten non-vanishing derivatives
-    {
-        "f": lambda x: x**10,
-        "shape": (5,),
-        "k_max": INF,
-        "id": "pow-10",
-        "first_op_vanishing_derivatives": 11,
-    },
-    # 5d power function, non-vanishing derivatives
-    {
-        "f": lambda x: x**1.5,
-        "shape": (5,),
-        "k_max": INF,
-        "id": "pow-1.5",
-        "first_op_vanishing_derivatives": None,
-    },
-    # addition of a tensor and a float
-    {
-        "f": lambda x: x + 2.0,
-        "shape": (5,),
-        "k_max": INF,
-        "id": "add-2.0",
-        "first_op_vanishing_derivatives": 2,
-    },
-    # subtraction of a tensor and a float
-    {
-        "f": lambda x: x - 2.0,
-        "shape": (5,),
-        "k_max": INF,
-        "id": "sub-2.0",
-        "first_op_vanishing_derivatives": 2,
-    },
-    # multiplication of a tensor and a float
-    {
-        "f": lambda x: x * 3.0,
-        "shape": (5,),
-        "k_max": INF,
-        "id": "mul-3.0",
-        "first_op_vanishing_derivatives": 2,
-    },
-    {
-        "f": lambda x: jet.utils.replicate(x, 6),
-        "shape": (5,),
-        "k_max": INF,
-        "id": "replicate-6",
-        "first_op_vanishing_derivatives": 2,
-    },
-    {
-        "f": lambda x: jet.utils.sum_vmapped(x),
-        "shape": (3, 5),
-        "k_max": INF,
-        "id": "sum_vmapped-3",
-        "first_op_vanishing_derivatives": 2,
-    },
-]
-ATOMIC_CASE_IDS = []
-for atomic in ATOMIC_CASES:
-    shape = atomic["shape"]
-    ID = f"{atomic['id']}-{'_'.join([str(s) for s in shape])}d"
-    atomic["is_batched"] = atomic.get("is_batched", False)
-    ATOMIC_CASE_IDS.append(ID)
-
 
 def f_multiply(x: Tensor) -> Tensor:
     """Test function for multiplication of two variables.
@@ -172,28 +52,39 @@ def f_multiply(x: Tensor) -> Tensor:
     return sin(y) * cos(y)
 
 
-# fix seed when creating test cases with NN functions
+# make generation of test cases deterministic
 manual_seed(1)
 
-# contains only composed atomic functions
-CASES_COMPACT = [
-    *ATOMIC_CASES,
+JET_CASES = [
+    # 1d sine function
+    {"f": sin, "shape": (1,), "id": "sin"},
+    # 2d sine function
+    {"f": sin, "shape": (2,), "id": "sin"},
+    # 3d cosine function
+    {"f": cos, "shape": (3,), "id": "cos"},
+    # 3d tanh function
+    {"f": tanh, "shape": (5,), "id": "tanh"},
+    # 4d sigmoid function
+    {"f": sigmoid, "shape": (4,), "id": "sigmoid"},
+    # linear layer
+    {"f": Linear(4, 2), "shape": (4,), "id": "linear"},
+    # 5d power function, two non-vanishing derivatives
+    {"f": lambda x: x**2, "shape": (5,), "id": "pow-2"},
+    # 5d power function, ten non-vanishing derivatives
+    {"f": lambda x: x**10, "shape": (5,), "id": "pow-10"},
+    # 5d power function, non-vanishing derivatives
+    {"f": lambda x: x**1.5, "shape": (5,), "id": "pow-1.5"},
+    # addition of a tensor and a float
+    {"f": lambda x: x + 2.0, "shape": (5,), "id": "add-2.0"},
+    # subtraction of a tensor and a float
+    {"f": lambda x: x - 2.0, "shape": (5,), "id": "sub-2.0"},
+    # multiplication of a tensor and a float
+    {"f": lambda x: x * 3.0, "shape": (5,), "id": "mul-3.0"},
+    {"f": lambda x: jet.utils.replicate(x, 6), "shape": (5,), "id": "replicate-6"},
     # 2d sin(sin) function
-    {
-        "f": lambda x: sin(sin(x)),
-        "shape": (2,),
-        "k_max": INF,
-        "id": "sin-sin",
-        "first_op_vanishing_derivatives": None,
-    },
+    {"f": lambda x: sin(sin(x)), "shape": (2,), "id": "sin-sin"},
     # 2d tanh(tanh) function
-    {
-        "f": lambda x: tanh(tanh(x)),
-        "shape": (2,),
-        "k_max": INF,
-        "id": "tanh-tanh",
-        "first_op_vanishing_derivatives": None,
-    },
+    {"f": lambda x: tanh(tanh(x)), "shape": (2,), "id": "tanh-tanh"},
     # 2d linear(tanh) function
     {
         "f": lambda x: linear(
@@ -202,9 +93,7 @@ CASES_COMPACT = [
             bias=tensor([0.12, -0.34]).double(),
         ),
         "shape": (3,),
-        "k_max": INF,
         "id": "tanh-linear",
-        "first_op_vanishing_derivatives": None,
     },
     # 5d tanh-activated two-layer MLP
     {
@@ -212,9 +101,7 @@ CASES_COMPACT = [
             Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
         ),
         "shape": (5,),
-        "k_max": INF,
         "id": "two-layer-tanh-mlp",
-        "first_op_vanishing_derivatives": 2,
     },
     # 5d tanh-activated two-layer MLP with batched input
     {
@@ -222,86 +109,46 @@ CASES_COMPACT = [
             Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
         ),
         "shape": (10, 5),
-        "k_max": INF,
         "is_batched": True,
         "id": "batched-two-layer-tanh-mlp",
-        "first_op_vanishing_derivatives": 2,
     },
     # 3d sigmoid(sigmoid) function
-    {
-        "f": lambda x: sigmoid(sigmoid(x)),
-        "shape": (3,),
-        "k_max": INF,
-        "id": "sigmoid-sigmoid",
-        "first_op_vanishing_derivatives": None,
-    },
+    {"f": lambda x: sigmoid(sigmoid(x)), "shape": (3,), "id": "sigmoid-sigmoid"},
     # 3d sin function with residual connection
-    {
-        "f": lambda x: sin(x) + x,
-        "shape": (3,),
-        "k_max": INF,
-        "id": "sin-residual",
-        "first_op_vanishing_derivatives": None,
-    },
+    {"f": lambda x: sin(x) + x, "shape": (3,), "id": "sin-residual"},
     # 3d sin function with negative residual connection
-    {
-        "f": lambda x: sin(x) - x,
-        "shape": (3,),
-        "k_max": INF,
-        "id": "sin-neg-residual",
-        "first_op_vanishing_derivatives": None,
-    },
+    {"f": lambda x: sin(x) - x, "shape": (3,), "id": "sin-neg-residual"},
     # multiplication two variables
-    {
-        "f": f_multiply,
-        "shape": (5,),
-        "k_max": INF,
-        "id": "multiply-variables",
-        "first_op_vanishing_derivatives": None,
-    },
+    {"f": f_multiply, "shape": (5,), "id": "multiply-variables"},
+    # sum_vmapped
+    {"f": lambda x: jet.utils.sum_vmapped(x), "shape": (3, 5), "id": "sum_vmapped-3"},
 ]
-CASES_COMPACT_IDS = []
-for compact in CASES_COMPACT:
-    shape = compact["shape"]
-    ID = f"{compact['id']}-{'_'.join([str(s) for s in shape])}d"
-    compact["is_batched"] = compact.get("is_batched", False)
-    CASES_COMPACT_IDS.append(ID)
 
-# expand compact definition of cases for k=0, ... min(k_max, K_MAX)
+# set the `is_batched` flag for all cases
+for config in JET_CASES:
+    config["is_batched"] = config.get("is_batched", False)
+
+JET_CASES_IDS = [config["id"] for config in JET_CASES]
+
 K_MAX = 5
-CASES = []
-CASE_IDS = []
-for compact in CASES_COMPACT:
-    k_expand = min(compact["k_max"], K_MAX)
-    for k in range(k_expand + 1):
-        shape = compact["shape"]
-        ID = f"{k}-jet-{compact['id']}-{'_'.join([str(s) for s in shape])}d"
-        expanded = {
-            "f": compact["f"],
-            "k": k,
-            "shape": shape,
-            "is_batched": compact["is_batched"],
-        }
-        CASES.append(expanded)
-        CASE_IDS.append(ID)
+K = list(range(K_MAX + 1))
+K_IDS = [f"{k=}" for k in K]
 
 
 def setup_case(
-    config: Dict[str, Any],
-    vmapsize: int = 0,
-    taylor_coefficients: bool = True,
-) -> Tuple[Callable[[Primal], Value], Primal, Tuple[Primal], bool]:
+    config: dict[str, Any], vmapsize: int = 0, k: Optional[int] = None
+) -> tuple[Callable[[Primal], Value], Primal, tuple[Primal], bool]:
     """Instantiate the function, its input, and Taylor coefficients.
 
     Args:
         config: Configuration dictionary of the test case.
         vmapsize: Whether to generate inputs and Taylor coefficients for a vmap-ed
             operation. `0` means no vmap is applied. Default: `0`.
-        taylor_coefficients: Whether to instantiate the Taylor coefficients.
-            This is not necessary for some tests.
+        k: The number of Taylor coefficients to generate. No coefficients are generated
+            if `None`. Default: `None`.
 
     Returns:
-        Tuple containing the function, the input tensor, and the Taylor coefficients,
+        tuple containing the function, the input tensor, and the Taylor coefficients,
         and whether the case represents a batched setting. All are in double precision
         to avoid numerical issues.
     """
@@ -314,35 +161,34 @@ def setup_case(
 
     vmap_shape = shape if vmapsize == 0 else (vmapsize, *shape)
     x = rand(*vmap_shape).double()
-    vs = (
-        tuple(rand(*vmap_shape).double() for _ in range(config["k"]))
-        if taylor_coefficients
-        else ()
-    )
+    vs = () if k is None else tuple(rand(*vmap_shape).double() for _ in range(k))
 
     return f, x, vs, config["is_batched"]
 
 
-@mark.parametrize("config", CASES, ids=CASE_IDS)
-def test_jet(config: Dict[str, Any]):
+@mark.parametrize("k", K, ids=K_IDS)
+@mark.parametrize("config", JET_CASES, ids=JET_CASES_IDS)
+def test_jet(config: dict[str, Any], k: int):
     """Compare forward jet with reverse-mode reference implementation.
 
     Args:
         config: Configuration dictionary of the test case.
+        k: The order of the jet to compute.
     """
-    f, x, vs, _ = setup_case(config)
+    f, x, vs, _ = setup_case(config, k=k)
     check_jet(f, (x, vs))
 
 
-@mark.parametrize("config", CASES, ids=CASE_IDS)
-def test_symbolic_trace_jet(config: Dict[str, Any]):
+@mark.parametrize("k", K, ids=K_IDS)
+@mark.parametrize("config", JET_CASES, ids=JET_CASES_IDS)
+def test_symbolic_trace_jet(config: dict[str, Any], k: int):
     """Test whether the function produced by jet can be traced.
 
     Args:
         config: Configuration dictionary of the test case.
+        k: The order of the jet to compute.
     """
-    f, _, _, _ = setup_case(config, taylor_coefficients=False)
-    k = config["k"]
+    f, _, _, _ = setup_case(config, k=k)
     # generate the jet's compute graph
     jet_f = jet.jet(f, k)
 

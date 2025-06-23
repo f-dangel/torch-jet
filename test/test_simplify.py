@@ -376,9 +376,6 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
         config: The configuration of the test case.
         distribution: The distribution from which to draw random vectors.
             If `None`, the exact Bi-Laplacian is computed.
-
-    Raises:
-        ValueError: If the test case is not recognized.
     """
     randomized = distribution is not None
     num_samples, seed = 42, 1  # only relevant with randomization

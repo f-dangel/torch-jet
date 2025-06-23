@@ -1,71 +1,98 @@
-"""Test simplification mechanism of compute graphs captured with `torch.fx`.
-
-There are three kinds of tests:
-
-1. [Replicating functions] Take a function f: x -> f(x).
-   i. Construct the replicated function f_rep: x -> f(replicate(x))
-   ii. Simplify the compute graph of f_rep. This should yield the compute graph of
-       x -> replicate(f(x)).
-
-2. [Replicating jets] Take a function f: x -> f(x).
-    i. Construct the jet of f, jet_f: x, v1, v2, ... -> jet_f(x, v1, v2, ...)
-    ii. Construct the replicated jet of f, jet_f_rep:
-        x, v1, v2, ... -> jet_f(replicate(x), replicate(v1), replicate(v2), ...)
-    iii. Simplify the compute graph of jet_f_rep. This should yield the compute graph of
-        x, v1, v2, ... -> replicate(jet_f(x, v1, v2, ...)).
-
-3. [Forward Laplacians] Take a function f: x -> f(x).
-    i. Construct the vmapped 2-jet of f: X, V1, V2 -> jet_f(X, V1, V2)
-    ii. Construct the Laplacian of f on x via the vmapped 2-jet.
-    iii. Simplify the compute graph of the Laplacian. This should yield the compute
-        graph of the forward Laplacian (https://arxiv.org/abs/2307.08214), i.e. the
-        second Taylor component can be propagated in collapsed form, and the forward
-        pass is only carried out for one x, and not their replicated version X.
-"""
+"""Test simplification mechanism on compute graphs of the (Bi-)Laplacian."""
 
 from functools import partial
-from test.test___init__ import (
-    ATOMIC_CASE_IDS,
-    ATOMIC_CASES,
-    CASE_IDS,
-    CASES,
-    CASES_COMPACT,
-    CASES_COMPACT_IDS,
-    K_MAX,
-    compare_jet_results,
-    setup_case,
-)
+from test.test___init__ import compare_jet_results, setup_case
 from test.test_bilaplacian import bilaplacian
 from test.test_laplacian import DISTRIBUTION_IDS, DISTRIBUTIONS, laplacian
 from test.test_weighted_laplacian import weighted_laplacian
 from test.utils import report_nonclose
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
-from pytest import mark, skip
-from torch import Size, Tensor, arange, manual_seed, rand
+from pytest import mark
+from torch import Size, Tensor, arange, manual_seed, sigmoid, sin, tanh, tensor
 from torch.fx import Graph, GraphModule
-from torch.nn import Module
+from torch.nn import Linear, Module, Sequential, Tanh
+from torch.nn.functional import linear
 
-import jet
-import jet.utils
-from jet import JetTracer, rev_jet
+from jet import JetTracer
 from jet.bilaplacian import Bilaplacian, RandomizedBilaplacian
 from jet.laplacian import Laplacian, RandomizedLaplacian
-from jet.rules import is_replicate, is_sum_vmapped
+from jet.rules import is_replicate
 from jet.simplify import common_subexpression_elimination, simplify
-from jet.utils import (
-    PrimalAndCoefficients,
-    ValueAndCoefficients,
-    WrapperModule,
-    integer_partitions,
-    recursive_getattr,
-)
-from jet.vmap import traceable_vmap
+from jet.utils import WrapperModule, integer_partitions, recursive_getattr
 from jet.weighted_laplacian import (
     C_func_diagonal_increments,
     RandomizedWeightedLaplacian,
     WeightedLaplacian,
 )
+
+# make generation of test cases deterministic
+manual_seed(0)
+
+SIMPLIFY_CASES = [
+    # 1d sine function
+    {
+        "f": sin,
+        "shape": (1,),
+        "id": "sin",
+        "first_op_vanishing_derivatives": None,
+    },
+    # 2d sin(sin) function
+    {
+        "f": lambda x: sin(sin(x)),
+        "shape": (2,),
+        "id": "sin-sin",
+        "first_op_vanishing_derivatives": None,
+    },
+    # 2d tanh(tanh) function
+    {
+        "f": lambda x: tanh(tanh(x)),
+        "shape": (2,),
+        "id": "tanh-tanh",
+        "first_op_vanishing_derivatives": None,
+    },
+    # 2d linear(tanh) function
+    {
+        "f": lambda x: linear(
+            tanh(x),
+            tensor([[0.1, -0.2, 0.3], [0.4, 0.5, -0.6]]).double(),
+            bias=tensor([0.12, -0.34]).double(),
+        ),
+        "shape": (3,),
+        "id": "tanh-linear",
+        "first_op_vanishing_derivatives": None,
+    },
+    # 5d tanh-activated two-layer MLP
+    {
+        "f": Sequential(
+            Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
+        ),
+        "shape": (5,),
+        "id": "two-layer-tanh-mlp",
+        "first_op_vanishing_derivatives": 2,
+    },
+    # 5d tanh-activated two-layer MLP with batched input
+    {
+        "f": Sequential(
+            Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
+        ),
+        "shape": (10, 5),
+        "is_batched": True,
+        "id": "batched-two-layer-tanh-mlp",
+        "first_op_vanishing_derivatives": 2,
+    },
+    # 3d sigmoid(sigmoid) function
+    {
+        "f": lambda x: sigmoid(sigmoid(x)),
+        "shape": (3,),
+        "id": "sigmoid-sigmoid",
+        "first_op_vanishing_derivatives": None,
+    },
+]
+
+# add the is_batched argument if it does not exist
+for config in SIMPLIFY_CASES:
+    config["is_batched"] = config.get("is_batched", False)
 
 
 def num_collapsed_tensor_constants(
@@ -120,28 +147,6 @@ def ensure_outputs_replicates(graph: Graph, num_outputs: int, num_replicates: in
     assert len(parents) == num_outputs
     replicates = [n for n in parents if is_replicate(n)]
     assert len(replicates) == num_replicates
-
-
-def ensure_num_replicates(graph: Graph, num_replicates: int):
-    """Make sure the compute graph has the specified number of `replicate` nodes.
-
-    Args:
-        graph: The compute graph to check.
-        num_replicates: The number of `replicate` nodes to check for.
-    """
-    replicates = [n for n in graph.nodes if is_replicate(n)]
-    assert len(replicates) == num_replicates
-
-
-def ensure_num_sum_vmapped(graph: Graph, num_sum_vmapped: int):
-    """Make sure the compute graph has the specified number of `sum_vmapped` nodes.
-
-    Args:
-        graph: The compute graph to check.
-        num_sum_vmapped: The number of `sum_vmapped` nodes to check for.
-    """
-    sum_nodes = [n for n in graph.nodes if is_sum_vmapped(n)]
-    assert len(sum_nodes) == num_sum_vmapped
 
 
 def ensure_tensor_constants_collapsed(
@@ -205,7 +210,7 @@ def ensure_tensor_constants_collapsed(
         )
 
 
-@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
+@mark.parametrize("config", SIMPLIFY_CASES, ids=[c["id"] for c in SIMPLIFY_CASES])
 @mark.parametrize(
     "distribution", [None] + DISTRIBUTIONS, ids=["exact"] + DISTRIBUTION_IDS
 )
@@ -223,7 +228,9 @@ def test_simplify_laplacian(config: Dict[str, Any], distribution: Optional[str])
     randomized = distribution is not None
     num_samples, seed = 42, 1  # only relevant with randomization
 
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    # add 'k' entry to make the config work with `setup_case`
+    config_copy = {**config, "k": 0}
+    f, x, _, is_batched = setup_case(config_copy, taylor_coefficients=False)
     mod = (
         RandomizedLaplacian(f, x, is_batched, num_samples, distribution)
         if randomized
@@ -258,12 +265,6 @@ def test_simplify_laplacian(config: Dict[str, Any], distribution: Optional[str])
 
     # make sure the module's tensor constant corresponding to the highest
     # Taylor coefficient was collapsed
-    if config["id"] == "replicate-6":
-        # This is a special case where the replicates from the Taylor # arithmetic are
-        # absorbed into the constants, and therefore there are no collapsed constants.
-        # Therefore we skip this check for this specific case.
-        return
-
     if randomized:
         num_vectors = num_samples
     else:
@@ -280,7 +281,7 @@ def test_simplify_laplacian(config: Dict[str, Any], distribution: Optional[str])
     )
 
 
-@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
+@mark.parametrize("config", SIMPLIFY_CASES, ids=[c["id"] for c in SIMPLIFY_CASES])
 @mark.parametrize(
     "distribution", [None] + DISTRIBUTIONS, ids=["exact"] + DISTRIBUTION_IDS
 )
@@ -341,12 +342,6 @@ def test_simplify_weighted_laplacian(
 
     # make sure the module's tensor constant corresponding to the highest
     # Taylor coefficient was collapsed
-    if config["id"] == "replicate-6":
-        # This is a special case where the replicates from the Taylor # arithmetic are
-        # absorbed into the constants, and therefore there are no collapsed constants.
-        # Therefore we skip this check for this specific case.
-        return
-
     if randomized:
         num_vectors = num_samples
     else:
@@ -363,125 +358,7 @@ def test_simplify_weighted_laplacian(
     )
 
 
-def test_common_subexpression_elimination():
-    """Test common subexpression elimination."""
-
-    def f(x: Tensor) -> Tensor:
-        # NOTE that instead of computing y1, y2, we could simply compute y1 and
-        # return y1 + y1
-        x1 = x + 1
-        x2 = x + 1
-        y1 = 2 * x1
-        y2 = 2 * x2
-        z = y1 + y2
-        return z
-
-    f = WrapperModule(f)
-
-    x = arange(10)
-
-    graph = JetTracer().trace(f)
-    f_traced = GraphModule(f, graph)
-    f_x = f_traced(x)
-    # there should be 7 nodes: x, x1, x2, y1, y2, z, output
-    assert len(list(f_traced.graph.nodes)) == 7
-
-    common_subexpression_elimination(f_traced.graph, verbose=True)
-    # there should be 5 nodes after CSE: x, v=x+1, w=2*v, z=w+w, output
-    assert len(list(f_traced.graph.nodes)) == 5
-
-    report_nonclose(f_x, f_traced(x), name="f(x)")
-
-
-class Collapsed(Module):
-    """Layer that computes a collapsed K-jet of a function along random directions."""
-
-    def __init__(
-        self,
-        f: Callable[[Tensor], Tensor],
-        dummy_x: Tensor,
-        is_batched: bool,
-        k: int,
-        num_vectors: int = 3,
-    ) -> None:
-        """Trace-able layer that computes a collapsed K-jet along random directions.
-
-        Args:
-            f: The function whose K-jet to compute.
-            dummy_x: A dummy input tensor to determine the shape and dtype of the
-                input tensor.
-            is_batched: Whether the input tensor is batched.
-            k: The order of the Taylor expansion.
-            num_vectors: The number of vectors to use for the K-jet. Default: `3`.
-        """
-        super().__init__()
-        jet_f = jet.jet(f, k)
-        self.jet_f = traceable_vmap(jet_f, num_vectors) if is_batched else jet_f
-        self.x_shape = dummy_x.shape
-        self.x_kwargs = {"dtype": dummy_x.dtype, "device": dummy_x.device}
-        self.k = k
-        self.num_vectors = num_vectors
-
-    def forward(self, x: Tensor) -> Tuple[Tensor, ...]:
-        """Compute the collapsed K-jet along random directions.
-
-        Args:
-            x: The input tensor.
-
-        Returns:
-            A tuple containing the non-collapsed K-jet components and the collapsed
-            K-jet component, which is the sum of all non-collapsed components.
-        """
-        vs = [
-            rand(self.num_vectors, *self.x_shape, **self.x_kwargs)
-            for _ in range(self.k)
-        ]
-        x_replicated = jet.utils.replicate(x, self.num_vectors)
-        jet_out = self.jet_f(x_replicated, *vs)
-        non_collapsed = jet_out[: self.k]
-        collapsed = jet.utils.sum_vmapped(jet_out[self.k])
-        return (*non_collapsed, collapsed)
-
-
-@mark.parametrize("config", ATOMIC_CASES, ids=ATOMIC_CASE_IDS)
-@mark.parametrize(
-    "k", list(range(1, K_MAX + 1)), ids=[f"{k=}" for k in range(1, K_MAX + 1)]
-)
-def test_simplify_collapsed_K_jet(
-    config: Dict[str, Any], k: int, num_vectors: int = 3
-) -> None:
-    """Sum backpropagation through a summed K-jet.
-
-    Args:
-        config: The configuration of the test case.
-        k: The order of the Taylor expansion.
-        num_vectors: The number of vectors to use for the K-jet. Default: `3`.
-    """
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
-    if config["k_max"] < k:
-        skip(f"Skipping {config['id']} for {k=} because k_max={config['k_max']}.")
-
-    collapsed = Collapsed(f, x, is_batched, k, num_vectors=num_vectors)
-    simple = simplify(collapsed, test_x=x, verbose=True)
-
-    if config["id"] == "replicate-6":
-        # This is a special case where the replicates from the Taylor # arithmetic are
-        # absorbed into the constants, and therefore there are no collapsed constants.
-        # Therefore we skip this check for this specific case.
-        return
-
-    num_collapsed = num_collapsed_tensor_constants(
-        k, config["first_op_vanishing_derivatives"]
-    )
-    ensure_tensor_constants_collapsed(
-        simple,
-        collapsed_shape=x.shape,
-        non_collapsed_shape=(num_vectors, *x.shape),
-        at_least=num_collapsed,
-    )
-
-
-@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
+@mark.parametrize("config", SIMPLIFY_CASES, ids=[c["id"] for c in SIMPLIFY_CASES])
 @mark.parametrize(
     "distribution", [None] + ["normal"], ids=["exact", "distribution=normal"]
 )
@@ -492,6 +369,9 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
         config: The configuration of the test case.
         distribution: The distribution from which to draw random vectors.
             If `None`, the exact Bi-Laplacian is computed.
+
+    Raises:
+        ValueError: If the test case is not recognized.
     """
     randomized = distribution is not None
     num_samples, seed = 42, 1  # only relevant with randomization
@@ -531,12 +411,6 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
     )
 
     # make sure that Taylor coefficients were collapsed
-    if config["id"] == "replicate-6":
-        # This is a special case where the replicates from the Taylor # arithmetic are
-        # absorbed into the constants, and therefore there are no collapsed constants.
-        # Therefore we skip this check for this specific case.
-        return
-
     D = (x.shape[1:] if is_batched else x).numel()
 
     collapsed_shape = x.shape
@@ -567,7 +441,7 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
         }
 
         # uses three 4-jets
-        if D > 1 and config["id"] not in {"add-2.0", "sub-2.0", "mul-3.0"}:
+        if D > 1:
             num_collapsed *= 3
 
         for non_collapsed in non_collapsed_shapes:
@@ -603,3 +477,35 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
         }
         if config["id"] in expected_nodes:
             assert len(list(simpler_mod.graph.nodes)) == expected_nodes[config["id"]]
+        else:
+            raise ValueError(f"Unknown test case {config['id']}.")
+
+
+def test_common_subexpression_elimination():
+    """Test common subexpression elimination."""
+
+    def f(x: Tensor) -> Tensor:
+        # NOTE that instead of computing y1, y2, we could simply compute y1 and
+        # return y1 + y1
+        x1 = x + 1
+        x2 = x + 1
+        y1 = 2 * x1
+        y2 = 2 * x2
+        z = y1 + y2
+        return z
+
+    f = WrapperModule(f)
+
+    x = arange(10)
+
+    graph = JetTracer().trace(f)
+    f_traced = GraphModule(f, graph)
+    f_x = f_traced(x)
+    # there should be 7 nodes: x, x1, x2, y1, y2, z, output
+    assert len(list(f_traced.graph.nodes)) == 7
+
+    common_subexpression_elimination(f_traced.graph, verbose=True)
+    # there should be 5 nodes after CSE: x, v=x+1, w=2*v, z=w+w, output
+    assert len(list(f_traced.graph.nodes)) == 5
+
+    report_nonclose(f_x, f_traced(x), name="f(x)")

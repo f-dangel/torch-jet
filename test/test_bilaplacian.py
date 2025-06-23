@@ -170,7 +170,7 @@ def test_bilaplacian(config: Dict[str, Any]):
     Args:
         config: Configuration dictionary of the test case.
     """
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, x, _, is_batched = setup_case(config)
 
     # reference: Using PyTorch's autograd
     bilap_rev = bilaplacian_naive(f, x.clone().requires_grad_())
@@ -203,7 +203,7 @@ def test_RandomizedBilaplacian(
         chunk_size: Number of samples per chunk. Default: `1_024`.
         target_rel_error: Target relative error for convergence. Default: `1e-2`.
     """
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, x, _, is_batched = setup_case(config)
 
     # reference: Using PyTorch
     bilap = bilaplacian(f, x, is_batched)

@@ -75,7 +75,7 @@ def test_laplacian_functions(config: dict[str, Any], strategy: str):
         config: Configuration dictionary of the test case.
         strategy: The strategy to test.
     """
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, x, _, is_batched = setup_case(config)
     lap = laplacian(f, x)
     lap_func = laplacian_function(f, x, is_batched, strategy)()
 
@@ -98,7 +98,7 @@ def test_randomized_laplacian_functions_identical(
         distribution: The distribution from which to draw random vectors.
         num_samples: Number of samples to draw. Default: `42`.
     """
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, x, _, is_batched = setup_case(config)
 
     laps = {}
     for strategy in SUPPORTED_STRATEGIES:
@@ -137,7 +137,7 @@ def test_randomized_laplacian_functions_converge(
         chunk_size: Number of samples per chunk. Default: `64`.
         target_rel_error: Target relative error for convergence. Default: `5e-2`.
     """
-    f, X, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, X, _, is_batched = setup_case(config)
 
     lap = laplacian(f, X)
 
@@ -163,7 +163,7 @@ def test_weighted_laplacian_functions(config: dict[str, Any], strategy: str):
         config: Configuration dictionary of the test case.
         strategy: The strategy to test.
     """
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, x, _, is_batched = setup_case(config)
     C_func = partial(C_func_diagonal_increments, is_batched=is_batched)
     weighted_lap = weighted_laplacian(f, x, is_batched, C_func)
     weighted_lap_func = weighted_laplacian_function(f, x, is_batched, strategy)()
@@ -187,7 +187,7 @@ def test_randomized_weighted_laplacian_functions_identical(
         distribution: The distribution from which to draw random vectors.
         num_samples: Number of samples to draw. Default: `42`.
     """
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, x, _, is_batched = setup_case(config)
 
     h_dot_cs = {}
     for strategy in SUPPORTED_STRATEGIES:
@@ -226,7 +226,7 @@ def test_randomized_weighted_laplacian_functions_converge(
         chunk_size: Number of samples per chunk. Default: `64`.
         target_rel_error: Target relative error for convergence. Default: `5e-2`.
     """
-    f, X, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, X, _, is_batched = setup_case(config)
 
     C_func = partial(C_func_diagonal_increments, is_batched=is_batched)
     h_dot_c = weighted_laplacian(f, X, is_batched, C_func)
@@ -255,7 +255,7 @@ def test_bilaplacian_functions(config: dict[str, Any], strategy: str):
         config: Configuration dictionary of the test case.
         strategy: The strategy to test.
     """
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, x, _, is_batched = setup_case(config)
     bilap = bilaplacian(f, x, is_batched)
     bilap_func = bilaplacian_function(f, x, is_batched, strategy)()
 
@@ -278,7 +278,7 @@ def test_randomized_bilaplacian_functions_identical(
         distribution: The distribution from which to draw random vectors.
         num_samples: Number of samples to draw. Default: `42`.
     """
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, x, _, is_batched = setup_case(config)
 
     bilaps = {}
     for strategy in SUPPORTED_STRATEGIES:
@@ -317,7 +317,7 @@ def test_randomized_bilaplacian_functions_converge(
         chunk_size: Number of samples per chunk. Default: `128`.
         target_rel_error: Target relative error for convergence. Default: `5e-2`.
     """
-    f, X, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, X, _, is_batched = setup_case(config)
 
     bilap = bilaplacian(f, X, is_batched)
 

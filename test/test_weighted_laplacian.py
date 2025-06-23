@@ -113,7 +113,7 @@ def test_WeightedLaplacian(config: Dict[str, Any]):
     Args:
         config: Configuration dictionary of the test case.
     """
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, x, _, is_batched = setup_case(config)
     C_func = partial(C_func_diagonal_increments, is_batched=is_batched)
 
     # compute ground truth
@@ -144,7 +144,7 @@ def test_RandomizedWeightedLaplacian(
         chunk_size: Number of samples per chunk. Default: `1_024`.
         target_rel_error: Target relative error for convergence. Default: `1e-2`.
     """
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, x, _, is_batched = setup_case(config)
 
     # reference: Using PyTorch
     C_func = partial(C_func_diagonal_increments, is_batched=is_batched)

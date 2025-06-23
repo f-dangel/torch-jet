@@ -77,7 +77,7 @@ def test_Laplacian(config: Dict[str, Any]):
     Args:
         config: Configuration dictionary of the test case.
     """
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, x, _, is_batched = setup_case(config)
 
     # reference: Using PyTorch
     lap_rev = laplacian(f, x)
@@ -105,7 +105,7 @@ def test_RandomizedLaplacian(
         chunk_size: Number of samples per chunk. Default: `1_024`.
         target_rel_error: Target relative error for convergence. Default: `1e-2`.
     """
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, x, _, is_batched = setup_case(config)
 
     # reference: Using PyTorch
     lap = laplacian(f, x)

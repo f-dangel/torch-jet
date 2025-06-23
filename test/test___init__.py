@@ -1,7 +1,7 @@
 """Tests for jet/__init__.py."""
 
 from test.utils import report_nonclose
-from typing import Any, Callable, Dict, Tuple
+from typing import Any, Callable, Optional
 
 from pytest import mark
 from torch import Tensor, cos, manual_seed, rand, sigmoid, sin, tanh, tensor
@@ -134,21 +134,19 @@ K_IDS = [f"{k=}" for k in K]
 
 
 def setup_case(
-    config: Dict[str, Any],
-    vmapsize: int = 0,
-    taylor_coefficients: bool = True,
-) -> Tuple[Callable[[Primal], Value], Primal, Tuple[Primal], bool]:
+    config: dict[str, Any], vmapsize: int = 0, k: Optional[int] = None
+) -> tuple[Callable[[Primal], Value], Primal, tuple[Primal], bool]:
     """Instantiate the function, its input, and Taylor coefficients.
 
     Args:
         config: Configuration dictionary of the test case.
         vmapsize: Whether to generate inputs and Taylor coefficients for a vmap-ed
             operation. `0` means no vmap is applied. Default: `0`.
-        taylor_coefficients: Whether to instantiate the Taylor coefficients.
-            This is not necessary for some tests.
+        k: The number of Taylor coefficients to generate. No coefficients are generated
+            if `None`. Default: `None`.
 
     Returns:
-        Tuple containing the function, the input tensor, and the Taylor coefficients,
+        tuple containing the function, the input tensor, and the Taylor coefficients,
         and whether the case represents a batched setting. All are in double precision
         to avoid numerical issues.
     """
@@ -161,40 +159,34 @@ def setup_case(
 
     vmap_shape = shape if vmapsize == 0 else (vmapsize, *shape)
     x = rand(*vmap_shape).double()
-    vs = (
-        tuple(rand(*vmap_shape).double() for _ in range(config["k"]))
-        if taylor_coefficients
-        else ()
-    )
+    vs = () if k is None else tuple(rand(*vmap_shape).double() for _ in range(k))
 
     return f, x, vs, config["is_batched"]
 
 
 @mark.parametrize("k", K, ids=K_IDS)
 @mark.parametrize("config", JET_CASES, ids=JET_CASES_IDS)
-def test_jet(config: Dict[str, Any], k: int):
+def test_jet(config: dict[str, Any], k: int):
     """Compare forward jet with reverse-mode reference implementation.
 
     Args:
         config: Configuration dictionary of the test case.
         k: The order of the jet to compute.
     """
-    new_config = {**config, "k": k}
-    f, x, vs, _ = setup_case(new_config)
+    f, x, vs, _ = setup_case(config, k=k)
     check_jet(f, (x, vs))
 
 
 @mark.parametrize("k", K, ids=K_IDS)
 @mark.parametrize("config", JET_CASES, ids=JET_CASES_IDS)
-def test_symbolic_trace_jet(config: Dict[str, Any], k: int):
+def test_symbolic_trace_jet(config: dict[str, Any], k: int):
     """Test whether the function produced by jet can be traced.
 
     Args:
         config: Configuration dictionary of the test case.
         k: The order of the jet to compute.
     """
-    new_config = {**config, "k": k}
-    f, _, _, _ = setup_case(new_config, taylor_coefficients=False)
+    f, _, _, _ = setup_case(config, k=k)
     # generate the jet's compute graph
     jet_f = jet.jet(f, k)
 

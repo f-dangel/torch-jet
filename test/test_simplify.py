@@ -236,8 +236,7 @@ def test_simplify_laplacian(config: Dict[str, Any], distribution: Optional[str])
     num_samples, seed = 42, 1  # only relevant with randomization
 
     # add 'k' entry to make the config work with `setup_case`
-    config_copy = {**config, "k": 0}
-    f, x, _, is_batched = setup_case(config_copy, taylor_coefficients=False)
+    f, x, _, is_batched = setup_case(config)
     mod = (
         RandomizedLaplacian(f, x, is_batched, num_samples, distribution)
         if randomized
@@ -307,7 +306,7 @@ def test_simplify_weighted_laplacian(
     """
     randomized = distribution is not None
     num_samples, seed = 42, 1  # only relevant with randomization
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, x, _, is_batched = setup_case(config)
     weighting = "diagonal_increments"
 
     mod = (
@@ -379,7 +378,7 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
     """
     randomized = distribution is not None
     num_samples, seed = 42, 1  # only relevant with randomization
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, x, _, is_batched = setup_case(config)
 
     bilap_mod = (
         RandomizedBilaplacian(f, x, is_batched, num_samples, distribution)

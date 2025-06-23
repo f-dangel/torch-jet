@@ -102,8 +102,8 @@ def test_nested_jet(config: Dict[str, Any], k1: int, k2: int):
     """
     manual_seed(0)
     # insert missing entries to make the config work with `setup_case`
-    config["k"], config["is_batched"] = k1 + k2, False
-    f, x, vs, _ = setup_case(config)
+    config["is_batched"] = False
+    f, x, vs, _ = setup_case(config, k=k1 + k2)
     vs1, vs2 = vs[:k1], vs[k1:]
 
     # Compute the ground truth with autodiff

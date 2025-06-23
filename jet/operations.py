@@ -446,7 +446,7 @@ def jet_sum_vmapped(
         The value and its Taylor coefficients.
 
     Raises:
-        NotImplemented: If `is_taylor` is not `(True, False)`.
+        NotImplementedError: If `is_taylor` is not `(True, False)` or `(True,)`.
     """
     if is_taylor not in [(True, False), (True,)]:
         raise NotImplementedError(

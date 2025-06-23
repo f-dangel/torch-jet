@@ -10,7 +10,7 @@ from torch.nn.functional import linear
 import jet.utils
 from jet.vmap import traceable_vmap
 
-CASES = [
+VMAP_CASES = [
     # output does not depend on placeholder
     {"f": lambda _: ones(5), "shape": (2,), "id": "constant"},
     # addition
@@ -61,7 +61,7 @@ CASES = [
 ]
 
 
-@mark.parametrize("config", CASES, ids=[c["id"] for c in CASES])
+@mark.parametrize("config", VMAP_CASES, ids=[c["id"] for c in VMAP_CASES])
 def test_traceable_vmap(config: dict[str, Any], vmapsize: int = 3):
     """Ensure trace-able vmap behaves like torch.vmap.
 

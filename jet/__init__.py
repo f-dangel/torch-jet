@@ -265,6 +265,24 @@ def rev_jet(
         The overloaded function that computes the function and its Taylor coefficients
         from the input tensor and its Taylor coefficients.
     """
+    grad_kwargs = {
+        "allow_unused": True,
+        "materialize_grads": True,
+        "create_graph": True,
+    }
+
+    def _maybe_grad(f: Tensor, X: Tensor) -> Tensor:
+        """Compute the gradient if f requires grad, otherwise return zeros.
+
+        Args:
+            f: The function output for which to compute the gradient.
+            X: The input tensor at which to compute the gradient.
+
+        Returns:
+            The gradient of f w.r.t. X if f requires grad, otherwise a tensor of zeros.
+            Has the same shape as X.
+        """
+        return grad(f, X, **grad_kwargs)[0] if f.requires_grad else zeros_like(X)
 
     def jet_f(
         x: Primal, *vs: Primal, order: Optional[int] = order

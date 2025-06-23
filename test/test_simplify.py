@@ -107,39 +107,6 @@ def count_replicate_nodes(f: Callable | Module | GraphModule) -> int:
     return len([n for n in mod.graph.nodes if is_replicate(n)])
 
 
-class Replicate(Module):
-    """Layer that replicates the forward pass of a function.
-
-    This module is trace-able and the trace will correspond to the
-    graph that the `jet` function transforms, which means it is close to
-    the forward pass in the compute graph of a `jet`.
-    """
-
-    def __init__(self, f: Callable[[Tensor], Tensor], num_replica: int) -> None:
-        """Initialize the `Replicate` module.
-
-        Args:
-            f: The function to replicate. Must process its input like `vmap` if
-                the input is a batch of tensors.
-            num_replica: The number of replicas to create.
-        """
-        super().__init__()
-        self.num_replica = num_replica
-        self.traced_f = traceable_vmap(f, num_replica)
-
-    def forward(self, x: Tensor) -> Tensor:
-        """Replicate the input tensor, then compute a forward pass through the function.
-
-        Args:
-            x: The input tensor.
-
-        Returns:
-            The replicated output tensor.
-        """
-        X = jet.utils.replicate(x, self.num_replica)
-        return self.traced_f(X)
-
-
 def ensure_outputs_replicates(graph: Graph, num_outputs: int, num_replicates: int):
     """Make sure the compute graph outputs only `replicate` nodes.
 
@@ -236,37 +203,6 @@ def ensure_tensor_constants_collapsed(
             f"Expected {'' if strict else '>'}={at_least} collapsed tensor constants. "
             + f" Found {num_collapsed}."
         )
-
-
-@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
-def test_propagate_replication(config: Dict[str, Any], num_replicas: int = 3):
-    """Test the propagation of replication node through a compute graph.
-
-    It is always better to compute then replicate, rather than carry out
-    redundant computations on a replicated tensor.
-
-    Args:
-        config: The configuration of the test case.
-        num_replicas: The number of replicas to create. Default: `3`.
-    """
-    f, x, _, _ = setup_case(config, taylor_coefficients=False)
-    f_rep = Replicate(f, num_replicas)
-
-    # check that the `Replicate` module works as expected
-    ref = jet.utils.replicate(f(x), num_replicas)
-    assert ref.allclose(f_rep(x), atol=1e-7)
-    print("Replicate module works as expected.")
-
-    # check that the `Replicate` module can be traced and simplified
-    fast = simplify(f_rep, verbose=True)
-    assert ref.allclose(fast(x))
-    print("After simplifying, Replicate module still behaves the same.")
-
-    # make sure the `replicate` node made it to the end
-    ensure_outputs_replicates(fast.graph, 1, 1)
-    # make sure there are no other `replicate` nodes in the graph
-    total_replicates = count_replicate_nodes(f) + 1
-    ensure_num_replicates(fast.graph, total_replicates)
 
 
 class ReplicateJet(Module):

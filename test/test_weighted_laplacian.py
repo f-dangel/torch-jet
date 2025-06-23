@@ -1,19 +1,15 @@
 """Test the weighted Laplacian."""
 
 from functools import partial
-from test.test___init__ import (
-    CASES_COMPACT,
-    CASES_COMPACT_IDS,
-    report_nonclose,
-    setup_case,
-)
+from test.test___init__ import report_nonclose, setup_case
 from test.test_laplacian import _check_mc_convergence
 from typing import Any, Callable, Dict
 
 from einops import einsum
 from pytest import mark
-from torch import Tensor, manual_seed
+from torch import Tensor, manual_seed, sigmoid
 from torch.func import hessian, vmap
+from torch.nn import Linear, Sequential, Tanh
 
 from jet.weighted_laplacian import (
     C_func_diagonal_increments,
@@ -23,6 +19,36 @@ from jet.weighted_laplacian import (
 
 DISTRIBUTIONS = RandomizedWeightedLaplacian.SUPPORTED_DISTRIBUTIONS
 DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]
+
+# make generation of test cases deterministic
+manual_seed(0)
+
+WEIGHTED_LAPLACIAN_CASES = [
+    # 5d tanh-activated two-layer MLP
+    {
+        "f": Sequential(
+            Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
+        ),
+        "shape": (5,),
+        "id": "two-layer-tanh-mlp",
+    },
+    # 5d tanh-activated two-layer MLP with batched input
+    {
+        "f": Sequential(
+            Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
+        ),
+        "shape": (10, 5),
+        "is_batched": True,
+        "id": "batched-two-layer-tanh-mlp",
+    },
+    # 3d sigmoid(sigmoid) function
+    {"f": lambda x: sigmoid(sigmoid(x)), "shape": (3,), "id": "sigmoid-sigmoid"},
+]
+# set the `is_batched` flag for all cases
+for config in WEIGHTED_LAPLACIAN_CASES:
+    config["is_batched"] = config.get("is_batched", False)
+
+WEIGHTED_LAPLACIAN_IDS = [config["id"] for config in WEIGHTED_LAPLACIAN_CASES]
 
 
 def weighted_laplacian(
@@ -77,7 +103,7 @@ def weighted_laplacian(
     return einsum(H, C, equation)
 
 
-@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
+@mark.parametrize("config", WEIGHTED_LAPLACIAN_CASES, ids=WEIGHTED_LAPLACIAN_IDS)
 def test_WeightedLaplacian(config: Dict[str, Any]):
     """Test computing dot products of the Hessian with a PSD matrix.
 
@@ -101,7 +127,7 @@ def test_WeightedLaplacian(config: Dict[str, Any]):
 
 
 @mark.parametrize("distribution", DISTRIBUTIONS, ids=DISTRIBUTION_IDS)
-@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
+@mark.parametrize("config", WEIGHTED_LAPLACIAN_CASES, ids=WEIGHTED_LAPLACIAN_IDS)
 def test_RandomizedWeightedLaplacian(
     config: Dict[str, Any],
     distribution: str,
@@ -135,6 +161,6 @@ def test_RandomizedWeightedLaplacian(
     converged = _check_mc_convergence(
         H_dot_C_truth, sample, chunk_size, max_num_chunks, target_rel_error
     )
-    assert converged, (
-        f"Monte-Carlo weighted Laplacian ({distribution}) did not" + " converge."
-    )
+    assert (
+        converged
+    ), f"Monte-Carlo weighted Laplacian ({distribution=}) did not converge."

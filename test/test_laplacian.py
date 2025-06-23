@@ -1,18 +1,49 @@
 """Test the Laplacian."""
 
 from functools import partial
-from test.test___init__ import CASES_COMPACT, CASES_COMPACT_IDS, setup_case
+from test.test___init__ import setup_case
 from typing import Any, Callable, Dict
 
 from pytest import mark
-from torch import Tensor, manual_seed, zeros_like
+from torch import Tensor, manual_seed, sigmoid, zeros_like
 from torch.func import hessian
 from torch.linalg import norm
+from torch.nn import Linear, Sequential, Tanh
 
 from jet.laplacian import Laplacian, RandomizedLaplacian
 
 DISTRIBUTIONS = RandomizedLaplacian.SUPPORTED_DISTRIBUTIONS
 DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]
+
+# make generation of test cases deterministic
+manual_seed(0)
+
+LAPLACIAN_CASES = [
+    # 5d tanh-activated two-layer MLP
+    {
+        "f": Sequential(
+            Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
+        ),
+        "shape": (5,),
+        "id": "two-layer-tanh-mlp",
+    },
+    # 5d tanh-activated two-layer MLP with batched input
+    {
+        "f": Sequential(
+            Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
+        ),
+        "shape": (10, 5),
+        "is_batched": True,
+        "id": "batched-two-layer-tanh-mlp",
+    },
+    # 3d sigmoid(sigmoid) function
+    {"f": lambda x: sigmoid(sigmoid(x)), "shape": (3,), "id": "sigmoid-sigmoid"},
+]
+# set the `is_batched` flag for all cases
+for config in LAPLACIAN_CASES:
+    config["is_batched"] = config.get("is_batched", False)
+
+LAPLACIAN_IDS = [config["id"] for config in LAPLACIAN_CASES]
 
 
 def laplacian(f: Callable[[Tensor], Tensor], x: Tensor) -> Tensor:
@@ -39,7 +70,7 @@ def laplacian(f: Callable[[Tensor], Tensor], x: Tensor) -> Tensor:
     return lap.reshape_as(out)
 
 
-@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
+@mark.parametrize("config", LAPLACIAN_CASES, ids=LAPLACIAN_IDS)
 def test_Laplacian(config: Dict[str, Any]):
     """Compare Laplacian implementations.
 
@@ -57,7 +88,7 @@ def test_Laplacian(config: Dict[str, Any]):
 
 
 @mark.parametrize("distribution", DISTRIBUTIONS, ids=DISTRIBUTION_IDS)
-@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
+@mark.parametrize("config", LAPLACIAN_CASES, ids=LAPLACIAN_IDS)
 def test_RandomizedLaplacian(
     config: Dict[str, Any],
     distribution: str,

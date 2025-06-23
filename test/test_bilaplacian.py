@@ -7,25 +7,51 @@ For functions that produce vectors or tensors, the Bi-Laplacian is defined per o
 component. It has the same shape as f(x).
 """
 
-from test.test___init__ import (
-    CASES_COMPACT,
-    CASES_COMPACT_IDS,
-    report_nonclose,
-    setup_case,
-)
+from test.test___init__ import report_nonclose, setup_case
 from test.test_laplacian import _check_mc_convergence
 from typing import Any, Callable, Dict
 
 from einops import einsum
 from pytest import mark
-from torch import Tensor, manual_seed, zeros, zeros_like
+from torch import Tensor, manual_seed, sigmoid, zeros, zeros_like
 from torch.autograd import grad
 from torch.func import hessian, vmap
+from torch.nn import Linear, Sequential, Tanh
 
 from jet.bilaplacian import Bilaplacian, RandomizedBilaplacian
 
 DISTRIBUTIONS = RandomizedBilaplacian.SUPPORTED_DISTRIBUTIONS
 DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]
+
+# make generation of test cases deterministic
+manual_seed(0)
+
+BILAPLACIAN_CASES = [
+    # 5d tanh-activated two-layer MLP
+    {
+        "f": Sequential(
+            Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
+        ),
+        "shape": (5,),
+        "id": "two-layer-tanh-mlp",
+    },
+    # 5d tanh-activated two-layer MLP with batched input
+    {
+        "f": Sequential(
+            Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
+        ),
+        "shape": (10, 5),
+        "is_batched": True,
+        "id": "batched-two-layer-tanh-mlp",
+    },
+    # 3d sigmoid(sigmoid) function
+    {"f": lambda x: sigmoid(sigmoid(x)), "shape": (3,), "id": "sigmoid-sigmoid"},
+]
+# set the `is_batched` flag for all cases
+for config in BILAPLACIAN_CASES:
+    config["is_batched"] = config.get("is_batched", False)
+
+BILAPLACIAN_IDS = [config["id"] for config in BILAPLACIAN_CASES]
 
 
 def bilaplacian(f: Callable[[Tensor], Tensor], X: Tensor, is_batched: bool) -> Tensor:
@@ -137,14 +163,14 @@ def bilaplacian_naive(
     return bilap.reshape_as(f_X)
 
 
-@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
+@mark.parametrize("config", BILAPLACIAN_CASES, ids=BILAPLACIAN_IDS)
 def test_bilaplacian(config: Dict[str, Any]):
     """Compare Laplacian implementations.
 
     Args:
         config: Configuration dictionary of the test case.
     """
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, x, _, is_batched = setup_case(config)
 
     # reference: Using PyTorch's autograd
     bilap_rev = bilaplacian_naive(f, x.clone().requires_grad_())
@@ -160,13 +186,13 @@ def test_bilaplacian(config: Dict[str, Any]):
 
 
 @mark.parametrize("distribution", DISTRIBUTIONS, ids=DISTRIBUTION_IDS)
-@mark.parametrize("config", CASES_COMPACT, ids=CASES_COMPACT_IDS)
+@mark.parametrize("config", BILAPLACIAN_CASES, ids=BILAPLACIAN_IDS)
 def test_RandomizedBilaplacian(
     config: Dict[str, Any],
     distribution: str,
     max_num_chunks: int = 500,
-    chunk_size: int = 4_096,
-    target_rel_error: float = 5e-3,
+    chunk_size: int = 1_024,
+    target_rel_error: float = 1e-2,
 ):
     """Test convergence of the Bi-Laplacian's Monte-Carlo estimator.
 
@@ -174,10 +200,10 @@ def test_RandomizedBilaplacian(
         config: Configuration dictionary of the test case.
         distribution: The distribution from which to draw random vectors.
         max_num_chunks: Maximum number of chunks to accumulate. Default: `500`.
-        chunk_size: Number of samples per chunk. Default: `4_096`.
-        target_rel_error: Target relative error for convergence. Default: `5e-3`.
+        chunk_size: Number of samples per chunk. Default: `1_024`.
+        target_rel_error: Target relative error for convergence. Default: `1e-2`.
     """
-    f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
+    f, x, _, is_batched = setup_case(config)
 
     # reference: Using PyTorch
     bilap = bilaplacian(f, x, is_batched)

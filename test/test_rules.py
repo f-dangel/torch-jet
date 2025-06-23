@@ -5,12 +5,11 @@ from typing import Any, Callable
 
 from pytest import mark
 from torch import Size, Tensor, linspace, manual_seed, mul, rand
-from torch.fx import Graph, GraphModule, Node
+from torch.fx import Graph, Node
 from torch.nn import Module
 from torch.nn.functional import linear
 
 import jet.utils
-from jet import JetTracer
 from jet.rules import (
     MergeSumVmappedConstant,
     PullSumVmappedLinear,
@@ -24,7 +23,7 @@ from jet.rules import (
     PushReplicateTensorArithmetic,
 )
 from jet.simplify import apply_once
-from jet.utils import WrapperModule
+from jet.tracing import capture_graph
 
 
 def compare_graphs(graph1: Graph, graph2: Graph):
@@ -411,8 +410,7 @@ def test_simplification_rules(config: dict[str, Any]):
     rules = config["rules"]()
 
     # simplify the function
-    f_mod = WrapperModule(f)
-    f_simplified = GraphModule(f_mod, JetTracer().trace(f_mod))
+    f_simplified = capture_graph(f)
 
     do_simplify = True
     while do_simplify:
@@ -425,5 +423,5 @@ def test_simplification_rules(config: dict[str, Any]):
     assert f_x.allclose(f_simplified(x))
 
     # compare the graphs of f_simplified and f_simple
-    f_simple_graph = JetTracer().trace(f_simple)
+    f_simple_graph = capture_graph(f_simple).graph
     compare_graphs(f_simple_graph, f_simplified.graph)

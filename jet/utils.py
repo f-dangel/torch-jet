@@ -3,7 +3,7 @@
 from collections import defaultdict
 from inspect import signature
 from math import factorial, prod
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Optional
 
 from torch import Tensor, device, dtype, empty
 from torch.fx import GraphModule, Node
@@ -13,8 +13,8 @@ from torch.nn import Module
 Primal = Tensor
 Value = Tensor
 # primals and values form a tuple
-PrimalAndCoefficients = Tuple[Primal, ...]
-ValueAndCoefficients = Tuple[Value, ...]
+PrimalAndCoefficients = tuple[Primal, ...]
+ValueAndCoefficients = tuple[Value, ...]
 
 
 def integer_partitions(n: int, I: int = 1):  # noqa: E741
@@ -35,7 +35,7 @@ def integer_partitions(n: int, I: int = 1):  # noqa: E741
             yield (i,) + p
 
 
-def multiplicity(sigma: Tuple[int, ...]) -> float:
+def multiplicity(sigma: tuple[int, ...]) -> float:
     """Compute the scaling of a summand in Faa di Bruno's formula.
 
     Args:
@@ -59,30 +59,6 @@ def multiplicity(sigma: Tuple[int, ...]) -> float:
     if not multiplicity.is_integer():
         raise ValueError(f"Multiplicity should be an integer, but got {multiplicity}.")
     return multiplicity
-
-
-class WrapperModule(Module):
-    """Wraps a function in a module."""
-
-    def __init__(self, f: Callable[[Primal], Value]):
-        """Initialize the module.
-
-        Args:
-            f: Function to wrap.
-        """
-        super().__init__()
-        self.f = f
-
-    def forward(self, x: Primal) -> Value:
-        """Forward pass of the module.
-
-        Args:
-            x: Input tensor.
-
-        Returns:
-            Output tensor.
-        """
-        return self.f(x)
 
 
 def replicate(x: Tensor, times: int, pos: int = 0) -> Tensor:

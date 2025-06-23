@@ -10,7 +10,8 @@ from torch.nn.functional import linear
 
 import jet
 import jet.utils
-from jet import JetTracer, rev_jet
+from jet import rev_jet
+from jet.tracing import capture_graph
 from jet.utils import Primal, PrimalAndCoefficients, Value, ValueAndCoefficients
 
 
@@ -193,4 +194,4 @@ def test_symbolic_trace_jet(config: dict[str, Any], k: int):
     jet_f = jet.jet(f, k)
 
     # try tracing it
-    JetTracer().trace(jet_f)
+    capture_graph(jet_f)

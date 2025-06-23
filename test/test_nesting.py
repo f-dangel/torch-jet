@@ -5,11 +5,11 @@ from typing import Any, Callable, Dict
 
 from pytest import mark
 from torch import Tensor, cos, manual_seed, ones, sigmoid, sin, tanh
-from torch.fx import GraphModule
 from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
 
 import jet
+from jet.tracing import capture_graph
 
 NEST_CASES = [
     # output does not depend on placeholder
@@ -113,17 +113,13 @@ def test_nested_jet(config: Dict[str, Any], k1: int, k2: int):
     truth = nested_jet_rev_f_x(x)
 
     # Compute the nested jet with the `jet` function
-    tracer = jet.JetTracer()
-
     # Compute the first jet and evaluate it at the first set of vectors
     jet_f = JetModule(f, vs1, k1)
-    jet_f = GraphModule(jet_f, tracer.trace(jet_f))
-    print(f"Jet: {jet_f.graph}")
+    print(f"Jet: {capture_graph(jet_f)}")
 
     # Compute the second jet and evaluate it at the second set of vectors
     nested_jet_f = JetModule(jet_f, vs2, k2)
-    nested_jet_f = GraphModule(nested_jet_f, tracer.trace(nested_jet_f))
-    print(f"Nested Jet: {nested_jet_f.graph}")
+    print(f"Nested Jet: {capture_graph(nested_jet_f)}")
 
     # Compare
     result = nested_jet_f(x)

@@ -1,24 +1,16 @@
 """Taylor-mode automatic differentiation (jets) in PyTorch."""
 
-import math
 from math import factorial
 from typing import Callable, Optional
 from warnings import warn
 
 from torch import Tensor, tensor, zeros_like
 from torch.autograd import grad
-from torch.fx import Graph, GraphModule, Node, Tracer
-from torch.nn import Linear, Module, Sigmoid, Tanh
+from torch.fx import Graph, GraphModule, Node
 
-import jet.utils
 from jet.operations import MAPPING
-from jet.utils import (
-    Primal,
-    PrimalAndCoefficients,
-    Value,
-    ValueAndCoefficients,
-    WrapperModule,
-)
+from jet.tracing import capture_graph
+from jet.utils import Primal, PrimalAndCoefficients, Value, ValueAndCoefficients
 
 
 def analyze_dependencies(graph: Graph) -> tuple[set[Node], set[Node]]:
@@ -52,43 +44,6 @@ def analyze_dependencies(graph: Graph) -> tuple[set[Node], set[Node]]:
     return placeholder_nodes, constant_nodes
 
 
-class JetTracer(Tracer):
-    """Custom tracer for overloading functions with Taylor-mode arithmetic."""
-
-    def __init__(
-        self, autowrap_modules=(math, jet.utils), autowrap_functions=()
-    ) -> None:
-        """Initialize the JetTracer.
-
-        Args:
-            autowrap_modules: Modules to autowrap. Default: `(math, jet.utils)`.
-                The `jet.utils` module is included to autowrap the `replicate` and
-                `sum_vmapped` functions, which are used in the simplification logic.
-            autowrap_functions: Functions to autowrap. Default: `()`.
-        """
-        super().__init__(
-            autowrap_modules=autowrap_modules, autowrap_functions=autowrap_functions
-        )
-
-    def is_leaf_module(self, m: Module, module_qualified_name: str) -> bool:
-        """Determine whether a module is a leaf module or should be traced through.
-
-        Args:
-            m: Module to check.
-            module_qualified_name: Qualified name of the module.
-
-        Returns:
-            Whether the module is a leaf module.
-        """
-        # We don't want to maintain additional logic for replacing `call_module` nodes
-        # that execute modules who simply wrap `torch.nn.functional`s. Therefore, we
-        # explicitly trace through them, which will result in `call_function` nodes for
-        # which we maintain the logic to replace them with Taylor-mode arithmetic.
-        if isinstance(m, (Linear, Tanh, Sigmoid)):
-            return False
-        return super().is_leaf_module(m, module_qualified_name)
-
-
 def jet(
     f: Callable[[Primal], Value], k: int, verbose: bool = False
 ) -> Callable[[PrimalAndCoefficients], ValueAndCoefficients]:
@@ -104,13 +59,7 @@ def jet(
         The overloaded function that computes the function and its Taylor coefficients
         from the input tensor and its Taylor coefficients.
     """
-    # Wrap the function in a module if it is not already a module.
-    # We want to always produce an executable `torch.fx.GraphModule`.
-    if not isinstance(f, Module):
-        f = WrapperModule(f)
-
-    graph = JetTracer().trace(f)
-    mod = GraphModule(f, graph)
+    mod = capture_graph(f)
 
     if verbose:
         print(f"Traced graph before jet overloading:\n{mod.graph}")

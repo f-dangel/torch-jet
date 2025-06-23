@@ -17,12 +17,11 @@ from warnings import warn
 
 from torch import Tensor, cos, mul, sigmoid, sin, tanh
 from torch.fx import GraphModule, Node
-from torch.nn import Module
 from torch.nn.functional import linear
 
 import jet.utils
-from jet import JetTracer, analyze_dependencies
-from jet.utils import WrapperModule
+from jet import analyze_dependencies
+from jet.tracing import capture_graph
 
 
 def vmap_basic_binary(
@@ -284,12 +283,7 @@ def traceable_vmap(  # noqa: C901
     if vmapsize <= 0:
         raise ValueError(f"vmapsize must be positive, got {vmapsize=}.")
 
-    # Wrap the function in a module if it is not already a module.
-    # We want to always produce an executable `torch.fx.GraphModule`.
-    if not isinstance(f, Module):
-        f = WrapperModule(f)
-
-    mod = GraphModule(f, JetTracer().trace(f))
+    mod = capture_graph(f)
     graph = mod.graph
 
     # eliminate dead code

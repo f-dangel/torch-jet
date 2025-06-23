@@ -14,12 +14,12 @@ from torch.fx import Graph, GraphModule
 from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
 
-from jet import JetTracer
 from jet.bilaplacian import Bilaplacian, RandomizedBilaplacian
 from jet.laplacian import Laplacian, RandomizedLaplacian
 from jet.rules import is_replicate
 from jet.simplify import common_subexpression_elimination, simplify
-from jet.utils import WrapperModule, integer_partitions, recursive_getattr
+from jet.tracing import capture_graph
+from jet.utils import integer_partitions, recursive_getattr
 from jet.weighted_laplacian import (
     C_func_diagonal_increments,
     RandomizedWeightedLaplacian,
@@ -131,13 +131,7 @@ def count_replicate_nodes(f: Callable | Module | GraphModule) -> int:
     Returns:
         The number of `replicate` nodes in the compute graph of the function.
     """
-    if not isinstance(f, GraphModule):
-        mod = f if isinstance(f, Module) else WrapperModule(f)
-        graph = JetTracer().trace(mod)
-        mod = GraphModule(mod, graph)
-    else:
-        mod = f
-
+    mod = capture_graph(f)
     return len([n for n in mod.graph.nodes if is_replicate(n)])
 
 
@@ -494,12 +488,9 @@ def test_common_subexpression_elimination():
         z = y1 + y2
         return z
 
-    f = WrapperModule(f)
-
     x = arange(10)
 
-    graph = JetTracer().trace(f)
-    f_traced = GraphModule(f, graph)
+    f_traced = capture_graph(f)
     f_x = f_traced(x)
     # there should be 7 nodes: x, x1, x2, y1, y2, z, output
     assert len(list(f_traced.graph.nodes)) == 7

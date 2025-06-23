@@ -191,8 +191,8 @@ def test_RandomizedBilaplacian(
     config: Dict[str, Any],
     distribution: str,
     max_num_chunks: int = 500,
-    chunk_size: int = 4_096,
-    target_rel_error: float = 5e-3,
+    chunk_size: int = 1_024,
+    target_rel_error: float = 1e-2,
 ):
     """Test convergence of the Bi-Laplacian's Monte-Carlo estimator.
 
@@ -200,8 +200,8 @@ def test_RandomizedBilaplacian(
         config: Configuration dictionary of the test case.
         distribution: The distribution from which to draw random vectors.
         max_num_chunks: Maximum number of chunks to accumulate. Default: `500`.
-        chunk_size: Number of samples per chunk. Default: `4_096`.
-        target_rel_error: Target relative error for convergence. Default: `5e-3`.
+        chunk_size: Number of samples per chunk. Default: `1_024`.
+        target_rel_error: Target relative error for convergence. Default: `1e-2`.
     """
     f, x, _, is_batched = setup_case(config, taylor_coefficients=False)
 

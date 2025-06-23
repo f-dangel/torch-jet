@@ -316,13 +316,7 @@ def rev_jet(
 
         for i, dnf_dt in enumerate(f_x.flatten()):
             for n in range(order):
-                (dnf_dt,) = grad(
-                    dnf_dt,
-                    t,
-                    create_graph=True,
-                    allow_unused=True,
-                    materialize_grads=True,
-                )
+                dnf_dt = _maybe_grad(dnf_dt, t)
                 vs_out[n][i] = dnf_dt.detach() if detach else dnf_dt
 
         f_x = f_x.detach() if detach else f_x

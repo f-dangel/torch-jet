@@ -37,6 +37,13 @@ SIMPLIFY_CASES = [
         "id": "sin",
         "first_op_vanishing_derivatives": None,
     },
+    # 2d sine function
+    {
+        "f": sin,
+        "shape": (2,),
+        "id": "sin",
+        "first_op_vanishing_derivatives": None,
+    },
     # 2d sin(sin) function
     {
         "f": lambda x: sin(sin(x)),
@@ -475,10 +482,7 @@ def test_simplify_bilaplacian(config: Dict[str, Any], distribution: Optional[str
             "batched-two-layer-tanh-mlp": 255,
             "sigmoid-sigmoid": 181,
         }
-        if config["id"] in expected_nodes:
-            assert len(list(simpler_mod.graph.nodes)) == expected_nodes[config["id"]]
-        else:
-            raise ValueError(f"Unknown test case {config['id']}.")
+        assert len(list(simpler_mod.graph.nodes)) == expected_nodes[config["id"]]
 
 
 def test_common_subexpression_elimination():

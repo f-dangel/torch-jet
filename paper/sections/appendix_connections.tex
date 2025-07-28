@@ -1,0 +1,52 @@
+Here, we make the connection of collapsed Taylor mode to the forward Laplacian \cite{li2023forward} and the randomized estimation of the Laplacian via Hutchinson's trace estimator \cite{hutchinson1989stochastic} from \cite{shi2024stochastic} explicit.
+For simplicity, we consider a vector-to-scalar function $f: \sR^{D} \to \sR, \vx \mapsto f(\vx)$ (the general vector-to-vector case is straightforward but requires more notation) whose Laplacian is
+\begin{align*}
+  \Delta f(\vx) =
+  \Tr( \nabla^2 f(\vx) )
+  =
+  \sum_{d=1}^{D} [\nabla^2 f(\vx)]_{d,d}
+  =
+  \sum_{d=1}^{D} \ve_d^{\top} \nabla^2f(\vx) \ve_d\,,
+\end{align*}
+with $\nabla^2 f(\vx) \in \sR^{D \times D}$ the Hessian of $f$ evaluated at $\vx$.
+
+\paragraph{Connection to randomized Laplacian via Hutchinson's trace estimator.}
+Because the Laplacian can be expressed as trace of the Hessian, we can use Hutchinson's trace estimator \cite{hutchinson1989stochastic} to estimate it via Hessian-vector products with random vectors.
+Specifically, for any matrix $\mA \in \sR^{D \times D}$ and a distribution $p(\rvv)$ over a vector $\rvv$ with unit covariance ($\E[\rvv \rvv^{\top}] = \mI_D$) we can use the cyclic property of the trace and linearity of the expectation to write
+\begin{align*}
+  \Tr(\mA)
+  =
+  \Tr(\mA \mI_D)
+  =
+  \Tr( \mA \E[\rvv \rvv^{\top}])
+  =
+  \E[\Tr( \mA \rvv \rvv^{\top})]
+  =
+  \E[\Tr( \rvv^{\top} \mA \rvv)]\,.
+\end{align*}
+Then, we can compute an unbiased estimate of the right hand side by drawing $S$ vectors $\vv_1, \vv_2, \dots, \vv_S \sim p(\rvv)$ and evaluating the Monte-Carlo estimator
+\begin{align*}
+  \Tr(\mA)
+  \approx
+  \frac{1}{S} \sum_{s=1}^{S} \vv_s^{\top} \mA \vv_s\,.
+\end{align*}
+Applied to the Hessian, we can estimate the Laplacian of $f$ as
+\begin{align*}
+  \Delta f(\vx)
+  \approx&
+           \frac{1}{S} \sum_{s=1}^{S} \vv_s^{\top} \nabla^2 f(\vx) \vv_s\,.
+           \shortintertext{Using our tensor notation, we can rewrite this into a sum of terms involving $\left\langle \partial^2f(\vx), \vv_s^{\otimes 2} \right\rangle$, which can be computed with \textcolor{tab-orange}{\textbf{vanilla Taylor mode}} using $S$ 2-jets:}
+           =&
+              \frac{1}{S} \sum_{s=1}^{S} \sum_{i,j=1}^D [\partial^2f(\vx)]_{i,j} [\vv_s]_i [\vv_s]_j
+              =
+              \frac{1}{S} \sum_{s=1}^{S} \left\langle \partial^2f(\vx), \vv_s^{\otimes 2} \right\rangle\,.
+              \shortintertext{Instead of propagating then summing the 2-jets, we can also sum the vectors and then propagate the sum, which is our proposed \textcolor{tab-green}{\textbf{collapsed Taylor mode}}:}
+              =& \frac{1}{S} \left\langle \partial^2f(\vx), \sum_{s=1}^{S} \vv_s^{\otimes 2} \right\rangle\,.
+\end{align*}
+
+\paragraph{Connection to the forward Laplacian.} TODO
+
+%%% Local Variables:
+%%% mode: LaTeX
+%%% TeX-master: "../main"
+%%% End:

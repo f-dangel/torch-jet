@@ -43,7 +43,7 @@ Separating it in the highest coefficient's forward propagation, we get (using $\
   }\!\!\!\!
   \nu(\sigma) \left<\!
     \partial^{|\sigma|} \vg(\vh_0),
-    \tensorprod{s \in \sigma} \vh_{K, r}\!
+    \tensorprod{s \in \sigma} \vh_{s, r}\!
   \right>
   \!+\!
   {
@@ -69,7 +69,7 @@ Separating it in the highest coefficient's forward propagation, we get (using $\
   }\!\!\!\!
   \nu(\sigma) \left<\!
     \partial^{|\sigma|} \vg(\vh_0),
-    \tensorprod{s \in \sigma} \vh_{K, r}\!
+    \tensorprod{s \in \sigma} \vh_{s, r}\!
   \right>
   \!+\!
   \left<\!
@@ -144,7 +144,7 @@ In fact, the collapsed Taylor mode for the exact Laplacian is the forward Laplac
 Note how we can seamlessly also collapse the stochastic approximation over the sampled directions, which is currently not done.
 
 \paragraph{Weighted Laplacian.}
-A natural generalization of the Laplacian involves contracting with a positive semi-definite matrix $\mD = \msigma \msigma^\top \in \mathbb R^{D\times D}$ rather than the identity. $\mD$ may represent the diffusion tensor in Kolmogorov-type PDEs like the Fokker-Planck equation \cite{hu2023hutchinson}, and $\msigma$ can depend on $\vx_0$ \cite{fa2011solution}.
+A natural generalization of the Laplacian involves contracting with a positive semi-definite matrix $\mD = \msigma \msigma^\top \in \mathbb R^{D\times D}$ rather than the identity. $\mD$ may represent the diffusion tensor in Kolmogorov-type PDEs like the Fokker-Planck equation \cite{hu2024hutchinson}, and $\msigma$ can depend on $\vx_0$ \cite{fa2011solution}.
 The weighted Laplacian contains the weighted Hessian's trace $\Tr(\msigma \msigma^{\top} \partial^2 [\vf]_c)$ for each output element $c$ of $\vf$.
 If $\rank(\mD) = R$ and therefore $\msigma = (\vs_1, \dots, \vs_R) \in \sR^{D \times R}$, it is
 \begin{subequations}
@@ -163,7 +163,7 @@ If $\rank(\mD) = R$ and therefore $\msigma = (\vs_1, \dots, \vs_R) \in \sR^{D \t
       \left< \partial^2 \vf(\vx_0), \vs_r^{\otimes 2} \right>
       & \text{(exact)}
       \\
-      \overset{\text{\cite{hu2023hutchinson}}}{\approx}
+      \overset{\text{\cite{hu2024hutchinson}}}{\approx}
       \frac{1}{S}
       \sum_{s=1}^S
       \left< \partial^2 \vf(\vx_0), (\msigma \vv_s)^{\otimes 2} \right>
@@ -189,7 +189,7 @@ If $\rank(\mD) = R$ and therefore $\msigma = (\vs_1, \dots, \vs_R) \in \sR^{D \t
   \end{align}
 \end{subequations}
 Our collapsed Taylor mode uses {\color{tab-green}$1 + R + 1$} (exact) and {\color{tab-green}{$1 + S + 1$}} (stochastic) vectors.
-This yields the modified forward Laplacian from \citet{li2024dof}; collapsing the stochastic variant speeds up the Hutchinson trace estimator from \citet{hu2023hutchinson}.
+This yields the modified forward Laplacian from \citet{li2024dof}; collapsing the stochastic variant speeds up the Hutchinson trace estimator from \citet{hu2024hutchinson}.
 For indefinite $\mD$, we can simply apply this scheme to the positive and negative eigen-spaces (however, such weightings are not used in practise).
 
 \subsection{Collapsed Taylor Mode for Arbitrary Mixed Partial Derivatives}

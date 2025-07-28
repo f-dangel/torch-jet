@@ -1,0 +1,171 @@
+\todo{Maybe we should assume that we have an input error}
+We analyze the numerical stability of collapsed Taylor mode compared to its vanilla counterpart by considering potential round-off errors in the computation of $\sum_{r=1}^R \vf_{K, r}$ where $\vf = \vg \circ \vh$. We evaluate the schemes at $\vx_0$ and assume that there is no error in the input coefficients $\vx_i$. The coefficients from $0, \dots, K-1$ are computed exactly in the same way in both collapsed and vanilla Taylor mode. We summarize the errors of these coefficients in $\{\varepsilon^\vh_{i, r}\}\}, \{\varepsilon^\vg_{i, r}\}$ for $i \in \{0, \dots, K-1\}$ and $r \in \{1, \dots, R\}$.
+It is the last coefficients $\vh_{K,r}, \vg_{K, r}$ in which both schemes differ and there errors are considered in more detail below. For the vanilla Taylor mode we obtain
+\begin{align}
+          \{\vh^\varepsilon_{K, r}\} &=
+          \left\{
+          \displaystyle \sum_{
+          \sigma \in \partitioning(K)
+          }
+          \left(
+          \nu(\sigma) \left<
+          \partial^{|\sigma|} \vh(\vx_0),
+          \tensorprod{s \in \sigma} \vx_{s, r}
+          \right> + \varepsilon^{\vh, \sigma}_{K, r}
+          \right)
+          \right\},
+\end{align}
+with $\varepsilon^{\vh, \sigma}_{K, r}$ is the combined error due to the evaluation of $\partial^{|\sigma|}\vh$, the inner product and the tensor product. Then in the next layer we obtain
+\begin{align}
+          \{\vg^\varepsilon_{K,r}\} &=
+          \left\{
+          \displaystyle\sum_{
+          \sigma \in \partitioning(K)
+          }
+          \left(
+          \nu(\sigma) \left<
+          \partial^{|\sigma|} \vg(\vh^\varepsilon_0),
+          \tensorprod{s \in \sigma} \vh^\varepsilon_{s, r}
+          \right>
+          + \varepsilon^{\vg, \sigma}_{K, r}
+          \right)
+          \right\},
+\end{align}
+which is extended using the errors of the previous layer
+\begin{align}
+          \{\vg^\varepsilon_{K,r}\} &=
+          \left\{
+          \displaystyle\sum_{
+          \sigma \in \partitioning(K)
+          }
+          \left(
+          \nu(\sigma) \left<
+          \partial^{|\sigma|} \vg(\vh_0),
+          \tensorprod{s \in \sigma} \vh_{s, r}
+          \right>
+          + \varepsilon^{\vg, \sigma}_{K, r}
+          + \varepsilon^{\vg \circ \vh, \sigma}_{K, r}
+          \right)
+          \right\}.
+\end{align}
+If we then sum we obtain the error of the vanilla scheme
+\begin{align}
+    \sum_{r=1}^R 
+     \vf^\varepsilon_{K, r}
+     = \sum_{r=1}^R \vg^\varepsilon_{K,r} &=
+      \sum_{r=1}^R
+      \displaystyle\sum_{
+      \sigma \in \partitioning(K)
+      }
+      \nu(\sigma) \left<
+      \partial^{|\sigma|} \vg(\vh_0),
+      \tensorprod{s \in \sigma} \vh_{s, r}
+      \right>
+      \\
+      &+
+      \sum_{r=1}^R
+      \displaystyle\sum_{
+      \sigma \in \partitioning(K)
+      }
+      \varepsilon^{\vg, \sigma}_{K, r}
+      +
+      \sum_{r=1}^R
+      \displaystyle\sum_{
+      \sigma \in \partitioning(K)
+      }
+      \varepsilon^{\vg \circ \vh, \sigma}_{K, r}
+\end{align}
+If we now sum first then propagate we get
+\begin{align} \label{eq:error_vanilla}
+          \left(\sum_{r=1}^R \vh_{K, r}\right)^\varepsilon &=
+          \sum_{r=1}^R 
+          \displaystyle \sum_{
+          \sigma \in \partitioning(K) \setminus \{\sigma_t\}
+          }
+          \nu(\sigma)
+          \left<
+          \partial^{|\sigma|} \vh(\vx_0),
+          \tensorprod{s \in \sigma} \vx_{s, r}
+          \right> 
+          +
+          \langle 
+          \partial \vh(\vx_0), 
+          \sum_{r=1}^R \vx_{K, r}
+          \rangle
+          \\
+          &+ 
+          \sum_{r=1}^R 
+          \left(
+          \displaystyle \sum_{
+          \sigma \in \partitioning(K) \setminus \{\sigma_t\}
+          }
+          \varepsilon^{\vh, \sigma}_{K, r} 
+          \right)
+          +
+          \tilde{\varepsilon}^{\vh, \sigma_t}_{K}.
+\end{align}
+The error $\tilde{\varepsilon}^{\vh, \sigma_t}_{K}$ is influenced by $\langle \partial \vh(\vx_0), \sum_{r=1}^R \vx_{K, r} \rangle$ (i.e., from the evaluation of $\vh$, the inner product and the summation). This propagates as follows to the next layer
+\begin{align}
+          \left(\sum_{r=1}^R \vg_{K, r}\right)^\varepsilon &=
+          \sum_{r=1}^R 
+          \left(
+          \displaystyle \sum_{
+          \sigma \in \partitioning(K) \setminus \{\sigma_t\}
+          }
+          \nu(\sigma)
+          \left<
+          \partial^{|\sigma|} \vg(\vh_0),
+          \tensorprod{s \in \sigma} \vh_{s, r}
+          \right> 
+          \right)
+          +
+          \langle \partial \vg(\vh_0), \left(\sum_{r=1}^R \vh_{K, r} \right)^\varepsilon\rangle
+          \\
+          &+ 
+          \sum_{r=1}^R 
+          \left(
+          \displaystyle \sum_{
+          \sigma \in \partitioning(K) \setminus \{\sigma_t\}
+          }
+          \varepsilon^{\vg, \sigma}_{K, r}
+          \right)
+          + 
+          \tilde{\varepsilon}^{\vg, \sigma_t}_{K}
+\end{align}
+The error terms $\{\varepsilon^{\vg, \sigma}_{K, r}\}$ depends on the error of the $\vh_0, \dots, \vh_{K-1}$ and of the evaluation of $\partial^{|\sigma|} \vg$, the inner product and the tensor product. The term $\langle \partial \vg(\vh_0), \left(\sum_{r=1}^R \vh_{K, r} \right)^\varepsilon\rangle$ propagates the error of the previous highest coefficient $\sum_{r=1}^R \varepsilon^{\vh, \sigma}_{K, r}+\tilde{\varepsilon}^{\vh, \sigma_t}_{K}$ linearly plus the error that occur by evaluating $\vg$ and $\langle \cdot, \cdot \rangle$, which is denoted by $\tilde{\varepsilon}^{\vg, \sigma_t}_K$. This results in 
+\begin{align}
+          \left(\sum_{r=1}^R \vg_{K, r}\right)^\varepsilon &=
+          \sum_{r=1}^R 
+          \left(
+          \displaystyle \sum_{
+          \sigma \in \partitioning(K) \setminus \{\sigma_t\}
+          }
+          \nu(\sigma)
+          \left<
+          \partial^{|\sigma|} \vg(\vh_0),
+          \tensorprod{s \in \sigma} \vh_{s, r}
+          \right> 
+          \right)
+          + 
+          \langle \partial \vg(\vh_0), \sum_{r=1}^R \vh_{K, r} \rangle
+          \\
+          &+ 
+          \sum_{r=1}^R 
+          \left(
+          \displaystyle \sum_{
+          \sigma \in \partitioning(K) \setminus \{\sigma_t\}
+          }
+          \varepsilon^{\vg, \sigma}_{K, r}
+          \right)
+          +
+          \tilde{\varepsilon}^{\vg, \sigma_t}_{K} 
+          +
+          \langle \partial \vg(\vh_0),
+          \sum_{r=1}^R \varepsilon^{\vh, \sigma}_{K, r} 
+          \rangle
+          +
+          \langle \partial \vg(\vh_0),
+          \tilde{\varepsilon}^{\vh, \sigma_t}_{K} 
+          \rangle
+\end{align}
+Comparing to \cref{eq:error_vanilla} reveals a similar structure in the error. However, instead of making an error for computing errors of $R$ inner-products in every layer, contributing via $\{\varepsilon^{\vh, \sigma_t}_{K, r}\}$ and $\{\varepsilon^{\vg, \sigma_t}_{K, r}\}$ we make errors due to the summation in every node.

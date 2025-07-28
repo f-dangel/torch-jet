@@ -120,6 +120,7 @@ class RandomizedWeightedLaplacian(WeightedLaplacian):
         num_samples: int,
         distribution: str,
         weighting: str,
+        rank_ratio: float = 1.0,
     ):
         """Initialize the RandomizedWeightedLaplacian module.
 
@@ -137,6 +138,10 @@ class RandomizedWeightedLaplacian(WeightedLaplacian):
                 Possible values are `'normal'` or `'rademacher'`.
             weighting: The type of weighting to use. Currently only
                 "diagonal_increments" is supported.
+            rank_ratio: The ratio of the rank of the coefficient tensor C(x). `1.0` means
+                that the rank is equal to the number of dimensions of the input tensor.
+                `0.5` means that the rank is half of the number of dimensions, etc.
+                Default is `1.0` (full rank).
 
         Raises:
             ValueError: If the distribution is unsupported, or the number of samples is
@@ -159,7 +164,13 @@ class RandomizedWeightedLaplacian(WeightedLaplacian):
         self.apply_S_func = {
             "diagonal_increments": self.apply_S_func_diagonal_increments
         }[weighting]
-        self.rank_C = {"diagonal_increments": self.unbatched_dim}[weighting]
+        self.rank_C = {"diagonal_increments": int(rank_ratio * self.unbatched_dim)}[
+            weighting
+        ]
+        if self.rank_C <= 0:
+            raise ValueError(
+                f"Coefficient tensor rank must be positive. Got {self.rank_C}."
+            )
 
         jet_f = jet.jet(f, 2)
         self.jet_f = traceable_vmap(jet_f, self.num_samples)
@@ -220,8 +231,7 @@ class RandomizedWeightedLaplacian(WeightedLaplacian):
                 `is_batched` is True, otherwise `(K, rank_C)`.
 
         Returns:
-            The coefficient factor S(x) applied to V. Has shape
-            `(K, *x.shape).
+            The coefficient factor S(x) applied to V. Has shape `(K, *x.shape)`.
         """
         S = (arange(self.rank_C, **self.x_kwargs) + 1).sqrt()
         SV = einsum("c,...c->...c", S, V)
@@ -240,23 +250,72 @@ class RandomizedWeightedLaplacian(WeightedLaplacian):
 
 
 # Definitions of synthetic coefficient functions for illustration purposes
+def S_func_diagonal_increments(
+    x: Tensor, is_batched: bool, rank_ratio: float = 1.0
+) -> Tensor:
+    """Compute a synthetic coefficient factor S(x) for weighting the Laplacian.
+
+    The factor S(x) relates to the coefficient tensor C(x) via C(x) = S(x) @ S(x).T.
+
+    Args:
+        x: Argument at which the weighted Laplacian is evaluated.
+        is_batched: Whether `x` is batched.
+        rank_ratio: The ratio of the rank of the coefficient tensor C(x). `1.0` means
+            that the rank is equal to the number of dimensions of the input tensor.
+            `0.5` means that the rank is half of the number of dimensions, etc.
+            Default is `1.0` (full rank).
+
+    Returns:
+        The coefficient factor as a tensor of shape `(rank_C, batch_size, *x.shape[1:])`
+        if `is_batched` is True, otherwise `(rank_C, *x.shape)`.
+
+    Raises:
+        ValueError: If the coefficient tensor rank is not positive.
+    """
+    unbatched = x.shape[1:] if is_batched else x.shape
+    D = (x.shape[1:] if is_batched else x.shape).numel()
+    rank_C = int(rank_ratio * D)
+    if rank_C <= 0:
+        raise ValueError(f"Coefficient tensor rank must be positive. Got {rank_C}.")
+
+    S = zeros(D, rank_C, dtype=x.dtype, device=x.device)
+    idx = arange(rank_C, device=x.device)
+    S[idx, idx] = (arange(rank_C, dtype=x.dtype, device=x.device) + 1).sqrt()
+    S = S.reshape(*unbatched, rank_C)
+
+    if is_batched:
+        batch_size = x.shape[0]
+        S = S.unsqueeze(0).expand(batch_size, *unbatched, rank_C)
+
+    return einsum("...c->c...", S)
 
 
-def C_func_diagonal_increments(x: Tensor, is_batched: bool) -> Tensor:
+def C_func_diagonal_increments(
+    x: Tensor, is_batched: bool, rank_ratio: float = 1.0
+) -> Tensor:
     """Compute a synthetic coefficient tensor C(x) for weighting the Laplacian.
 
     Args:
         x: Argument at which the weighted Laplacian is evaluated.
         is_batched: Whether `x` is batched.
+        rank_ratio: The ratio of the rank of the coefficient tensor C(x). `1.0` means
+            that the rank is equal to the number of dimensions of the input tensor.
+            `0.5` means that the rank is half of the number of dimensions, etc.
+            Default is `1.0` (full rank).
 
     Returns:
         The coefficient tensor as a tensor of shape `(batch_size, *x.shape[1:],
             *x.shape[1:])` if `is_batched` is True, otherwise of shape
             `(*x.shape, *x.shape)`.
+
+    Raises:
+        ValueError: If the coefficient tensor rank is not positive.
     """
     unbatched = x.shape[1:] if is_batched else x.shape
     D = (x.shape[1:] if is_batched else x.shape).numel()
-    rank_C = D
+    rank_C = int(rank_ratio * D)
+    if rank_C <= 0:
+        raise ValueError(f"Coefficient tensor rank must be positive. Got {rank_C}.")
 
     C = zeros(D, dtype=x.dtype, device=x.device)
     C[:rank_C] = arange(rank_C, dtype=x.dtype, device=x.device) + 1

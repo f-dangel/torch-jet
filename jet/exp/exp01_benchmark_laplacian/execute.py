@@ -31,8 +31,8 @@ from jet.laplacian import Laplacian, RandomizedLaplacian
 from jet.simplify import simplify
 from jet.utils import rademacher
 from jet.weighted_laplacian import (
-    C_func_diagonal_increments,
     RandomizedWeightedLaplacian,
+    S_func_diagonal_increments,
     WeightedLaplacian,
 )
 
@@ -281,31 +281,19 @@ def weighted_laplacian_function(
         ValueError: If the strategy is not supported.
     """
     if strategy == "hessian_trace":
-        hess_f = hessian(f)
-        C = C_func_diagonal_increments(X, is_batched)
+        dummy_x = X[0] if is_batched else X
+        vhv = vector_hessian_vector_product(f, dummy_x)
 
-        # weight with einsum to support Laplacians of functions with non-scalar output
-        unbatched = X.ndim - 1 if is_batched else X.ndim
-        dims1 = " ".join([f"i{i}" for i in range(unbatched)])
-        dims2 = " ".join([f"j{j}" for j in range(unbatched)])
-        tr_equation = f"... {dims1} {dims2}, {dims1} {dims2} -> ..."
-
-        def weighted_laplacian(x: Tensor, c: Tensor) -> Tensor:
-            """Compute the weighted Laplacian of f on an un-batched input.
-
-            Args:
-                x: The input tensor.
-                c: The coefficient tensor. Must have shape (*x.shape, *x.shape).
-
-            Returns:
-                The weighted Laplacian of f at x. Has the same shape as f(x).
-            """
-            return einsum(hess_f(x), c, tr_equation)
-
+        # vmap over data points and fix data
         if is_batched:
-            weighted_laplacian = vmap(weighted_laplacian)
+            vhv = vmap(vhv)
+        vhv_fix_X = partial(vhv, X)
 
-        return lambda: weighted_laplacian(X, C)
+        # vmap over VHVP
+        VhV_vmap = vmap(vhv_fix_X)
+        S = S_func_diagonal_increments(X, is_batched)
+
+        return lambda: VhV_vmap(S).sum(0)
 
     elif strategy in {"jet_naive", "jet_simplified"}:
         weighted_laplacian = WeightedLaplacian(f, X, is_batched, "diagonal_increments")

@@ -104,7 +104,7 @@ If we now sum first then propagate we get
           +
           \tilde{\varepsilon}^{\vh, \sigma_t}_{K}.
 \end{align}
-The error $\tilde{\varepsilon}^{\vh, \sigma_t}_{K}$ is influenced by $\langle \partial \vh(\vx_0), \sum_{r=1}^R \vx_{K, r} \rangle$ (i.e., from the evaluation of $\vh$, the inner product and the summation). This propagates as follows to the next layer
+The error $\tilde{\varepsilon}^{\vh, \sigma_t}_{K}$ is influenced by $\langle \partial \vh(\vx_0), \sum_{r=1}^R \vx_{K, r} \rangle$ (i.e., from the evaluation of $\vh$, the inner product and the summation). This propagates as follows to the next layer \todo{add the error $\varepsilon^{\vg \circ \vh}$}
 \begin{align}
           \left(\sum_{r=1}^R \vg_{K, r}\right)^\varepsilon &=
           \sum_{r=1}^R 
@@ -168,4 +168,4 @@ The error terms $\{\varepsilon^{\vg, \sigma}_{K, r}\}$ depends on the error of t
           \tilde{\varepsilon}^{\vh, \sigma_t}_{K} 
           \rangle
 \end{align}
-Comparing to \cref{eq:error_vanilla} reveals a similar structure in the error. However, instead of making an error for computing errors of $R$ inner-products in every layer, contributing via $\{\varepsilon^{\vh, \sigma_t}_{K, r}\}$ and $\{\varepsilon^{\vg, \sigma_t}_{K, r}\}$ we make errors due to the summation in every node.
+Comparing to \cref{eq:error_vanilla} reveals a similar structure in the error. However, instead of making an error for computing errors of $R$ inner-products in every layer, contributing via $\{\varepsilon^{\vh, \sigma_t}_{K, r}\}$ and $\{\varepsilon^{\vg, \sigma_t}_{K, r} + \varepsilon^{\vg \circ \vh, \sigma_t}_{K, r} \}$ we make errors due to the summation in every node.

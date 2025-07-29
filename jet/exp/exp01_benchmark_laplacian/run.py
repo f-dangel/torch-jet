@@ -335,7 +335,7 @@ EXPERIMENTS = [
             "distributions": ["normal"],
             "nums_samples": linspace(1, 50, 10).int().unique().tolist(),
             "compiled": [False, True],
-            "rank_ratios": [0.5, 1.0],
+            "rank_ratios": [1.0],
         },
         # what to plot: x-axis is nums_samples and each strategy is plotted in a curve
         ("num_samples", "strategy"),

@@ -316,7 +316,7 @@ EXPERIMENTS = [
             "devices": ["cuda"],
             "operator": "weighted-laplacian",
             "compiled": [False, True],
-            "rank_ratios": [0.5, 1.0],
+            "rank_ratios": [0.1, 0.5, 1.0],
         },
         # what to plot: x-axis is batch size and each strategy is plotted in a curve
         ("batch_size", "strategy"),

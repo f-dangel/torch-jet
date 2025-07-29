@@ -321,7 +321,7 @@ EXPERIMENTS = [
         # what to plot: x-axis is batch size and each strategy is plotted in a curve
         ("batch_size", "strategy"),
     ),
-    # Experiment 4: Stochastic weighted Laplacian, vary MC samples and rank ratio
+    # Experiment 4: Stochastic weighted Laplacian, vary MC samples
     (  # Experiment name, must be unique
         "weighted_laplacian_vary_num_samples",
         # Experiment parameters
@@ -375,6 +375,23 @@ EXPERIMENTS = [
         },
         # what to plot: x-axis is batch size and each strategy is plotted in a curve
         ("batch_size", "strategy"),
+    ),
+    # Experiment 7: Exact weighted Laplacian, vary rank ratio
+    (  # Experiment name, must be unique
+        "weighted_laplacian_vary_rank_ratio",
+        # Experiment parameters
+        {
+            "architectures": ["tanh_mlp_768_768_512_512_1"],
+            "dims": [50],
+            "batch_sizes": [2048],
+            "strategies": SUPPORTED_STRATEGIES,
+            "devices": ["cuda"],
+            "operator": "weighted-laplacian",
+            "compiled": [False, True],
+            "rank_ratios": [0.05 * (i + 1) for i in range(20)],
+        },
+        # what to plot: x-axis is rank ratio and each strategy is plotted in a curve
+        ("rank_ratio", "strategy"),
     ),
 ]
 

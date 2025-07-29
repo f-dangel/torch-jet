@@ -304,7 +304,7 @@ EXPERIMENTS = [
         # what to plot: x-axis is nums_samples and each strategy is plotted in a curve
         ("num_samples", "strategy"),
     ),
-    # Experiment 3: Exact weighted Laplacian, vary batch size
+    # Experiment 3: Exact weighted Laplacian, vary batch size and rank ratio
     (  # Experiment name, must be unique
         "weighted_laplacian_vary_batch_size",
         # Experiment parameters
@@ -321,7 +321,7 @@ EXPERIMENTS = [
         # what to plot: x-axis is batch size and each strategy is plotted in a curve
         ("batch_size", "strategy"),
     ),
-    # Experiment 4: Stochastic weighted Laplacian, vary MC samples
+    # Experiment 4: Stochastic weighted Laplacian, vary MC samples and rank ratio
     (  # Experiment name, must be unique
         "weighted_laplacian_vary_num_samples",
         # Experiment parameters

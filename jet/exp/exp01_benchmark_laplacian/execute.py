@@ -253,7 +253,11 @@ def randomized_laplacian_function(
 
 
 def weighted_laplacian_function(
-    f: Callable[[Tensor], Tensor], X: Tensor, is_batched: bool, strategy: str
+    f: Callable[[Tensor], Tensor],
+    X: Tensor,
+    is_batched: bool,
+    strategy: str,
+    rank_ratio: float = 1.0,
 ) -> Callable[[], Tensor]:
     """Construct a function to compute a weighted Laplacian using different strategies.
 
@@ -272,6 +276,8 @@ def weighted_laplacian_function(
             - `'jet_simplified'`: The weighted Laplacian is computed using Taylor mode.
                 The computation graph is simplified by propagating replications down,
                 and summations up, the computation graph.
+        rank_ratio: Ratio of the rank to use for the coefficient matrix (between 0 and 1).
+            Default is 1.0 (full rank).
 
     Returns:
         A function that computes the weighted Laplacian of the function f at the input
@@ -291,12 +297,14 @@ def weighted_laplacian_function(
 
         # vmap over VHVP
         VhV_vmap = vmap(vhv_fix_X)
-        S = S_func_diagonal_increments(X, is_batched)
+        S = S_func_diagonal_increments(X, is_batched, rank_ratio=rank_ratio)
 
         return lambda: VhV_vmap(S).sum(0)
 
     elif strategy in {"jet_naive", "jet_simplified"}:
-        weighted_laplacian = WeightedLaplacian(f, X, is_batched, "diagonal_increments")
+        weighted_laplacian = WeightedLaplacian(
+            f, X, is_batched, "diagonal_increments", rank_ratio
+        )
         pull_sum_vmapped = strategy == "jet_simplified"
         weighted_laplacian = simplify(
             weighted_laplacian, pull_sum_vmapped=pull_sum_vmapped
@@ -317,6 +325,7 @@ def randomized_weighted_laplacian_function(
     strategy: str,
     distribution: str,
     num_samples: int,
+    rank_ratio: float = 1.0,
 ) -> Callable[[], Tensor]:
     """Build function to compute the weighted MC-Laplacian with different strategies.
 
@@ -338,6 +347,8 @@ def randomized_weighted_laplacian_function(
         distribution: From which distribution to draw the random vectors. Supported
             values are `'normal'` and `'rademacher'`.
         num_samples: How many Monte-Carlo samples should be used by the estimation.
+        rank_ratio: Ratio of the rank to use for the coefficient matrix (between 0 and 1).
+            Default is 1.0 (full rank).
 
     Returns:
         A function that computes the randomized weighted Laplacian of the function f
@@ -351,7 +362,7 @@ def randomized_weighted_laplacian_function(
 
     weighting = "diagonal_increments"
     H_dot_C = RandomizedWeightedLaplacian(
-        f, X, is_batched, num_samples, distribution, weighting
+        f, X, is_batched, num_samples, distribution, weighting, rank_ratio=rank_ratio
     )
 
     if strategy == "hessian_trace":
@@ -368,8 +379,12 @@ def randomized_weighted_laplacian_function(
 
         sample_func = {"normal": randn, "rademacher": rademacher}[distribution]
         rank_C = {
-            "diagonal_increments": (X.shape[1:] if is_batched else X.shape).numel()
+            "diagonal_increments": int(
+                rank_ratio * (X.shape[1:] if is_batched else X.shape).numel()
+            )
         }[weighting]
+        if rank_C <= 0:
+            raise ValueError("TODO")
         sample_shape = (
             (num_samples, X.shape[0], rank_C) if is_batched else (num_samples, rank_C)
         )
@@ -554,6 +569,12 @@ def check_mutually_required(args: Namespace):
             f" ({num_samples}) are mutually required."
         )
 
+    if args.operator == "weighted-laplacian" and args.rank_ratio is None:
+        raise ValueError(
+            f"Argument 'rank_ratio' ({args.rank_ratio}) is required for "
+            f"operator {args.operator!r}."
+        )
+
 
 def get_function_and_description(
     operator: str,
@@ -564,6 +585,7 @@ def get_function_and_description(
     X: Tensor,
     is_batched: bool,
     compiled: bool,
+    rank_ratio: float | None = None,
 ) -> tuple[Callable[[], Tensor], Callable[[], Tensor], str]:
     """Determine the function and its description based on the operator and strategy.
 
@@ -577,6 +599,8 @@ def get_function_and_description(
         X: The input tensor.
         is_batched: A flag indicating if the input is batched.
         compiled: A flag indicating if the function should be compiled.
+        rank_ratio: Ratio of the rank to use for the coefficient matrix (between 0 and 1).
+            Only used for weighted Laplacian.
 
     Returns:
         A tuple containing the function to compute the operator (differentiable),
@@ -587,35 +611,39 @@ def get_function_and_description(
         ValueError: If an unsupported operator is specified.
     """
     is_stochastic = distribution is not None and num_samples is not None
-    args = (
-        (net, X, is_batched, strategy, distribution, num_samples)
-        if is_stochastic
-        else (net, X, is_batched, strategy)
-    )
+
+    # Add rank_ratio to args if it's a weighted Laplacian
+    if operator == "weighted-laplacian":
+        args = (net, X, is_batched, strategy)
+        if is_stochastic:
+            args = (*args, distribution, num_samples)
+        kwargs = {"rank_ratio": rank_ratio}
+    else:
+        args = (net, X, is_batched, strategy)
+        if is_stochastic:
+            args = (*args, distribution, num_samples)
+        kwargs = {}
+
     description = f"{strategy}, {compiled=}"
     if is_stochastic:
         description += f", {distribution=}, {num_samples=}"
+    if operator == "weighted-laplacian" and rank_ratio is not None:
+        description += f", rank_ratio={rank_ratio}"
 
     if operator == "bilaplacian":
-        func = (
-            randomized_bilaplacian_function(*args)
-            if is_stochastic
-            else bilaplacian_function(*args)
-        )
+        f = randomized_bilaplacian_function if is_stochastic else bilaplacian_function
     elif operator == "laplacian":
-        func = (
-            randomized_laplacian_function(*args)
-            if is_stochastic
-            else laplacian_function(*args)
-        )
+        f = randomized_laplacian_function if is_stochastic else laplacian_function
     elif operator == "weighted-laplacian":
-        func = (
-            randomized_weighted_laplacian_function(*args)
+        f = (
+            randomized_weighted_laplacian_function
             if is_stochastic
-            else weighted_laplacian_function(*args)
+            else weighted_laplacian_function
         )
     else:
         raise ValueError(f"Unsupported operator: {operator}.")
+
+    func = f(*args, **kwargs)
 
     @no_grad()
     def func_no() -> Tensor:
@@ -696,6 +724,12 @@ def parse_args() -> Namespace:
         default=False,
         help="Whether to use torch.compile for the functions",
     )
+    parser.add_argument(
+        "--rank_ratio",
+        type=float,
+        required=False,
+        help="Rank ratio for weighted Laplacian (between 0 and 1)",
+    )
 
     # parse and check validity
     args = parser.parse_args()
@@ -725,6 +759,7 @@ if __name__ == "__main__":
         X,
         is_batched,
         args.compiled,
+        args.rank_ratio,
     )
 
     print(f"Setting up functions took: {perf_counter() - start:.3f} s.")
@@ -761,6 +796,7 @@ if __name__ == "__main__":
             X,
             is_batched,
             False,  # do not use compilation
+            args.rank_ratio,
         )
         baseline_result = baseline_func_no()
 

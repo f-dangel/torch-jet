@@ -24,6 +24,7 @@ class WeightedLaplacian(Laplacian):
         dummy_x: Tensor,
         is_batched: bool,
         weighting: str,
+        rank_ratio: float = 1.0,
     ):
         """Initialize the WeightedLaplacian module.
 
@@ -37,8 +38,13 @@ class WeightedLaplacian(Laplacian):
                 the leading dimension of tensors.
             weighting: The type of weighting to use. Currently only
                 "diagonal_increments" is supported.
+            rank_ratio: The ratio of the rank of the coefficient tensor C(x). `1.0`
+                means that the rank is equal to the number of dimensions of the input
+                tensor. `0.5` means that the rank is half of the number of dimensions,
+                etc. Default is `1.0` (full rank).
         """
         super().__init__(f, dummy_x, is_batched)
+        self.rank_ratio = rank_ratio
         self.S_func = {"diagonal_increments": self.S_func_diagonal_increments}[
             weighting
         ]
@@ -82,10 +88,15 @@ class WeightedLaplacian(Laplacian):
         Returns:
             The coefficient factor as a tensor of shape `(batch_size, *x.shape[1:],
                 rank_C)` if `is_batched` is True, otherwise `(*x.shape, rank_C)`.
+
+        Raises:
+            ValueError: If the coefficient tensor rank is not positive.
         """
         unbatched = self.x_shape[1:] if self.is_batched else self.x_shape
         D = (self.x_shape[1:] if self.is_batched else self.x_shape).numel()
-        rank_C = D
+        rank_C = int(self.rank_ratio * D)
+        if rank_C <= 0:
+            raise ValueError(f"Coefficient tensor rank must be positive. Got {rank_C}.")
 
         S = zeros(D, rank_C, **self.x_kwargs)
         idx = arange(rank_C, device=self.x_kwargs["device"])
@@ -147,7 +158,7 @@ class RandomizedWeightedLaplacian(WeightedLaplacian):
             ValueError: If the distribution is unsupported, or the number of samples is
                 non-positive.
         """
-        super().__init__(f, dummy_x, is_batched, weighting)
+        super().__init__(f, dummy_x, is_batched, weighting, rank_ratio=rank_ratio)
 
         if distribution not in self.SUPPORTED_DISTRIBUTIONS:
             raise ValueError(

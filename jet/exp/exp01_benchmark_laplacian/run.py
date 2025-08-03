@@ -388,7 +388,7 @@ EXPERIMENTS = [
             "devices": ["cuda"],
             "operator": "weighted-laplacian",
             "compiled": [False, True],
-            "rank_ratios": [0.05 * (i + 1) for i in range(20)],
+            "rank_ratios": [0.05 * (2 * i + 1) for i in range(10)],
         },
         # what to plot: x-axis is rank ratio and each strategy is plotted in a curve
         ("rank_ratio", "strategy"),

@@ -26,3 +26,4 @@
 **.deps-*
 paper/main.pdf
 .aider*
+docs/generated/

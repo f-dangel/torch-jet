@@ -27,3 +27,4 @@
 paper/main.pdf
 .aider*
 docs/generated/
+docs/examples/*.png

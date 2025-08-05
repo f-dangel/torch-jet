@@ -17,6 +17,9 @@ theme:
         - content.code.copy
 copyright: Copyright &copy; 2025 Felix Dangel, Tim Siebert, Andrea Walther, Marius Zeinhofer
 markdown_extensions:
+    - pymdownx.emoji: # Emojis
+          emoji_index: !!python/name:material.extensions.emoji.twemoji
+          emoji_generator: !!python/name:material.extensions.emoji.to_svg
     - pymdownx.arithmatex: # LaTeX math
           generic: true
     - pymdownx.highlight: # code highlighting

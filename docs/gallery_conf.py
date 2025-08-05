@@ -2,6 +2,8 @@
 
 import os
 import re
+import shutil
+from pathlib import Path
 
 from mkdocs_gallery.gen_gallery import DefaultResetArgv
 from mkdocs_gallery.sorting import FileNameSortKey
@@ -16,3 +18,18 @@ conf = {
     # order examples according to file name
     "within_subsection_order": FileNameSortKey,
 }
+
+
+def copy_images():
+    """Copy image files to the gallery output directory."""
+    src_dir = Path("docs/examples")
+    dst_dir = Path("docs/generated/gallery")
+    # Create destination directory if it doesn't exist
+    dst_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copy all PNG files
+    for img_file in src_dir.glob("*.png"):
+        shutil.copy(img_file, dst_dir / img_file.name)
+
+
+copy_images()

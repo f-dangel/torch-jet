@@ -2,7 +2,7 @@
 
 This example provides an introduction to Taylor Mode, specifically the `jet` function
 transformation, and how to use it to compute higher-order derivatives.
-We fill focus on second-order derivatives.
+We will focus on second-order derivatives.
 
 First, the imports.
 """

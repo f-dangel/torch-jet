@@ -1,24 +1,9 @@
-"""# Computing PDE operators.
+"""# Computing Laplacians.
 
-This examples demonstrates how to use Taylor mode to compute differential operators that
-are common in partial differential equations. We will cover,
-
-1. The Laplacian, which plays an important role in the Schroedinger equation, or the
-   Poisson equation.
-
-2. A generalized version of the Laplacian called the weighted Laplacian, which shows
-   up in the heat equation (Laplacian on a sub-space of the input space) or the
-   Fokker-Planck equation (weighted sum of second-order derivatives).
-
-3. The biharmonic operator (also called the Bi-Laplacian), which shows up in the
-   plate equation.
-
-Throughout this tutorial, we will operate on a vector-to-scalar function
-$f: \mathbb{R}^D \\to \mathbb{R}, \mathbf{x} \mapsto f(\mathbf{x})$.
-
-!!! note
-    Our goal is to pedagogically illustrate *how* to use Taylor mode, not on achieving
-    high performance.
+This example demonstrates how to use Taylor mode to compute the Laplacian, a popular
+differential operator that shows up in various applications. Our goal is to go from
+most pedagogical to most efficient implementation and highlight (i) how to use Taylor
+mode and (ii) how to collapse it to get better performance.
 
 Let's get the imports out of our way.
 """
@@ -39,12 +24,15 @@ from jet.simplify import simplify
 from jet.tracing import capture_graph
 from jet.vmap import traceable_vmap
 
-manual_seed(0)  # make deterministic
+_ = manual_seed(0)  # make deterministic
 
 # %%
 #
-### The Laplacian
+### Definition
 #
+# Throughout this example, we will consider a vector-to-scalar function $f: \mathbb{R}^D
+# \to \mathbb{R}, \mathbf{x} \mapsto f(\mathbf{x})$, e.g. a neural network that maps a
+# $D$-dimensional input to a single output.
 # The Laplacian $\Delta f(\mathbf{x})$ of $f$ at $\mathbf{x}$ is the sum of pure second-
 # order partial derivatives, i.e. the Hessian trace
 # $$
@@ -55,11 +43,10 @@ manual_seed(0)  # make deterministic
 # \left[ \frac{\partial^2 f(\mathbf{x})}{\partial \mathbf{x}^2} \right]\_{d,d}
 # = \mathrm{Tr} \left( \frac{\partial^2 f(\mathbf{x})}{\partial \mathbf{x}^2} \right)\,,
 # $$
-# where $\frac{\partial^2 f(\mathbf{x})}{\partial \mathbf{x}^2} \in
-# \mathbb{R}^{D \times D}$ is the Hessian of $f$ at $\mathbf{x}$.
-# The Laplacian shows up in the Poisson equation.
+# with $\frac{\partial^2 f(\mathbf{x})}{\partial \mathbf{x}^2} \in
+# \mathbb{R}^{D \times D}$ the Hessian of $f$ at $\mathbf{x}$.
 #
-# Let's compute the Laplacian of a neural network. Here is the setup:
+# In the following we compute the Laplacian of a neural network. Here is the setup:
 
 D = 3
 f = Sequential(Linear(D, 128), Tanh(), Linear(128, 64), Tanh(), Linear(64, 1))
@@ -70,7 +57,7 @@ print(f_x.shape)
 
 # %%
 #
-#### Via `torch.func`
+### Via `torch.func`
 #
 # To make sure all approaches we develop yield the correct result, let's compute
 # the Laplacian with `torch.func` as ground truth.
@@ -82,7 +69,13 @@ def compute_hessian_trace_laplacian(x: Tensor) -> Tensor:
     """Compute the Laplacian by taking the trace of the Hessian.
 
     The Hessian is computed with `torch.func`, which uses forward-over-reverse mode
-    automatic differentiation under the hood.
+    (nested) automatic differentiation under the hood.
+
+    Args:
+        x: Input tensor of shape [D].
+
+    Returns:
+        The Laplacian of shape [1].
     """
     hess = hess_func(x)  # has shape [1, D, D]
     return hess.squeeze(0).trace().unsqueeze(0)  # has shape [1]
@@ -94,23 +87,24 @@ print(hessian_trace_laplacian)
 
 # %%
 #
-#### Via Taylor Mode
+### Via Taylor Mode
 #
 # Now, we will look at different variants to employ Taylor mode to compute the
 # Laplacian. We will go from most pedagogical to most efficient.
 #
-# First, note that we can compute the $d$-th diagonal element with a
+# First, note that we can compute the $d$-th Hessian diagonal element with a
 # vector-Hessian-vector product
 # $$
 # \frac{\partial^2 f(\mathbf{x})}{\partial [\mathbf{x}]\_d^2}
 # = \mathbf{e}\_d^\top
 # \left( \frac{\partial^2 f(\mathbf{x})}{\partial \mathbf{x}^2} \right)
-# \mathbf{e}\_d\,,
+# \mathbf{e}\_d
 # $$
 # using $f_{2\text{-jet}}$ with Taylor coefficients $\mathbf{x}_0 = \mathbf{x}$,
 # $\mathbf{x}_1 = \mathbf{e}_d$, and $\mathbf{x}_2 = \mathbf{0}$. Then, the
 # second output Taylor coefficient will be $f_2 = \mathbf{e}_d^\top
 # \left( \frac{\partial^2 f(\mathbf{x})}{\partial \mathbf{x}^2} \right) \mathbf{e}_d$.
+#
 # Let's set up the jet function:
 
 k = 2
@@ -118,7 +112,7 @@ f_jet = jet(f, k)
 
 # %%
 #
-##### Pedagogical Way
+#### Pedagogical Way
 #
 # The easiest way to compute the Laplacian is to loop over the input dimensions and
 # compute one element of the Hessian diagonal at a time, then sum the result. Here
@@ -126,7 +120,14 @@ f_jet = jet(f, k)
 
 
 def compute_loop_laplacian(x: Tensor) -> Tensor:
-    """Compute the Laplacian using Taylor mode and a for loop."""
+    """Compute the Laplacian using Taylor mode and a for loop.
+
+    Args:
+        x: Input tensor of shape [D].
+
+    Returns:
+        The Laplacian of shape [1].
+    """
     x0, x2 = x, zeros_like(x)  # fixed Taylor coefficients
 
     lap = zeros_like(f_x)  # Laplacian accumulator
@@ -151,14 +152,21 @@ else:
 
 # %%
 #
-##### Without `for` Loop
+#### Without `for` Loop
 #
-# A better way to get rid of the for loop is to use `torch.vmap`, which is composable with out `jet`
+# To get rid of the `for` loop, we can use `torch.vmap`, which is composable with out `jet`
 # implementation, and compute the $D$ jets in parallel:
 
 
 def compute_loop_free_laplacian(x: Tensor) -> Tensor:
-    """Compute the Laplacian using Taylor mode and `torch.vmap`."""
+    """Compute the Laplacian using multiple 2-jets in parallel.
+
+    Args:
+        x: Input tensor of shape [D].
+
+    Returns:
+        The Laplacian of shape [1].
+    """
     x0, x2 = x, zeros_like(x)  # fixed Taylor coefficients
     eval_f2 = lambda x1: f_jet(x0, x1, x2)[2]
     vmap_eval_f2 = vmap(eval_f2)
@@ -181,13 +189,14 @@ else:
 
 # %%
 #
-##### Collapsing Taylor Mode
+#### Collapsing Taylor Mode
 #
-# We are already quite close to a high-performance Laplacian implementation.
+# We are already quite close to a high performance Laplacian implementation.
 # Now comes the more complicated part, which is hard to understand without reading our
-# paper. The idea is that instead of computing the jets along the $D$ directions, then
+# paper. The idea is that instead of computing 2-jets along the $D$ directions, then
 # summing their result, we can rewrite the computational graph to directly propagate
-# the summed Taylor coefficients. We call this "collapsing" the Taylor mode.
+# the summed second-order Taylor coefficients. We call this "collapsing" the Taylor
+# mode.
 #
 # To give a high-level intuition how this works, we will look at the computational
 # graph for computing a Laplacian. For that, we will write a `torch.nn.Module` which
@@ -210,7 +219,14 @@ class Laplacian(Module):
         self.vmap_f_jet = traceable_vmap(f_jet, vmapsize=D)
 
     def forward(self, x: Tensor) -> Tensor:
-        """Compute the Laplacian."""
+        """Compute the Laplacian.
+
+        Args:
+            x: Input tensor of shape [D].
+
+        Returns:
+            The Laplacian of shape [1].
+        """
         X0, X1, X2 = utils.replicate(x, D), eye(D), zeros(D, D)
         _, _, F2 = self.vmap_f_jet(X0, X1, X2)
         return utils.sum_vmapped(F2)
@@ -220,7 +236,7 @@ mod = Laplacian()
 
 # %%
 #
-# We can verify that this indeed computes the correct Laplacian
+# We can verify that this indeed computes the correct Laplacian:
 
 mod_laplacian = mod(x)
 print(mod_laplacian)
@@ -251,7 +267,7 @@ def visualize_graph(mod: GraphModule, savefile: str, name: str = ""):
 
 # %%
 #
-# Now, let us look at three different graphs which will become clear in a moment
+# Now, let's look at three different graphs which will become clear in a moment
 # (we evaluated approaches 2 and 3 in our paper).
 
 # Graph 1: Simply capture the module that computes the Laplacian
@@ -273,7 +289,7 @@ assert hessian_trace_laplacian.allclose(mod_collapsed(x))
 # %%
 #
 # There is quite some stuff going on here. Let's try to break down the essential
-# differences between these three flavours.
+# differences between these three graphs.
 #
 # First, we can look at the graph sizes:
 
@@ -289,8 +305,9 @@ print(f"3) Collapsing simplifications: {len(mod_collapsed.graph.nodes)} nodes")
 # %%
 #
 # Next, let's have a look at the computation graphs. Don't try to understand all the
-# details here, instead let's focus on two kinds of operations: the
-# `jet.utils.replicate` (dark orange), and `jet.utils.sum_vmapped` (brown).
+# details here, instead let's focus on two kinds of operations:
+# `jet.utils.replicate` (dark orange), and `jet.utils.sum_vmapped` (brown,
+# second-to-last node in Graphs 1 and 2).
 #
 # | Captured | Standard simplifications | Collapsing simplifications |
 # |:--------:|:------------------------:|:---------------------------|
@@ -305,7 +322,8 @@ print(f"3) Collapsing simplifications: {len(mod_collapsed.graph.nodes)} nodes")
 #
 # - Graph 2 (**Standard simplifications**) does exactly that: If you look for the dark
 #   orange nodes that represent `replicate` operations, you can see that they moved down
-#   the graph. To carry out this simplification, you can use our `simplify` function.
+#   the graph. To carry out this simplification, you used our `simplify` function which
+#   carries out graph rewrites based on mathematical properties of `replicate`.
 #
 # - Graph 3 (**Collapsing simplifications**) goes one step further than Graph 2 and
 #   performs the 'collapsing' of Taylor mode we present in our paper.
@@ -327,7 +345,7 @@ print(f"3) Collapsing simplifications: {len(mod_collapsed.graph.nodes)} nodes")
 #     We can repeat this procedure until we run out of possible simplifications.
 #     Effectively, this 'collapses' the Taylor coefficients we propagate forward;
 #     hence the name 'collapsed Taylor mode'. The resulting graph is Graph 3, which
-#     used `simplify` and enabled its `pull_sum_vmapped` option. As a neat side effect
+#     used `simplify` and enabled its `pull_sum_vmapped` option. As a neat side effect,
 #     note how many of the `replicate` nodes cancel out with the up-propagated sums,
 #     and Graph 3 has less `replicate` nodes than Graph 2.
 #
@@ -344,18 +362,18 @@ for name, buf in mod_collapsed.named_buffers():
 
 # %%
 #
-# We can see that the collapsed Taylor mode graph has a tensor constant whose shape
+# We see that the collapsed Taylor mode graph has a tensor constant whose shape
 # is smaller than the one of the standard simplifications graph. This reflects that,
 # instead of propagating $D$ second-order Taylor coefficients (shape `[D, D]`),
 # collapsed Taylor mode directly propagates their sum (shape `[D]`).
 #
-##### Batching
+### Batching
 #
-# Before we confirm that indeed collapsing is beneficial for performance, let's add
+# Before we confirm that collapsing is beneficial for performance, let's add
 # one last ingredient. So far, we computed the Laplacian for a single datum $\mathbf{x}$.
 # In practise, we often want to compute the Laplacian for a batch of data in parallel.
+# *We can trivially achieve this by calling `vmap` on all Laplacian functions!*
 #
-# We can trivially achieve this by calling `vmap` on all Laplacian functions!
 # In the following, we will compare three implementations, like in the paper:
 #
 # 1. **Nested first-order AD:** Computes the Hessian with `torch.func` (forward-
@@ -366,7 +384,7 @@ for name, buf in mod_collapsed.named_buffers():
 #
 # 3. **Collapsed Taylor mode:** Same as 2, but collapses the 2-jets.
 
-compute_batched_hessian_trace_laplacian = vmap(compute_hessian_trace_laplacian)
+compute_batched_nested_laplacian = vmap(compute_hessian_trace_laplacian)
 compute_batched_standard_laplacian = vmap(mod_standard.forward)
 compute_batched_collapsed_laplacian = vmap(mod_collapsed.forward)
 
@@ -376,7 +394,7 @@ compute_batched_collapsed_laplacian = vmap(mod_collapsed.forward)
 # worked as expected:
 
 batch_size = 1_024
-X = rand(batch_size, D)
+X = rand(batch_size, D)  # batched input
 
 # ground truth: Loop over data points and compute the Laplacian for each, then
 # concatenate the results
@@ -391,7 +409,7 @@ print(reference.shape)
 # tolerances to make Taylor mode and nested first-order AD match.
 tols = {"atol": 1e-7, "rtol": 1e-4}
 
-nested = compute_batched_hessian_trace_laplacian(X)
+nested = compute_batched_nested_laplacian(X)
 assert reference.allclose(nested, **tols)
 
 standard = compute_batched_standard_laplacian(X)
@@ -402,7 +420,7 @@ assert reference.allclose(collapsed, **tols)
 
 # %%
 #
-##### Performance
+### Performance
 #
 # Now that we have verified correctness, let's compare the performance in terms of run
 # time. As measuring protocol, let's define the following function which repeats the
@@ -430,26 +448,24 @@ def measure_runtime(f: Callable, num_repeats: int = 10) -> float:
     return min(runtimes)
 
 
-ms_nested = 10**3 * measure_runtime(lambda: compute_batched_hessian_trace_laplacian(X))
+ms_nested = 10**3 * measure_runtime(lambda: compute_batched_nested_laplacian(X))
 ms_standard = 10**3 * measure_runtime(lambda: compute_batched_standard_laplacian(X))
 ms_collapsed = 10 ** measure_runtime(lambda: compute_batched_collapsed_laplacian(X))
 
-print("Run times for batched Laplacian computation:")
-print(f"\tNested first-order AD: {ms_nested:.2f}ms ({ms_nested / ms_nested:.2f}x)")
-print(f"\tStandard Taylor mode: {ms_standard:.2f}ms ({ms_standard / ms_nested:.2f}x)")
-print(
-    f"\tCollapsed Taylor mode: {ms_collapsed:.2f}ms ({ms_collapsed / ms_nested:.2f}x)"
-)
+print(f"Nested 1st-order AD: {ms_nested:.2f}ms ({ms_nested / ms_nested:.2f}x)")
+print(f"Standard Taylor: {ms_standard:.2f}ms ({ms_standard / ms_nested:.2f}x)")
+print(f"Collapsed Taylor: {ms_collapsed:.2f}ms ({ms_collapsed / ms_nested:.2f}x)")
 
 # %%
 #
 # We see that collapsed Taylor mode is faster than standard Taylor mode.
-# Of course, we use a relatively small neural net in this example, but our findings for
-# larger nets in the paper also confirm this performance benefit (also in terms of used
-# memory). Intuitively, this improvement over standard Taylor mode also makes sense, as
-# the collapsed propagation uses less operations.
+# Of course, we use a relatively small neural net and a CPU in this example, but our
+# paper also confirms this performance benefits on bigger nets and on GPU (also in
+# terms of memory consumption). Intuitively, this improvement over standard Taylor mode
+# also makes sense, as the collapsed propagation uses less operations and smaller
+# tensors.
 #
-# Here is a quick summary of the performance results in a single graph:
+# Here is a quick summary of the performance results in a single diagram:
 
 methods = ["Nested 1st-order", "Standard Taylor", "Collapsed Taylor"]
 times = [ms_nested, ms_standard, ms_collapsed]
@@ -482,15 +498,6 @@ with plt.rc_context(bundles.neurips2024()):
             color="white",
         )
 
-
 # %%
 #
-### The Weighted Laplacian
-#
-# Coming soon!
-
-# %%
-#
-### The Biharmonic Operator (Bi-Laplacian)
-#
-# Coming soon!
+# That's all for now.

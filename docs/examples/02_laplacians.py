@@ -450,7 +450,7 @@ def measure_runtime(f: Callable, num_repeats: int = 10) -> float:
 
 ms_nested = 10**3 * measure_runtime(lambda: compute_batched_nested_laplacian(X))
 ms_standard = 10**3 * measure_runtime(lambda: compute_batched_standard_laplacian(X))
-ms_collapsed = 10 ** measure_runtime(lambda: compute_batched_collapsed_laplacian(X))
+ms_collapsed = 10**3 * measure_runtime(lambda: compute_batched_collapsed_laplacian(X))
 
 print(f"Nested 1st-order AD: {ms_nested:.2f}ms ({ms_nested / ms_nested:.2f}x)")
 print(f"Standard Taylor: {ms_standard:.2f}ms ({ms_standard / ms_nested:.2f}x)")

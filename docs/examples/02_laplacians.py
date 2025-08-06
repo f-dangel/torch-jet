@@ -393,7 +393,7 @@ compute_batched_collapsed_laplacian = vmap(mod_collapsed.forward)
 # Let's check if this yields the correct result. First, a sanity check that `vmap`
 # worked as expected:
 
-batch_size = 1_024
+batch_size = 2_048
 X = rand(batch_size, D)  # batched input
 
 # ground truth: Loop over data points and compute the Laplacian for each, then
@@ -428,7 +428,7 @@ assert reference.allclose(collapsed, **tols)
 # time.
 
 
-def measure_runtime(f: Callable, num_repeats: int = 10) -> float:
+def measure_runtime(f: Callable, num_repeats: int = 50) -> float:
     """Measure the run time of a function.
 
     Args:

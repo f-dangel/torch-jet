@@ -102,7 +102,7 @@ flake8:
 .PHONY: darglint-check
 
 darglint-check:
-	@darglint --verbosity 2 jet test
+	@darglint --verbosity 2 jet test docs/examples
 
 .PHONY: pydocstyle-check
 

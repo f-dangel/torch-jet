@@ -368,7 +368,15 @@ visualize_graph(capture_graph(f_jet), path.join(HEREDIR, "01_f_jet_unrolled.png"
 
 
 def f(x: Tensor, y: Tensor) -> Tensor:
-    """A function with two tensor arguments (currently not supported)."""
+    """A function with two tensor arguments (currently not supported).
+
+    Args:
+        x: First tensor argument.
+        y: Second tensor argument.
+
+    Returns:
+        The sum of the two tensors.
+    """
     return x + y
 
 
@@ -433,7 +441,14 @@ with raises(ValueError):
 
 
 def f(x: Tensor):
-    """Function with data-dependent control flow (if statement)."""
+    """Function with data-dependent control flow (if statement).
+
+    Args:
+        x: Input tensor.
+
+    Returns:
+        The sine of x if the sum of x is positive, otherwise the cosine of x.
+    """
     return sin(x) if x.sum() > 0 else cos(x)
 
 

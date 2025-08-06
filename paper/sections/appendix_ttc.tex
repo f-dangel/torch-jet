@@ -50,6 +50,352 @@ $
 $ 
 This notation also includes cases where the vector has components of $\mathbb{R}$.
 
+\paragraph{Example coefficient computation}
+Below we compute the coefficient $\gamma_{(2, 2),(3, 1)}$ as used to compute the biharmonic operator. This coefficient reads
+\begin{align}
+    \gamma_{(2, 2),(3, 1)} = \sum_{
+    \substack{
+    \vm \in \mathbb{N}, \; ||\vm||_1 > 0 
+    \\
+    [\vm]_1 \leq 2, \; [\vm]_2 \leq 2
+    } 
+    }
+    (-1)^{ 2 - [\vm]_1 + 2 - [\vm]_2 } 
+    \left(
+    \begin{matrix}
+        2 \\
+        [\vm]_1
+    \end{matrix}
+    \right) 
+    \left(
+    \begin{matrix}
+        2 \\
+        [\vm]_2
+    \end{matrix}
+    \right) 
+    \left( 
+    \begin{matrix}
+        4 \frac{[\vm]_1}{\lVert \vm \rVert_1} \\
+        3
+    \end{matrix} 
+    \right) 
+    \left( 
+    \begin{matrix}
+        4 \frac{[\vm]_2}{\lVert \vm \rVert_1} \\
+        1
+    \end{matrix} 
+    \right)
+    \left( 
+    \frac{\lVert \vm \rVert_1}{4}
+    \right)^4.
+\end{align}
+We have $\vm \in \{(1, 0), (2, 0), (1, 1), (2, 1), (2, 2), (1, 2), (0, 1), (0, 2)\}$, which results in the terms
+\begin{align}
+    &(-1)^{ 2 - 1 + 2 - 0} 
+    \left(
+    \begin{matrix}
+        2 \\
+        1
+    \end{matrix}
+    \right) 
+    \left(
+    \begin{matrix}
+        2 \\
+        0
+    \end{matrix}
+    \right) 
+    \left( 
+    \begin{matrix}
+        4 \frac{1}{1} \\
+        3
+    \end{matrix} 
+    \right) 
+    \left( 
+    \begin{matrix}
+        4 \frac{0}{1} \\
+        1
+    \end{matrix} 
+    \right)
+    \left( 
+    \frac{1}{4}
+    \right)^4
+    \\
+    +&
+    (-1)^{ 2 - 2 + 2 - 0 } 
+    \left(
+    \begin{matrix}
+        2 \\
+        2
+    \end{matrix}
+    \right) 
+    \left(
+    \begin{matrix}
+        2 \\
+        0
+    \end{matrix}
+    \right) 
+    \left( 
+    \begin{matrix}
+        4 \frac{2}{2} \\
+        3
+    \end{matrix} 
+    \right) 
+    \left( 
+    \begin{matrix}
+        4 \frac{0}{2} \\
+        1
+    \end{matrix} 
+    \right)
+    \left( 
+    \frac{2}{4}
+    \right)^4
+    \\
+    +&
+    (-1)^{ 2 - 1 + 2 - 1 } 
+    \left(
+    \begin{matrix}
+        2 \\
+        1
+    \end{matrix}
+    \right) 
+    \left(
+    \begin{matrix}
+        2 \\
+        1
+    \end{matrix}
+    \right) 
+    \left( 
+    \begin{matrix}
+        4 \frac{1}{2} \\
+        3
+    \end{matrix} 
+    \right) 
+    \left( 
+    \begin{matrix}
+        4 \frac{1}{2} \\
+        1
+    \end{matrix} 
+    \right)
+    \left( 
+    \frac{2}{4}
+    \right)^4
+    \\
+    +&
+    (-1)^{ 2 - 2 + 2 - 1 } 
+    \left(
+    \begin{matrix}
+        2 \\
+        2
+    \end{matrix}
+    \right) 
+    \left(
+    \begin{matrix}
+        2 \\
+        1
+    \end{matrix}
+    \right) 
+    \left( 
+    \begin{matrix}
+        4 \frac{2}{3} \\
+        3
+    \end{matrix} 
+    \right) 
+    \left( 
+    \begin{matrix}
+        4 \frac{1}{3} \\
+        1
+    \end{matrix} 
+    \right)
+    \left( 
+    \frac{3}{4}
+    \right)^4
+    \\
+    +&
+    (-1)^{ 2 - 2 + 2 - 2} 
+    \left(
+    \begin{matrix}
+        2 \\
+        2
+    \end{matrix}
+    \right) 
+    \left(
+    \begin{matrix}
+        2 \\
+        2
+    \end{matrix}
+    \right) 
+    \left( 
+    \begin{matrix}
+        4 \frac{2}{4} \\
+        3
+    \end{matrix} 
+    \right) 
+    \left( 
+    \begin{matrix}
+        4 \frac{2}{4} \\
+        1
+    \end{matrix} 
+    \right)
+    \left( 
+    \frac{4}{4}
+    \right)^4
+        \\
+    +&
+    (-1)^{ 2 - 1 + 2 - 2} 
+    \left(
+    \begin{matrix}
+        2 \\
+        1
+    \end{matrix}
+    \right) 
+    \left(
+    \begin{matrix}
+        2 \\
+        2
+    \end{matrix}
+    \right) 
+    \left( 
+    \begin{matrix}
+        4 \frac{1}{3} \\
+        3
+    \end{matrix} 
+    \right) 
+    \left( 
+    \begin{matrix}
+        4 \frac{2}{3} \\
+        1
+    \end{matrix} 
+    \right)
+    \left( 
+    \frac{3}{4}
+    \right)^4
+    \\
+    +&
+    (-1)^{ 2 - 0 + 2 - 1 } 
+    \left(
+    \begin{matrix}
+        2 \\
+        0
+    \end{matrix}
+    \right) 
+    \left(
+    \begin{matrix}
+        2 \\
+        1
+    \end{matrix}
+    \right) 
+    \left( 
+    \begin{matrix}
+        4 \frac{0}{1} \\
+        3
+    \end{matrix} 
+    \right) 
+    \left( 
+    \begin{matrix}
+        4 \frac{1}{1} \\
+        1
+    \end{matrix} 
+    \right)
+    \left( 
+    \frac{1}{4}
+    \right)^4
+    \\
+    +&
+    (-1)^{ 2 - 0 + 2 - 2 } 
+    \left(
+    \begin{matrix}
+        2 \\
+        0
+    \end{matrix}
+    \right) 
+    \left(
+    \begin{matrix}
+        2 \\
+        2
+    \end{matrix}
+    \right) 
+    \left( 
+    \begin{matrix}
+        4 \frac{0}{2} \\
+        3
+    \end{matrix} 
+    \right) 
+    \left( 
+    \begin{matrix}
+        4 \frac{2}{2} \\
+        1
+    \end{matrix} 
+    \right)
+    \left( 
+    \frac{2}{4}
+    \right)^4
+\end{align}
+The next step is to evaluate the binomial coefficients.  
+\begin{align}
+    &(-1) \cdot 2 \cdot 1 \cdot 4 \cdot 0 \cdot 
+    \left( 
+    \frac{1}{4}
+    \right)^4
+    \\
+    +&
+    1 \cdot 1 \cdot 4 \cdot 0 \cdot 
+    \left( 
+    \frac{2}{4}
+    \right)^4
+    \\
+    +&
+    2 \cdot 2 \cdot 0 \cdot 2 \cdot
+    \left( 
+    \frac{2}{4}
+    \right)^4
+    \\
+    -&
+    1 \cdot 2 \cdot \frac{8}{9}\frac{5}{6}\frac{2}{3} \cdot \frac{4}{3} \cdot
+    \left( 
+    \frac{3}{4}
+    \right)^4
+    \\
+    +&
+    1 \cdot 1 \cdot 0 \cdot 2 \cdot
+    \left( 
+    \frac{4}{4}
+    \right)^4
+        \\
+    -& 2 \cdot 1
+    \cdot \frac{4}{9}\frac{1}{6} \frac{-2}{3} \cdot \frac{8}{3} \cdot
+    \left( 
+    \frac{3}{4}
+    \right)^4
+    \\
+    -& 1 \cdot 2 \cdot 0 \cdot 4 \cdot
+    \left( 
+    \frac{1}{4}
+    \right)^4
+    \\
+    +&
+    \cdot 1 \cdot 1 \cdot 1 \cdot 0 \cdot 4 \cdot
+    \left( 
+    \frac{2}{4}
+    \right)^4
+\end{align}
+Removing the terms that are zero gives us the final result
+\begin{align}
+    \gamma_{(2, 2),(3, 1)} = &(-1) \cdot 2 \cdot \frac{8}{9}\frac{5}{6}\frac{2}{3} \cdot \frac{4}{3} \cdot
+    \left( 
+    \frac{3}{4}
+    \right)^4
+    - 2 \left(\frac{4}{9} \cdot \frac{1}{6} \cdot \frac{-2}{3}\right) \cdot \frac{8}{3} \cdot
+    \left( 
+    \frac{3}{4}
+    \right)^4 
+    \\
+    &=  \frac{-640}{486}\frac{81}{256} + \frac{128}{486}\frac{81}{256} = \frac{-5}{12}+\frac{1}{12} = -\frac{1}{3}.
+\end{align}
+
+
+
+
+
 \subsection{Applied to the Biharmonic Operator}\label{sec:appendix-biharmonic-details}
 
 To compute \cref{eq:biharm} with \cref{eq:ttc_general}, we first select $K = 4, I = 2, D_1 = D_2 = D, \vi = (2, 2), \vv_{d_1} = \ve_{d_1}$ and $\ve_{d_2} = \ve_{d_2}$. Then we insert these parameters into the general equation \cref{eq:ttc_general} and get
@@ -289,3 +635,53 @@ To summarize the procedure, we evaluate the 6-jet three times. The first jet has
 The standard Taylor mode would propagate $1 + 18D^2$ vectors through every node, where we already exploit that all jets share $\vx_0$. 
 Leveraging our collapsed Taylor mode would have the cost of passing $1 + 3 + 15D^2$ vectors to every node of the compute graph. Still, this is very expensive in comparison to our approach described before. In addition, until now, the selection of the jet degree and the input coefficients requires substantial human effort.
 
+
+
+\subsection{Another Example}
+To make this process more clear we further add an example in the appendix: computing $\sum_{i=1}^D\sum_{j=1}^D\frac{\partial^3}{\partial x_i^2 x_j}f(x)$.
+This example is from Appendix F.2 of the stochastic Taylor derivative paper (Shi et al., 2024), which describes how to compute these 3rd-order derivatives using 7-jets.
+The interpolation formula allows using multiple 3-jets instead.
+We expect it to be favorable as Taylor mode scales quadratically in the derivative order and will experimentally verify that in a future version of the paper.
+
+
+
+\paragraph{Procedure for the Example} 
+The goal is to compute $\sum_{i=1}^D\sum_{j=1}^D \frac{\partial^3}{\partial x_i^2 \partial x_j} f(x)$.
+
+0. (currently not automatic) Formulate the operator in our notation: 
+    $$
+    \sum_{i=1}^D\sum_{j=1}^D \langle\partial^3 f(x), e_i^{\otimes 2} \otimes e_j    \rangle
+    $$
+1. (automatic) Generate the interpolation coefficients $\gamma_{pq}$ where $p=(2, 1)$ and $q \in \{(3, 0), (2, 1), (1, 2), (0, 3)\}$. (We have a script for this)
+
+    $\gamma_{(2, 1)(0, 3)} =  -8/81$
+    $\gamma_{(2, 1)(1, 2)} = 16/27$
+    $\gamma_{(2, 1)(2, 1)} = -16/9$
+    $\gamma_{(2, 1)(3, 0)} = 32/81$
+
+2. (automatic) Apply Equation 11
+    $$
+    \sum_{i=1}^D\sum_{j=1}^D \sum_{q \in \mathbb{N}^2, \; |q| = 3} \langle\partial^3 f(x), \left([q]_1 e_i + [q]_2 e_j   \right)^{\otimes 3} \rangle
+    $$
+Applying collapsed Taylor mode can directly applied to these $4D^2$ -- 3-jets. However, the full potential of our requires some further steps that leverages the structure. 
+
+3. (currently not automatic) The sums for $\gamma_{(2, 1)(3, 0)}$ and $\gamma_{(2, 1)(0, 3)}$ are similar. As well as for $\gamma_{(2, 1)(2, 1)}$ and $\gamma_{(2, 1)(1, 2)}$. We only have $2D^2$-- 3 jets:
+    $(\gamma_{(2, 1)(3, 0)} + \gamma_{(2, 1)(0, 3)})
+    \sum_{i=1}^D\sum_{j=1}^D  \langle\partial^3 f(x), \left(3 e_i   \right)^{\otimes 3} \rangle$ 
+    $+(\gamma_{(2, 1)(2, 1)} + \gamma_{(2, 1)(1, 2)})
+    \sum_{i=1}^D\sum_{j=1}^D  \langle\partial^3 f(x), \left(2 e_i + e_j       \right)^{\otimes 3} \rangle$
+
+We further observe, that the first summation is independent of $j$:
+$(\gamma_{(2, 1)(3, 0)} + \gamma_{(2, 1)(0, 3)})D
+    \sum_{i=1}^D \langle\partial^3 f(x), \left(3 e_i   \right)^{\otimes 3} \rangle$ <br>
+    $+(\gamma_{(2, 1)(2, 1)} + \gamma_{(2, 1)(1, 2)})
+    \sum_{i=1}^D\sum_{j=1}^D  \langle\partial^3 f(x), \left(2 e_i + e_j       \right)^{\otimes 3} \rangle$
+
+Remove the case $i=j$ from the last term gives our final form
+$((\gamma_{(2, 1)(3, 0)}D + \gamma_{(2, 1)(0, 3)}D + \gamma_{(2, 1)(2, 1)} + \gamma_{(2, 1)(1, 2)})
+    \sum_{i=1}^D \langle\partial^3 f(x), \left(3 e_i   \right)^{\otimes 3} \rangle$ <br>
+    $+(\gamma_{(2, 1)(2, 1)} + \gamma_{(2, 1)(1, 2)})
+    \sum_{i=1}^D\sum_{j=1, j \neq i}^D  \langle\partial^3 f(x), \left(2 e_i + e_j       \right)^{\otimes 3} \rangle$
+
+
+This optimized version required $D^2 3-jets$ that can be further collapsed.

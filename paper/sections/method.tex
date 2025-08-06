@@ -24,7 +24,7 @@ In total, we need $R$ $K$-jets, and have to set the $r$-th jet's coefficients to
 Standard Taylor mode propagates $1 + KR$ vectors through every node of the computational graph (the $0$th component is shared across all jets, see \cref{fig:visual-abstract}).
 This gives the output jets $\smash{\{\{\vf_{k,r}\}_{k=1}^K\}_{r=1}^{R}}$, from which we only select the highest-degree coefficients $\smash{\{\vf_{K,r}\}_{r=1}^R}$, then sum them to obtain \cref{eq:sum-k-directional}.
 
-The approach we propose here exploits that there is a special element in the set of integer partitions $\partitioning(K)$, namely the trivial partition $\tilde{\sigma}= \{K\}$, which contributes the term $ \nu(\tilde{\sigma}) \left< \partial \vg(\vh_0), \vh_{K,r} \right>$ to \cref{eq:faa-di-bruno}.
+The approach we propose here exploits that the $K$-th derivative of $\vg \circ \vh$ is $\partial \vg$ times the $K$-th derivative of $\vh$ plus other lower-order terms in $\vh$. Therefore, $\vg \circ \vh$ is linear in the $K$-th derivative of $\vh$. Mathematically speaking, there is a special element in the set of integer partitions $\partitioning(K)$, namely the trivial partition $\tilde{\sigma}= \{K\}$, which contributes the term $ \nu(\tilde{\sigma}) \left< \partial \vg(\vh_0), \vh_{K,r} \right>$ to \cref{eq:faa-di-bruno}.
 This is the only term that uses the input jet's highest coefficient $\vh_{K,r}$, and its dependency is \emph{linear}.
 Separating it in the highest coefficient's forward propagation, we get (using $\nu(\tilde{\sigma}) = 1$)
 \begin{align}

@@ -1,171 +1,417 @@
-\todo{Maybe we should assume that we have an input error}
-We analyze the numerical stability of collapsed Taylor mode compared to its vanilla counterpart by considering potential round-off errors in the computation of $\sum_{r=1}^R \vf_{K, r}$ where $\vf = \vg \circ \vh$. We evaluate the schemes at $\vx_0$ and assume that there is no error in the input coefficients $\vx_i$. The coefficients from $0, \dots, K-1$ are computed exactly in the same way in both collapsed and vanilla Taylor mode. We summarize the errors of these coefficients in $\{\varepsilon^\vh_{i, r}\}\}, \{\varepsilon^\vg_{i, r}\}$ for $i \in \{0, \dots, K-1\}$ and $r \in \{1, \dots, R\}$.
-It is the last coefficients $\vh_{K,r}, \vg_{K, r}$ in which both schemes differ and there errors are considered in more detail below. For the vanilla Taylor mode we obtain
-\begin{align}
-          \{\vh^\varepsilon_{K, r}\} &=
-          \left\{
-          \displaystyle \sum_{
-          \sigma \in \partitioning(K)
-          }
-          \left(
-          \nu(\sigma) \left<
-          \partial^{|\sigma|} \vh(\vx_0),
-          \tensorprod{s \in \sigma} \vx_{s, r}
-          \right> + \varepsilon^{\vh, \sigma}_{K, r}
-          \right)
-          \right\},
-\end{align}
-with $\varepsilon^{\vh, \sigma}_{K, r}$ is the combined error due to the evaluation of $\partial^{|\sigma|}\vh$, the inner product and the tensor product. Then in the next layer we obtain
-\begin{align}
-          \{\vg^\varepsilon_{K,r}\} &=
-          \left\{
-          \displaystyle\sum_{
-          \sigma \in \partitioning(K)
-          }
-          \left(
-          \nu(\sigma) \left<
-          \partial^{|\sigma|} \vg(\vh^\varepsilon_0),
-          \tensorprod{s \in \sigma} \vh^\varepsilon_{s, r}
-          \right>
-          + \varepsilon^{\vg, \sigma}_{K, r}
-          \right)
-          \right\},
-\end{align}
-which is extended using the errors of the previous layer
-\begin{align}
-          \{\vg^\varepsilon_{K,r}\} &=
-          \left\{
-          \displaystyle\sum_{
-          \sigma \in \partitioning(K)
-          }
-          \left(
-          \nu(\sigma) \left<
-          \partial^{|\sigma|} \vg(\vh_0),
-          \tensorprod{s \in \sigma} \vh_{s, r}
-          \right>
-          + \varepsilon^{\vg, \sigma}_{K, r}
-          + \varepsilon^{\vg \circ \vh, \sigma}_{K, r}
-          \right)
-          \right\}.
-\end{align}
-If we then sum we obtain the error of the vanilla scheme
-\begin{align}
-    \sum_{r=1}^R 
-     \vf^\varepsilon_{K, r}
-     = \sum_{r=1}^R \vg^\varepsilon_{K,r} &=
-      \sum_{r=1}^R
-      \displaystyle\sum_{
-      \sigma \in \partitioning(K)
-      }
-      \nu(\sigma) \left<
-      \partial^{|\sigma|} \vg(\vh_0),
-      \tensorprod{s \in \sigma} \vh_{s, r}
-      \right>
-      \\
-      &+
-      \sum_{r=1}^R
-      \displaystyle\sum_{
-      \sigma \in \partitioning(K)
-      }
-      \varepsilon^{\vg, \sigma}_{K, r}
-      +
-      \sum_{r=1}^R
-      \displaystyle\sum_{
-      \sigma \in \partitioning(K)
-      }
-      \varepsilon^{\vg \circ \vh, \sigma}_{K, r}
-\end{align}
-If we now sum first then propagate we get
-\begin{align} \label{eq:error_vanilla}
-          \left(\sum_{r=1}^R \vh_{K, r}\right)^\varepsilon &=
-          \sum_{r=1}^R 
-          \displaystyle \sum_{
-          \sigma \in \partitioning(K) \setminus \{\sigma_t\}
-          }
-          \nu(\sigma)
-          \left<
-          \partial^{|\sigma|} \vh(\vx_0),
-          \tensorprod{s \in \sigma} \vx_{s, r}
-          \right> 
-          +
-          \langle 
-          \partial \vh(\vx_0), 
-          \sum_{r=1}^R \vx_{K, r}
-          \rangle
-          \\
-          &+ 
-          \sum_{r=1}^R 
-          \left(
-          \displaystyle \sum_{
-          \sigma \in \partitioning(K) \setminus \{\sigma_t\}
-          }
-          \varepsilon^{\vh, \sigma}_{K, r} 
-          \right)
-          +
-          \tilde{\varepsilon}^{\vh, \sigma_t}_{K}.
-\end{align}
-The error $\tilde{\varepsilon}^{\vh, \sigma_t}_{K}$ is influenced by $\langle \partial \vh(\vx_0), \sum_{r=1}^R \vx_{K, r} \rangle$ (i.e., from the evaluation of $\vh$, the inner product and the summation). This propagates as follows to the next layer \todo{add the error $\varepsilon^{\vg \circ \vh}$}
-\begin{align}
-          \left(\sum_{r=1}^R \vg_{K, r}\right)^\varepsilon &=
-          \sum_{r=1}^R 
-          \left(
-          \displaystyle \sum_{
-          \sigma \in \partitioning(K) \setminus \{\sigma_t\}
-          }
-          \nu(\sigma)
-          \left<
-          \partial^{|\sigma|} \vg(\vh_0),
-          \tensorprod{s \in \sigma} \vh_{s, r}
-          \right> 
-          \right)
-          +
-          \langle \partial \vg(\vh_0), \left(\sum_{r=1}^R \vh_{K, r} \right)^\varepsilon\rangle
-          \\
-          &+ 
-          \sum_{r=1}^R 
-          \left(
-          \displaystyle \sum_{
-          \sigma \in \partitioning(K) \setminus \{\sigma_t\}
-          }
-          \varepsilon^{\vg, \sigma}_{K, r}
-          \right)
-          + 
-          \tilde{\varepsilon}^{\vg, \sigma_t}_{K}
-\end{align}
-The error terms $\{\varepsilon^{\vg, \sigma}_{K, r}\}$ depends on the error of the $\vh_0, \dots, \vh_{K-1}$ and of the evaluation of $\partial^{|\sigma|} \vg$, the inner product and the tensor product. The term $\langle \partial \vg(\vh_0), \left(\sum_{r=1}^R \vh_{K, r} \right)^\varepsilon\rangle$ propagates the error of the previous highest coefficient $\sum_{r=1}^R \varepsilon^{\vh, \sigma}_{K, r}+\tilde{\varepsilon}^{\vh, \sigma_t}_{K}$ linearly plus the error that occur by evaluating $\vg$ and $\langle \cdot, \cdot \rangle$, which is denoted by $\tilde{\varepsilon}^{\vg, \sigma_t}_K$. This results in 
-\begin{align}
-          \left(\sum_{r=1}^R \vg_{K, r}\right)^\varepsilon &=
-          \sum_{r=1}^R 
-          \left(
-          \displaystyle \sum_{
-          \sigma \in \partitioning(K) \setminus \{\sigma_t\}
-          }
-          \nu(\sigma)
-          \left<
-          \partial^{|\sigma|} \vg(\vh_0),
-          \tensorprod{s \in \sigma} \vh_{s, r}
-          \right> 
-          \right)
-          + 
-          \langle \partial \vg(\vh_0), \sum_{r=1}^R \vh_{K, r} \rangle
-          \\
-          &+ 
-          \sum_{r=1}^R 
-          \left(
-          \displaystyle \sum_{
-          \sigma \in \partitioning(K) \setminus \{\sigma_t\}
-          }
-          \varepsilon^{\vg, \sigma}_{K, r}
-          \right)
-          +
-          \tilde{\varepsilon}^{\vg, \sigma_t}_{K} 
-          +
-          \langle \partial \vg(\vh_0),
-          \sum_{r=1}^R \varepsilon^{\vh, \sigma}_{K, r} 
-          \rangle
-          +
-          \langle \partial \vg(\vh_0),
-          \tilde{\varepsilon}^{\vh, \sigma_t}_{K} 
-          \rangle
-\end{align}
-Comparing to \cref{eq:error_vanilla} reveals a similar structure in the error. However, instead of making an error for computing errors of $R$ inner-products in every layer, contributing via $\{\varepsilon^{\vh, \sigma_t}_{K, r}\}$ and $\{\varepsilon^{\vg, \sigma_t}_{K, r} + \varepsilon^{\vg \circ \vh, \sigma_t}_{K, r} \}$ we make errors due to the summation in every node.
+\todo{T: working on it}
+To illustrate the numerical properties of our proposed collapsed Taylor mode, we consider a two layered layered MLP with 
+$\mathbf{tanh}$ activation. The MLP is denoted by $\vf := \vg \circ \mathbf{tanh} \circ \vh$. The two linear layers are given as $\vh: \mathbb{R}^D \to \mathbb{R}^I, \vh(\vx_0) = \tW_\vh \vx_0 + \vb_\vh$ and $\vg: \mathbb{R}^I \to \mathbb{R}^C$, $\vg(\mathbf{tanh}_0) = \tW_\vg \mathbf{tanh}_0 + \vb_\vg$, with weights $\tW_\vh \in \mathbb{R}^{I \times D}, \tW_\vg \in \mathbb{R}^{C \times I}$ and bias $\vb_\vh \in \mathbb{R}^I, \vb_\vg \in \mathbb{R}^C$. We also use $\mathbf{tanh}: \mathbb{R}^I \to \mathbb{R}^I$, as component-wise evaluation of the $\tanh$ on a vector input. Below we compare the computational and storage complexity, as well as stability for evaluating the sum of the second coefficients $\sum_{r=1}^R \langle \partial^2 \vf(\vx_0), \vv_i \otimes \vv_i \rangle = \sum_{r=1}^R \vg_{2,r}$ (see \cref{eq:sum-k-directional}) to standard Taylor mode. 
+
+
+\paragraph{Computational \& Storage Complexity}
+Both vanilla and collapsed Taylor mode evaluate the function values ($\vh_0, \mathbf{tanh}_0, \vg_0$) and the first derivatives ($\{\vh_{1,r}, \mathbf{tanh}_{1, r}, \vg_{1, r}\}$) by propagating $1 + R$ coefficients at each layer
+\begin{equation}
+\begin{aligned}
+    \begin{pmatrix*}[l]
+        \vh_0
+        =
+        \left\langle\tW_\vh, \vx_0 \right\rangle + \vb_\vh
+        \\
+        \left\{
+        \vh_{1,r}
+        \right\} 
+        = 
+        \left\{
+        \left\langle \tW_\vh, \vx_{1,r} \right\rangle 
+        \right\}
+    \end{pmatrix*}
+        &\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
+    \begin{pmatrix*}[l]
+        \mathbf{tanh}_0
+        = 
+        \mathbf{tanh}(\vh_0)
+        \\
+        \left\{
+        \mathbf{tanh}_{1,r} 
+        \right\}
+        = 
+        \left\{
+        \left\langle \partial \mathbf{tanh}(\vh_0), \vh_{1,r} \right\rangle
+        \right\}
+    \end{pmatrix*}  
+    \\
+    &\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
+    \begin{pmatrix*}[l]
+        \vg_0
+        =
+        \left\langle \tW_\vg, \mathbf{tanh}_0 \right\rangle + \vb_\vg
+        \\
+        \left\{
+        \vg_{1,r}
+        \right\}
+        = 
+        \left\{
+        \left\langle\tW_\vg, \mathbf{tanh}_{1,r}\right\rangle
+        \right\}
+    \end{pmatrix*} 
+\end{aligned}
+\end{equation}
+
+This costs $1 + R$ matrix-vector multiplications with the weight matrix $\tW_\vh$, $R$ matrix-vector multiplications with the derivative of $\mathbf{tanh}$, and $1 + R$ matrix-vector multiplications with $\tW_\vg$. Additionally, there is one vector addition with the bias $\vb_\vh$, one vector evaluation of $\mathbf{tanh}$ and $\partial \mathbf{tanh}$, as well as one vector addition with $\vb_\vg$. $3+3R$ vectors are stored. For the second derivatives, vanilla Taylor mode computes in every propagation step $R$ vectors
+\begin{equation}
+\begin{aligned}
+    \begin{pmatrix*}[l]
+          \left\{\vh_{2,r}\right\}
+        = 
+        \left\{\left\langle \tW_\vh, \vx_{2,r} \right\rangle\right\}  
+    \end{pmatrix*}
+    &\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
+    \begin{pmatrix*}[l]
+         \left\{
+         \mathbf{tanh}_{2,r}
+         \right\}
+         =
+         \left\{
+         \left\langle \partial^2 \mathbf{tanh}(\vh_0), \vh_{1, r} \otimes \vh_{1, r} \right\rangle + \left\langle \partial \mathbf{tanh}(\vh_0), \vh_{2,r} \right \rangle
+         \right\}
+    \end{pmatrix*}
+    \\
+    &\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
+    \begin{pmatrix*}[l]
+        \left\{
+        \vg_{2,r}
+        \right\}
+        =
+        \left\{
+        \left\langle\tW_\vg ,\mathbf{tanh}_{2,r}\right\rangle
+        \right\}  
+    \end{pmatrix*}
+\end{aligned}
+\end{equation}
+that are summed up to get the result $\sum_{r=1}^R \langle \partial^2 \vf(\vx_0), \vv_i \otimes \vv_i \rangle = \sum_{r=1}^R \vg_{2,r}$. This costs $R$ Frobenius inner products, $3R$ matrix-vector products, $R$ tensor products, $2R - 1$ vector additions, and an evaluation of $\partial \mathbf{tanh}$ and $\partial^2 \mathbf{tanh}$. In contrast, collapsed Taylor mode propagates only a single summed vector
+\begin{equation}
+\begin{aligned}
+    &\begin{pmatrix*}[l]
+      \displaystyle\sum_{r=1}^R \vh_{2,r} = \left\langle \tW_\vh,  \sum_{r=1}^R\vx_{2,r} \right\rangle
+    \end{pmatrix*}
+   \\
+   \overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
+   &\begin{pmatrix*}[l]
+        \displaystyle\sum_{r=1}^R\mathbf{tanh}_{2,r} = \sum_{r=1}^R \left\langle \partial^2 \mathbf{tanh}(\vh_0),  \vh_{1, r} \otimes \vh_{1, r}\right\rangle + \left\langle \partial \mathbf{tanh}(\vh_0), \sum_{r=1}^R \vh_{2,r} \right\rangle
+   \end{pmatrix*}
+   \\
+   \overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
+   &\begin{pmatrix*}[l]
+        \displaystyle\sum_{r=1}^R\vg_{2,r} = \left\langle\tW_\vg, \sum_{r=1}^R\mathbf{tanh}_{2,r}\right\rangle
+   \end{pmatrix*}.
+\end{aligned}
+\end{equation}
+This has the cost of $R$ Frobenius inner products, $3$ matrix-vector products, $R$ tensor products, $R$ vector additions, and the evaluation of $\partial \mathbf{tanh}$ and $\partial^2 \mathbf{tanh}$ at $\vh_0$.
+In this illustrative example we obtain the accumulated costs that are visualized in \cref{tab:run-time-storage-comparison}.
+\begin{table}[h]
+    \centering
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabular}{l|cc}
+        \toprule
+        \multicolumn{3}{c}{\textbf{Computational Complexity}} \\
+        \midrule
+        \textbf{Operation} 
+        & \textcolor{tab-orange}{Standard Taylor} 
+        & \textcolor{tab-green}{Collapsed (ours)} \\
+        \midrule
+        \# Frobenius prods 
+        & $R$ 
+        & $R$ \\
+        
+        \# Tensor prods 
+        & $R$ 
+        & $R$ \\
+        
+        \# Matrix-vector mults 
+        & $6R + 2$ 
+        & $3R + 5$ \\
+        
+        \# Vector adds 
+        & $2R + 1$ 
+        & $R + 2$ \\
+        
+        \# Activation evals
+        & $I + 2 I^2 +I^3$ 
+        & $I + 2 I^2 +I^3$  \\
+        \midrule
+        \multicolumn{3}{c}{\textbf{Storage Complexity}} \\
+        \midrule
+        \# Vectors stored 
+        & $6R + 3$ 
+        & $3R + 6$ \\
+        \bottomrule
+    \end{tabular}
+    \caption{Theoretical computational and storage complexity comparison between standard Taylor mode and collapsed Taylor mode for a two-layer MLP computing the sum $\sum_{r=1}^R \langle \partial^2 \vf(\vx_0), \vv_r \otimes \vv_r \rangle$.}
+    \label{tab:run-time-storage-comparison}
+\end{table}
+
+
+
+\todo{T: Explain complexity of activations}
+\todo{T: How can we generalize from here?}
+
+\paragraph{Stability}
+We consider the forward error propagation. 
+
+\begin{equation}
+\begin{aligned}
+    &\begin{pmatrix*}[l]
+        \vh_0^\varepsilon
+        =
+        \left\langle\tW_\vh, \vx_0 \right\rangle + \vb_\vh + \varepsilon_{\vh_0}
+        \\
+        \left\{
+        \vh_{1,r}^\varepsilon
+        \right\} 
+        = 
+        \left\{
+        \left\langle \tW_\vh, \vx_{1,r} \right\rangle + \varepsilon_{\vh_{1, r}}
+        \right\}
+    \end{pmatrix*}
+    \\
+    &\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
+    \begin{pmatrix*}[l]
+        \mathbf{tanh}_0^\varepsilon
+        = 
+        \mathbf{tanh}(\vh_0) + \varepsilon_{\mathbf{tanh}_0}
+        \\
+        \left\{
+        \mathbf{tanh}_{1,r}^\varepsilon
+        \right\}
+        = 
+        \left\{
+        \left\langle \partial \mathbf{tanh}(\vh_0), \vh_{1,r} \right\rangle 
+        + \varepsilon_{\mathbf{tanh}_{1, r}} 
+        + \left\langle \partial \mathbf{tanh}(\vh_0), \varepsilon_{\vh_{1, r}}\right \rangle
+        \right\}
+    \end{pmatrix*}  
+    \\
+    &\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
+    \begin{pmatrix*}[l]
+        \vg_0^\varepsilon
+        =
+        \left\langle \tW_\vg, \mathbf{tanh}_0 \right\rangle + \vb_\vg + \varepsilon_{\vg_0}
+        \\
+        \left\{
+        \vg_{1,r}^\varepsilon
+        \right\}
+        = 
+        \left\{
+        \left\langle\tW_\vg, \mathbf{tanh}_{1,r}\right\rangle
+        + 
+        \varepsilon_{\vg_{1, r}}
+        +
+        \left\langle\tW_\vg, 
+        \mathbf{tanh}_{1,r}
+        + \varepsilon_{\mathbf{tanh}_{1, r}} 
+        + \left\langle \partial \mathbf{tanh}(\vh_0), \varepsilon_{\vh_{1, r}}\right \rangle
+        \right\rangle
+        \right\}
+    \end{pmatrix*} 
+\end{aligned}
+\end{equation}
+
+We do not explicitly propagate the error through $\mathbf{tanh}(\vh_0)$ and $\vg(\mathbf{tanh}_0)$, because we focus on the main argument.
+
+Vanilla Taylor mode gives
+\begin{equation}
+\begin{aligned}
+    &\begin{pmatrix*}[l]
+        \left\{\vh_{2,r}^\varepsilon\right\}
+        = 
+        \left\{
+        \left\langle \tW_\vh, \vx_{2,r} \right\rangle
+        +
+        \varepsilon_{h_{2, r}}
+        \right\}  
+    \end{pmatrix*}
+    \\
+    &\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
+    \begin{pmatrix*}[l]
+         \left\{
+         \mathbf{tanh}_{2,r}^\varepsilon
+         \right\}
+         &=
+         \Big\{
+         \left\langle
+         \partial^2 \mathbf{tanh}(\vh_0), \vh_{1, r} \otimes \vh_{1, r}
+         \right\rangle 
+         + \left\langle
+         \partial \mathbf{tanh}(\vh_0), \vh_{2,r}
+         \right \rangle
+         \\
+         &+
+         \left\langle
+         \partial^2 \mathbf{tanh}(\vh_0), \varepsilon_{\vh_{1, r}} \otimes \vh_{1, r}
+         \right\rangle 
+         +
+         \left\langle
+         \partial^2 \mathbf{tanh}(\vh_0), \vh_{1, r} \otimes \varepsilon_{\vh_{1, r}} 
+         \right\rangle 
+         \\
+         &+
+         \left\langle
+         \partial^2 \mathbf{tanh}(\vh_0), 
+         \varepsilon_{\vh_{1, r}} \otimes \varepsilon_{\vh_{1, r}} 
+         \right\rangle    
+         + 
+         \left\langle
+         \partial \mathbf{tanh}(\vh_0), \varepsilon_{\vh_{2,r}}
+         \right \rangle
+         \Big\}
+    \end{pmatrix*}
+    \\
+    &\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
+    \begin{pmatrix*}[l]
+        \left\{
+        \vg_{2,r}^\varepsilon
+        \right\}
+        &=
+        \Big\{
+        \left\langle\tW_\vg ,\mathbf{tanh}_{2,r}\right\rangle
+        + \varepsilon_{\vg_{2, r}}
+        \\
+        &+
+         \Big\langle\tW_\vg ,
+         \left\langle
+         \partial^2 \mathbf{tanh}(\vh_0), \varepsilon_{\vh_{1, r}} \otimes \vh_{1, r}
+         \right\rangle 
+         +
+         \left\langle
+         \partial^2 \mathbf{tanh}(\vh_0), \vh_{1, r} \otimes \varepsilon_{\vh_{1, r}} 
+         \right\rangle 
+         \\
+         &+
+         \left\langle
+         \partial^2 \mathbf{tanh}(\vh_0), 
+         \varepsilon_{\vh_{1, r}} \otimes \varepsilon_{\vh_{1, r}} 
+         \right\rangle    
+         + 
+         \left\langle
+         \partial \mathbf{tanh}(\vh_0), \varepsilon_{\vh_{2,r}}
+         \right \rangle
+         \Big \rangle
+        \Big\}  
+    \end{pmatrix*}
+\end{aligned}
+\end{equation}
+and summing gives 
+\begin{equation}
+    \begin{aligned}
+        \displaystyle \sum_{r=1}^R
+        \vg_{2,r}^\varepsilon
+        &=
+        \displaystyle\sum_{r=1}^R
+        \Big(
+        \left\langle\tW_\vg ,\mathbf{tanh}_{2,r}\right\rangle
+        + \varepsilon_{\vg_{2, r}}
+        \\
+        &+
+         \Big\langle\tW_\vg ,
+         \left\langle
+         \partial^2 \mathbf{tanh}(\vh_0), \varepsilon_{\vh_{1, r}} \otimes \vh_{1, r}
+         \right\rangle 
+         +
+         \left\langle
+         \partial^2 \mathbf{tanh}(\vh_0), \vh_{1, r} \otimes \varepsilon_{\vh_{1, r}} 
+         \right\rangle 
+         \\
+         &+
+         \left\langle
+         \partial^2 \mathbf{tanh}(\vh_0), 
+         \varepsilon_{\vh_{1, r}} \otimes \varepsilon_{\vh_{1, r}} 
+         \right\rangle    
+         + 
+         \left\langle
+         \partial \mathbf{tanh}(\vh_0), \varepsilon_{\vh_{2,r}}
+         \right \rangle
+         \Big \rangle
+         \Big)
+    \end{aligned}
+\end{equation}
+Collapsed Taylor mode gives
+\begin{equation}
+\begin{aligned}
+    &\begin{pmatrix*}[l]
+      \left(
+      \displaystyle\sum_{r=1}^R \vh_{2,r}
+      \right)^\varepsilon
+      = 
+      \left\langle \tW_\vh, \displaystyle  \sum_{r=1}^R\vx_{2,r} \right\rangle 
+      + \varepsilon_{\sum_r \vh_{2, r}}
+    \end{pmatrix*}
+   \\
+   \overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
+   &\begin{pmatrix*}[l]
+        \left(
+        \displaystyle\sum_{r=1}^R\mathbf{tanh}_{2,r}
+        \right)^\varepsilon
+        &= \displaystyle \sum_{r=1}^R
+        \left\langle 
+        \partial^2 \mathbf{tanh}(\vh_0),  
+        \vh_{1, r} \otimes \vh_{1, r}
+        \right\rangle
+        + 
+        \left\langle
+        \partial \mathbf{tanh}(\vh_0),
+        \sum_{r=1}^R \vh_{2,r} 
+        \right\rangle
+        \\
+        &+ 
+        \varepsilon_{\sum_r \mathbf{tanh}_{2, r}}
+        + 
+        \left\langle
+         \partial \mathbf{tanh}(\vh_0), \varepsilon_{\sum_r \vh_{2,r}}
+         \right \rangle
+        \\
+        &+
+        \displaystyle\sum_{r=1}^R \Big(
+         \left\langle
+         \partial^2 \mathbf{tanh}(\vh_0), \varepsilon_{\vh_{1, r}} \otimes \vh_{1, r}
+         \right\rangle
+         +
+         \left\langle
+         \partial^2 \mathbf{tanh}(\vh_0), \vh_{1, r} \otimes \varepsilon_{\vh_{1, r}} 
+         \right\rangle 
+         \\
+         &+
+         \left\langle
+         \partial^2 \mathbf{tanh}(\vh_0), 
+         \varepsilon_{\vh_{1, r}} \otimes \varepsilon_{\vh_{1, r}} 
+         \right\rangle    
+         \Big)
+   \end{pmatrix*}
+   \\
+   \overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
+   &\begin{pmatrix*}[l]
+        \left(
+        \displaystyle\sum_{r=1}^R\vg_{2,r}
+        \right)^\varepsilon
+        &= \left\langle\tW_\vg, \sum_{r=1}^R\mathbf{tanh}_{2,r}\right\rangle + \varepsilon_{\sum_r \vg_{2, r}}
+        \\
+        &+ 
+        \Big\langle \tW_g,  \varepsilon_{\sum_r \mathbf{tanh}_{2, r}}
+        + 
+        \left\langle
+         \partial \mathbf{tanh}(\vh_0), \varepsilon_{\sum_r \vh_{2,r}}
+         \right \rangle
+        \\
+        &+
+        \displaystyle\sum_{r=1}^R \Big(
+         \left\langle
+         \partial^2 \mathbf{tanh}(\vh_0), \varepsilon_{\vh_{1, r}} \otimes \vh_{1, r}
+         \right\rangle
+         +
+         \left\langle
+         \partial^2 \mathbf{tanh}(\vh_0), \vh_{1, r} \otimes \varepsilon_{\vh_{1, r}} 
+         \right\rangle 
+         \\
+         &+
+         \left\langle
+         \partial^2 \mathbf{tanh}(\vh_0), 
+         \varepsilon_{\vh_{1, r}} \otimes \varepsilon_{\vh_{1, r}} 
+         \right\rangle
+         \Big \rangle
+   \end{pmatrix*}.
+\end{aligned}
+\end{equation}

@@ -2,7 +2,7 @@
 
 from typing import Callable
 
-from torch import Tensor, eye, randn, zeros
+from torch import Tensor, arange, eye, randn, zeros
 from torch.nn import Module
 
 import jet
@@ -24,6 +24,7 @@ class Laplacian(Module):
         f: Callable[[Tensor], Tensor],
         dummy_x: Tensor,
         randomization: tuple[str, int] | None = None,
+        weighting: tuple[Callable[[Tensor, Tensor], Tensor], int] | None = None,
     ):
         """Initialize the Laplacian module.
 
@@ -37,6 +38,14 @@ class Laplacian(Module):
                 be computed using Monte-Carlo sampling. The first element is the
                 distribution type (e.g., 'normal', 'rademacher'), and the second is the
                 number of samples to use.
+            weighting: A tuple specifying how the second-order derivatives should be
+                weighted. This is described by a coefficient tensor C(x) of shape
+                `[*D, *D]`. The first entry is a function (x, V) ↦ V @ S(x).T that
+                applies the symmetric factorization S(x) of the weights
+                C(x) = S(x) @ S(x).T at the input x to the matrix V. S(x) has shape
+                `[*D, rank_C]` while V is `[K, rank_C]` with arbitrary `K`. The second
+                entry specifies `rank_C`. If `None`, then the weightings correspond to
+                the identity matrix (i.e. computing the standard Laplacian).
         """
         super().__init__()
 
@@ -45,6 +54,10 @@ class Laplacian(Module):
         self.in_shape = dummy_x.shape
         self.in_meta = {"dtype": dummy_x.dtype, "device": dummy_x.device}
         self.in_dim = dummy_x.numel()
+
+        self.apply_weightings, self.rank_weightings = (
+            (None, self.in_dim) if weighting is None else weighting
+        )
 
         # Optional: Use randomization instead of deterministic computation
         if randomization is not None:
@@ -61,7 +74,9 @@ class Laplacian(Module):
         self.randomization = randomization
 
         jet_f = jet.jet(f, 2)
-        self.num_jets = self.in_shape.numel() if randomization is None else num_samples
+        self.num_jets = (
+            self.rank_weightings if randomization is None else self.randomization[1]
+        )
         self.jet_f = traceable_vmap(jet_f, self.num_jets)
 
     def forward(self, x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
@@ -96,8 +111,17 @@ class Laplacian(Module):
         Returns:
             The first Taylor coefficient for computing the Laplacian.
         """
+        shape = self.num_jets, self.rank_weightings
         if self.randomization is None:
-            return eye(self.in_dim, **self.in_meta).reshape(self.in_dim, *self.in_shape)
+            V = zeros(*shape, **self.in_meta)
+            idx = arange(self.rank_weightings, device=self.in_meta["device"])
+            V[idx, idx] = 1.0
         else:
             (distribution, _) = self.randomization
-            return jet.utils.sample(x, distribution, (self.num_jets, *self.in_shape))
+            V = jet.utils.sample(x, distribution, shape)
+
+        return (
+            V.reshape(self.num_jets, *self.in_shape)
+            if self.apply_weightings is None
+            else self.apply_weightings(x, V)
+        )

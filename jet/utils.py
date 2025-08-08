@@ -5,7 +5,7 @@ from inspect import signature
 from math import factorial, prod
 from typing import Any, Callable
 
-from torch import Tensor, device, dtype, empty
+from torch import Tensor, device, dtype, empty, randn
 from torch.fx import GraphModule, Node
 from torch.nn import Module
 
@@ -108,6 +108,21 @@ def rademacher(*shape: int, dtype: dtype | None = None, device: device | None = 
         .mul_(2)
         .sub_(1)
     )
+
+
+def sample(x_meta: Tensor, distribution: str, shape: tuple[int, ...]) -> Tensor:
+    """Sample a random tensor with the same dtype and device as a given tensor.
+
+    Args:
+        x_meta: Tensor whose dtype and device are to be matched.
+        distribution: Distribution to sample from. Supported: "normal", "rademacher".
+        shape: Shape of the output tensor.
+
+    Returns:
+        Sampled tensor.
+    """
+    sample_func = {"normal": randn, "rademacher": rademacher}[distribution]
+    return sample_func(*shape, dtype=x_meta.dtype, device=x_meta.device)
 
 
 def recursive_getattr(obj: Any, attr: str) -> Any:

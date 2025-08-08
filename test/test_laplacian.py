@@ -10,9 +10,9 @@ from torch.func import hessian
 from torch.linalg import norm
 from torch.nn import Linear, Sequential, Tanh
 
-from jet.laplacian import Laplacian, RandomizedLaplacian
+from jet.laplacian import Laplacian
 
-DISTRIBUTIONS = RandomizedLaplacian.SUPPORTED_DISTRIBUTIONS
+DISTRIBUTIONS = Laplacian.SUPPORTED_DISTRIBUTIONS
 DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]
 
 # make generation of test cases deterministic
@@ -27,21 +27,9 @@ LAPLACIAN_CASES = [
         "shape": (5,),
         "id": "two-layer-tanh-mlp",
     },
-    # 5d tanh-activated two-layer MLP with batched input
-    {
-        "f": Sequential(
-            Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
-        ),
-        "shape": (10, 5),
-        "is_batched": True,
-        "id": "batched-two-layer-tanh-mlp",
-    },
     # 3d sigmoid(sigmoid) function
     {"f": lambda x: sigmoid(sigmoid(x)), "shape": (3,), "id": "sigmoid-sigmoid"},
 ]
-# set the `is_batched` flag for all cases
-for config in LAPLACIAN_CASES:
-    config["is_batched"] = config.get("is_batched", False)
 
 LAPLACIAN_IDS = [config["id"] for config in LAPLACIAN_CASES]
 
@@ -77,23 +65,23 @@ def test_Laplacian(config: dict[str, Any]):
     Args:
         config: Configuration dictionary of the test case.
     """
-    f, x, _, is_batched = setup_case(config)
+    f, x, _, _ = setup_case({**config, "is_batched": None})
 
     # reference: Using PyTorch
     lap_rev = laplacian(f, x)
 
     # Using a manually-vmapped jet
-    _, _, lap_mod = Laplacian(f, x, is_batched)(x)
+    _, _, lap_mod = Laplacian(f, x)(x)
     assert lap_rev.allclose(lap_mod), "Functorch and jet Laplacians do not match."
 
 
 @mark.parametrize("distribution", DISTRIBUTIONS, ids=DISTRIBUTION_IDS)
 @mark.parametrize("config", LAPLACIAN_CASES, ids=LAPLACIAN_IDS)
-def test_RandomizedLaplacian(
+def test_Laplacian_randomization(
     config: dict[str, Any],
     distribution: str,
-    max_num_chunks: int = 500,
-    chunk_size: int = 1_024,
+    max_num_chunks: int = 100,
+    chunk_size: int = 256,
     target_rel_error: float = 1e-2,
 ):
     """Test convergence of the Laplacian's Monte-Carlo estimator.
@@ -105,7 +93,7 @@ def test_RandomizedLaplacian(
         chunk_size: Number of samples per chunk. Default: `1_024`.
         target_rel_error: Target relative error for convergence. Default: `1e-2`.
     """
-    f, x, _, is_batched = setup_case(config)
+    f, x, _, _ = setup_case({**config, "is_batched": None})
 
     # reference: Using PyTorch
     lap = laplacian(f, x)
@@ -113,7 +101,7 @@ def test_RandomizedLaplacian(
     # check convergence of MC estimator
     def sample(idx: int) -> Tensor:
         manual_seed(idx)
-        _, _, lap = RandomizedLaplacian(f, x, is_batched, chunk_size, distribution)(x)
+        _, _, lap = Laplacian(f, x, randomization=(distribution, chunk_size))(x)
         return lap
 
     converged = _check_mc_convergence(

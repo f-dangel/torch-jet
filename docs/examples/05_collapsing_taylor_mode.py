@@ -1,4 +1,4 @@
-"""# Computing Laplacians.
+"""# Collapsing Taylor Mode AD.
 
 This example demonstrates how to use Taylor mode to compute the Laplacian, a popular
 differential operator that shows up in various applications. Our goal is to go from
@@ -14,6 +14,8 @@ from typing import Callable
 import matplotlib.pyplot as plt
 from torch import Tensor, eye, manual_seed, rand, stack, vmap, zeros, zeros_like
 from torch.func import hessian
+from torch.fx import GraphModule
+from torch.fx.passes.graph_drawer import FxGraphDrawer
 from torch.nn import Linear, Module, Sequential, Tanh
 from tueplots import bundles
 
@@ -31,8 +33,8 @@ _ = manual_seed(0)  # make deterministic
 # Throughout this example, we will consider a vector-to-scalar function $f: \mathbb{R}^D
 # \to \mathbb{R}, \mathbf{x} \mapsto f(\mathbf{x})$, e.g. a neural network that maps a
 # $D$-dimensional input to a single output.
-# The Laplacian $\Delta f(\mathbf{x})$ of $f$ at $\mathbf{x}$ is the sum of pure
-# second-order partial derivatives, i.e. the Hessian trace
+# The Laplacian $\Delta f(\mathbf{x})$ of $f$ at $\mathbf{x}$ is the sum of pure second-
+# order partial derivatives, i.e. the Hessian trace
 # $$
 # \Delta f(\mathbf{x})
 # := \sum_{d=1}^D
@@ -42,7 +44,7 @@ _ = manual_seed(0)  # make deterministic
 # = \mathrm{Tr} \left( \frac{\partial^2 f(\mathbf{x})}{\partial \mathbf{x}^2} \right)\,,
 # $$
 # with $\frac{\partial^2 f(\mathbf{x})}{\partial \mathbf{x}^2} \in
-# \mathbb{R}^{D \times D}$ being the Hessian of $f$ at $\mathbf{x}$.
+# \mathbb{R}^{D \times D}$ the Hessian of $f$ at $\mathbf{x}$.
 #
 # In the following we compute the Laplacian of a neural network. Here is the setup:
 
@@ -191,10 +193,17 @@ else:
 #
 # We are already quite close to a high performance Laplacian implementation.
 # Now comes the more complicated part, which is hard to understand without reading our
-# paper. We also prepared a [tutorial](../05_collapsing_taylor_mode) that
-# gives a high-level intuition and some aspects of the implementation.
+# paper. The idea is that instead of computing 2-jets along the $D$ directions, then
+# summing their result, we can rewrite the computational graph to directly propagate
+# the summed second-order Taylor coefficients. We call this "collapsing" the Taylor
+# mode.
 #
-# To be able to collapse Tayle mode, the Laplacian has to be wraped in a `torch.nn.Module`:
+# To give a high-level intuition how this works, we will look at the computational
+# graph for computing a Laplacian. For that, we will write a `torch.nn.Module` which
+# performs the Laplacian computation in its `forward` pass. We can then trace this
+# module and look at its graph.
+#
+# Here is the module:
 
 
 class Laplacian(Module):
@@ -237,25 +246,126 @@ if mod_laplacian.allclose(hessian_trace_laplacian):
 else:
     raise ValueError("Taylor mode Laplacian via module does not match Hessian trace!")
 
+# %%
+#
+# To visualize graphs, we define the following helper:
+
+
+def visualize_graph(mod: GraphModule, savefile: str, name: str = ""):
+    """Visualize the compute graph of a module and store it as .png.
+
+    Args:
+        mod: The module whose compute graph to visualize.
+        savefile: The path to the file where the graph should be saved.
+        name: A name for the graph, used in the visualization.
+    """
+    drawer = FxGraphDrawer(mod, name)
+    dot_graph = drawer.get_dot_graph()
+    with open(savefile, "wb") as f:
+        f.write(dot_graph.create_png())
+
 
 # %%
-# Now we will collapse the Taylor mode of the traced Laplacian.
-# and compare it with the nested computation (i.e., `hessian`) and the vanilla
-# Taylor mode (i.e., `jet` with standard graph optimizations).
+#
+# Now, let's look at three different graphs which will become clear in a moment
+# (we evaluated approaches 2 and 3 in our paper).
 
-# Laplacian via trace-of-hessian
+# Graph 1: Simply capture the module that computes the Laplacian
 mod_traced = capture_graph(mod)
+visualize_graph(mod_traced, "02_laplacian_module.png")
 assert hessian_trace_laplacian.allclose(mod_traced(x))
 
-# Laplacian via 2-jet's and basic graph simplifications
+# Graph 2: Simplify the module by removing replicate computations
 mod_standard = simplify(mod_traced, pull_sum_vmapped=False)
+visualize_graph(mod_standard, "02_laplacian_standard.png")
 assert hessian_trace_laplacian.allclose(mod_standard(x))
 
-# Laplacian via 2-jet's with basic graph simplifications and collapsing
+# Graph 3: Simplify the module by removing replicate computations and pulling up the
+# summations to directly propagate sums of Taylor coefficients
 mod_collapsed = simplify(mod_traced, pull_sum_vmapped=True)
+visualize_graph(mod_collapsed, "02_laplacian_collapsed.png")
 assert hessian_trace_laplacian.allclose(mod_collapsed(x))
 
 # %%
+#
+# There is quite some stuff going on here. Let's try to break down the essential
+# differences between these three graphs.
+#
+# First, we can look at the graph sizes:
+
+print(f"1) Captured: {len(mod_traced.graph.nodes)} nodes")
+print(f"2) Standard simplifications: {len(mod_standard.graph.nodes)} nodes")
+print(f"3) Collapsing simplifications: {len(mod_collapsed.graph.nodes)} nodes")
+
+# %%
+#
+# We can see that the number of nodes decreases, and this is a first performance
+# indicator.
+
+# %%
+#
+# Next, let's have a look at the computation graphs. Don't try to understand all the
+# details here, instead let's focus on two kinds of operations:
+# `jet.utils.replicate` (dark orange), and `jet.utils.sum_vmapped` (brown,
+# second-to-last node in Graphs 1 and 2).
+#
+# | Captured | Standard simplifications | Collapsing simplifications |
+# |:--------:|:------------------------:|:---------------------------|
+# | ![](02_laplacian_module.png) | ![](02_laplacian_standard.png) | ![](02_laplacian_collapsed.png) |
+#
+# - Graph 1 (**Captured**) contains a `jet.utils.replicate` node at the beginning, which
+#   takes `x` and copies it $D$ times for each 2-jet we want to compute. This leads to
+#   repeated computations: e.g. if we compute `sin(replicate(x))`, we might instead
+#   compute `replicate(sin(x))`. We can remove this redundancy and thereby share
+#   information that depends on `x` and is used by all jets by 'pushing' the `replicate`
+#   operation down the graph.
+#
+# - Graph 2 (**Standard simplifications**) does exactly that: If you look for the dark
+#   orange nodes that represent `replicate` operations, you can see that they moved down
+#   the graph. To carry out this simplification, you used our `simplify` function which
+#   carries out graph rewrites based on mathematical properties of `replicate`.
+#
+# - Graph 3 (**Collapsing simplifications**) goes one step further than Graph 2 and
+#   performs the 'collapsing' of Taylor mode we present in our paper.
+#
+#     Let's note one more thing: Graphs 1 and 2 both have a `jet.utils.sum_vmapped`
+#     node at the end, which sums the Hessian diagonal elements to obtain the Laplacian.
+#     If we take an even closer look, we see that the input to this summation is the
+#     output of a linear operation, something like
+#     ```python
+#     laplacian = sum_vmapped(linear(Z, weight)) # standard: D matvecs
+#     ```
+#     *The crucial insight from our paper is that the sum can be propagated up the
+#     graph!* For our example, we can first sum, then apply the linear operation, as
+#     this is mathematically equivalent, but cheaper:
+#     ```python
+#     laplacian = linear(sum_vmapped(Z), weight) # collapsed: 1 matvec
+#     ```
+#     In the graph perspective, we have 'pulled' the `sum_vmapped` node up the graph.
+#     We can repeat this procedure until we run out of possible simplifications.
+#     Effectively, this 'collapses' the Taylor coefficients we propagate forward;
+#     hence the name 'collapsed Taylor mode'. The resulting graph is Graph 3, which
+#     used `simplify` and enabled its `pull_sum_vmapped` option. As a neat side effect,
+#     note how many of the `replicate` nodes cancel out with the up-propagated sums,
+#     and Graph 3 has less `replicate` nodes than Graph 2.
+#
+# We can verify successful collapsing by looking at the tensor constants of the graph
+# which represent the forward-propagated coefficients:
+
+print("2) Standard simplifications tensor constants:")
+for name, buf in mod_standard.named_buffers():
+    print(f"\t{name}: {buf.shape}")
+
+print("3) Collapsing simplifications tensor constants:")
+for name, buf in mod_collapsed.named_buffers():
+    print(f"\t{name}: {buf.shape}")
+
+# %%
+#
+# We see that the collapsed Taylor mode graph has a tensor constant whose shape
+# is smaller than the one of the standard simplifications graph. This reflects that,
+# instead of propagating $D$ second-order Taylor coefficients (shape `[D, D]`),
+# collapsed Taylor mode directly propagates their sum (shape `[D]`).
 #
 ### Batching
 #
@@ -338,14 +448,24 @@ def measure_runtime(f: Callable, num_repeats: int = 50) -> float:
     return min(runtimes)
 
 
-# %%
-#
-# Here is a quick summary of the performance results in a single diagram:
-
-
 ms_nested = 10**3 * measure_runtime(lambda: compute_batched_nested_laplacian(X))
 ms_standard = 10**3 * measure_runtime(lambda: compute_batched_standard_laplacian(X))
 ms_collapsed = 10**3 * measure_runtime(lambda: compute_batched_collapsed_laplacian(X))
+
+print(f"Nested 1st-order AD: {ms_nested:.2f}ms ({ms_nested / ms_nested:.2f}x)")
+print(f"Standard Taylor: {ms_standard:.2f}ms ({ms_standard / ms_nested:.2f}x)")
+print(f"Collapsed Taylor: {ms_collapsed:.2f}ms ({ms_collapsed / ms_nested:.2f}x)")
+
+# %%
+#
+# We see that collapsed Taylor mode is faster than standard Taylor mode.
+# Of course, we use a relatively small neural net and a CPU in this example, but our
+# paper also confirms this performance benefits on bigger nets and on GPU (also in
+# terms of memory consumption). Intuitively, this improvement over standard Taylor mode
+# also makes sense, as the collapsed propagation uses less operations and smaller
+# tensors.
+#
+# Here is a quick summary of the performance results in a single diagram:
 
 methods = ["Nested 1st-order", "Standard Taylor", "Collapsed Taylor"]
 times = [ms_nested, ms_standard, ms_collapsed]
@@ -380,15 +500,4 @@ with plt.rc_context(bundles.neurips2024()):
 
 # %%
 #
-# We see that collapsed Taylor mode is faster than standard Taylor mode.
-# Of course, we use a relatively small neural net and a CPU in this example, but our
-# paper also confirms this performance benefits on bigger nets and on GPU (also in
-# terms of memory consumption). Intuitively, this improvement over standard Taylor mode
-# also makes sense, as the collapsed propagation uses less operations and smaller
-# tensors.
-#
-### Conclusion
-# In this tutorial we showcased the application of collapsed Taylor mode to compute
-# the Laplacian of a simple neural net. If you are interested in further details checkout
-# the indepth Tutorial on [collapsing Taylor mode](../05_collapsing_taylor_mode) or
-# you migh be interested in [creating own operators](../06_how_to_create_operator).
+# That's all for now.

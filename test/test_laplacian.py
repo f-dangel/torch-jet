@@ -1,5 +1,6 @@
 """Test the Laplacian."""
 
+from functools import partial
 from test.test___init__ import setup_case
 from typing import Any, Callable
 
@@ -80,6 +81,30 @@ def laplacian(
     return einsum(H, C, equation)
 
 
+def get_weighting_and_coefficients(
+    x: Tensor, weights: str | None, randomization: tuple[str, int] | None = None
+) -> tuple[tuple[Callable[[Tensor, Tensor], int]], Tensor] | tuple[None, None]:
+    # determine the Laplacian's weighting
+    if weights == "diagonal_increments":
+        # Use a synthetic coefficient tensor C(x) with diagonal increments
+        C = C_func_diagonal_increments(x)
+        fx_info = {
+            "in_shape": x.shape,
+            "device": x.device,
+            "dtype": x.dtype,
+            "rank_C": x.numel(),
+            "V_rows": x.numel() if randomization is None else randomization[1],
+        }
+        apply_weighting = partial(apply_S_func_diagonal_increments, fx_info=fx_info)
+        rank_weighting = x.numel()
+        weighting = (apply_weighting, rank_weighting)
+    else:
+        assert weights is None
+        weighting = C = None
+
+    return weighting, C
+
+
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize("config", LAPLACIAN_CASES, ids=LAPLACIAN_IDS)
 def test_Laplacian(config: dict[str, Any], weights: str | None):
@@ -92,17 +117,7 @@ def test_Laplacian(config: dict[str, Any], weights: str | None):
             used that has diagonal elements that are increments of 1 starting from 1.
     """
     f, x, _, _ = setup_case({**config, "is_batched": None})
-
-    # determine the Laplacian's weighting
-    if weights == "diagonal_increments":
-        # Use a synthetic coefficient tensor C(x) with diagonal increments
-        C = C_func_diagonal_increments(x)
-        apply_weighting = apply_S_func_diagonal_increments
-        rank_weighting = x.numel()
-        weighting = (apply_weighting, rank_weighting)
-    else:
-        assert weights is None
-        weighting = C = None
+    weighting, C = get_weighting_and_coefficients(x, weights)
 
     # reference: Using PyTorch
     lap_rev = laplacian(f, x, C=C)
@@ -136,24 +151,15 @@ def test_Laplacian_randomization(
         target_rel_error: Target relative error for convergence. Default: `1e-2`.
     """
     f, x, _, _ = setup_case({**config, "is_batched": None})
-
-    # determine the Laplacian's weighting
-    if weights == "diagonal_increments":
-        # Use a synthetic coefficient tensor C(x) with diagonal increments
-        C = C_func_diagonal_increments(x)
-        apply_weighting = apply_S_func_diagonal_increments
-        rank_weighting = x.numel()
-        weighting = (apply_weighting, rank_weighting)
-    else:
-        assert weights is None
-        weighting = C = None
+    randomization = (distribution, chunk_size)
+    weighting, C = get_weighting_and_coefficients(
+        x, weights, randomization=randomization
+    )
 
     # reference: Using PyTorch
     lap = laplacian(f, x, C=C)
 
     # check convergence of MC estimator
-    randomization = (distribution, chunk_size)
-
     def sample(idx: int) -> Tensor:
         manual_seed(idx)
         _, _, lap = Laplacian(f, x, randomization=randomization, weighting=weighting)(x)

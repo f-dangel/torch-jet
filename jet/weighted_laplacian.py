@@ -1,10 +1,12 @@
 """Definitions of synthetic coefficient functions for illustration purposes."""
 
 from torch import Tensor, arange, einsum, zeros
-from torch.nn.functional import pad
+from torch.nn.functional import linear, pad
+
+import jet.utils
 
 
-def apply_S_func_diagonal_increments(x: Tensor, V: Tensor) -> Tensor:
+def apply_S_func_diagonal_increments(x: Tensor, V: Tensor, fx_info: dict) -> Tensor:
     """Apply a synthetic coefficient factor S(x).T for weighting the Laplacian to V.
 
     The factor S(x) relates to the coefficient tensor C(x) via C(x) = S(x) @ S(x).T.
@@ -13,21 +15,25 @@ def apply_S_func_diagonal_increments(x: Tensor, V: Tensor) -> Tensor:
         x: Argument at which the weighted Laplacian is evaluated.
         V: The matrix onto which S(x) is applied. Has shape `(K, rank_C)` where `K`
             is the number of columns.
+        fx_info: A dictionary that contains all information `torch.fx` cannot infer
+            while tracing. This serves to make the function trace-able.
 
     Returns:
         The coefficient factor S(x).T applied to V. Has shape `(K, *x.shape)`.
     """
-    rank_C = x.numel()
-    S = (arange(rank_C, device=x.device, dtype=x.dtype) + 1).sqrt()
-    SV = einsum("c,kc->kc", S, V)
+    rank_C = fx_info["rank_C"]
+    S = (arange(rank_C, device=fx_info["device"], dtype=fx_info["dtype"]) + 1).sqrt()
+    S = jet.utils.replicate(S, fx_info["V_rows"])
+    print(S.shape, V.shape)
+    SV = S * V
 
     # if rank_C < D, we have to add zero padding to satisfy the output dimension
-    D = x.numel()
+    D = fx_info["in_shape"].numel()
     if rank_C < D:
         padding = (0, 0, 0, D - rank_C)
         SV = pad(SV, padding)
 
-    return SV.reshape(V.shape[0], *x.shape)
+    return SV.reshape(fx_info["V_rows"], *fx_info["in_shape"])
 
 
 def C_func_diagonal_increments(x: Tensor) -> Tensor:

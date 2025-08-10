@@ -1,6 +1,5 @@
 """Test simplification mechanism on compute graphs of the (Bi-)Laplacian."""
 
-from functools import partial
 from test.test___init__ import compare_jet_results, setup_case
 from test.test_bilaplacian import bilaplacian
 from test.test_laplacian import (
@@ -8,7 +7,8 @@ from test.test_laplacian import (
     DISTRIBUTIONS,
     WEIGHT_IDS,
     WEIGHTS,
-    get_weighting_and_coefficients,
+    get_coefficients,
+    get_weighting,
     laplacian,
 )
 from test.utils import report_nonclose
@@ -26,10 +26,6 @@ from jet.rules import is_replicate
 from jet.simplify import common_subexpression_elimination, simplify
 from jet.tracing import capture_graph
 from jet.utils import integer_partitions, recursive_getattr
-from jet.weighted_laplacian import (
-    C_func_diagonal_increments,
-    apply_S_func_diagonal_increments,
-)
 
 # make generation of test cases deterministic
 manual_seed(0)
@@ -227,10 +223,8 @@ def test_simplify_laplacian(
     randomization = None if distribution is None else (distribution, num_samples)
 
     f, x, _, _ = setup_case({**config, "is_batched": None})
-    weighting, C = get_weighting_and_coefficients(
-        x, weights, randomization=randomization
-    )
 
+    weighting = get_weighting(x, weights, randomization=randomization)
     mod = Laplacian(f, x, randomization=randomization, weighting=weighting)
 
     # we have to set the random seed to make sure the same random vectors are used
@@ -239,7 +233,8 @@ def test_simplify_laplacian(
     mod_out = mod(x)
 
     if randomization is None:
-        lap = laplacian(f, x, C=C)
+        C = get_coefficients(x, weights)
+        lap = laplacian(f, x, C)
         assert lap.allclose(mod_out[2])
         print("Exact Laplacian in functorch and jet match.")
 

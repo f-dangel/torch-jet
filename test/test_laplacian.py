@@ -42,18 +42,13 @@ LAPLACIAN_CASES = [
 LAPLACIAN_IDS = [config["id"] for config in LAPLACIAN_CASES]
 
 
-def laplacian(
-    f: Callable[[Tensor], Tensor],
-    x: Tensor,
-    C: Tensor | None = None,
-) -> Tensor:
+def laplacian(f: Callable[[Tensor], Tensor], x: Tensor, C: Tensor) -> Tensor:
     """Compute the (weighted) Laplacian of a tensor-to-tensor function.
 
     Args:
         f: The function to compute the Laplacian of.
         x: The point at which to compute the Laplacian.
-        C: Optional coefficient tensor C(x) for weighting the Laplacian.
-            If not provided, the Laplacian is unweighted. Has shape
+        C: Coefficient tensor C(x) for weighting the Laplacian. Has shape
             `(*x.shape, *x.shape)`.
 
     Returns:
@@ -63,10 +58,7 @@ def laplacian(
     # compute the Hessian
     H = hessian(f)(x)
 
-    # apply the weighting
-    C = eye(x.numel(), x.numel(), device=x.device, dtype=x.dtype) if C is None else C
-
-    # make sure it has the correct shape
+    # check the coefficient tensor
     C_shape = (*x.shape, *x.shape)
     if C.shape != C_shape:
         raise ValueError(
@@ -81,13 +73,11 @@ def laplacian(
     return einsum(H, C, equation)
 
 
-def get_weighting_and_coefficients(
+def get_weighting(
     x: Tensor, weights: str | None, randomization: tuple[str, int] | None = None
-) -> tuple[tuple[Callable[[Tensor, Tensor], int]], Tensor] | tuple[None, None]:
+) -> tuple[Callable[[Tensor, Tensor], Tensor], int] | None:
     # determine the Laplacian's weighting
     if weights == "diagonal_increments":
-        # Use a synthetic coefficient tensor C(x) with diagonal increments
-        C = C_func_diagonal_increments(x)
         fx_info = {
             "in_shape": x.shape,
             "device": x.device,
@@ -97,12 +87,20 @@ def get_weighting_and_coefficients(
         }
         apply_weighting = partial(apply_S_func_diagonal_increments, fx_info=fx_info)
         rank_weighting = x.numel()
-        weighting = (apply_weighting, rank_weighting)
+        return apply_weighting, rank_weighting
     else:
         assert weights is None
-        weighting = C = None
+        return None
 
-    return weighting, C
+
+def get_coefficients(x: Tensor, weights: str | None) -> Tensor:
+    if weights == "diagonal_increments":
+        # Use a synthetic coefficient tensor C(x) with diagonal increments
+        return C_func_diagonal_increments(x)
+    assert weights is None
+    return eye(x.numel(), x.numel(), device=x.device, dtype=x.dtype).reshape(
+        *x.shape, *x.shape
+    )
 
 
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
@@ -117,12 +115,13 @@ def test_Laplacian(config: dict[str, Any], weights: str | None):
             used that has diagonal elements that are increments of 1 starting from 1.
     """
     f, x, _, _ = setup_case({**config, "is_batched": None})
-    weighting, C = get_weighting_and_coefficients(x, weights)
 
     # reference: Using PyTorch
-    lap_rev = laplacian(f, x, C=C)
+    C = get_coefficients(x, weights)
+    lap_rev = laplacian(f, x, C)
 
     # Using a manually-vmapped jet
+    weighting = get_weighting(x, weights)
     _, _, lap_mod = Laplacian(f, x, weighting=weighting)(x)
     assert lap_rev.allclose(lap_mod), "Functorch and jet Laplacians do not match."
 
@@ -152,14 +151,14 @@ def test_Laplacian_randomization(
     """
     f, x, _, _ = setup_case({**config, "is_batched": None})
     randomization = (distribution, chunk_size)
-    weighting, C = get_weighting_and_coefficients(
-        x, weights, randomization=randomization
-    )
 
     # reference: Using PyTorch
-    lap = laplacian(f, x, C=C)
+    C = get_coefficients(x, weights)
+    lap = laplacian(f, x, C)
 
     # check convergence of MC estimator
+    weighting = get_weighting(x, weights, randomization=randomization)
+
     def sample(idx: int) -> Tensor:
         manual_seed(idx)
         _, _, lap = Laplacian(f, x, randomization=randomization, weighting=weighting)(x)

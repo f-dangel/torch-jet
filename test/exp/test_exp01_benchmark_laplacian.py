@@ -3,12 +3,18 @@
 from functools import partial
 from test.test___init__ import report_nonclose, setup_case
 from test.test_bilaplacian import bilaplacian
-from test.test_laplacian import _check_mc_convergence, laplacian
-from test.test_weighted_laplacian import weighted_laplacian
+from test.test_laplacian import (
+    WEIGHT_IDS,
+    WEIGHTS,
+    _check_mc_convergence,
+    get_coefficients,
+    get_weighting,
+    laplacian,
+)
 from typing import Any
 
 from pytest import mark
-from torch import Tensor, manual_seed, sigmoid
+from torch import Tensor, manual_seed, sigmoid, stack, vmap
 from torch.nn import Linear, Sequential, Tanh
 
 from jet.bilaplacian import RandomizedBilaplacian
@@ -21,15 +27,14 @@ from jet.exp.exp01_benchmark_laplacian.execute import (
     randomized_weighted_laplacian_function,
     weighted_laplacian_function,
 )
-from jet.laplacian import RandomizedLaplacian
+from jet.laplacian import Laplacian
 from jet.weighted_laplacian import (
     C_func_diagonal_increments,
-    RandomizedWeightedLaplacian,
 )
 
 STRATEGY_IDS = [f"strategy={s}" for s in SUPPORTED_STRATEGIES]
 LAPLACIAN_DISTRIBUTION_IDS = [
-    f"distribution={d}" for d in RandomizedLaplacian.SUPPORTED_DISTRIBUTIONS
+    f"distribution={d}" for d in Laplacian.SUPPORTED_DISTRIBUTIONS
 ]
 BILAPLACIAN_DISTRIBUTION_IDS = [
     f"distribution={d}" for d in RandomizedBilaplacian.SUPPORTED_DISTRIBUTIONS
@@ -66,26 +71,40 @@ for config in EXP01_CASES:
 EXP01_IDS = [config["id"] for config in EXP01_CASES]
 
 
+@mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
 @mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
-def test_laplacian_functions(config: dict[str, Any], strategy: str):
+def test_laplacian_functions(
+    config: dict[str, Any], strategy: str, weights: str | None
+):
     """Test that the benchmarked Laplacian functions produce the correct result.
 
     Args:
         config: Configuration dictionary of the test case.
         strategy: The strategy to test.
+        weights: The weighting to use for the Laplacian. If `None`, the Laplacian is
+            unweighted. If `diagonal_increments`, a synthetic coefficient tensor is
+            used that has diagonal elements that are increments of 1 starting from 1.
     """
     f, x, _, is_batched = setup_case(config)
-    lap = laplacian(f, x)
-    lap_func = laplacian_function(f, x, is_batched, strategy)()
+
+    C = (
+        vmap(lambda x: get_coefficients(x, weights))(x)
+        if is_batched
+        else get_coefficients(x, weights)
+    )
+    lap_func = lambda x, C: laplacian(f, x, C)
+    lap_func = vmap(lap_func) if is_batched else lap_func
+    lap = lap_func(x, C)
+
+    weighting = get_weighting(x[0] if is_batched else x, weights)
+    lap_func = laplacian_function(f, x, is_batched, strategy, weighting)()
 
     report_nonclose(lap, lap_func)
 
 
 @mark.parametrize(
-    "distribution",
-    RandomizedLaplacian.SUPPORTED_DISTRIBUTIONS,
-    ids=LAPLACIAN_DISTRIBUTION_IDS,
+    "distribution", Laplacian.SUPPORTED_DISTRIBUTIONS, ids=LAPLACIAN_DISTRIBUTION_IDS
 )
 @mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
 def test_randomized_laplacian_functions_identical(
@@ -115,7 +134,7 @@ def test_randomized_laplacian_functions_identical(
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
 @mark.parametrize(
     "distribution",
-    RandomizedLaplacian.SUPPORTED_DISTRIBUTIONS,
+    Laplacian.SUPPORTED_DISTRIBUTIONS,
     ids=LAPLACIAN_DISTRIBUTION_IDS,
 )
 @mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
@@ -154,26 +173,9 @@ def test_randomized_laplacian_functions_converge(
     assert converged, f"MC Laplacian ({strategy}, {distribution}) did not converge."
 
 
-@mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
-@mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
-def test_weighted_laplacian_functions(config: dict[str, Any], strategy: str):
-    """Test that the benchmarked weighted Laplacians produce the correct result.
-
-    Args:
-        config: Configuration dictionary of the test case.
-        strategy: The strategy to test.
-    """
-    f, x, _, is_batched = setup_case(config)
-    C_func = partial(C_func_diagonal_increments, is_batched=is_batched)
-    weighted_lap = weighted_laplacian(f, x, is_batched, C_func)
-    weighted_lap_func = weighted_laplacian_function(f, x, is_batched, strategy)()
-
-    report_nonclose(weighted_lap, weighted_lap_func)
-
-
 @mark.parametrize(
     "distribution",
-    RandomizedWeightedLaplacian.SUPPORTED_DISTRIBUTIONS,
+    Laplacian.SUPPORTED_DISTRIBUTIONS,
     ids=LAPLACIAN_DISTRIBUTION_IDS,
 )
 @mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
@@ -204,7 +206,7 @@ def test_randomized_weighted_laplacian_functions_identical(
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
 @mark.parametrize(
     "distribution",
-    RandomizedWeightedLaplacian.SUPPORTED_DISTRIBUTIONS,
+    Laplacian.SUPPORTED_DISTRIBUTIONS,
     ids=LAPLACIAN_DISTRIBUTION_IDS,
 )
 @mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)

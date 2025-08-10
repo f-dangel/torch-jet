@@ -27,14 +27,10 @@ from torch.nn import Linear, Sequential, Tanh
 
 from jet.bilaplacian import Bilaplacian, RandomizedBilaplacian
 from jet.exp.utils import measure_peak_memory, measure_time, to_string
-from jet.laplacian import Laplacian, RandomizedLaplacian
+from jet.laplacian import Laplacian
 from jet.simplify import simplify
 from jet.utils import rademacher
-from jet.weighted_laplacian import (
-    C_func_diagonal_increments,
-    RandomizedWeightedLaplacian,
-    WeightedLaplacian,
-)
+from jet.weighted_laplacian import C_func_diagonal_increments
 
 HERE = path.abspath(__file__)
 HEREDIR = path.dirname(HERE)
@@ -98,7 +94,11 @@ def hessian_trace_laplacian(
 
 
 def laplacian_function(
-    f: Callable[[Tensor], Tensor], X: Tensor, is_batched: bool, strategy: str
+    f: Callable[[Tensor], Tensor],
+    X: Tensor,
+    is_batched: bool,
+    strategy: str,
+    weighting: tuple[Callable[[Tensor, Tensor], Tensor], int] | None,
 ) -> Callable[[], Tensor]:
     """Construct a function to compute the Laplacian using different strategies.
 
@@ -123,26 +123,25 @@ def laplacian_function(
     Raises:
         ValueError: If the strategy is not supported.
     """
+    # Set up the function that computes the Laplacian on an un-batched datum
+    dummy_X = X[0] if is_batched else X
     if strategy == "hessian_trace":
-        dummy_X = X[0] if is_batched else X
-        laplacian = hessian_trace_laplacian(f, dummy_X)
-
-        if is_batched:
-            laplacian = vmap(laplacian)
-
-        return lambda: laplacian(X)
+        if weighting is None:
+            laplacian = hessian_trace_laplacian(f, dummy_X)
+        else:
+            return weighted_laplacian_function(f, X, is_batched, strategy)
 
     elif strategy in {"jet_naive", "jet_simplified"}:
-        laplacian = Laplacian(f, X, is_batched)
+        lap_mod = Laplacian(f, dummy_X, weighting=weighting)
         pull_sum_vmapped = strategy == "jet_simplified"
-        laplacian = simplify(laplacian, pull_sum_vmapped=pull_sum_vmapped)
-
-        return lambda: laplacian(X)[2]
+        lap_mod = simplify(lap_mod, pull_sum_vmapped=pull_sum_vmapped)
+        laplacian = lambda x: lap_mod(x)[2]
 
     else:
-        raise ValueError(
-            f"Unsupported strategy: {strategy}. Supported: {SUPPORTED_STRATEGIES}."
-        )
+        raise ValueError(f"Unsupported {strategy=}. {SUPPORTED_STRATEGIES=}.")
+
+    laplacian = vmap(laplacian) if is_batched else laplacian
+    return lambda: laplacian(X)
 
 
 def vector_hessian_vector_product(
@@ -282,7 +281,11 @@ def weighted_laplacian_function(
     """
     if strategy == "hessian_trace":
         hess_f = hessian(f)
-        C = C_func_diagonal_increments(X, is_batched)
+        C = (
+            vmap(C_func_diagonal_increments)(X)
+            if is_batched
+            else C_func_diagonal_increments(X)
+        )
 
         # weight with einsum to support Laplacians of functions with non-scalar output
         unbatched = X.ndim - 1 if is_batched else X.ndim

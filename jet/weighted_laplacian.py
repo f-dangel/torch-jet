@@ -1,5 +1,8 @@
 """Definitions of synthetic coefficient functions for illustration purposes."""
 
+from functools import partial
+from typing import Callable
+
 from torch import Tensor, arange, einsum, zeros
 from torch.nn.functional import linear, pad
 
@@ -52,3 +55,23 @@ def C_func_diagonal_increments(x: Tensor) -> Tensor:
     C = C.diag().reshape(*x.shape, *x.shape)
 
     return C
+
+
+def get_weighting(
+    x: Tensor, weights: str | None, randomization: tuple[str, int] | None = None
+) -> tuple[Callable[[Tensor, Tensor], Tensor], int] | None:
+    # determine the Laplacian's weighting
+    if weights == "diagonal_increments":
+        fx_info = {
+            "in_shape": x.shape,
+            "device": x.device,
+            "dtype": x.dtype,
+            "rank_C": x.numel(),
+            "V_rows": x.numel() if randomization is None else randomization[1],
+        }
+        apply_weighting = partial(apply_S_func_diagonal_increments, fx_info=fx_info)
+        rank_weighting = x.numel()
+        return apply_weighting, rank_weighting
+    else:
+        assert weights is None
+        return None

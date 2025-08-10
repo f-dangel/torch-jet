@@ -1,6 +1,5 @@
 """Test the Laplacian."""
 
-from functools import partial
 from test.test___init__ import setup_case
 from typing import Any, Callable
 
@@ -12,10 +11,7 @@ from torch.linalg import norm
 from torch.nn import Linear, Sequential, Tanh
 
 from jet.laplacian import Laplacian
-from jet.weighted_laplacian import (
-    C_func_diagonal_increments,
-    apply_S_func_diagonal_increments,
-)
+from jet.weighted_laplacian import C_func_diagonal_increments
 
 DISTRIBUTIONS = Laplacian.SUPPORTED_DISTRIBUTIONS
 DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]
@@ -73,26 +69,6 @@ def laplacian(f: Callable[[Tensor], Tensor], x: Tensor, C: Tensor) -> Tensor:
     return einsum(H, C, equation)
 
 
-def get_weighting(
-    x: Tensor, weights: str | None, randomization: tuple[str, int] | None = None
-) -> tuple[Callable[[Tensor, Tensor], Tensor], int] | None:
-    # determine the Laplacian's weighting
-    if weights == "diagonal_increments":
-        fx_info = {
-            "in_shape": x.shape,
-            "device": x.device,
-            "dtype": x.dtype,
-            "rank_C": x.numel(),
-            "V_rows": x.numel() if randomization is None else randomization[1],
-        }
-        apply_weighting = partial(apply_S_func_diagonal_increments, fx_info=fx_info)
-        rank_weighting = x.numel()
-        return apply_weighting, rank_weighting
-    else:
-        assert weights is None
-        return None
-
-
 def get_coefficients(x: Tensor, weights: str | None) -> Tensor:
     if weights == "diagonal_increments":
         # Use a synthetic coefficient tensor C(x) with diagonal increments
@@ -118,7 +94,7 @@ def test_Laplacian(config: dict[str, Any], weights: str | None):
 
     # reference: Using PyTorch
     C = get_coefficients(x, weights)
-    lap_rev = laplacian(f, x, C)
+    lap_rev = laplacian(f, x, C=C)
 
     # Using a manually-vmapped jet
     weighting = get_weighting(x, weights)
@@ -154,7 +130,7 @@ def test_Laplacian_randomization(
 
     # reference: Using PyTorch
     C = get_coefficients(x, weights)
-    lap = laplacian(f, x, C)
+    lap = laplacian(f, x, C=C)
 
     # check convergence of MC estimator
     weighting = get_weighting(x, weights, randomization=randomization)

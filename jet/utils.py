@@ -102,11 +102,7 @@ def rademacher(*shape: int, dtype: dtype | None = None, device: device | None = 
         Tensor sampled from Rademacher distribution (+1 and -1 entries).
     """
     return (
-        empty(*shape, dtype=dtype, device=device)
-        .fill_(0.5)
-        .bernoulli_()
-        .mul_(2)
-        .sub_(1)
+        empty(*shape, dtype=dtype, device=device).fill_(0.5).bernoulli().mul_(2).sub_(1)
     )
 
 

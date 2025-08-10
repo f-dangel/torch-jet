@@ -33,7 +33,6 @@ from jet.exp.utils import measure_peak_memory, measure_time, to_string
 from jet.laplacian import Laplacian
 from jet.simplify import simplify
 from jet.utils import sample
-from jet.weighted_laplacian import C_func_diagonal_increments, get_weighting
 
 HERE = path.abspath(__file__)
 HEREDIR = path.dirname(HERE)

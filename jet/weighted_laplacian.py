@@ -3,8 +3,8 @@
 from functools import partial
 from typing import Callable
 
-from torch import Tensor, arange, einsum, zeros
-from torch.nn.functional import linear, pad
+from torch import Tensor, arange, zeros
+from torch.nn.functional import pad
 
 import jet.utils
 

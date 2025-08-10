@@ -11,7 +11,7 @@ from torch.linalg import norm
 from torch.nn import Linear, Sequential, Tanh
 
 from jet.laplacian import Laplacian
-from jet.weighted_laplacian import C_func_diagonal_increments
+from jet.weighted_laplacian import C_func_diagonal_increments, get_weighting
 
 DISTRIBUTIONS = Laplacian.SUPPORTED_DISTRIBUTIONS
 DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]

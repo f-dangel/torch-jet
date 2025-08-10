@@ -1,6 +1,5 @@
 """Tests for exp01 (Laplacian benchmark)."""
 
-from functools import partial
 from test.test___init__ import report_nonclose, setup_case
 from test.test_bilaplacian import bilaplacian
 from test.test_laplacian import (
@@ -22,13 +21,9 @@ from jet.exp.exp01_benchmark_laplacian.execute import (
     bilaplacian_function,
     laplacian_function,
     randomized_bilaplacian_function,
-    randomized_weighted_laplacian_function,
 )
 from jet.laplacian import Laplacian
-from jet.weighted_laplacian import (
-    C_func_diagonal_increments,
-    get_weighting,
-)
+from jet.weighted_laplacian import get_weighting
 
 STRATEGY_IDS = [f"strategy={s}" for s in SUPPORTED_STRATEGIES]
 LAPLACIAN_DISTRIBUTION_IDS = [

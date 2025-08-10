@@ -2,11 +2,10 @@
 
 from typing import Callable
 
-from torch import Tensor, arange, eye, randn, zeros
+from torch import Tensor, arange, zeros
 from torch.nn import Module
 
 import jet
-from jet.utils import rademacher
 from jet.vmap import traceable_vmap
 
 

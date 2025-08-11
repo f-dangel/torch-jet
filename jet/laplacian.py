@@ -78,18 +78,15 @@ class Laplacian(Module):
         self.jet_f = traceable_vmap(jet_f, self.num_jets)
 
     def forward(self, x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
-        """Compute the Laplacian of the function at the input tensor.
-
-        Replicates the input tensor, then evaluates the 2-jet of f using
-        canonical basis vectors for v1 and zero vectors for v2.
+        """Compute the (weighted and/or randomized) Laplacian of f at x.
 
         Args:
             x: Input tensor. Must have same shape as the dummy input tensor that was
                 passed in the constructor.
 
         Returns:
-            Tuple containing the replicated function value, the exact/randomized
-            Jacobian, and the exact/randomized Laplacian.
+            Tuple containing the replicated function value, the weighted and/or
+            randomized Jacobian and Laplacian.
         """
         X0 = jet.utils.replicate(x, self.num_jets)
         X1 = self.set_up_first_taylor_coefficient(x)

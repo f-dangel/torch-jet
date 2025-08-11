@@ -204,13 +204,14 @@ def vmap_sample(
     Raises:
         NotImplementedError: If the input tensor x_meta is constant or if the
             distribution/shape are not constant.
+        ValueError: If vmapsize is not positive.
     """
     if is_const != (False, True, True):
         raise NotImplementedError(
             "x_meta must be non-constant, distribution and shape must be constant."
         )
     if vmapsize <= 0:
-        raise ValueError(f"vmapsize must be positive, got {vmapsize=}.")
+        raise ValueError(f"{vmapsize=} must be positive.")
 
     return jet.utils.sample(x_meta, distribution, (vmapsize, *shape))
 

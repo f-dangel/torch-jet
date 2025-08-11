@@ -86,7 +86,7 @@ def test_laplacian_functions(
         if is_batched
         else get_coefficients(x, weights)
     )
-    lap_func = lambda x, C: laplacian(f, x, C)
+    lap_func = lambda x, C: laplacian(f, x, C)  # noqa: E731
     lap_func = vmap(lap_func) if is_batched else lap_func
     lap = lap_func(x, C)
 
@@ -175,7 +175,7 @@ def test_randomized_laplacian_functions_converge(
         if is_batched
         else get_coefficients(X, weights)
     )
-    lap_func = lambda x, C: laplacian(f, x, C)
+    lap_func = lambda x, C: laplacian(f, x, C)  # noqa: E731
     lap_func = vmap(lap_func) if is_batched else lap_func
     lap = lap_func(X, C)
 

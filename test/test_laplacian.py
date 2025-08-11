@@ -50,6 +50,10 @@ def laplacian(f: Callable[[Tensor], Tensor], x: Tensor, C: Tensor) -> Tensor:
     Returns:
         The Laplacian of the function f at the point x, evaluated
         for each element f[i](x). Has same shape as f(x).
+
+    Raises:
+        ValueError: If the shape of the coefficient tensor C is not
+            compatible with the input x.
     """
     # compute the Hessian
     H = hessian(f)(x)

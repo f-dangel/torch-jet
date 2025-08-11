@@ -62,7 +62,7 @@ def get_weighting(
     """Set up the `weighting` argument.
 
     Args:
-        x: A dummy input tensor to infer the shape and device.
+        dummy_x: A dummy input tensor to infer the shape and device.
         weights: A string specifying the type of weighting to use. If `None`, the
             standard Laplacian is computed.
         randomization: A tuple specifying the randomization distribution and number

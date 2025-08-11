@@ -11,7 +11,6 @@ from einops import einsum
 from torch import (
     Tensor,
     allclose,
-    arange,
 )
 from torch import compile as torch_compile
 from torch import (
@@ -23,7 +22,6 @@ from torch import (
     no_grad,
     rand,
     randn,
-    zeros,
 )
 from torch.func import hessian, jacrev, jvp, vmap
 from torch.nn import Linear, Sequential, Tanh
@@ -162,6 +160,10 @@ def vector_hessian_vector_product_laplacian(
             `[*D, rank_C]` while V is `[K, rank_C]` with arbitrary `K`. The second
             entry specifies `rank_C`. If `None`, then the weightings correspond to
             the identity matrix (i.e. computing the standard Laplacian).
+
+    Returns:
+        A function that computes the (weighted and/or randomized) Laplacian of f at
+        the input tensor x.
     """
     D = dummy_x.numel()
 
@@ -265,7 +267,7 @@ def laplacian_function(
         )
         pull_sum_vmapped = strategy == "jet_simplified"
         lap_mod = simplify(lap_mod, pull_sum_vmapped=pull_sum_vmapped)
-        laplacian = lambda x: lap_mod(x)[2]
+        laplacian = lambda x: lap_mod(x)[2]  # noqa: E731
 
     else:
         raise ValueError(f"Unsupported {strategy=}. {SUPPORTED_STRATEGIES=}.")

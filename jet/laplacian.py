@@ -45,6 +45,10 @@ class Laplacian(Module):
                 `[*D, rank_C]` while V is `[K, rank_C]` with arbitrary `K`. The second
                 entry specifies `rank_C`. If `None`, then the weightings correspond to
                 the identity matrix (i.e. computing the standard Laplacian).
+
+        Raises:
+            ValueError: If the provided distribution is not supported or if the number
+                of samples is not positive.
         """
         super().__init__()
 

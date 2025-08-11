@@ -460,9 +460,6 @@ def get_function_and_description(
         A tuple containing the function to compute the operator (differentiable),
         the function to compute the operator (non-differentiable), and a description
         string.
-
-    Raises:
-        ValueError: If an unsupported operator is specified.
     """
     is_stochastic = distribution is not None and num_samples is not None
 

@@ -6,6 +6,7 @@ from pytest import mark
 from torch import Tensor, cos, manual_seed, ones, rand, sigmoid, sin, tanh, vmap
 from torch.nn import Linear, Sequential, Tanh
 from torch.nn.functional import linear
+from torch.random import fork_rng
 
 import jet.utils
 from jet.vmap import traceable_vmap
@@ -58,6 +59,12 @@ VMAP_CASES = [
         "shape": (6, 2),
         "id": "sum_vmapped_pos1",
     },
+    # sample
+    {
+        "f": lambda x: jet.utils.sample(x, "normal", (3, 2)),
+        "shape": (4,),
+        "id": "sample_normal",
+    },
 ]
 
 
@@ -76,12 +83,16 @@ def test_traceable_vmap(config: dict[str, Any], vmapsize: int = 3):
     x = rand(vmapsize, *shape)
 
     # set up batched functions
-    vmap_f = vmap(f)
+    vmap_f = vmap(f, randomness="different")
     tr_vmap_f = traceable_vmap(f, vmapsize)
 
     # compare their results
-    truth = vmap_f(x)
-    result = tr_vmap_f(x)
+    with fork_rng():
+        manual_seed(1)
+        truth = vmap_f(x)
+    with fork_rng():
+        manual_seed(1)
+        result = tr_vmap_f(x)
 
     if isinstance(truth, tuple):
         assert len(truth) == len(result)

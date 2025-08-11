@@ -44,30 +44,21 @@ EXP01_CASES = [
         "shape": (5,),
         "id": "two-layer-tanh-mlp",
     },
-    # 5d tanh-activated two-layer MLP with batched input
-    {
-        "f": Sequential(
-            Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
-        ),
-        "shape": (10, 5),
-        "is_batched": True,
-        "id": "batched-two-layer-tanh-mlp",
-    },
     # 3d sigmoid(sigmoid) function
     {"f": lambda x: sigmoid(sigmoid(x)), "shape": (3,), "id": "sigmoid-sigmoid"},
 ]
-# set the `is_batched` flag for all cases
-for config in EXP01_CASES:
-    config["is_batched"] = config.get("is_batched", False)
-
 EXP01_IDS = [config["id"] for config in EXP01_CASES]
 
+BATCH_SIZES = [0, 2]
+BATCH_SIZE_IDS = ["datum", "batch"]
 
+
+@mark.parametrize("batch_size", BATCH_SIZES, ids=BATCH_SIZE_IDS)
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
 @mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
 def test_laplacian_functions(
-    config: dict[str, Any], strategy: str, weights: str | None
+    config: dict[str, Any], strategy: str, weights: str | None, batch_size: int
 ):
     """Test that the benchmarked Laplacian functions produce the correct result.
 
@@ -77,8 +68,10 @@ def test_laplacian_functions(
         weights: The weighting to use for the Laplacian. If `None`, the Laplacian is
             unweighted. If `diagonal_increments`, a synthetic coefficient tensor is
             used that has diagonal elements that are increments of 1 starting from 1.
+        batch_size: The batch size to use for the test. `0` means no batching.
     """
-    f, x, _, is_batched = setup_case(config)
+    f, x, _ = setup_case(config, vmapsize=batch_size)
+    is_batched = batch_size > 0
 
     C = (
         vmap(lambda x: get_coefficients(x, weights))(x)
@@ -97,6 +90,7 @@ def test_laplacian_functions(
     report_nonclose(lap, lap_func)
 
 
+@mark.parametrize("batch_size", BATCH_SIZES, ids=BATCH_SIZE_IDS)
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize(
     "distribution", Laplacian.SUPPORTED_DISTRIBUTIONS, ids=LAPLACIAN_DISTRIBUTION_IDS
@@ -106,6 +100,7 @@ def test_randomized_laplacian_functions_identical(
     config: dict[str, Any],
     distribution: str,
     weights: str | None,
+    batch_size: int,
     num_samples: int = 42,
 ):
     """Test that the benchmarked MC-Laplacian functions are identical when seeding.
@@ -114,11 +109,13 @@ def test_randomized_laplacian_functions_identical(
         config: Configuration dictionary of the test case.
         distribution: The distribution from which to draw random vectors.
         num_samples: Number of samples to draw. Default: `42`.
+        batch_size: The batch size to use for the test. `0` means no batching.
         weights: The weighting to use for the Laplacian. If `None`, the Laplacian is
             unweighted. If `diagonal_increments`, a synthetic coefficient tensor is
             used that has diagonal elements that are increments of 1 starting from 1.
     """
-    f, x, _, is_batched = setup_case(config)
+    f, x, _ = setup_case(config, vmapsize=batch_size)
+    is_batched = batch_size > 0
 
     randomization = (distribution, num_samples)
     weighting = get_weighting(
@@ -137,6 +134,7 @@ def test_randomized_laplacian_functions_identical(
         report_nonclose(laps[first_key], laps[key])
 
 
+@mark.parametrize("batch_size", BATCH_SIZES, ids=BATCH_SIZE_IDS)
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
 @mark.parametrize(
@@ -150,6 +148,7 @@ def test_randomized_laplacian_functions_converge(
     strategy: str,
     distribution: str,
     weights: str | None,
+    batch_size: int,
     max_num_chunks: int = 128,
     chunk_size: int = 128,
     target_rel_error: float = 5e-2,
@@ -160,6 +159,7 @@ def test_randomized_laplacian_functions_converge(
         config: Configuration dictionary of the test case.
         strategy: The strategy to test.
         distribution: The distribution from which to draw random vectors.
+        batch_size: The batch size to use for the test. `0` means no batching.
         weights: The weighting to use for the Laplacian. If `None`, the Laplacian is
             unweighted. If `diagonal_increments`, a synthetic coefficient tensor is
             used that has diagonal elements that are increments of 1 starting from 1.
@@ -167,7 +167,8 @@ def test_randomized_laplacian_functions_converge(
         chunk_size: Number of samples per chunk. Default: `64`.
         target_rel_error: Target relative error for convergence. Default: `5e-2`.
     """
-    f, X, _, is_batched = setup_case(config)
+    f, X, _ = setup_case(config, vmapsize=batch_size)
+    is_batched = batch_size > 0
 
     C = (
         vmap(lambda x: get_coefficients(x, weights))(X)
@@ -196,16 +197,19 @@ def test_randomized_laplacian_functions_converge(
     assert converged, f"MC Laplacian ({strategy}, {distribution}) did not converge."
 
 
+@mark.parametrize("batch_size", BATCH_SIZES, ids=BATCH_SIZE_IDS)
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
 @mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
-def test_bilaplacian_functions(config: dict[str, Any], strategy: str):
+def test_bilaplacian_functions(config: dict[str, Any], strategy: str, batch_size: int):
     """Test that the benchmarked Bi-Laplacians produce the correct result.
 
     Args:
         config: Configuration dictionary of the test case.
         strategy: The strategy to test.
+        batch_size: The batch size to use for the test. `0` means no batching.
     """
-    f, x, _, is_batched = setup_case(config)
+    f, x, _ = setup_case(config, vmapsize=batch_size)
+    is_batched = batch_size > 0
     bilap_func = lambda x: bilaplacian(f, x)  # noqa: E731
     bilap_func = vmap(bilap_func) if is_batched else bilap_func
     bilap = bilap_func(x)
@@ -215,6 +219,7 @@ def test_bilaplacian_functions(config: dict[str, Any], strategy: str):
     report_nonclose(bilap, bilap_func)
 
 
+@mark.parametrize("batch_size", BATCH_SIZES, ids=BATCH_SIZE_IDS)
 @mark.parametrize(
     "distribution",
     Bilaplacian.SUPPORTED_DISTRIBUTIONS,
@@ -222,16 +227,18 @@ def test_bilaplacian_functions(config: dict[str, Any], strategy: str):
 )
 @mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
 def test_randomized_bilaplacian_functions_identical(
-    config: dict[str, Any], distribution: str, num_samples: int = 42
+    config: dict[str, Any], distribution: str, batch_size: int, num_samples: int = 42
 ):
     """Test that the weighted MC-Bi-Laplacian functions are identical when seeding.
 
     Args:
         config: Configuration dictionary of the test case.
         distribution: The distribution from which to draw random vectors.
+        batch_size: The batch size to use for the test. `0` means no batching.
         num_samples: Number of samples to draw. Default: `42`.
     """
-    f, x, _, is_batched = setup_case(config)
+    f, x, _ = setup_case(config, vmapsize=batch_size)
+    is_batched = batch_size > 0
     randomization = (distribution, num_samples)
 
     bilaps = {}
@@ -246,6 +253,7 @@ def test_randomized_bilaplacian_functions_identical(
         report_nonclose(bilaps[first_key], bilaps[key])
 
 
+@mark.parametrize("batch_size", BATCH_SIZES, ids=BATCH_SIZE_IDS)
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
 @mark.parametrize(
     "distribution",
@@ -257,6 +265,7 @@ def test_randomized_bilaplacian_functions_converge(
     config: dict[str, Any],
     strategy: str,
     distribution: str,
+    batch_size: int,
     max_num_chunks: int = 128,
     chunk_size: int = 128,
     target_rel_error: float = 5e-2,
@@ -267,11 +276,13 @@ def test_randomized_bilaplacian_functions_converge(
         config: Configuration dictionary of the test case.
         strategy: The strategy to test.
         distribution: The distribution from which to draw random vectors.
+        batch_size: The batch size to use for the test. `0` means no batching.
         max_num_chunks: Maximum number of chunks to accumulate. Default: `128`.
         chunk_size: Number of samples per chunk. Default: `128`.
         target_rel_error: Target relative error for convergence. Default: `5e-2`.
     """
-    f, X, _, is_batched = setup_case(config)
+    f, X, _ = setup_case(config, vmapsize=batch_size)
+    is_batched = batch_size > 0
     randomization = (distribution, chunk_size)
 
     bilap_func = lambda x: bilaplacian(f, x)  # noqa: E731

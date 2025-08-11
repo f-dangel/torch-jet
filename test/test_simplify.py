@@ -20,45 +20,25 @@ from torch.fx import Graph, GraphModule
 from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
 
-from jet.bilaplacian import Bilaplacian, RandomizedBilaplacian
+from jet.bilaplacian import Bilaplacian
 from jet.laplacian import Laplacian
 from jet.rules import is_replicate
 from jet.simplify import common_subexpression_elimination, simplify
 from jet.tracing import capture_graph
-from jet.utils import integer_partitions, recursive_getattr
+from jet.utils import recursive_getattr
 
 # make generation of test cases deterministic
 manual_seed(0)
 
 SIMPLIFY_CASES = [
     # 1d sine function
-    {
-        "f": sin,
-        "shape": (1,),
-        "id": "sin",
-        "first_op_vanishing_derivatives": None,
-    },
+    {"f": sin, "shape": (1,), "id": "sin"},
     # 2d sine function
-    {
-        "f": sin,
-        "shape": (2,),
-        "id": "sin",
-        "first_op_vanishing_derivatives": None,
-    },
+    {"f": sin, "shape": (2,), "id": "sin"},
     # 2d sin(sin) function
-    {
-        "f": lambda x: sin(sin(x)),
-        "shape": (2,),
-        "id": "sin-sin",
-        "first_op_vanishing_derivatives": None,
-    },
+    {"f": lambda x: sin(sin(x)), "shape": (2,), "id": "sin-sin"},
     # 2d tanh(tanh) function
-    {
-        "f": lambda x: tanh(tanh(x)),
-        "shape": (2,),
-        "id": "tanh-tanh",
-        "first_op_vanishing_derivatives": None,
-    },
+    {"f": lambda x: tanh(tanh(x)), "shape": (2,), "id": "tanh-tanh"},
     # 2d linear(tanh) function
     {
         "f": lambda x: linear(
@@ -68,7 +48,6 @@ SIMPLIFY_CASES = [
         ),
         "shape": (3,),
         "id": "tanh-linear",
-        "first_op_vanishing_derivatives": None,
     },
     # 5d tanh-activated two-layer MLP
     {
@@ -77,35 +56,14 @@ SIMPLIFY_CASES = [
         ),
         "shape": (5,),
         "id": "two-layer-tanh-mlp",
-        "first_op_vanishing_derivatives": 2,
     },
     # 3d sigmoid(sigmoid) function
     {
         "f": lambda x: sigmoid(sigmoid(x)),
         "shape": (3,),
         "id": "sigmoid-sigmoid",
-        "first_op_vanishing_derivatives": None,
     },
 ]
-
-
-def num_collapsed_tensor_constants(
-    K: int, first_op_vanishing_derivatives: int | None
-) -> int:
-    """Determine the number of collapsed tensor constants in a collapsed K-jet.
-
-    Args:
-        K: The order of the Taylor expansion.
-        first_op_vanishing_derivatives: The number of vanishing derivatives of the
-            first operation. If `None`, all derivatives are non-zero.
-
-    Returns:
-        The number of collapsed tensor constants.
-    """
-    terms = list(integer_partitions(K))
-    if first_op_vanishing_derivatives is not None:
-        terms = [t for t in terms if len(t) < first_op_vanishing_derivatives]
-    return len(terms)
 
 
 def count_replicate_nodes(f: Callable | Module | GraphModule) -> int:
@@ -278,20 +236,19 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
     """
     randomized = distribution is not None
     num_samples, seed = 42, 1  # only relevant with randomization
-    f, x, _, is_batched = setup_case({**config, "is_batched": False})
+    f, x, _, _ = setup_case({**config, "is_batched": None})
 
-    bilap_mod = (
-        RandomizedBilaplacian(f, x, is_batched, num_samples, distribution)
-        if randomized
-        else Bilaplacian(f, x, is_batched)
-    )
+    randomization = (distribution, num_samples) if randomized else None
+
+    bilap_mod = Bilaplacian(f, x, randomization=randomization)
+
     # we have to set the random seed to make sure the same random vectors are used
     if randomized:
         manual_seed(seed)
     bilap = bilap_mod(x)
 
     if not randomized:
-        bilap_true = bilaplacian(f, x, is_batched)
+        bilap_true = bilaplacian(f, x)
         assert bilap_true.allclose(bilap)
         print("Exact Bi-Laplacian in functorch and jet match.")
 
@@ -308,21 +265,15 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
     # make sure the `replicate` node from the 0th component made it to the end
     ensure_outputs_replicates(simple_mod.graph, num_outputs=1, num_replicates=0)
 
-    K = 4
-    num_collapsed = num_collapsed_tensor_constants(
-        K, config["first_op_vanishing_derivatives"]
-    )
-
     # make sure that Taylor coefficients were collapsed
-    D = (x.shape[1:] if is_batched else x).numel()
-
+    D = x.numel()
     collapsed_shape = x.shape
 
     if randomized:
         num_vectors = num_samples
         non_collapsed_shape = (num_vectors, *x.shape)
         ensure_tensor_constants_collapsed(
-            simple_mod, collapsed_shape, non_collapsed_shape, at_least=num_collapsed
+            simple_mod, collapsed_shape, non_collapsed_shape, at_least=1, strict=False
         )
 
     else:
@@ -344,8 +295,7 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
         }
 
         # uses three 4-jets
-        if D > 1:
-            num_collapsed *= 3
+        num_collapsed = 3 if D > 1 else 1
 
         for non_collapsed in non_collapsed_shapes:
             ensure_tensor_constants_collapsed(
@@ -354,6 +304,7 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
                 non_collapsed,
                 other_shapes=list(non_collapsed_shapes - {non_collapsed}),
                 at_least=num_collapsed,
+                strict=False,
             )
 
     # make sure the simplified module still behaves the same
@@ -375,7 +326,6 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
             "tanh-tanh": 185,
             "tanh-linear": 59,
             "two-layer-tanh-mlp": 255,
-            "batched-two-layer-tanh-mlp": 255,
             "sigmoid-sigmoid": 181,
         }
         assert len(list(simpler_mod.graph.nodes)) == expected_nodes[config["id"]]

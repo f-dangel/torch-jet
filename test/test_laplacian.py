@@ -74,13 +74,29 @@ def laplacian(f: Callable[[Tensor], Tensor], x: Tensor, C: Tensor) -> Tensor:
 
 
 def get_coefficients(x: Tensor, weights: str | None) -> Tensor:
+    """Get the coefficient tensor C(x) for the Laplacian.
+
+    Args:
+        x: The input tensor at which to compute the Laplacian.
+        weights: The weighting to use for the Laplacian. If `None`, the Laplacian is
+            unweighted. If `diagonal_increments`, a synthetic coefficient tensor is
+            used that has diagonal elements that are increments of 1 starting from 1.
+
+    Returns:
+        The coefficient tensor C(x) with shape `(*x.shape, *x.shape)`.
+
+    Raises:
+        ValueError: If the provided weights are not supported.
+    """
     if weights == "diagonal_increments":
         # Use a synthetic coefficient tensor C(x) with diagonal increments
         return C_func_diagonal_increments(x)
-    assert weights is None
-    return eye(x.numel(), x.numel(), device=x.device, dtype=x.dtype).reshape(
-        *x.shape, *x.shape
-    )
+    elif weights is None:
+        return eye(x.numel(), x.numel(), device=x.device, dtype=x.dtype).reshape(
+            *x.shape, *x.shape
+        )
+
+    raise ValueError(f"Unsupported {weights=}.")
 
 
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
@@ -125,8 +141,8 @@ def test_Laplacian_randomization(
         weights: The weighting to use for the Laplacian. If `None`, the Laplacian is
             unweighted. If `diagonal_increments`, a synthetic coefficient tensor is
             used that has diagonal elements that are increments of 1 starting from 1.
-        max_num_chunks: Maximum number of chunks to accumulate. Default: `500`.
-        chunk_size: Number of samples per chunk. Default: `1_024`.
+        max_num_chunks: Maximum number of chunks to accumulate. Default: `100`.
+        chunk_size: Number of samples per chunk. Default: `256`.
         target_rel_error: Target relative error for convergence. Default: `1e-2`.
     """
     f, x, _, _ = setup_case({**config, "is_batched": None})

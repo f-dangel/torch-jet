@@ -21,13 +21,12 @@ from torch import (
     manual_seed,
     no_grad,
     rand,
-    randn,
 )
 from torch.func import hessian, jacrev, jvp, vmap
 from torch.nn import Linear, Sequential, Tanh
 from torch.random import fork_rng
 
-from jet.bilaplacian import Bilaplacian, RandomizedBilaplacian
+from jet.bilaplacian import Bilaplacian
 from jet.exp.utils import measure_peak_memory, measure_time, to_string
 from jet.laplacian import Laplacian
 from jet.simplify import simplify
@@ -279,8 +278,54 @@ def laplacian_function(
     return partial(laplacian, X)
 
 
+def vector_hessian_vector_product_bilaplacian(
+    f: Callable[[Tensor], Tensor], dummy_x: Tensor, randomization: tuple[str, int]
+) -> Callable[[Tensor], Tensor]:
+    """Create a function that computes the Bi-Laplacian of f via VHVPs.
+
+    Args:
+        f: The function whose Bi-Laplacian we want to compute. The function should take
+            the input tensor as arguments and return the output tensor.
+        dummy_x: A dummy input tensor to determine the input dimensions.
+        randomization: A tuple containing the distribution type and number of samples
+            for randomized Bi-Laplacian. The first element is the distribution type
+            (must be 'normal'), and the second is the number of samples to use.
+
+    Returns:
+        A function that computes the Bi-Laplacian of f at the input tensor x.
+    """
+    d2f_vv = vector_hessian_vector_product(f, dummy_x)
+    d4f_vvvv = lambda x, v: vector_hessian_vector_product(  # noqa: E731
+        lambda x: d2f_vv(x, v), dummy_x
+    )(x, v)
+
+    # vmap over vectors
+    d4f_VVVV = vmap(d4f_vvvv, in_dims=(None, 0))
+
+    (distribution, num_samples) = randomization
+    shape = (num_samples, *dummy_x.shape)
+
+    def bilaplacian(x: Tensor) -> Tensor:
+        """Compute the exact/randomized Bi-Laplacian of f at x.
+
+        Args:
+            x: The input tensor at which to compute the Bi-Laplacian.
+
+        Returns:
+            The Bi-Laplacian of f at x. Has the same shape as f(x).
+        """
+        V = sample(x, distribution, shape)
+        return d4f_VVVV(x, V).mean(0) / 3
+
+    return bilaplacian
+
+
 def bilaplacian_function(
-    f: Callable[[Tensor], Tensor], X: Tensor, is_batched: bool, strategy: str
+    f: Callable[[Tensor], Tensor],
+    X: Tensor,
+    is_batched: bool,
+    strategy: str,
+    randomization: tuple[str, int] | None = None,
 ) -> Callable[[], Tensor]:
     """Construct a function to compute the Bi-Laplacian using different strategies.
 
@@ -295,6 +340,13 @@ def bilaplacian_function(
               derivative tensor is computed as Hessian of the Hessian with PyTorch.
             - `'jet_naive'`: The Bi-Laplacian is computed using jets. The computation
                 graph is simplified by propagating replication nodes.
+            - `'jet_simplified'`: The Bi-Laplacian is computed using Taylor mode. The
+                computation graph is simplified by propagating replications down, and
+                summations up, the computation graph.
+        randomization: If not `None`, a tuple containing the distribution type and
+            number of samples for randomized Bi-Laplacian. The first element is the
+            distribution type (e.g., 'normal'), and the second is the number of samples
+            to use.
 
     Returns:
         A function that computes the Bi-Laplacian of the function f at the input
@@ -303,95 +355,31 @@ def bilaplacian_function(
     Raises:
         ValueError: If the strategy is not supported.
     """
-    if strategy == "hessian_trace":
-        dummy_x = X[0] if is_batched else X
-        laplacian = hessian_trace_laplacian(f, dummy_x)
-        bilaplacian = hessian_trace_laplacian(laplacian, dummy_x)
+    dummy_x = X[0] if is_batched else X
 
-        if is_batched:
-            bilaplacian = vmap(bilaplacian)
+    if strategy == "hessian_trace":
+        if randomization is None:
+            laplacian = hessian_trace_laplacian(f, dummy_x)
+            bilaplacian = hessian_trace_laplacian(laplacian, dummy_x)
+        else:
+            bilaplacian = vector_hessian_vector_product_bilaplacian(
+                f, dummy_x, randomization
+            )
 
     elif strategy in {"jet_naive", "jet_simplified"}:
-        bilaplacian = Bilaplacian(f, X, is_batched)
+        bilaplacian = Bilaplacian(f, dummy_x, randomization=randomization)
         pull_sum_vmapped = strategy == "jet_simplified"
         bilaplacian = simplify(bilaplacian, pull_sum_vmapped=pull_sum_vmapped)
 
     else:
         raise ValueError(f"Unsupported strategy: {strategy}.")
 
-    return lambda: bilaplacian(X)
-
-
-def randomized_bilaplacian_function(
-    f: Callable[[Tensor], Tensor],
-    X: Tensor,
-    is_batched: bool,
-    strategy: str,
-    distribution: str,
-    num_samples: int,
-) -> Callable[[], Tensor]:
-    """Build function to compute the MC-Bi-Laplacian with different strategies.
-
-    Args:
-        f: The function to compute the MC-Bi-Laplacian of. Processes an
-            un-batched tensor.
-        X: The input tensor at which to compute the MC-Bi-Laplacian.
-        is_batched: Whether the input is a batched tensor.
-        strategy: Which strategy will be used by the returned function to compute
-            the MC-Bi-Laplacian. The following strategies are supported:
-            - `'hessian_trace'`: The MC-Bi-Laplacian is computed by vector-
-                tensor products between a random vector and the fourth-order
-                derivative tensor via (3x)forward-over-reverse mode autodiff.
-            - `'jet_naive'`: The MC-Bi-Laplacian is computed using jets.
-                The computation graph is simplified by propagating replication nodes.
-            - `'jet_simplified'`: The MC-Bi-Laplacian is computed using Taylor
-                mode. The computation graph is simplified by propagating replications
-                down, and summations up, the computation graph.
-        distribution: From which distribution to draw the random vectors. Supported
-            values are `'normal'`.
-        num_samples: How many Monte-Carlo samples should be used by the estimation.
-
-    Returns:
-        A function that computes the randomized Bi-Laplacian of the function f at the
-        input tensor X. The function is expected to be called with no arguments.
-
-    Raises:
-        ValueError: If the strategy or distribution are not supported.
-    """
-    if distribution != "normal":
-        raise ValueError(f"Unsupported distribution: {distribution!r}.")
-
-    if strategy == "hessian_trace":
-        dummy_x = X[0] if is_batched else X
-        d2f_vv = vector_hessian_vector_product(f, dummy_x)
-        d4f_vvvv = lambda x, v: vector_hessian_vector_product(  # noqa: E731
-            lambda x: d2f_vv(x, v), dummy_x
-        )(x, v)
-
-        # vmap over data points and fix data
-        if is_batched:
-            d4f_vvvv = vmap(d4f_vvvv)
-        d4f_vvvv_fix_X = partial(d4f_vvvv, X)
-
-        # vmap over vectors
-        d4f_VVVV_vmap = vmap(d4f_vvvv_fix_X)
-
-        # draw random vectors
-        sample_func = {"normal": randn}[distribution]
-        V = sample_func(num_samples, *X.shape, device=X.device, dtype=X.dtype)
-
-        return lambda: d4f_VVVV_vmap(V).mean(0) / 3
-
-    if strategy in {"jet_naive", "jet_simplified"}:
-        pull_sum_vmapped = strategy == "jet_simplified"
-        bilap = RandomizedBilaplacian(f, X, is_batched, num_samples, distribution)
-        bilap = simplify(bilap, pull_sum_vmapped=pull_sum_vmapped)
-        return lambda: bilap(X)
-
-    else:
-        raise ValueError(
-            f"Unsupported strategy: {strategy}. Supported: {SUPPORTED_STRATEGIES}."
+    if is_batched:
+        bilaplacian = vmap(
+            bilaplacian, randomness="error" if randomization is None else "different"
         )
+
+    return partial(bilaplacian, X)
 
 
 def setup_architecture(
@@ -472,16 +460,9 @@ def get_function_and_description(
         A tuple containing the function to compute the operator (differentiable),
         the function to compute the operator (non-differentiable), and a description
         string.
-
-    Raises:
-        ValueError: If an unsupported operator is specified.
     """
     is_stochastic = distribution is not None and num_samples is not None
-    args = (
-        (net, X, is_batched, strategy, distribution, num_samples)
-        if is_stochastic
-        else (net, X, is_batched, strategy)
-    )
+
     description = f"{strategy}, {compiled=}"
     if is_stochastic:
         description += f", {distribution=}, {num_samples=}"
@@ -492,32 +473,23 @@ def get_function_and_description(
         else None
     )
 
-    if operator == "bilaplacian":
-        func = (
-            randomized_bilaplacian_function(*args)
-            if is_stochastic
-            else bilaplacian_function(*args)
-        )
-    elif operator == "laplacian":
-        func = laplacian_function(
-            net, X, is_batched, strategy, randomization=randomization
-        )
-    elif operator == "weighted-laplacian":
-        weighting = get_weighting(
+    # set up arguments
+    args = (net, X, is_batched, strategy)
+    kwargs = {"randomization": randomization}
+    if operator == "weighted-laplacian":
+        kwargs["weighting"] = get_weighting(
             X[0] if is_batched else X,
             "diagonal_increments",
             randomization=randomization,
         )
-        func = laplacian_function(
-            net,
-            X,
-            is_batched,
-            strategy,
-            randomization=randomization,
-            weighting=weighting,
-        )
-    else:
-        raise ValueError(f"Unsupported operator: {operator}.")
+
+    factory = {
+        "laplacian": laplacian_function,
+        "weighted-laplacian": laplacian_function,
+        "bilaplacian": bilaplacian_function,
+    }[operator]
+
+    func = factory(*args, **kwargs)
 
     @no_grad()
     def func_no() -> Tensor:

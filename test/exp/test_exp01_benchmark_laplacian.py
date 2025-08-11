@@ -15,12 +15,11 @@ from pytest import mark
 from torch import Tensor, manual_seed, sigmoid, vmap
 from torch.nn import Linear, Sequential, Tanh
 
-from jet.bilaplacian import RandomizedBilaplacian
+from jet.bilaplacian import Bilaplacian
 from jet.exp.exp01_benchmark_laplacian.execute import (
     SUPPORTED_STRATEGIES,
     bilaplacian_function,
     laplacian_function,
-    randomized_bilaplacian_function,
 )
 from jet.laplacian import Laplacian
 from jet.weighted_laplacian import get_weighting
@@ -30,7 +29,7 @@ LAPLACIAN_DISTRIBUTION_IDS = [
     f"distribution={d}" for d in Laplacian.SUPPORTED_DISTRIBUTIONS
 ]
 BILAPLACIAN_DISTRIBUTION_IDS = [
-    f"distribution={d}" for d in RandomizedBilaplacian.SUPPORTED_DISTRIBUTIONS
+    f"distribution={d}" for d in Bilaplacian.SUPPORTED_DISTRIBUTIONS
 ]
 
 # make generation of test cases deterministic
@@ -207,7 +206,10 @@ def test_bilaplacian_functions(config: dict[str, Any], strategy: str):
         strategy: The strategy to test.
     """
     f, x, _, is_batched = setup_case(config)
-    bilap = bilaplacian(f, x, is_batched)
+    bilap_func = lambda x: bilaplacian(f, x)  # noqa: E731
+    bilap_func = vmap(bilap_func) if is_batched else bilap_func
+    bilap = bilap_func(x)
+
     bilap_func = bilaplacian_function(f, x, is_batched, strategy)()
 
     report_nonclose(bilap, bilap_func)
@@ -215,7 +217,7 @@ def test_bilaplacian_functions(config: dict[str, Any], strategy: str):
 
 @mark.parametrize(
     "distribution",
-    RandomizedBilaplacian.SUPPORTED_DISTRIBUTIONS,
+    Bilaplacian.SUPPORTED_DISTRIBUTIONS,
     ids=BILAPLACIAN_DISTRIBUTION_IDS,
 )
 @mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
@@ -230,12 +232,13 @@ def test_randomized_bilaplacian_functions_identical(
         num_samples: Number of samples to draw. Default: `42`.
     """
     f, x, _, is_batched = setup_case(config)
+    randomization = (distribution, num_samples)
 
     bilaps = {}
     for strategy in SUPPORTED_STRATEGIES:
         manual_seed(1)
-        bilaps[strategy] = randomized_bilaplacian_function(
-            f, x, is_batched, strategy, distribution, num_samples
+        bilaps[strategy] = bilaplacian_function(
+            f, x, is_batched, strategy, randomization=randomization
         )()
 
     first_key = list(bilaps.keys())[0]
@@ -246,7 +249,7 @@ def test_randomized_bilaplacian_functions_identical(
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
 @mark.parametrize(
     "distribution",
-    RandomizedBilaplacian.SUPPORTED_DISTRIBUTIONS,
+    Bilaplacian.SUPPORTED_DISTRIBUTIONS,
     ids=BILAPLACIAN_DISTRIBUTION_IDS,
 )
 @mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
@@ -269,14 +272,17 @@ def test_randomized_bilaplacian_functions_converge(
         target_rel_error: Target relative error for convergence. Default: `5e-2`.
     """
     f, X, _, is_batched = setup_case(config)
+    randomization = (distribution, chunk_size)
 
-    bilap = bilaplacian(f, X, is_batched)
+    bilap_func = lambda x: bilaplacian(f, x)  # noqa: E731
+    bilap_func = vmap(bilap_func) if is_batched else bilap_func
+    bilap = bilap_func(X)
 
     # check convergence of the Monte-Carlo estimator
     def sample(idx: int) -> Tensor:
         manual_seed(idx)
-        return randomized_bilaplacian_function(
-            f, X, is_batched, strategy, distribution, chunk_size
+        return bilaplacian_function(
+            f, X, is_batched, strategy, randomization=randomization
         )()
 
     converged = _check_mc_convergence(

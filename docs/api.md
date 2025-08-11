@@ -11,6 +11,3 @@
 #### ::: jet.laplacian.Laplacian
 
 #### ::: jet.bilaplacian.Bilaplacian
-
-#### ::: jet.bilaplacian.RandomizedBilaplacian
-

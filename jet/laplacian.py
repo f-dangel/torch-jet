@@ -97,7 +97,9 @@ class Laplacian(Module):
         X2 = zeros(self.num_jets, *self.in_shape, **self.in_meta)
         F0, F1, F2 = self.jet_f(X0, X1, X2)
         if self.randomization is not None:
-            F2 = F2 * (1.0 / self.randomization[1])
+            # Monte Carlo averaging: scale by 1 / number of samples
+            monte_carlo_scaling = 1.0 / self.randomization[1]
+            F2 = F2 * monte_carlo_scaling
         return F0, F1, jet.utils.sum_vmapped(F2)
 
     def set_up_first_taylor_coefficient(self, x: Tensor) -> Tensor:

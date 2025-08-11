@@ -41,7 +41,7 @@ class Bilaplacian(Module):
                 of samples for randomized Bi-Laplacian. If provided, the Bi-Laplacian
                 will be computed using Monte-Carlo sampling. The first element is the
                 distribution type (must be 'normal'), and the second is the number of
-                samples to use.
+                samples to use. Default is `None`.
 
         Raises:
             ValueError: If the provided distribution is not supported or if the number

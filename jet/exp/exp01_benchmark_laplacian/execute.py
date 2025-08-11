@@ -138,6 +138,73 @@ def vector_hessian_vector_product(
     return vhv
 
 
+def vector_hessian_vector_product_laplacian(
+    f: Callable[[Tensor], Tensor],
+    dummy_x: Tensor,
+    randomization: tuple[str, int] | None,
+    weighting: tuple[Callable[[Tensor, Tensor], Tensor], int] | None = None,
+):
+    """Create a function that computes the Laplacian of f via VHVPs.
+
+    Args:
+        f: The function whose Laplacian we want to compute. The function should take
+            the input tensor as arguments and return the output tensor.
+        dummy_x: A dummy input tensor to determine the input dimensions.
+        randomization: If not `None`, a tuple containing the distribution type and
+            number of samples for randomized Laplacian. The first element is the
+            distribution type (e.g., 'normal', 'rademacher'), and the second is the
+            number of samples to use.
+        weighting: A tuple specifying how the second-order derivatives should be
+            weighted. This is described by a coefficient tensor C(x) of shape
+            `[*D, *D]`. The first entry is a function (x, V) ↦ V @ S(x).T that
+            applies the symmetric factorization S(x) of the weights
+            C(x) = S(x) @ S(x).T at the input x to the matrix V. S(x) has shape
+            `[*D, rank_C]` while V is `[K, rank_C]` with arbitrary `K`. The second
+            entry specifies `rank_C`. If `None`, then the weightings correspond to
+            the identity matrix (i.e. computing the standard Laplacian).
+    """
+    D = dummy_x.numel()
+
+    # determine the number of jets that need to be computed
+    if randomization is None:
+        num_jets = D if weighting is None else weighting[1]
+    else:
+        num_jets = randomization[1]
+
+    # determines dimension of random vectors
+    rank_weightings = D if weighting is None else weighting[1]
+
+    apply_weightings = (
+        (lambda x, V: V.reshape(num_jets, *dummy_x.shape))
+        if weighting is None
+        else weighting[0]
+    )
+
+    vhvp = vector_hessian_vector_product(f, dummy_x)
+    # along multiple vectors in parallel
+    VhVp = vmap(vhvp, in_dims=(None, 0))
+
+    def laplacian(x: Tensor) -> Tensor:
+        """Compute the (weighted and/or randomized) Laplacian of f at x.
+
+        Args:
+            x: The input tensor at which to compute the Laplacian.
+
+        Returns:
+            The Laplacian of f at x. Has the same shape as f(x).
+        """
+        V = (
+            eye(rank_weightings, device=x.device, dtype=x.dtype)
+            if randomization is None
+            else sample(x, randomization[0], (num_jets, *x.shape))
+        )
+        S = apply_weightings(x, V)
+        SHS = VhVp(x, S)
+        return SHS.sum(0) if randomization is None else SHS.mean(0)
+
+    return laplacian
+
+
 def laplacian_function(
     f: Callable[[Tensor], Tensor],
     X: Tensor,
@@ -161,6 +228,18 @@ def laplacian_function(
             - `'jet_simplified'`: The Laplacian is computed using Taylor mode. The
               computation graph is simplified by propagating replications down, and
               summations up, the computation graph.
+        randomization: If not `None`, a tuple containing the distribution type and
+            number of samples for randomized Laplacian. The first element is the
+            distribution type (e.g., 'normal', 'rademacher'), and the second is the
+            number of samples to use.
+        weighting: A tuple specifying how the second-order derivatives should be
+            weighted. This is described by a coefficient tensor C(x) of shape
+            `[*D, *D]`. The first entry is a function (x, V) ↦ V @ S(x).T that
+            applies the symmetric factorization S(x) of the weights
+            C(x) = S(x) @ S(x).T at the input x to the matrix V. S(x) has shape
+            `[*D, rank_C]` while V is `[K, rank_C]` with arbitrary `K`. The second
+            entry specifies `rank_C`. If `None`, then the weightings correspond to
+            the identity matrix (i.e. computing the standard Laplacian).
 
     Returns:
         A function that computes the Laplacian of the function f at the input tensor X.
@@ -170,54 +249,19 @@ def laplacian_function(
         ValueError: If the strategy is not supported.
     """
     # Set up the function that computes the Laplacian on an un-batched datum
-    dummy_X = X[0] if is_batched else X
+    dummy_x = X[0] if is_batched else X
 
     if strategy == "hessian_trace":
         if weighting is None and randomization is None:
-            laplacian = hessian_trace_laplacian(f, dummy_X)
+            laplacian = hessian_trace_laplacian(f, dummy_x)
         else:
-            D = dummy_X.numel()
-            if randomization is None:
-                num_jets = D if weighting is None else weighting[1]
-            else:
-                num_jets = randomization[1]
-
-            # determines dimension of random vectors
-            rank_weightings = D if weighting is None else weighting[1]
-
-            if randomization is None:
-                assert weighting is not None
-                apply_weightings = weighting[0]
-            else:
-                if weighting is not None:
-                    apply_weightings = weighting[0]
-                else:
-                    apply_weightings = lambda x, V: V.reshape(num_jets, *dummy_X.shape)
-
-            vhvp = vector_hessian_vector_product(f, dummy_X)
-            # along multiple vectors in parallel
-            VhVp = vmap(vhvp, in_dims=(None, 0))
-
-            def laplacian(x) -> Tensor:
-                if randomization is None:
-                    if weighting is None:
-                        V = eye(rank_weightings, device=x.device, dtype=x.dtype)
-                    else:
-                        V = zeros(
-                            num_jets, rank_weightings, device=x.device, dtype=x.dtype
-                        )
-                        idx = arange(rank_weightings, device=x.device)
-                        V[idx, idx] = 1.0
-                else:
-                    V = sample(x, randomization[0], (num_jets, *x.shape))
-
-                S = apply_weightings(x, V)
-                SHS = VhVp(x, S)
-                return SHS.sum(0) if randomization is None else SHS.mean(0)
+            laplacian = vector_hessian_vector_product_laplacian(
+                f, dummy_x, randomization, weighting
+            )
 
     elif strategy in {"jet_naive", "jet_simplified"}:
         lap_mod = Laplacian(
-            f, dummy_X, randomization=randomization, weighting=weighting
+            f, dummy_x, randomization=randomization, weighting=weighting
         )
         pull_sum_vmapped = strategy == "jet_simplified"
         lap_mod = simplify(lap_mod, pull_sum_vmapped=pull_sum_vmapped)
@@ -226,12 +270,11 @@ def laplacian_function(
     else:
         raise ValueError(f"Unsupported {strategy=}. {SUPPORTED_STRATEGIES=}.")
 
-    laplacian = (
-        vmap(laplacian, randomness="error" if randomization is None else "different")
-        if is_batched
-        else laplacian
-    )
-    return lambda: laplacian(X)
+    if is_batched:
+        laplacian = vmap(
+            laplacian, randomness="error" if randomization is None else "different"
+        )
+    return partial(laplacian, X)
 
 
 def bilaplacian_function(

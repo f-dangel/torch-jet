@@ -2,7 +2,7 @@
 
 from typing import Callable
 
-from torch import Tensor, arange, zeros
+from torch import Tensor, eye, zeros
 from torch.nn import Module
 
 import jet
@@ -54,8 +54,10 @@ class Laplacian(Module):
         self.in_meta = {"dtype": dummy_x.dtype, "device": dummy_x.device}
         self.in_dim = dummy_x.numel()
 
-        self.apply_weightings, self.rank_weightings = (
-            (None, self.in_dim) if weighting is None else weighting
+        (self.apply_weightings, self.rank_weightings) = (
+            (lambda x, V: V.reshape(self.num_jets, *self.in_shape), self.in_dim)
+            if weighting is None
+            else weighting
         )
 
         # Optional: Use randomization instead of deterministic computation
@@ -111,16 +113,9 @@ class Laplacian(Module):
             The first Taylor coefficient for computing the Laplacian.
         """
         shape = self.num_jets, self.rank_weightings
-        if self.randomization is None:
-            V = zeros(*shape, **self.in_meta)
-            idx = arange(self.rank_weightings, device=self.in_meta["device"])
-            V[idx, idx] = 1.0
-        else:
-            (distribution, _) = self.randomization
-            V = jet.utils.sample(x, distribution, shape)
-
-        return (
-            V.reshape(self.num_jets, *self.in_shape)
-            if self.apply_weightings is None
-            else self.apply_weightings(x, V)
+        V = (
+            eye(self.rank_weightings, **self.in_meta)
+            if self.randomization is None
+            else jet.utils.sample(x, self.randomization[0], shape)
         )
+        return self.apply_weightings(x, V)

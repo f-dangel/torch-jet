@@ -306,11 +306,19 @@ def vector_hessian_vector_product_bilaplacian(
     (distribution, num_samples) = randomization
     shape = (num_samples, *dummy_x.shape)
 
-    def bilap(x: Tensor) -> Tensor:
+    def bilaplacian(x: Tensor) -> Tensor:
+        """Compute the exact/randomized Bi-Laplacian of f at x.
+
+        Args:
+            x: The input tensor at which to compute the Bi-Laplacian.
+
+        Returns:
+            The Bi-Laplacian of f at x. Has the same shape as f(x).
+        """
         V = sample(x, distribution, shape)
         return d4f_VVVV(x, V).mean(0) / 3
 
-    return bilap
+    return bilaplacian
 
 
 def bilaplacian_function(

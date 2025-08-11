@@ -42,6 +42,10 @@ class Bilaplacian(Module):
                 be computed using Monte-Carlo sampling. The first element is the
                 distribution type (must be 'normal'), and the second is the number of
                 samples to use.
+
+        Raises:
+            ValueError: If the provided distribution is not supported or if the number
+                of samples is not positive.
         """
         super().__init__()
 

@@ -27,12 +27,14 @@ from torch import (
 )
 from torch.func import hessian, jacrev, jvp, vmap
 from torch.nn import Linear, Sequential, Tanh
+from torch.random import fork_rng
 
 from jet.bilaplacian import Bilaplacian, RandomizedBilaplacian
 from jet.exp.utils import measure_peak_memory, measure_time, to_string
 from jet.laplacian import Laplacian
 from jet.simplify import simplify
 from jet.utils import sample
+from jet.weighted_laplacian import get_weighting
 
 HERE = path.abspath(__file__)
 HEREDIR = path.dirname(HERE)
@@ -439,6 +441,12 @@ def get_function_and_description(
     if is_stochastic:
         description += f", {distribution=}, {num_samples=}"
 
+    randomization = (
+        (distribution, num_samples)
+        if distribution is not None and num_samples is not None
+        else None
+    )
+
     if operator == "bilaplacian":
         func = (
             randomized_bilaplacian_function(*args)
@@ -446,16 +454,22 @@ def get_function_and_description(
             else bilaplacian_function(*args)
         )
     elif operator == "laplacian":
-        func = (
-            randomized_laplacian_function(*args)
-            if is_stochastic
-            else laplacian_function(*args)
+        func = laplacian_function(
+            net, X, is_batched, strategy, randomization=randomization
         )
     elif operator == "weighted-laplacian":
-        func = (
-            randomized_weighted_laplacian_function(*args)
-            if is_stochastic
-            else weighted_laplacian_function(*args)
+        weighting = get_weighting(
+            X[0] if is_batched else X,
+            "diagonal_increments",
+            randomization=randomization,
+        )
+        func = laplacian_function(
+            net,
+            X,
+            is_batched,
+            strategy,
+            randomization=randomization,
+            weighting=weighting,
         )
     else:
         raise ValueError(f"Unsupported operator: {operator}.")
@@ -591,7 +605,8 @@ if __name__ == "__main__":
     # Sanity check: make sure that the results correspond to the baseline implementation
     if args.strategy != BASELINE or args.compiled:
         print("Checking correctness against un-compiled baseline.")
-        with no_grad():
+        with no_grad(), fork_rng():
+            manual_seed(2)
             result = func()
 
         manual_seed(2)  # make sure that the baseline is deterministic
@@ -605,7 +620,9 @@ if __name__ == "__main__":
             is_batched,
             False,  # do not use compilation
         )
-        baseline_result = baseline_func_no()
+        with fork_rng():
+            manual_seed(2)
+            baseline_result = baseline_func_no()
 
         assert (
             baseline_result.shape == result.shape

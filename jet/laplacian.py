@@ -65,18 +65,15 @@ class Laplacian(Module):
             (distribution, num_samples) = randomization
             if distribution not in self.SUPPORTED_DISTRIBUTIONS:
                 raise ValueError(
-                    f"Unsupported distribution {distribution!r}. "
-                    f"Supported distributions are {self.SUPPORTED_DISTRIBUTIONS}."
+                    f"Unsupported {distribution=} ({self.SUPPORTED_DISTRIBUTIONS=})."
                 )
             if num_samples <= 0:
-                raise ValueError(
-                    f"Number of samples must be positive, got {num_samples}."
-                )
+                raise ValueError(f"{num_samples=} must be positive.")
         self.randomization = randomization
 
         jet_f = jet.jet(f, 2)
         self.num_jets = (
-            self.rank_weightings if randomization is None else self.randomization[1]
+            self.rank_weightings if randomization is None else randomization[1]
         )
         self.jet_f = traceable_vmap(jet_f, self.num_jets)
 

@@ -375,6 +375,7 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
             "tanh-tanh": 185,
             "tanh-linear": 59,
             "two-layer-tanh-mlp": 255,
+            "batched-two-layer-tanh-mlp": 255,
             "sigmoid-sigmoid": 181,
         }
         assert len(list(simpler_mod.graph.nodes)) == expected_nodes[config["id"]]

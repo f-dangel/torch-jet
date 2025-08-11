@@ -27,7 +27,6 @@ def apply_S_func_diagonal_increments(x: Tensor, V: Tensor, fx_info: dict) -> Ten
     rank_C = fx_info["rank_C"]
     S = (arange(rank_C, device=fx_info["device"], dtype=fx_info["dtype"]) + 1).sqrt()
     S = jet.utils.replicate(S, fx_info["V_rows"])
-    print(S.shape, V.shape)
     SV = S * V
 
     # if rank_C < D, we have to add zero padding to satisfy the output dimension

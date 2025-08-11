@@ -180,7 +180,7 @@ def test_simplify_laplacian(
     num_samples, seed = 42, 1  # only relevant with randomization
     randomization = None if distribution is None else (distribution, num_samples)
 
-    f, x, _, _ = setup_case({**config, "is_batched": None})
+    f, x, _ = setup_case(config)
 
     weighting = get_weighting(x, weights, randomization=randomization)
     mod = Laplacian(f, x, randomization=randomization, weighting=weighting)
@@ -236,7 +236,7 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
     """
     randomized = distribution is not None
     num_samples, seed = 42, 1  # only relevant with randomization
-    f, x, _, _ = setup_case({**config, "is_batched": None})
+    f, x, _ = setup_case(config)
 
     randomization = (distribution, num_samples) if randomized else None
 

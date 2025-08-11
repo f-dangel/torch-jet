@@ -110,7 +110,7 @@ def test_Laplacian(config: dict[str, Any], weights: str | None):
             unweighted. If `diagonal_increments`, a synthetic coefficient tensor is
             used that has diagonal elements that are increments of 1 starting from 1.
     """
-    f, x, _, _ = setup_case({**config, "is_batched": None})
+    f, x, _ = setup_case(config)
 
     # reference: Using PyTorch
     C = get_coefficients(x, weights)
@@ -145,7 +145,7 @@ def test_Laplacian_randomization(
         chunk_size: Number of samples per chunk. Default: `256`.
         target_rel_error: Target relative error for convergence. Default: `1e-2`.
     """
-    f, x, _, _ = setup_case({**config, "is_batched": None})
+    f, x, _ = setup_case(config)
     randomization = (distribution, chunk_size)
 
     # reference: Using PyTorch

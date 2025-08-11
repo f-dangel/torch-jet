@@ -21,7 +21,6 @@ from torch import (
     manual_seed,
     no_grad,
     rand,
-    randn,
 )
 from torch.func import hessian, jacrev, jvp, vmap
 from torch.nn import Linear, Sequential, Tanh

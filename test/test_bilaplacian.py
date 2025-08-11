@@ -13,8 +13,7 @@ from typing import Any, Callable
 
 from einops import einsum
 from pytest import mark
-from torch import Tensor, manual_seed, sigmoid, zeros, zeros_like
-from torch.autograd import grad
+from torch import Tensor, manual_seed, sigmoid
 from torch.func import hessian
 from torch.nn import Linear, Sequential, Tanh
 

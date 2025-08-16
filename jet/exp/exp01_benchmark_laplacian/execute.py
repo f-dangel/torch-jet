@@ -416,14 +416,15 @@ def savepath(rawdir: str = RAWDIR, **kwargs: str | int) -> str:
     return path.join(rawdir, f"{filename}.csv")
 
 
-def check_mutually_required(args: Namespace):
-    """Check if mutually required arguments are specified or unspecified.
+def check_arg_conflict(args: Namespace):
+    """Check if arguments are correctly specified.
 
     Args:
         args: The parsed arguments.
 
     Raises:
         ValueError: If the arguments are not mutually specified or unspecified.
+        ValueError: If the `rank_ratio` argument's value is invalid.
     """
     distribution, num_samples = args.distribution, args.num_samples
     if (distribution is None) != (num_samples is None):
@@ -432,11 +433,16 @@ def check_mutually_required(args: Namespace):
             f" ({num_samples}) are mutually required."
         )
 
-    if args.operator == "weighted-laplacian" and args.rank_ratio is None:
-        raise ValueError(
-            f"Argument 'rank_ratio' ({args.rank_ratio}) is required for "
-            f"operator {args.operator!r}."
-        )
+    if args.operator == "weighted-laplacian":
+        if args.rank_ratio is None:
+            raise ValueError(
+                f"Argument 'rank_ratio' ({args.rank_ratio}) is required for "
+                f"operator {args.operator!r}."
+            )
+        elif not 0 < args.rank_ratio <= 1:
+            raise ValueError(
+                f"Argument 'rank_ratio' ({args.rank_ratio}) must be in range (0,1]."
+            )
 
 
 def get_function_and_description(
@@ -476,7 +482,7 @@ def get_function_and_description(
     if is_stochastic:
         description += f", {distribution=}, {num_samples=}"
     if operator == "weighted-laplacian" and rank_ratio is not None:
-        description += f", rank_ratio={rank_ratio}"
+        description += f", {rank_ratio=}"
 
     randomization = (
         (distribution, num_samples)
@@ -590,7 +596,7 @@ def parse_args() -> Namespace:
 
     # parse and check validity
     args = parser.parse_args()
-    check_mutually_required(args)
+    check_arg_conflict(args)
 
     return args
 

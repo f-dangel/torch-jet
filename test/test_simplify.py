@@ -1,10 +1,16 @@
 """Test simplification mechanism on compute graphs of the (Bi-)Laplacian."""
 
-from functools import partial
 from test.test___init__ import compare_jet_results, setup_case
 from test.test_bilaplacian import bilaplacian
-from test.test_laplacian import DISTRIBUTION_IDS, DISTRIBUTIONS, laplacian
-from test.test_weighted_laplacian import weighted_laplacian
+from test.test_laplacian import (
+    DISTRIBUTION_IDS,
+    DISTRIBUTIONS,
+    WEIGHT_IDS,
+    WEIGHTS,
+    get_coefficients,
+    get_weighting,
+    laplacian,
+)
 from test.utils import report_nonclose
 from typing import Any, Callable
 
@@ -14,50 +20,25 @@ from torch.fx import Graph, GraphModule
 from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
 
-from jet.bilaplacian import Bilaplacian, RandomizedBilaplacian
-from jet.laplacian import Laplacian, RandomizedLaplacian
+from jet.bilaplacian import Bilaplacian
+from jet.laplacian import Laplacian
 from jet.rules import is_replicate
 from jet.simplify import common_subexpression_elimination, simplify
 from jet.tracing import capture_graph
-from jet.utils import integer_partitions, recursive_getattr
-from jet.weighted_laplacian import (
-    C_func_diagonal_increments,
-    RandomizedWeightedLaplacian,
-    WeightedLaplacian,
-)
+from jet.utils import recursive_getattr
 
 # make generation of test cases deterministic
 manual_seed(0)
 
 SIMPLIFY_CASES = [
     # 1d sine function
-    {
-        "f": sin,
-        "shape": (1,),
-        "id": "sin",
-        "first_op_vanishing_derivatives": None,
-    },
+    {"f": sin, "shape": (1,), "id": "sin"},
     # 2d sine function
-    {
-        "f": sin,
-        "shape": (2,),
-        "id": "sin",
-        "first_op_vanishing_derivatives": None,
-    },
+    {"f": sin, "shape": (2,), "id": "sin"},
     # 2d sin(sin) function
-    {
-        "f": lambda x: sin(sin(x)),
-        "shape": (2,),
-        "id": "sin-sin",
-        "first_op_vanishing_derivatives": None,
-    },
+    {"f": lambda x: sin(sin(x)), "shape": (2,), "id": "sin-sin"},
     # 2d tanh(tanh) function
-    {
-        "f": lambda x: tanh(tanh(x)),
-        "shape": (2,),
-        "id": "tanh-tanh",
-        "first_op_vanishing_derivatives": None,
-    },
+    {"f": lambda x: tanh(tanh(x)), "shape": (2,), "id": "tanh-tanh"},
     # 2d linear(tanh) function
     {
         "f": lambda x: linear(
@@ -67,7 +48,6 @@ SIMPLIFY_CASES = [
         ),
         "shape": (3,),
         "id": "tanh-linear",
-        "first_op_vanishing_derivatives": None,
     },
     # 5d tanh-activated two-layer MLP
     {
@@ -76,49 +56,14 @@ SIMPLIFY_CASES = [
         ),
         "shape": (5,),
         "id": "two-layer-tanh-mlp",
-        "first_op_vanishing_derivatives": 2,
-    },
-    # 5d tanh-activated two-layer MLP with batched input
-    {
-        "f": Sequential(
-            Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
-        ),
-        "shape": (10, 5),
-        "is_batched": True,
-        "id": "batched-two-layer-tanh-mlp",
-        "first_op_vanishing_derivatives": 2,
     },
     # 3d sigmoid(sigmoid) function
     {
         "f": lambda x: sigmoid(sigmoid(x)),
         "shape": (3,),
         "id": "sigmoid-sigmoid",
-        "first_op_vanishing_derivatives": None,
     },
 ]
-
-# add the is_batched argument if it does not exist
-for config in SIMPLIFY_CASES:
-    config["is_batched"] = config.get("is_batched", False)
-
-
-def num_collapsed_tensor_constants(
-    K: int, first_op_vanishing_derivatives: int | None
-) -> int:
-    """Determine the number of collapsed tensor constants in a collapsed K-jet.
-
-    Args:
-        K: The order of the Taylor expansion.
-        first_op_vanishing_derivatives: The number of vanishing derivatives of the
-            first operation. If `None`, all derivatives are non-zero.
-
-    Returns:
-        The number of collapsed tensor constants.
-    """
-    terms = list(integer_partitions(K))
-    if first_op_vanishing_derivatives is not None:
-        terms = [t for t in terms if len(t) < first_op_vanishing_derivatives]
-    return len(terms)
 
 
 def count_replicate_nodes(f: Callable | Module | GraphModule) -> int:
@@ -211,11 +156,14 @@ def ensure_tensor_constants_collapsed(
         )
 
 
+@mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize("config", SIMPLIFY_CASES, ids=[c["id"] for c in SIMPLIFY_CASES])
 @mark.parametrize(
     "distribution", [None] + DISTRIBUTIONS, ids=["exact"] + DISTRIBUTION_IDS
 )
-def test_simplify_laplacian(config: dict[str, Any], distribution: str | None):
+def test_simplify_laplacian(
+    config: dict[str, Any], distribution: str | None, weights: str | None
+):
     """Test the simplification of a Laplacian's compute graph.
 
     Replicate nodes should be propagated down the graph.
@@ -225,33 +173,34 @@ def test_simplify_laplacian(config: dict[str, Any], distribution: str | None):
         config: The configuration of the test case.
         distribution: The distribution from which to draw random vectors.
             If `None`, the exact Laplacian is computed. Default: `None`.
+        weights: The weighting to use for the Laplacian. If `None`, the Laplacian is
+            unweighted. If `diagonal_increments`, a synthetic coefficient tensor is
+            used that has diagonal elements that are increments of 1 starting from 1.
     """
-    randomized = distribution is not None
     num_samples, seed = 42, 1  # only relevant with randomization
+    randomization = None if distribution is None else (distribution, num_samples)
 
-    # add 'k' entry to make the config work with `setup_case`
-    f, x, _, is_batched = setup_case(config)
-    mod = (
-        RandomizedLaplacian(f, x, is_batched, num_samples, distribution)
-        if randomized
-        else Laplacian(f, x, is_batched)
-    )
+    f, x, _ = setup_case(config)
+
+    weighting = get_weighting(x, weights, randomization=randomization)
+    mod = Laplacian(f, x, randomization=randomization, weighting=weighting)
 
     # we have to set the random seed to make sure the same random vectors are used
-    if randomized:
+    if randomization is not None:
         manual_seed(seed)
     mod_out = mod(x)
 
-    if not randomized:
-        lap = laplacian(f, x)
+    if randomization is None:
+        C = get_coefficients(x, weights)
+        lap = laplacian(f, x, C)
         assert lap.allclose(mod_out[2])
         print("Exact Laplacian in functorch and jet match.")
 
-    # simplify the traced module
+    # trace and simplify the module
 
     # we have to set the random seed because tracing executes the functions that
     # draw random vectors and stores them as tensor constants
-    if randomized:
+    if randomization is not None:
         manual_seed(seed)
     fast = simplify(mod, verbose=True, test_x=x)
 
@@ -265,94 +214,11 @@ def test_simplify_laplacian(config: dict[str, Any], distribution: str | None):
 
     # make sure the module's tensor constant corresponding to the highest
     # Taylor coefficient was collapsed
-    if randomized:
-        num_vectors = num_samples
-    else:
-        num_vectors = x.shape[1:].numel() if is_batched else x.numel()
+    num_vectors = x.numel() if randomization is None else num_samples
     non_collapsed_shape = (num_vectors, *x.shape)
     collapsed_shape = x.shape
-
-    K = 2
-    num_collapsed = num_collapsed_tensor_constants(
-        K, config["first_op_vanishing_derivatives"]
-    )
     ensure_tensor_constants_collapsed(
-        fast, collapsed_shape, non_collapsed_shape, at_least=num_collapsed
-    )
-
-
-@mark.parametrize("config", SIMPLIFY_CASES, ids=[c["id"] for c in SIMPLIFY_CASES])
-@mark.parametrize(
-    "distribution", [None] + DISTRIBUTIONS, ids=["exact"] + DISTRIBUTION_IDS
-)
-def test_simplify_weighted_laplacian(config: dict[str, Any], distribution: str | None):
-    """Test the simplification of a weighted Laplacian's compute graph.
-
-    Replicate nodes should be propagated down the graph.
-    Sum nodes should be propagated up.
-
-    Args:
-        config: The configuration of the test case.
-        distribution: The distribution from which to draw random vectors.
-            If `None`, the exact Laplacian is computed. Default: `None`.
-    """
-    randomized = distribution is not None
-    num_samples, seed = 42, 1  # only relevant with randomization
-    f, x, _, is_batched = setup_case(config)
-    weighting = "diagonal_increments"
-
-    mod = (
-        RandomizedWeightedLaplacian(
-            f, x, is_batched, num_samples, distribution, weighting
-        )
-        if randomized
-        else WeightedLaplacian(f, x, is_batched, weighting)
-    )
-
-    # we have to set the random seed to make sure the same random vectors are used
-    if randomized:
-        manual_seed(seed)
-    mod_out = mod(x)
-
-    if not randomized:
-        C_func = partial(C_func_diagonal_increments, is_batched=is_batched)
-        H_dot_C = weighted_laplacian(f, x, is_batched, C_func)
-        assert H_dot_C.allclose(mod_out[2])
-        print("Exact weighted Laplacian in functorch and jet match.")
-
-    # simplify the traced module
-
-    # we have to set the random seed because tracing executes the functions that
-    # draw random vectors and stores them as tensor constants
-    if randomized:
-        manual_seed(seed)
-    fast = simplify(mod, verbose=True)
-
-    # make sure the simplified module still behaves the same
-    fast_out = fast(x)
-    compare_jet_results(mod_out, fast_out)
-    print(
-        "Weighted Laplacian via jet matches weighted Laplacian via simplified module."
-    )
-
-    # make sure the `replicate` node from the 0th component made it to the end
-    ensure_outputs_replicates(fast.graph, num_outputs=3, num_replicates=1)
-
-    # make sure the module's tensor constant corresponding to the highest
-    # Taylor coefficient was collapsed
-    if randomized:
-        num_vectors = num_samples
-    else:
-        num_vectors = (x.shape[1:] if is_batched else x.shape).numel()
-    non_collapsed_shape = (num_vectors, *x.shape)
-    collapsed_shape = x.shape
-
-    K = 2
-    num_collapsed = num_collapsed_tensor_constants(
-        K, config["first_op_vanishing_derivatives"]
-    )
-    ensure_tensor_constants_collapsed(
-        fast, collapsed_shape, non_collapsed_shape, at_least=num_collapsed
+        fast, collapsed_shape, non_collapsed_shape, at_least=1, strict=False
     )
 
 
@@ -370,20 +236,19 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
     """
     randomized = distribution is not None
     num_samples, seed = 42, 1  # only relevant with randomization
-    f, x, _, is_batched = setup_case(config)
+    f, x, _ = setup_case(config)
 
-    bilap_mod = (
-        RandomizedBilaplacian(f, x, is_batched, num_samples, distribution)
-        if randomized
-        else Bilaplacian(f, x, is_batched)
-    )
+    randomization = (distribution, num_samples) if randomized else None
+
+    bilap_mod = Bilaplacian(f, x, randomization=randomization)
+
     # we have to set the random seed to make sure the same random vectors are used
     if randomized:
         manual_seed(seed)
     bilap = bilap_mod(x)
 
     if not randomized:
-        bilap_true = bilaplacian(f, x, is_batched)
+        bilap_true = bilaplacian(f, x)
         assert bilap_true.allclose(bilap)
         print("Exact Bi-Laplacian in functorch and jet match.")
 
@@ -400,21 +265,15 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
     # make sure the `replicate` node from the 0th component made it to the end
     ensure_outputs_replicates(simple_mod.graph, num_outputs=1, num_replicates=0)
 
-    K = 4
-    num_collapsed = num_collapsed_tensor_constants(
-        K, config["first_op_vanishing_derivatives"]
-    )
-
     # make sure that Taylor coefficients were collapsed
-    D = (x.shape[1:] if is_batched else x).numel()
-
+    D = x.numel()
     collapsed_shape = x.shape
 
     if randomized:
         num_vectors = num_samples
         non_collapsed_shape = (num_vectors, *x.shape)
         ensure_tensor_constants_collapsed(
-            simple_mod, collapsed_shape, non_collapsed_shape, at_least=num_collapsed
+            simple_mod, collapsed_shape, non_collapsed_shape, at_least=1, strict=False
         )
 
     else:
@@ -436,8 +295,7 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
         }
 
         # uses three 4-jets
-        if D > 1:
-            num_collapsed *= 3
+        num_collapsed = 3 if D > 1 else 1
 
         for non_collapsed in non_collapsed_shapes:
             ensure_tensor_constants_collapsed(
@@ -446,6 +304,7 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
                 non_collapsed,
                 other_shapes=list(non_collapsed_shapes - {non_collapsed}),
                 at_least=num_collapsed,
+                strict=False,
             )
 
     # make sure the simplified module still behaves the same
@@ -467,7 +326,6 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
             "tanh-tanh": 185,
             "tanh-linear": 59,
             "two-layer-tanh-mlp": 255,
-            "batched-two-layer-tanh-mlp": 255,
             "sigmoid-sigmoid": 181,
         }
         assert len(list(simpler_mod.graph.nodes)) == expected_nodes[config["id"]]

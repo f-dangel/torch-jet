@@ -16,25 +16,22 @@ from torch import compile as torch_compile
 from torch import (
     device,
     dtype,
+    eye,
     float64,
     manual_seed,
     no_grad,
     rand,
-    randn,
 )
 from torch.func import hessian, jacrev, jvp, vmap
 from torch.nn import Linear, Sequential, Tanh
+from torch.random import fork_rng
 
-from jet.bilaplacian import Bilaplacian, RandomizedBilaplacian
+from jet.bilaplacian import Bilaplacian
 from jet.exp.utils import measure_peak_memory, measure_time, to_string
-from jet.laplacian import Laplacian, RandomizedLaplacian
+from jet.laplacian import Laplacian
 from jet.simplify import simplify
-from jet.utils import rademacher
-from jet.weighted_laplacian import (
-    RandomizedWeightedLaplacian,
-    S_func_diagonal_increments,
-    WeightedLaplacian,
-)
+from jet.utils import sample
+from jet.weighted_laplacian import get_weighting
 
 HERE = path.abspath(__file__)
 HEREDIR = path.dirname(HERE)
@@ -97,54 +94,6 @@ def hessian_trace_laplacian(
     return laplacian
 
 
-def laplacian_function(
-    f: Callable[[Tensor], Tensor], X: Tensor, is_batched: bool, strategy: str
-) -> Callable[[], Tensor]:
-    """Construct a function to compute the Laplacian using different strategies.
-
-    Args:
-        f: The function to compute the Laplacian of. Processes an un-batched tensor.
-        X: The input tensor at which to compute the Laplacian.
-        is_batched: Whether the input is a batched tensor.
-        strategy: Which strategy will be used by the returned function to compute
-            the Laplacian. The following strategies are supported:
-            - `'hessian_trace'`: The Laplacian is computed by tracing the Hessian.
-              The Hessian is computed via forward-over-reverse mode autodiff.
-            - `'jet_naive'`: The Laplacian is computed using jets. The computation graph
-                is simplified by propagating replication nodes.
-            - `'jet_simplified'`: The Laplacian is computed using Taylor mode. The
-              computation graph is simplified by propagating replications down, and
-              summations up, the computation graph.
-
-    Returns:
-        A function that computes the Laplacian of the function f at the input tensor X.
-        The function is expected to be called with no arguments.
-
-    Raises:
-        ValueError: If the strategy is not supported.
-    """
-    if strategy == "hessian_trace":
-        dummy_X = X[0] if is_batched else X
-        laplacian = hessian_trace_laplacian(f, dummy_X)
-
-        if is_batched:
-            laplacian = vmap(laplacian)
-
-        return lambda: laplacian(X)
-
-    elif strategy in {"jet_naive", "jet_simplified"}:
-        laplacian = Laplacian(f, X, is_batched)
-        pull_sum_vmapped = strategy == "jet_simplified"
-        laplacian = simplify(laplacian, pull_sum_vmapped=pull_sum_vmapped)
-
-        return lambda: laplacian(X)[2]
-
-    else:
-        raise ValueError(
-            f"Unsupported strategy: {strategy}. Supported: {SUPPORTED_STRATEGIES}."
-        )
-
-
 def vector_hessian_vector_product(
     f: Callable[[Tensor], Tensor], dummy_x: Tensor
 ) -> Callable[[Tensor, Tensor], Tensor]:
@@ -186,15 +135,86 @@ def vector_hessian_vector_product(
     return vhv
 
 
-def randomized_laplacian_function(
+def vector_hessian_vector_product_laplacian(
+    f: Callable[[Tensor], Tensor],
+    dummy_x: Tensor,
+    randomization: tuple[str, int] | None,
+    weighting: tuple[Callable[[Tensor, Tensor], Tensor], int] | None = None,
+):
+    """Create a function that computes the Laplacian of f via VHVPs.
+
+    Args:
+        f: The function whose Laplacian we want to compute. The function should take
+            the input tensor as arguments and return the output tensor.
+        dummy_x: A dummy input tensor to determine the input dimensions.
+        randomization: If not `None`, a tuple containing the distribution type and
+            number of samples for randomized Laplacian. The first element is the
+            distribution type (e.g., 'normal', 'rademacher'), and the second is the
+            number of samples to use.
+        weighting: A tuple specifying how the second-order derivatives should be
+            weighted. This is described by a coefficient tensor C(x) of shape
+            `[*D, *D]`. The first entry is a function (x, V) ↦ V @ S(x).T that
+            applies the symmetric factorization S(x) of the weights
+            C(x) = S(x) @ S(x).T at the input x to the matrix V. S(x) has shape
+            `[*D, rank_C]` while V is `[K, rank_C]` with arbitrary `K`. The second
+            entry specifies `rank_C`. If `None`, then the weightings correspond to
+            the identity matrix (i.e. computing the standard Laplacian).
+
+    Returns:
+        A function that computes the (weighted and/or randomized) Laplacian of f at
+        the input tensor x.
+    """
+    D = dummy_x.numel()
+
+    # determine the number of jets that need to be computed
+    if randomization is None:
+        num_jets = D if weighting is None else weighting[1]
+    else:
+        num_jets = randomization[1]
+
+    # determines dimension of random vectors
+    rank_weightings = D if weighting is None else weighting[1]
+
+    apply_weightings = (
+        (lambda x, V: V.reshape(num_jets, *dummy_x.shape))
+        if weighting is None
+        else weighting[0]
+    )
+
+    vhvp = vector_hessian_vector_product(f, dummy_x)
+    # along multiple vectors in parallel
+    VhVp = vmap(vhvp, in_dims=(None, 0))
+
+    def laplacian(x: Tensor) -> Tensor:
+        """Compute the (weighted and/or randomized) Laplacian of f at x.
+
+        Args:
+            x: The input tensor at which to compute the Laplacian.
+
+        Returns:
+            The Laplacian of f at x. Has the same shape as f(x).
+        """
+        V = (
+            eye(rank_weightings, device=x.device, dtype=x.dtype)
+            if randomization is None
+            else sample(x, randomization[0], (num_jets, *x.shape))
+        )
+        S = apply_weightings(x, V)
+        SHS = VhVp(x, S)
+        return SHS.sum(0) if randomization is None else SHS.mean(0)
+
+    return laplacian
+
+
+def laplacian_function(
     f: Callable[[Tensor], Tensor],
     X: Tensor,
     is_batched: bool,
     strategy: str,
-    distribution: str,
-    num_samples: int,
+    randomization: tuple[str, int] | None = None,
+    weighting: tuple[Callable[[Tensor, Tensor], Tensor], int] | None = None,
 ) -> Callable[[], Tensor]:
-    """Construct a function to compute the MC-Laplacian using different strategies.
+    """Construct a function to compute the Laplacian using different strategies.
 
     Args:
         f: The function to compute the Laplacian of. Processes an un-batched tensor.
@@ -209,203 +229,103 @@ def randomized_laplacian_function(
             - `'jet_simplified'`: The Laplacian is computed using Taylor mode. The
               computation graph is simplified by propagating replications down, and
               summations up, the computation graph.
-        distribution: From which distribution to draw the random vectors. Supported
-            values are `'normal'` and `'rademacher'`.
-        num_samples: How many Monte-Carlo samples should be used by the estimation.
+        randomization: If not `None`, a tuple containing the distribution type and
+            number of samples for randomized Laplacian. The first element is the
+            distribution type (e.g., 'normal', 'rademacher'), and the second is the
+            number of samples to use.
+        weighting: A tuple specifying how the second-order derivatives should be
+            weighted. This is described by a coefficient tensor C(x) of shape
+            `[*D, *D]`. The first entry is a function (x, V) ↦ V @ S(x).T that
+            applies the symmetric factorization S(x) of the weights
+            C(x) = S(x) @ S(x).T at the input x to the matrix V. S(x) has shape
+            `[*D, rank_C]` while V is `[K, rank_C]` with arbitrary `K`. The second
+            entry specifies `rank_C`. If `None`, then the weightings correspond to
+            the identity matrix (i.e. computing the standard Laplacian).
 
     Returns:
-        A function that computes the randomized Laplacian of the function f at the input
-        tensor X. The function is expected to be called with no arguments.
-
-    Raises:
-        ValueError: If the strategy or distribution are not supported.
-    """
-    if distribution not in {"normal", "rademacher"}:
-        raise ValueError(f"Unsupported distribution: {distribution!r}.")
-
-    if strategy == "hessian_trace":
-        dummy_x = X[0] if is_batched else X
-        vhv = vector_hessian_vector_product(f, dummy_x)
-
-        # vmap over data points and fix data
-        if is_batched:
-            vhv = vmap(vhv)
-        vhv_fix_X = partial(vhv, X)
-
-        # vmap over HVP
-        VhV_vmap = vmap(vhv_fix_X)
-
-        sample_func = {"normal": randn, "rademacher": rademacher}[distribution]
-        V = sample_func(num_samples, *X.shape, device=X.device, dtype=X.dtype)
-
-        return lambda: VhV_vmap(V).mean(0)
-
-    if strategy in {"jet_naive", "jet_simplified"}:
-        laplacian = RandomizedLaplacian(f, X, is_batched, num_samples, distribution)
-        pull_sum_vmapped = strategy == "jet_simplified"
-        laplacian = simplify(laplacian, pull_sum_vmapped=pull_sum_vmapped)
-        return lambda: laplacian(X)[2]
-
-    else:
-        raise ValueError(
-            f"Unsupported strategy: {strategy}. Supported: {SUPPORTED_STRATEGIES}."
-        )
-
-
-def weighted_laplacian_function(
-    f: Callable[[Tensor], Tensor],
-    X: Tensor,
-    is_batched: bool,
-    strategy: str,
-    rank_ratio: float = 1.0,
-) -> Callable[[], Tensor]:
-    """Construct a function to compute a weighted Laplacian using different strategies.
-
-    Args:
-        f: The function to compute the weighted Laplacian of.
-            Processes an un-batched tensor.
-        X: The input tensor at which to compute the weighted Laplacian.
-        is_batched: Whether the input is a batched tensor.
-        strategy: Which strategy will be used by the returned function to compute
-            the weighted Laplacian. The following strategies are supported:
-            - `'hessian_trace'`: The Laplacian is computed by computing the Hessian,
-                then weighting it. The Hessian is computed via forward-over-reverse
-                mode autodiff.
-            - `'jet_naive'`: The weighted Laplacian is computed using jets. The
-                computation graph is simplified by propagating replication nodes.
-            - `'jet_simplified'`: The weighted Laplacian is computed using Taylor mode.
-                The computation graph is simplified by propagating replications down,
-                and summations up, the computation graph.
-        rank_ratio: Ratio of the rank to use for the coefficient matrix (between 0 and 1).
-            Default is 1.0 (full rank).
-
-    Returns:
-        A function that computes the weighted Laplacian of the function f at the input
-        tensor X. The function is expected to be called with no arguments.
+        A function that computes the Laplacian of the function f at the input tensor X.
+        The function is expected to be called with no arguments.
 
     Raises:
         ValueError: If the strategy is not supported.
     """
+    # Set up the function that computes the Laplacian on an un-batched datum
+    dummy_x = X[0] if is_batched else X
+
     if strategy == "hessian_trace":
-        dummy_x = X[0] if is_batched else X
-        vhv = vector_hessian_vector_product(f, dummy_x)
-
-        # vmap over data points and fix data
-        if is_batched:
-            vhv = vmap(vhv)
-        vhv_fix_X = partial(vhv, X)
-
-        # vmap over VHVP
-        VhV_vmap = vmap(vhv_fix_X)
-        S = S_func_diagonal_increments(X, is_batched, rank_ratio=rank_ratio)
-
-        return lambda: VhV_vmap(S).sum(0)
+        if weighting is None and randomization is None:
+            laplacian = hessian_trace_laplacian(f, dummy_x)
+        else:
+            laplacian = vector_hessian_vector_product_laplacian(
+                f, dummy_x, randomization, weighting
+            )
 
     elif strategy in {"jet_naive", "jet_simplified"}:
-        weighted_laplacian = WeightedLaplacian(
-            f, X, is_batched, "diagonal_increments", rank_ratio
+        lap_mod = Laplacian(
+            f, dummy_x, randomization=randomization, weighting=weighting
         )
         pull_sum_vmapped = strategy == "jet_simplified"
-        weighted_laplacian = simplify(
-            weighted_laplacian, pull_sum_vmapped=pull_sum_vmapped
-        )
-
-        return lambda: weighted_laplacian(X)[2]
+        lap_mod = simplify(lap_mod, pull_sum_vmapped=pull_sum_vmapped)
+        laplacian = lambda x: lap_mod(x)[2]  # noqa: E731
 
     else:
-        raise ValueError(
-            f"Unsupported strategy: {strategy}. Supported: {SUPPORTED_STRATEGIES}."
+        raise ValueError(f"Unsupported {strategy=}. {SUPPORTED_STRATEGIES=}.")
+
+    if is_batched:
+        laplacian = vmap(
+            laplacian, randomness="error" if randomization is None else "different"
         )
+    return partial(laplacian, X)
 
 
-def randomized_weighted_laplacian_function(
+def vector_hessian_vector_product_bilaplacian(
+    f: Callable[[Tensor], Tensor], dummy_x: Tensor, randomization: tuple[str, int]
+) -> Callable[[Tensor], Tensor]:
+    """Create a function that computes the Bi-Laplacian of f via VHVPs.
+
+    Args:
+        f: The function whose Bi-Laplacian we want to compute. The function should take
+            the input tensor as arguments and return the output tensor.
+        dummy_x: A dummy input tensor to determine the input dimensions.
+        randomization: A tuple containing the distribution type and number of samples
+            for randomized Bi-Laplacian. The first element is the distribution type
+            (must be 'normal'), and the second is the number of samples to use.
+
+    Returns:
+        A function that computes the Bi-Laplacian of f at the input tensor x.
+    """
+    d2f_vv = vector_hessian_vector_product(f, dummy_x)
+    d4f_vvvv = lambda x, v: vector_hessian_vector_product(  # noqa: E731
+        lambda x: d2f_vv(x, v), dummy_x
+    )(x, v)
+
+    # vmap over vectors
+    d4f_VVVV = vmap(d4f_vvvv, in_dims=(None, 0))
+
+    (distribution, num_samples) = randomization
+    shape = (num_samples, *dummy_x.shape)
+
+    def bilaplacian(x: Tensor) -> Tensor:
+        """Compute the exact/randomized Bi-Laplacian of f at x.
+
+        Args:
+            x: The input tensor at which to compute the Bi-Laplacian.
+
+        Returns:
+            The Bi-Laplacian of f at x. Has the same shape as f(x).
+        """
+        V = sample(x, distribution, shape)
+        return d4f_VVVV(x, V).mean(0) / 3
+
+    return bilaplacian
+
+
+def bilaplacian_function(
     f: Callable[[Tensor], Tensor],
     X: Tensor,
     is_batched: bool,
     strategy: str,
-    distribution: str,
-    num_samples: int,
-    rank_ratio: float = 1.0,
-) -> Callable[[], Tensor]:
-    """Build function to compute the weighted MC-Laplacian with different strategies.
-
-    Args:
-        f: The function to compute the weighted MC-Laplacian of. Processes an
-            un-batched tensor.
-        X: The input tensor at which to compute the weighted MC-Laplacian.
-        is_batched: Whether the input is a batched tensor.
-        strategy: Which strategy will be used by the returned function to compute
-            the weighted MC-Laplacian. The following strategies are supported:
-            - `'hessian_trace'`: The weighted MC-Laplacian is computed by vector-
-                Hessian-vector products with random vectors via forward-over-reverse
-                mode autodiff.
-            - `'jet_naive'`: The weighted MC-Laplacian is computed using jets.
-                The computation graph is simplified by propagating replication nodes.
-            - `'jet_simplified'`: The weighted MC-Laplacian is computed using Taylor
-                mode. The computation graph is simplified by propagating replications
-                down, and summations up, the computation graph.
-        distribution: From which distribution to draw the random vectors. Supported
-            values are `'normal'` and `'rademacher'`.
-        num_samples: How many Monte-Carlo samples should be used by the estimation.
-        rank_ratio: Ratio of the rank to use for the coefficient matrix (between 0 and 1).
-            Default is 1.0 (full rank).
-
-    Returns:
-        A function that computes the randomized weighted Laplacian of the function f
-        at the input tensor X. The function is expected to be called with no arguments.
-
-    Raises:
-        ValueError: If the strategy or distribution are not supported.
-    """
-    if distribution not in {"normal", "rademacher"}:
-        raise ValueError(f"Unsupported distribution: {distribution!r}.")
-
-    weighting = "diagonal_increments"
-    H_dot_C = RandomizedWeightedLaplacian(
-        f, X, is_batched, num_samples, distribution, weighting, rank_ratio=rank_ratio
-    )
-
-    if strategy == "hessian_trace":
-        dummy_x = X[0] if is_batched else X
-        vhv = vector_hessian_vector_product(f, dummy_x)
-
-        # vmap over data points and fix data
-        if is_batched:
-            vhv = vmap(vhv)
-        vhv_fix_X = partial(vhv, X)
-
-        # vmap over VHVP
-        VhV_vmap = vmap(vhv_fix_X)
-
-        sample_func = {"normal": randn, "rademacher": rademacher}[distribution]
-        rank_C = {
-            "diagonal_increments": int(
-                rank_ratio * (X.shape[1:] if is_batched else X.shape).numel()
-            )
-        }[weighting]
-        if rank_C <= 0:
-            raise ValueError("TODO")
-        sample_shape = (
-            (num_samples, X.shape[0], rank_C) if is_batched else (num_samples, rank_C)
-        )
-        V = sample_func(*sample_shape, device=X.device, dtype=X.dtype)
-        SV = H_dot_C.apply_S_func(X, V)
-
-        return lambda: VhV_vmap(SV).mean(0)
-
-    if strategy in {"jet_naive", "jet_simplified"}:
-        pull_sum_vmapped = strategy == "jet_simplified"
-        H_dot_C = simplify(H_dot_C, pull_sum_vmapped=pull_sum_vmapped)
-        return lambda: H_dot_C(X)[2]
-
-    else:
-        raise ValueError(
-            f"Unsupported strategy: {strategy}. Supported: {SUPPORTED_STRATEGIES}."
-        )
-
-
-def bilaplacian_function(
-    f: Callable[[Tensor], Tensor], X: Tensor, is_batched: bool, strategy: str
+    randomization: tuple[str, int] | None = None,
 ) -> Callable[[], Tensor]:
     """Construct a function to compute the Bi-Laplacian using different strategies.
 
@@ -420,6 +340,13 @@ def bilaplacian_function(
               derivative tensor is computed as Hessian of the Hessian with PyTorch.
             - `'jet_naive'`: The Bi-Laplacian is computed using jets. The computation
                 graph is simplified by propagating replication nodes.
+            - `'jet_simplified'`: The Bi-Laplacian is computed using Taylor mode. The
+                computation graph is simplified by propagating replications down, and
+                summations up, the computation graph.
+        randomization: If not `None`, a tuple containing the distribution type and
+            number of samples for randomized Bi-Laplacian. The first element is the
+            distribution type (e.g., 'normal'), and the second is the number of samples
+            to use.
 
     Returns:
         A function that computes the Bi-Laplacian of the function f at the input
@@ -428,95 +355,31 @@ def bilaplacian_function(
     Raises:
         ValueError: If the strategy is not supported.
     """
-    if strategy == "hessian_trace":
-        dummy_x = X[0] if is_batched else X
-        laplacian = hessian_trace_laplacian(f, dummy_x)
-        bilaplacian = hessian_trace_laplacian(laplacian, dummy_x)
+    dummy_x = X[0] if is_batched else X
 
-        if is_batched:
-            bilaplacian = vmap(bilaplacian)
+    if strategy == "hessian_trace":
+        if randomization is None:
+            laplacian = hessian_trace_laplacian(f, dummy_x)
+            bilaplacian = hessian_trace_laplacian(laplacian, dummy_x)
+        else:
+            bilaplacian = vector_hessian_vector_product_bilaplacian(
+                f, dummy_x, randomization
+            )
 
     elif strategy in {"jet_naive", "jet_simplified"}:
-        bilaplacian = Bilaplacian(f, X, is_batched)
+        bilaplacian = Bilaplacian(f, dummy_x, randomization=randomization)
         pull_sum_vmapped = strategy == "jet_simplified"
         bilaplacian = simplify(bilaplacian, pull_sum_vmapped=pull_sum_vmapped)
 
     else:
         raise ValueError(f"Unsupported strategy: {strategy}.")
 
-    return lambda: bilaplacian(X)
-
-
-def randomized_bilaplacian_function(
-    f: Callable[[Tensor], Tensor],
-    X: Tensor,
-    is_batched: bool,
-    strategy: str,
-    distribution: str,
-    num_samples: int,
-) -> Callable[[], Tensor]:
-    """Build function to compute the MC-Bi-Laplacian with different strategies.
-
-    Args:
-        f: The function to compute the MC-Bi-Laplacian of. Processes an
-            un-batched tensor.
-        X: The input tensor at which to compute the MC-Bi-Laplacian.
-        is_batched: Whether the input is a batched tensor.
-        strategy: Which strategy will be used by the returned function to compute
-            the MC-Bi-Laplacian. The following strategies are supported:
-            - `'hessian_trace'`: The MC-Bi-Laplacian is computed by vector-
-                tensor products between a random vector and the fourth-order
-                derivative tensor via (3x)forward-over-reverse mode autodiff.
-            - `'jet_naive'`: The MC-Bi-Laplacian is computed using jets.
-                The computation graph is simplified by propagating replication nodes.
-            - `'jet_simplified'`: The MC-Bi-Laplacian is computed using Taylor
-                mode. The computation graph is simplified by propagating replications
-                down, and summations up, the computation graph.
-        distribution: From which distribution to draw the random vectors. Supported
-            values are `'normal'`.
-        num_samples: How many Monte-Carlo samples should be used by the estimation.
-
-    Returns:
-        A function that computes the randomized Bi-Laplacian of the function f at the
-        input tensor X. The function is expected to be called with no arguments.
-
-    Raises:
-        ValueError: If the strategy or distribution are not supported.
-    """
-    if distribution != "normal":
-        raise ValueError(f"Unsupported distribution: {distribution!r}.")
-
-    if strategy == "hessian_trace":
-        dummy_x = X[0] if is_batched else X
-        d2f_vv = vector_hessian_vector_product(f, dummy_x)
-        d4f_vvvv = lambda x, v: vector_hessian_vector_product(  # noqa: E731
-            lambda x: d2f_vv(x, v), dummy_x
-        )(x, v)
-
-        # vmap over data points and fix data
-        if is_batched:
-            d4f_vvvv = vmap(d4f_vvvv)
-        d4f_vvvv_fix_X = partial(d4f_vvvv, X)
-
-        # vmap over vectors
-        d4f_VVVV_vmap = vmap(d4f_vvvv_fix_X)
-
-        # draw random vectors
-        sample_func = {"normal": randn}[distribution]
-        V = sample_func(num_samples, *X.shape, device=X.device, dtype=X.dtype)
-
-        return lambda: d4f_VVVV_vmap(V).mean(0) / 3
-
-    if strategy in {"jet_naive", "jet_simplified"}:
-        pull_sum_vmapped = strategy == "jet_simplified"
-        bilap = RandomizedBilaplacian(f, X, is_batched, num_samples, distribution)
-        bilap = simplify(bilap, pull_sum_vmapped=pull_sum_vmapped)
-        return lambda: bilap(X)
-
-    else:
-        raise ValueError(
-            f"Unsupported strategy: {strategy}. Supported: {SUPPORTED_STRATEGIES}."
+    if is_batched:
+        bilaplacian = vmap(
+            bilaplacian, randomness="error" if randomization is None else "different"
         )
+
+    return partial(bilaplacian, X)
 
 
 def setup_architecture(
@@ -606,23 +469,8 @@ def get_function_and_description(
         A tuple containing the function to compute the operator (differentiable),
         the function to compute the operator (non-differentiable), and a description
         string.
-
-    Raises:
-        ValueError: If an unsupported operator is specified.
     """
     is_stochastic = distribution is not None and num_samples is not None
-
-    # Add rank_ratio to args if it's a weighted Laplacian
-    if operator == "weighted-laplacian":
-        args = (net, X, is_batched, strategy)
-        if is_stochastic:
-            args = (*args, distribution, num_samples)
-        kwargs = {"rank_ratio": rank_ratio}
-    else:
-        args = (net, X, is_batched, strategy)
-        if is_stochastic:
-            args = (*args, distribution, num_samples)
-        kwargs = {}
 
     description = f"{strategy}, {compiled=}"
     if is_stochastic:
@@ -630,20 +478,29 @@ def get_function_and_description(
     if operator == "weighted-laplacian" and rank_ratio is not None:
         description += f", rank_ratio={rank_ratio}"
 
-    if operator == "bilaplacian":
-        f = randomized_bilaplacian_function if is_stochastic else bilaplacian_function
-    elif operator == "laplacian":
-        f = randomized_laplacian_function if is_stochastic else laplacian_function
-    elif operator == "weighted-laplacian":
-        f = (
-            randomized_weighted_laplacian_function
-            if is_stochastic
-            else weighted_laplacian_function
-        )
-    else:
-        raise ValueError(f"Unsupported operator: {operator}.")
+    randomization = (
+        (distribution, num_samples)
+        if distribution is not None and num_samples is not None
+        else None
+    )
 
-    func = f(*args, **kwargs)
+    # set up arguments
+    args = (net, X, is_batched, strategy)
+    kwargs = {"randomization": randomization}
+    if operator == "weighted-laplacian":
+        kwargs["weighting"] = get_weighting(
+            X[0] if is_batched else X,
+            "diagonal_increments",
+            randomization=randomization,
+        )
+
+    factory = {
+        "laplacian": laplacian_function,
+        "weighted-laplacian": laplacian_function,
+        "bilaplacian": bilaplacian_function,
+    }[operator]
+
+    func = factory(*args, **kwargs)
 
     @no_grad()
     def func_no() -> Tensor:
@@ -783,7 +640,8 @@ if __name__ == "__main__":
     # Sanity check: make sure that the results correspond to the baseline implementation
     if args.strategy != BASELINE or args.compiled:
         print("Checking correctness against un-compiled baseline.")
-        with no_grad():
+        with no_grad(), fork_rng():
+            manual_seed(2)
             result = func()
 
         manual_seed(2)  # make sure that the baseline is deterministic
@@ -798,7 +656,9 @@ if __name__ == "__main__":
             False,  # do not use compilation
             args.rank_ratio,
         )
-        baseline_result = baseline_func_no()
+        with fork_rng():
+            manual_seed(2)
+            baseline_result = baseline_func_no()
 
         assert (
             baseline_result.shape == result.shape

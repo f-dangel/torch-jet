@@ -7,9 +7,10 @@ from functools import partial
 from itertools import product
 from typing import Callable
 
-from torch import Tensor
+from torch import Tensor, manual_seed
 from torch.fx import Graph, GraphModule
 from torch.nn import Module
+from torch.random import fork_rng
 
 from jet.rules import (
     MergeSumVmappedConstant,
@@ -203,13 +204,18 @@ def apply_once(
 
 @contextmanager
 def check_unaltered(
-    mod: GraphModule, x: Tensor | None, rtol: float = 1e-5, atol: float = 1e-8
+    mod: GraphModule,
+    x: Tensor | None,
+    seed: int = 0,
+    rtol: float = 1e-5,
+    atol: float = 1e-8,
 ):
     """Verify that the module still produces the same output before and after the body.
 
     Args:
         mod: The module to be checked.
         x: Input tensor to the module. If `None`, the check will be skipped.
+        seed: Random seed to use for reproducibility. Default: `0`.
         rtol: Relative tolerance for comparing outputs. Default: `1e-5`.
         atol: Absolute tolerance for comparing outputs. Default: `1e-8`.
 
@@ -222,13 +228,17 @@ def check_unaltered(
     """
     if x is not None:
         before_str = str(mod.graph)
-        out_before = mod(x)
+        with fork_rng():
+            manual_seed(seed)
+            out_before = mod(x)
         yield
 
         try:
             mod.graph.lint()
             mod.recompile()
-            out_after = mod(x)
+            with fork_rng():
+                manual_seed(seed)
+                out_after = mod(x)
             if isinstance(out_before, tuple) and isinstance(out_after, tuple):
                 # If both outputs are tuples, compare each element
                 close = len(out_before) == len(out_after) and all(

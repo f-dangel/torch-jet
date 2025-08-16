@@ -138,7 +138,7 @@ K_IDS = [f"{k=}" for k in K]
 
 def setup_case(
     config: dict[str, Any], vmapsize: int = 0, k: int | None = None
-) -> tuple[Callable[[Primal], Value], Primal, tuple[Primal], bool]:
+) -> tuple[Callable[[Primal], Value], Primal, tuple[Primal, ...]]:
     """Instantiate the function, its input, and Taylor coefficients.
 
     Args:
@@ -149,9 +149,8 @@ def setup_case(
             if `None`. Default: `None`.
 
     Returns:
-        tuple containing the function, the input tensor, and the Taylor coefficients,
-        and whether the case represents a batched setting. All are in double precision
-        to avoid numerical issues.
+        tuple containing the function, the input tensor, and the Taylor coefficients.
+        All are in double precision to avoid numerical issues.
     """
     manual_seed(0)
     f = config["f"]
@@ -164,7 +163,7 @@ def setup_case(
     x = rand(*vmap_shape).double()
     vs = () if k is None else tuple(rand(*vmap_shape).double() for _ in range(k))
 
-    return f, x, vs, config["is_batched"]
+    return f, x, vs
 
 
 @mark.parametrize("k", K, ids=K_IDS)
@@ -176,7 +175,7 @@ def test_jet(config: dict[str, Any], k: int):
         config: Configuration dictionary of the test case.
         k: The order of the jet to compute.
     """
-    f, x, vs, _ = setup_case(config, k=k)
+    f, x, vs = setup_case(config, k=k)
     check_jet(f, (x, vs))
 
 
@@ -189,7 +188,7 @@ def test_symbolic_trace_jet(config: dict[str, Any], k: int):
         config: Configuration dictionary of the test case.
         k: The order of the jet to compute.
     """
-    f, _, _, _ = setup_case(config, k=k)
+    f, _, _ = setup_case(config, k=k)
     # generate the jet's compute graph
     jet_f = jet.jet(f, k)
 

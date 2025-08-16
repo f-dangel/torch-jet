@@ -181,6 +181,41 @@ def vmap_linear(
     return linear(x, weight, bias)
 
 
+def vmap_sample(
+    x_meta: Tensor,
+    distribution: str,
+    shape: tuple[int, ...],
+    is_const: tuple[bool, ...] = (True, True, True),
+    vmapsize: int = 0,
+) -> Tensor:
+    """Vectorized sampling operation.
+
+    Args:
+        x_meta: Metadata tensor for the input.
+        distribution: Name of the distribution to sample from.
+        shape: Shape of the output tensor.
+        is_const: Tuple indicating which arguments are constant (and therefore do not
+            have a batch axis).
+        vmapsize: Size of the vmapped axis.
+
+    Returns:
+        A tensor containing the sampled values.
+
+    Raises:
+        NotImplementedError: If the input tensor x_meta is constant or if the
+            distribution/shape are not constant.
+        ValueError: If vmapsize is not positive.
+    """
+    if is_const != (False, True, True):
+        raise NotImplementedError(
+            "x_meta must be non-constant, distribution and shape must be constant."
+        )
+    if vmapsize <= 0:
+        raise ValueError(f"{vmapsize=} must be positive.")
+
+    return jet.utils.sample(x_meta, distribution, (vmapsize, *shape))
+
+
 def vmap_replicate(
     x: Tensor,
     times: int,
@@ -259,6 +294,8 @@ MAPPING = {
     jet.utils.replicate: vmap_replicate,
     # sum_vmapped
     jet.utils.sum_vmapped: vmap_sum_vmapped,
+    # sampling
+    jet.utils.sample: vmap_sample,
 }
 
 
@@ -320,7 +357,10 @@ def traceable_vmap(  # noqa: C901
             elif node.op == "call_function":
                 # FIXME Brittle if kwargs are supplied in random order
                 is_const = tuple(
-                    isinstance(arg, (float, int)) or arg in constant_deps or arg is None
+                    isinstance(arg, (float, int, str))
+                    or (isinstance(arg, tuple) and all(isinstance(a, int) for a in arg))
+                    or arg in constant_deps
+                    or arg is None
                     for arg in list(node.args) + list(node.kwargs.values())
                 )
                 f = node.target

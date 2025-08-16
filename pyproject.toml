@@ -55,7 +55,6 @@ test = [
     "pytest",
     "pytest-cov",
 ]
-
 # Dependencies needed for linting (semicolon/line-separated)
 lint = [
     "black",
@@ -70,6 +69,13 @@ lint = [
     "darglint",
     "pydocstyle",
     "isort",
+]
+# Dependencies needed to build the docs (semicolon/line-separated).
+doc = [
+    "mkdocs==1.6.1",
+    "mkdocs-material==9.6.13",
+    "mkdocstrings[python]==0.30.0",
+    "mkdocs-gallery==0.10.4",
 ]
 
 [tool.setuptools_scm]

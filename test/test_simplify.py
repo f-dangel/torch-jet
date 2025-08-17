@@ -124,8 +124,8 @@ def ensure_tensor_constants_collapsed(
     other_shapes = [] if other_shapes is None else other_shapes
     if any(s in [collapsed_shape, non_collapsed_shape] for s in other_shapes):
         raise ValueError(
-            f"Shape in other_shapes ({other_shapes}) matches either collapsed"
-            + f" ({collapsed_shape}) or non-collapsed ({non_collapsed_shape}) shape."
+            f"Shape in {other_shapes=} matches either {collapsed_shape=}"
+            + f" or {non_collapsed_shape=} shape."
         )
 
     constants = {

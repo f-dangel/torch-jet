@@ -657,11 +657,7 @@ if __name__ == "__main__":
         # NOTE One exception is the weighted randomized Laplacian, which needs to use the
         # same args.compiled value to get matching values. This is likely an artifact of
         # the interaction of randomness and compilation.
-        compile_val = (
-            False
-            if args.operator != "weighted-laplacian" or not is_stochastic
-            else args.compiled
-        )
+        compile_val = args.operator == "weighted-laplacian" and is_stochastic
 
         _, baseline_func_no, _ = get_function_and_description(
             args.operator,

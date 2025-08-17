@@ -468,7 +468,7 @@ def get_function_and_description(
         X: The input tensor.
         is_batched: A flag indicating if the input is batched.
         compiled: A flag indicating if the function should be compiled.
-        rank_ratio: Ratio of the rank to use for the coefficient matrix (between 0 and 1).
+        rank_ratio: Ratio of the rank to use for the coefficient matrix (∈ (0; 1]).
             Only used for weighted Laplacian.
 
     Returns:

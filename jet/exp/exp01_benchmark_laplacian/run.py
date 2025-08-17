@@ -170,7 +170,7 @@ def gather_data(
     operator: str,
     rawdir: str,
     allow_missing: bool = False,
-    rank_ratios: list[float | None] = [None],
+    rank_ratios: list[float | None] | None = None,
 ) -> DataFrame:
     """Create a data frame that collects all the results into a single table.
 
@@ -186,11 +186,12 @@ def gather_data(
         operator: The differential operator that was benchmarked.
         rawdir: The directory where the raw data is stored.
         allow_missing: Whether to allow missing result files. Default is False.
-        rank_ratios: List of rank ratios for the weighted Laplacian. Default is [None].
+        rank_ratios: List of rank ratios for the weighted Laplacian.
 
     Returns:
         A pandas DataFrame containing the gathered results.
     """
+    rank_ratios = [None] if rank_ratios is None else rank_ratios
     df = None
 
     # Iterate over all possible combinations of the input parameters

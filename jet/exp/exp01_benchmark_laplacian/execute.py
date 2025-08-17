@@ -646,7 +646,7 @@ if __name__ == "__main__":
 
     # Sanity check: make sure that the results correspond to the baseline implementation
     if args.strategy != BASELINE or args.compiled:
-        print("Checking correctness against un-compiled baseline.")
+        print("Checking correctness against baseline.")
         with no_grad(), fork_rng():
             manual_seed(2)
             result = func()
@@ -654,10 +654,10 @@ if __name__ == "__main__":
         manual_seed(2)  # make sure that the baseline is deterministic
 
         # Do not use compilation for the ground truth implementation.
-        # NOTE One exception is the weighted randomized Laplacian, which needs to use the
-        # same args.compiled value to get matching values. This is likely an artifact of
-        # the interaction of randomness and compilation.
-        compile_val = args.operator == "weighted-laplacian" and is_stochastic
+        # NOTE Whenever randomness is involved, we need to use the same args.compiled
+        # value to get matching values. This is likely an artifact of the interaction
+        # between randomness and compilation.
+        compile_val = is_stochastic
 
         _, baseline_func_no, _ = get_function_and_description(
             args.operator,

@@ -197,7 +197,7 @@ def vector_hessian_vector_product_laplacian(
         V = (
             eye(rank_weightings, device=x.device, dtype=x.dtype)
             if randomization is None
-            else sample(x, randomization[0], (num_jets, *x.shape))
+            else sample(x, randomization[0], (num_jets, rank_weightings))
         )
         S = apply_weightings(x, V)
         SHS = VhVp(x, S)
@@ -496,7 +496,7 @@ def get_function_and_description(
     if operator == "weighted-laplacian":
         kwargs["weighting"] = get_weighting(
             X[0] if is_batched else X,
-            "diagonal_increments",
+            ("diagonal_increments", args.rank_ratio),
             randomization=randomization,
         )
 

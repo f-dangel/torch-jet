@@ -162,7 +162,9 @@ def ensure_tensor_constants_collapsed(
     "distribution", [None] + DISTRIBUTIONS, ids=["exact"] + DISTRIBUTION_IDS
 )
 def test_simplify_laplacian(
-    config: dict[str, Any], distribution: str | None, weights: str | None
+    config: dict[str, Any],
+    distribution: str | None,
+    weights: str | None | tuple[str, float],
 ):
     """Test the simplification of a Laplacian's compute graph.
 
@@ -214,11 +216,24 @@ def test_simplify_laplacian(
 
     # make sure the module's tensor constant corresponding to the highest
     # Taylor coefficient was collapsed
-    num_vectors = x.numel() if randomization is None else num_samples
-    non_collapsed_shape = (num_vectors, *x.shape)
+    rank_weightings = x.numel() if weighting is None else weighting[1]
+    num_jets = rank_weightings if randomization is None else num_samples
+    non_collapsed_shape = (num_jets, *x.shape)
     collapsed_shape = x.shape
+
+    # in the case of rank-deficient weightings with randomization, we will see another
+    # shape from applying the weighting S to the random vector V
+    other_shapes = []
+    if randomization is not None and rank_weightings != x.numel():
+        other_shapes.append((num_jets, rank_weightings))
+
     ensure_tensor_constants_collapsed(
-        fast, collapsed_shape, non_collapsed_shape, at_least=1, strict=False
+        fast,
+        collapsed_shape,
+        non_collapsed_shape,
+        other_shapes=other_shapes,
+        at_least=1,
+        strict=False,
     )
 
 

@@ -58,7 +58,10 @@ BATCH_SIZE_IDS = ["datum", "batch"]
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
 @mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
 def test_laplacian_functions(
-    config: dict[str, Any], strategy: str, weights: str | None, batch_size: int
+    config: dict[str, Any],
+    strategy: str,
+    weights: str | None | tuple[str, float],
+    batch_size: int,
 ):
     """Test that the benchmarked Laplacian functions produce the correct result.
 
@@ -99,7 +102,7 @@ def test_laplacian_functions(
 def test_randomized_laplacian_functions_identical(
     config: dict[str, Any],
     distribution: str,
-    weights: str | None,
+    weights: str | None | tuple[str, float],
     batch_size: int,
     num_samples: int = 42,
 ):
@@ -147,7 +150,7 @@ def test_randomized_laplacian_functions_converge(
     config: dict[str, Any],
     strategy: str,
     distribution: str,
-    weights: str | None,
+    weights: str | None | tuple[str, float],
     batch_size: int,
     max_num_chunks: int = 128,
     chunk_size: int = 128,

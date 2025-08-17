@@ -16,8 +16,16 @@ from jet.weighted_laplacian import C_func_diagonal_increments, get_weighting
 DISTRIBUTIONS = Laplacian.SUPPORTED_DISTRIBUTIONS
 DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]
 
-WEIGHTS = [None, "diagonal_increments"]
-WEIGHT_IDS = ["standard-laplacian", "weighted-laplacian"]
+WEIGHTS = [
+    None,
+    "diagonal_increments",
+    ("diagonal_increments", 0.5),
+]
+WEIGHT_IDS = [
+    "standard-laplacian",
+    "weighted-laplacian",
+    "rank-deficient-weighted-laplacian",
+]
 
 # make generation of test cases deterministic
 manual_seed(0)
@@ -73,7 +81,7 @@ def laplacian(f: Callable[[Tensor], Tensor], x: Tensor, C: Tensor) -> Tensor:
     return einsum(H, C, equation)
 
 
-def get_coefficients(x: Tensor, weights: str | None) -> Tensor:
+def get_coefficients(x: Tensor, weights: str | None | tuple[str, float]) -> Tensor:
     """Get the coefficient tensor C(x) for the Laplacian.
 
     Args:
@@ -81,6 +89,7 @@ def get_coefficients(x: Tensor, weights: str | None) -> Tensor:
         weights: The weighting to use for the Laplacian. If `None`, the Laplacian is
             unweighted. If `diagonal_increments`, a synthetic coefficient tensor is
             used that has diagonal elements that are increments of 1 starting from 1.
+            Can also be a tuple of (type, rank_ratio).
 
     Returns:
         The coefficient tensor C(x) with shape `(*x.shape, *x.shape)`.
@@ -89,8 +98,16 @@ def get_coefficients(x: Tensor, weights: str | None) -> Tensor:
         ValueError: If the provided weights are not supported.
     """
     if weights == "diagonal_increments":
+        weights = ("diagonal_increments", 1.0)
+
+    if (
+        isinstance(weights, tuple)
+        and len(weights) == 2
+        and weights[0] == "diagonal_increments"
+    ):
         # Use a synthetic coefficient tensor C(x) with diagonal increments
-        return C_func_diagonal_increments(x)
+        _, rank_ratio = weights
+        return C_func_diagonal_increments(x, rank_ratio=rank_ratio)
     elif weights is None:
         return eye(x.numel(), x.numel(), device=x.device, dtype=x.dtype).reshape(
             *x.shape, *x.shape
@@ -101,7 +118,7 @@ def get_coefficients(x: Tensor, weights: str | None) -> Tensor:
 
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize("config", LAPLACIAN_CASES, ids=LAPLACIAN_IDS)
-def test_Laplacian(config: dict[str, Any], weights: str | None):
+def test_Laplacian(config: dict[str, Any], weights: str | None | tuple[str, float]):
     """Compare Laplacian implementations.
 
     Args:

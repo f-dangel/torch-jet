@@ -496,7 +496,7 @@ def get_function_and_description(
     if operator == "weighted-laplacian":
         kwargs["weighting"] = get_weighting(
             X[0] if is_batched else X,
-            ("diagonal_increments", args.rank_ratio),
+            ("diagonal_increments", rank_ratio),
             randomization=randomization,
         )
 

@@ -628,6 +628,7 @@ if __name__ == "__main__":
     print(f"Setting up functions took: {perf_counter() - start:.3f} s.")
 
     is_cuda = args.device == "cuda"
+    is_stochastic = args.distribution is not None and args.num_samples is not None
     op = args.operator.capitalize()
 
     # Carry out the measurements
@@ -651,6 +652,17 @@ if __name__ == "__main__":
             result = func()
 
         manual_seed(2)  # make sure that the baseline is deterministic
+
+        # Do not use compilation for the ground truth implementation.
+        # NOTE One exception is the weighted randomized Laplacian, which needs to use the
+        # same args.compiled value to get matching values. This is likely an artifact of
+        # the interaction of randomness and compilation.
+        compile_val = (
+            False
+            if args.operator != "weighted-laplacian" or not is_stochastic
+            else args.compiled
+        )
+
         _, baseline_func_no, _ = get_function_and_description(
             args.operator,
             BASELINE,
@@ -659,7 +671,7 @@ if __name__ == "__main__":
             net,
             X,
             is_batched,
-            False,  # do not use compilation
+            compile_val,
             args.rank_ratio,
         )
         with fork_rng():

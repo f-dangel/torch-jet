@@ -112,7 +112,7 @@ class Laplacian(Module):
         Returns:
             The first Taylor coefficient for computing the Laplacian.
         """
-        shape = self.num_jets, self.rank_weightings
+        shape = (self.num_jets, self.rank_weightings)
         V = (
             eye(self.rank_weightings, **self.in_meta)
             if self.randomization is None

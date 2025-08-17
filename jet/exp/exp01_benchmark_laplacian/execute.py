@@ -197,7 +197,7 @@ def vector_hessian_vector_product_laplacian(
         V = (
             eye(rank_weightings, device=x.device, dtype=x.dtype)
             if randomization is None
-            else sample(x, randomization[0], (num_jets, *x.shape))
+            else sample(x, randomization[0], (num_jets, rank_weightings))
         )
         S = apply_weightings(x, V)
         SHS = VhVp(x, S)
@@ -416,14 +416,15 @@ def savepath(rawdir: str = RAWDIR, **kwargs: str | int) -> str:
     return path.join(rawdir, f"{filename}.csv")
 
 
-def check_mutually_required(args: Namespace):
-    """Check if mutually required arguments are specified or unspecified.
+def check_arg_conflict(args: Namespace):
+    """Check if arguments are correctly specified.
 
     Args:
         args: The parsed arguments.
 
     Raises:
         ValueError: If the arguments are not mutually specified or unspecified.
+        ValueError: If the `rank_ratio` argument's value is invalid.
     """
     distribution, num_samples = args.distribution, args.num_samples
     if (distribution is None) != (num_samples is None):
@@ -431,6 +432,17 @@ def check_mutually_required(args: Namespace):
             f"Arguments 'distribution' ({distribution}) and 'num_samples'"
             f" ({num_samples}) are mutually required."
         )
+
+    if args.operator == "weighted-laplacian":
+        if args.rank_ratio is None:
+            raise ValueError(
+                f"Argument 'rank_ratio' ({args.rank_ratio}) is required for "
+                f"operator {args.operator!r}."
+            )
+        elif not 0 < args.rank_ratio <= 1:
+            raise ValueError(
+                f"Argument 'rank_ratio' ({args.rank_ratio}) must be in range (0,1]."
+            )
 
 
 def get_function_and_description(
@@ -442,6 +454,7 @@ def get_function_and_description(
     X: Tensor,
     is_batched: bool,
     compiled: bool,
+    rank_ratio: float | None = None,
 ) -> tuple[Callable[[], Tensor], Callable[[], Tensor], str]:
     """Determine the function and its description based on the operator and strategy.
 
@@ -455,6 +468,8 @@ def get_function_and_description(
         X: The input tensor.
         is_batched: A flag indicating if the input is batched.
         compiled: A flag indicating if the function should be compiled.
+        rank_ratio: Ratio of the rank to use for the coefficient matrix (∈ (0; 1]).
+            Only used for weighted Laplacian.
 
     Returns:
         A tuple containing the function to compute the operator (differentiable),
@@ -466,6 +481,8 @@ def get_function_and_description(
     description = f"{strategy}, {compiled=}"
     if is_stochastic:
         description += f", {distribution=}, {num_samples=}"
+    if operator == "weighted-laplacian" and rank_ratio is not None:
+        description += f", {rank_ratio=}"
 
     randomization = (
         (distribution, num_samples)
@@ -479,7 +496,7 @@ def get_function_and_description(
     if operator == "weighted-laplacian":
         kwargs["weighting"] = get_weighting(
             X[0] if is_batched else X,
-            "diagonal_increments",
+            ("diagonal_increments", args.rank_ratio),
             randomization=randomization,
         )
 
@@ -570,10 +587,16 @@ def parse_args() -> Namespace:
         default=False,
         help="Whether to use torch.compile for the functions",
     )
+    parser.add_argument(
+        "--rank_ratio",
+        type=float,
+        required=False,
+        help="Rank ratio for weighted Laplacian (between 0 and 1)",
+    )
 
     # parse and check validity
     args = parser.parse_args()
-    check_mutually_required(args)
+    check_arg_conflict(args)
 
     return args
 
@@ -599,6 +622,7 @@ if __name__ == "__main__":
         X,
         is_batched,
         args.compiled,
+        args.rank_ratio,
     )
 
     print(f"Setting up functions took: {perf_counter() - start:.3f} s.")
@@ -636,6 +660,7 @@ if __name__ == "__main__":
             X,
             is_batched,
             False,  # do not use compilation
+            args.rank_ratio,
         )
         with fork_rng():
             manual_seed(2)

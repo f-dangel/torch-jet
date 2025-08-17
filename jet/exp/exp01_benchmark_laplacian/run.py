@@ -36,6 +36,7 @@ def measure(
     nums_samples: list[int] | None = None,
     operator: str = "laplacian",
     compiled: list[bool] | None = None,
+    rank_ratios: list[float] | None = None,
     script_file: str = SCRIPT,
     rawdir: str = RAWDIR,
     gatherdir: str = GATHERDIR,
@@ -59,6 +60,8 @@ def measure(
         operator: The differential operator to benchmark. Default is `'laplacian'`.
         compiled: List of boolean values indicating whether to use torch.compile.
             Default is `None` which means only non-compiled versions will be run.
+        rank_ratios: List of rank ratios for the weighted Laplacian. `None` means
+            that the full rank will be used. Default is `None`.
         gatherdir: The directory to save the gathered data into. Default is the gather
             directory of the PyTorch benchmark.
         script_file: The path to the script file that runs the benchmark. Default is the
@@ -69,6 +72,7 @@ def measure(
     _distributions = [None] if distributions is None else distributions
     _nums_samples = [None] if nums_samples is None else nums_samples
     _compiled = [False] if compiled is None else compiled
+    _rank_ratios = [None] if rank_ratios is None else rank_ratios
 
     combinations = list(
         product(
@@ -80,6 +84,7 @@ def measure(
             _distributions,
             _nums_samples,
             _compiled,
+            _rank_ratios,
         )
     )
     for idx, (
@@ -91,6 +96,7 @@ def measure(
         distribution,
         num_samples,
         is_compiled,
+        rank_ratio,
     ) in enumerate(combinations):
         print(f"\n{idx + 1}/{len(combinations)}")
         kwargs = {
@@ -103,6 +109,7 @@ def measure(
             "num_samples": num_samples,
             "operator": operator,
             "compiled": is_compiled,
+            "rank_ratio": rank_ratio,
         }
 
         # maybe skip the computation
@@ -144,6 +151,7 @@ def measure(
                 operator,
                 rawdir,
                 allow_missing=not is_last,
+                rank_ratios=_rank_ratios,
             )
             filename = savepath(name, gatherdir=gatherdir)
             print(f"Saving gathered data for experiment {name} to {filename}.")
@@ -162,6 +170,7 @@ def gather_data(
     operator: str,
     rawdir: str,
     allow_missing: bool = False,
+    rank_ratios: list[float | None] | None = None,
 ) -> DataFrame:
     """Create a data frame that collects all the results into a single table.
 
@@ -177,10 +186,12 @@ def gather_data(
         operator: The differential operator that was benchmarked.
         rawdir: The directory where the raw data is stored.
         allow_missing: Whether to allow missing result files. Default is False.
+        rank_ratios: List of rank ratios for the weighted Laplacian.
 
     Returns:
         A pandas DataFrame containing the gathered results.
     """
+    rank_ratios = [None] if rank_ratios is None else rank_ratios
     df = None
 
     # Iterate over all possible combinations of the input parameters
@@ -193,6 +204,7 @@ def gather_data(
         distribution,
         num_samples,
         is_compiled,
+        rank_ratio,
     ) in product(
         architectures,
         dims,
@@ -202,6 +214,7 @@ def gather_data(
         distributions,
         nums_samples,
         compiled,
+        rank_ratios,
     ):
         # Create a dictionary for each combination
         result = {
@@ -213,6 +226,7 @@ def gather_data(
             "distribution": [distribution],
             "num_samples": [num_samples],
             "compiled": [is_compiled],
+            "rank_ratio": [rank_ratio],
         }
         filename = savepath_raw(
             **{key: value[0] for key, value in result.items()},
@@ -291,7 +305,7 @@ EXPERIMENTS = [
         # what to plot: x-axis is nums_samples and each strategy is plotted in a curve
         ("num_samples", "strategy"),
     ),
-    # Experiment 3: Exact weighted Laplacian, vary batch size
+    # Experiment 3: Exact weighted Laplacian, vary batch size and rank ratio
     (  # Experiment name, must be unique
         "weighted_laplacian_vary_batch_size",
         # Experiment parameters
@@ -303,6 +317,7 @@ EXPERIMENTS = [
             "devices": ["cuda"],
             "operator": "weighted-laplacian",
             "compiled": [False, True],
+            "rank_ratios": [0.1, 0.5, 1.0],
         },
         # what to plot: x-axis is batch size and each strategy is plotted in a curve
         ("batch_size", "strategy"),
@@ -321,6 +336,7 @@ EXPERIMENTS = [
             "distributions": ["normal"],
             "nums_samples": linspace(1, 50, 10).int().unique().tolist(),
             "compiled": [False, True],
+            "rank_ratios": [1.0],
         },
         # what to plot: x-axis is nums_samples and each strategy is plotted in a curve
         ("num_samples", "strategy"),
@@ -360,6 +376,23 @@ EXPERIMENTS = [
         },
         # what to plot: x-axis is batch size and each strategy is plotted in a curve
         ("batch_size", "strategy"),
+    ),
+    # Experiment 7: Exact weighted Laplacian, vary rank ratio
+    (  # Experiment name, must be unique
+        "weighted_laplacian_vary_rank_ratio",
+        # Experiment parameters
+        {
+            "architectures": ["tanh_mlp_768_768_512_512_1"],
+            "dims": [50],
+            "batch_sizes": [2048],
+            "strategies": SUPPORTED_STRATEGIES,
+            "devices": ["cuda"],
+            "operator": "weighted-laplacian",
+            "compiled": [False, True],
+            "rank_ratios": [0.05 * (2 * i + 1) for i in range(10)],
+        },
+        # what to plot: x-axis is rank ratio and each strategy is plotted in a curve
+        ("rank_ratio", "strategy"),
     ),
 ]
 

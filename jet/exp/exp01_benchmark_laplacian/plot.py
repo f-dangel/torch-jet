@@ -92,6 +92,7 @@ def plot_metric(
             "batch_size": "Batch size",
             "num_samples": "Samples",
             "dim": "Input dimension",
+            "rank_ratio": "Relative rank",
         }
         ax.set_xlabel(x_to_xlabel.get(x, x))
     if ylabel:

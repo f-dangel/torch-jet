@@ -645,20 +645,19 @@ if __name__ == "__main__":
     mu, sigma, best = measure_time(func, f"{op} ({description})", is_cuda)
 
     # Sanity check: make sure that the results correspond to the baseline implementation
-    if args.strategy != BASELINE or args.compiled:
+    #
+    # NOTE Compilation may affect randomness in the baseline implementation differently
+    #      than in the to-be-tested implementation. Therefore we cannot expect that
+    #      their output matches.
+    #
+    # Check is carried out for deterministic, and un-compiled stochastic computations.
+    if not is_stochastic or not args.compiled:
         print("Checking correctness against baseline.")
         with no_grad(), fork_rng():
-            manual_seed(2)
+            manual_seed(3)
             result = func()
 
         manual_seed(2)  # make sure that the baseline is deterministic
-
-        # Do not use compilation for the ground truth implementation.
-        # NOTE Whenever randomness is involved, we need to use the same args.compiled
-        # value to get matching values. This is likely an artifact of the interaction
-        # between randomness and compilation.
-        compile_val = is_stochastic
-
         _, baseline_func_no, _ = get_function_and_description(
             args.operator,
             BASELINE,
@@ -667,11 +666,11 @@ if __name__ == "__main__":
             net,
             X,
             is_batched,
-            compile_val,
+            False,  # do not use compilation for ground truth
             args.rank_ratio,
         )
         with fork_rng():
-            manual_seed(2)
+            manual_seed(3)
             baseline_result = baseline_func_no()
 
         assert (

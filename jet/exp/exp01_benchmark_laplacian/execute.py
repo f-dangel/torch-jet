@@ -496,7 +496,7 @@ def get_function_and_description(
     if operator == "weighted-laplacian":
         kwargs["weighting"] = get_weighting(
             X[0] if is_batched else X,
-            ("diagonal_increments", args.rank_ratio),
+            ("diagonal_increments", rank_ratio),
             randomization=randomization,
         )
 
@@ -628,6 +628,7 @@ if __name__ == "__main__":
     print(f"Setting up functions took: {perf_counter() - start:.3f} s.")
 
     is_cuda = args.device == "cuda"
+    is_stochastic = args.distribution is not None and args.num_samples is not None
     op = args.operator.capitalize()
 
     # Carry out the measurements
@@ -644,10 +645,16 @@ if __name__ == "__main__":
     mu, sigma, best = measure_time(func, f"{op} ({description})", is_cuda)
 
     # Sanity check: make sure that the results correspond to the baseline implementation
-    if args.strategy != BASELINE or args.compiled:
-        print("Checking correctness against un-compiled baseline.")
+    #
+    # NOTE Compilation may affect randomness in the baseline implementation differently
+    #      than in the to-be-tested implementation. Therefore we cannot expect that
+    #      their output matches.
+    #
+    # Check is carried out for deterministic, and un-compiled stochastic computations.
+    if not is_stochastic or not args.compiled:
+        print("Checking correctness against baseline.")
         with no_grad(), fork_rng():
-            manual_seed(2)
+            manual_seed(3)
             result = func()
 
         manual_seed(2)  # make sure that the baseline is deterministic
@@ -659,11 +666,11 @@ if __name__ == "__main__":
             net,
             X,
             is_batched,
-            False,  # do not use compilation
+            False,  # do not use compilation for ground truth
             args.rank_ratio,
         )
         with fork_rng():
-            manual_seed(2)
+            manual_seed(3)
             baseline_result = baseline_func_no()
 
         assert (

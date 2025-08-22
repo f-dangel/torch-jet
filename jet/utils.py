@@ -9,6 +9,8 @@ from torch import Tensor, device, dtype, empty, randn
 from torch.fx import GraphModule, Node
 from torch.nn import Module
 
+from jet.signature_parser import parse_torch_builtin
+
 # type annotation for arguments and Taylor coefficients in input and output space
 Primal = Tensor
 Value = Tensor
@@ -247,9 +249,14 @@ def separate_args_and_kwargs(
           are the corresponding values from `kwargs` or their default values if not
           provided.
     """
-    sig = signature(f)
-    bound_args = sig.bind(*args, **kwargs)
+    try:
+        # Try to get the signature using inspect.signature
+        sig = signature(f)
+    except ValueError:
+        # For built-in PyTorch functions, use our custom parser
+        sig = parse_torch_builtin(f)
 
+    bound_args = sig.bind(*args, **kwargs)
     positional = tuple(
         bound_args.arguments[name]
         for name, param in sig.parameters.items()

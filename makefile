@@ -17,17 +17,14 @@ help:
 	@echo "        Run pytest on the light part of test and report coverage"
 	@echo "install-lint"
 	@echo "        Install only the linter tools (included in install-dev)"
-	@echo "black"
-	@echo "        Run black on the project"
-	@echo "black-check"
-	@echo "        Check if black would change files"
-	@echo "isort"
-	@echo "        Run isort (sort imports) on the project"
-	@echo "isort-check"
-	@echo "        Check if isort (sort imports) would change files"
-	@echo "flake8"
-	@echo "        Run flake8 on the project"
-	@echo "conda-env"
+	@echo "ruff-format"
+	@echo "        Run ruff format on the project"
+	@echo "ruff-format-check"
+	@echo "        Check if ruff format would change files"
+	@echo "ruff"
+	@echo "        Run ruff on the project and fix errors"
+	@echo "ruff-check"
+	@echo "        Run ruff check on the project without fixing errors"	@echo "conda-env"
 	@echo "        Create conda environment 'jet' with dev setup"
 	@echo "darglint-check"
 	@echo "        Run darglint (docstring check) on the project"
@@ -67,9 +64,8 @@ test-light:
 .PHONY: lint
 
 lint:
-	make black-check
-	make isort-check
-	make flake8
+	make ruff-check
+	make ruff-format-check
 	make darglint-check
 	make pydocstyle-check
 
@@ -78,26 +74,21 @@ lint:
 install-lint:
 	@pip install -e ."[lint]"
 
-.PHONY: black black-check
+.PHONY: ruff ruff-check
 
-black:
-	@black . --config=black.toml
+ruff:
+	@ruff check . --fix
 
-black-check:
-	@black . --config=black.toml --check
+ruff-check:
+	@ruff check .
 
-.PHONY: isort isort-check
+.PHONY: ruff-format ruff-format-check
 
-isort:
-	@isort .
+ruff-format:
+	@ruff format .
 
-isort-check:
-	@isort . --check --diff
-
-.PHONY: flake8
-
-flake8:
-	@flake8 .
+ruff-format-check:
+	@ruff format --check .
 
 .PHONY: darglint-check
 

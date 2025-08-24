@@ -458,7 +458,6 @@ def randomized_bilaplacian_function(
         )(params, x, v)
 
     elif strategy == "jet_naive":
-
         v234 = zeros(dummy_X.shape, dtype=dummy_X.dtype, device=dummy_X.device)
 
         def d4f_vvvv(params: list[ArrayLike], x: ArrayLike, v: ArrayLike) -> ArrayLike:
@@ -626,9 +625,9 @@ if __name__ == "__main__":
         )
         baseline_result = baseline_func_no()
 
-        assert (
-            baseline_result.shape == result.shape
-        ), f"Shapes do not match: {baseline_result.shape} != {result.shape}."
+        assert baseline_result.shape == result.shape, (
+            f"Shapes do not match: {baseline_result.shape} != {result.shape}."
+        )
         # NOTE On MAC, we cannot force float64 computations without getting errors.
         # Therefore we need to increase the tolerance.
         tols = {"atol": 5e-6, "rtol": 5e-4} if ON_MAC else {}

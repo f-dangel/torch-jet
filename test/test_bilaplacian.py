@@ -7,8 +7,6 @@ For functions that produce vectors or tensors, the Bi-Laplacian is defined per o
 component. It has the same shape as f(x).
 """
 
-from test.test___init__ import report_nonclose, setup_case
-from test.test_laplacian import _check_mc_convergence
 from typing import Any, Callable
 
 from einops import einsum
@@ -18,6 +16,8 @@ from torch.func import hessian
 from torch.nn import Linear, Sequential, Tanh
 
 from jet.bilaplacian import Bilaplacian
+from test.test___init__ import report_nonclose, setup_case
+from test.test_laplacian import _check_mc_convergence
 
 DISTRIBUTIONS = Bilaplacian.SUPPORTED_DISTRIBUTIONS
 DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]

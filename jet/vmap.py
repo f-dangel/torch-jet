@@ -335,7 +335,8 @@ def traceable_vmap(  # noqa: C901
     if output not in placeholder_deps:
         warn(
             f"The {output=} does not depend on the placeholder nodes. "
-            f"The resulting vmap will be a replicate. {graph}"
+            f"The resulting vmap will be a replicate. {graph}",
+            stacklevel=2,
         )
         assert all(isinstance(arg, Node) for arg in output.args)
         out_tensors = set(output.all_input_nodes)

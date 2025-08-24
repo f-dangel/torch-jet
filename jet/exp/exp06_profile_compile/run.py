@@ -60,22 +60,32 @@ if __name__ == "__main__":
 
             # Benchmark memory and time
             peakmem = measure_peak_memory(
-                lambda: f_simple1(X), "naive", is_cuda  # noqa: B023
+                lambda: f_simple1(X),  # noqa: B023
+                "naive",
+                is_cuda,
             )
             peakmem = measure_peak_memory(
-                lambda: f_simple2(X), "collapsed", is_cuda  # noqa: B023
+                lambda: f_simple2(X),  # noqa: B023
+                "collapsed",
+                is_cuda,
             )
             measure_time(lambda: f_simple1(X), "naive", is_cuda)  # noqa: B023
             measure_time(lambda: f_simple2(X), "collapsed", is_cuda)  # noqa: B023
             # Now use compilation
             f_simple1, f_simple2 = compile(f_simple1), compile(f_simple2)
             peakmem = measure_peak_memory(
-                lambda: f_simple1(X), "naive+compile", is_cuda  # noqa: B023
+                lambda: f_simple1(X),  # noqa: B023
+                "naive+compile",
+                is_cuda,
             )
             peakmem = measure_peak_memory(
-                lambda: f_simple2(X), "collapsed+compile", is_cuda  # noqa: B023
+                lambda: f_simple2(X),  # noqa: B023
+                "collapsed+compile",
+                is_cuda,
             )
             measure_time(lambda: f_simple1(X), "naive+compile", is_cuda)  # noqa: B023
             measure_time(
-                lambda: f_simple2(X), "collapsed+compile", is_cuda  # noqa: B023
+                lambda: f_simple2(X),  # noqa: B023
+                "collapsed+compile",
+                is_cuda,
             )

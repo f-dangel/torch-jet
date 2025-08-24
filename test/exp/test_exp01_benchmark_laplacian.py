@@ -1,14 +1,5 @@
 """Tests for exp01 (Laplacian benchmark)."""
 
-from test.test___init__ import report_nonclose, setup_case
-from test.test_bilaplacian import bilaplacian
-from test.test_laplacian import (
-    WEIGHT_IDS,
-    WEIGHTS,
-    _check_mc_convergence,
-    get_coefficients,
-    laplacian,
-)
 from typing import Any
 
 from pytest import mark
@@ -23,6 +14,15 @@ from jet.exp.exp01_benchmark_laplacian.execute import (
 )
 from jet.laplacian import Laplacian
 from jet.weighted_laplacian import get_weighting
+from test.test___init__ import report_nonclose, setup_case
+from test.test_bilaplacian import bilaplacian
+from test.test_laplacian import (
+    WEIGHT_IDS,
+    WEIGHTS,
+    _check_mc_convergence,
+    get_coefficients,
+    laplacian,
+)
 
 STRATEGY_IDS = [f"strategy={s}" for s in SUPPORTED_STRATEGIES]
 LAPLACIAN_DISTRIBUTION_IDS = [

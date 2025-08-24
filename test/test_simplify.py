@@ -1,17 +1,5 @@
 """Test simplification mechanism on compute graphs of the (Bi-)Laplacian."""
 
-from test.test___init__ import compare_jet_results, setup_case
-from test.test_bilaplacian import bilaplacian
-from test.test_laplacian import (
-    DISTRIBUTION_IDS,
-    DISTRIBUTIONS,
-    WEIGHT_IDS,
-    WEIGHTS,
-    get_coefficients,
-    get_weighting,
-    laplacian,
-)
-from test.utils import report_nonclose
 from typing import Any, Callable
 
 from pytest import mark
@@ -26,6 +14,18 @@ from jet.rules import is_replicate
 from jet.simplify import common_subexpression_elimination, simplify
 from jet.tracing import capture_graph
 from jet.utils import recursive_getattr
+from test.test___init__ import compare_jet_results, setup_case
+from test.test_bilaplacian import bilaplacian
+from test.test_laplacian import (
+    DISTRIBUTION_IDS,
+    DISTRIBUTIONS,
+    WEIGHT_IDS,
+    WEIGHTS,
+    get_coefficients,
+    get_weighting,
+    laplacian,
+)
+from test.utils import report_nonclose
 
 # make generation of test cases deterministic
 manual_seed(0)

@@ -31,9 +31,9 @@ via `make`:
 
 - Run all linters with `make lint`, or separately with:
 
-    - Run auto-formatting and import sorting with `make black` and `make isort`
+    - Run auto-formatting and import sorting with `make ruff-format`
 
-    - Run linting with `make flake8`
+    - Run linting with `make ruff`
 
     - Run docstring checks with `make pydocstyle-check` and `make darglint-check`
 

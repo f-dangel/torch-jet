@@ -1,8 +1,6 @@
 name: Build LaTeX files
 
-on:
-  - push
-  - pull_request
+on: [push, pull request]
 
 jobs:
   latex:

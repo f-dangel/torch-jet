@@ -138,5 +138,5 @@ def to_string(
             and not compact_bool_values
             or not isinstance(value, bool)
         ):
-            formatted.append(f"{key}_{str(value).replace('.','_')}")
+            formatted.append(f"{key}_{str(value).replace('.', '_')}")
     return "_".join(formatted)

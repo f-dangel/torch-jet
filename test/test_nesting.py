@@ -1,6 +1,5 @@
 """Test nesting calls to `jet`."""
 
-from test.test___init__ import setup_case
 from typing import Any, Callable
 
 from pytest import mark
@@ -10,6 +9,7 @@ from torch.nn.functional import linear
 
 import jet
 from jet.tracing import capture_graph
+from test.test___init__ import setup_case
 
 NEST_CASES = [
     # output does not depend on placeholder

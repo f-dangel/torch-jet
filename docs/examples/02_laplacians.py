@@ -168,7 +168,7 @@ def compute_loop_free_laplacian(x: Tensor) -> Tensor:
         The Laplacian of shape [1].
     """
     x0, x2 = x, zeros_like(x)  # fixed Taylor coefficients
-    eval_f2 = lambda x1: f_jet(x0, x1, x2)[2]
+    eval_f2 = lambda x1: f_jet(x0, x1, x2)[2]  # noqa: E731
     vmap_eval_f2 = vmap(eval_f2)
 
     # generate all basis vectors at once and compute their Hessian diagonal elements

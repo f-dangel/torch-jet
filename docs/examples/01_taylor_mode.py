@@ -419,7 +419,18 @@ _ = jet(f, 2)  # works because sin is called via a "functional_call" node
 #
 # but the following does not, although the function is the same:
 
-f = lambda x: x.sin()
+
+def f(x: Tensor) -> Tensor:
+    """Function that calls sin as a method (currently not supported).
+
+    Args:
+        x: Input tensor.
+
+    Returns:
+        The sine of x.
+    """
+    return x.sin()
+
 
 with raises(ValueError):
     jet(f, 2)  # crashes because sin is called via a "call_method" node

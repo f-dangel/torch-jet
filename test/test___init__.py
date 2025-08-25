@@ -1,6 +1,5 @@
 """Tests for jet/__init__.py."""
 
-from test.utils import report_nonclose
 from typing import Any, Callable
 
 from pytest import mark
@@ -13,6 +12,7 @@ import jet.utils
 from jet import rev_jet
 from jet.tracing import capture_graph
 from jet.utils import Primal, PrimalAndCoefficients, Value, ValueAndCoefficients
+from test.utils import report_nonclose
 
 
 def compare_jet_results(out1: ValueAndCoefficients, out2: ValueAndCoefficients):

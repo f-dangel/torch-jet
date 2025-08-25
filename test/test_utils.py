@@ -1,4 +1,4 @@
-"""Test `jet.utils`.`"""
+"""Test `jet.utils`."""
 
 from torch import zeros
 from torch.fx import Graph

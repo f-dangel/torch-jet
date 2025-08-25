@@ -13,8 +13,6 @@ help:
 	@echo "        Install only the testing tools (included in install-dev)"
 	@echo "test"
 	@echo "        Run pytest on test and report coverage"
-	@echo "test-light"
-	@echo "        Run pytest on the light part of test and report coverage"
 	@echo "install-lint"
 	@echo "        Install only the linter tools (included in install-dev)"
 	@echo "ruff-format"
@@ -24,12 +22,9 @@ help:
 	@echo "ruff"
 	@echo "        Run ruff on the project and fix errors"
 	@echo "ruff-check"
-	@echo "        Run ruff check on the project without fixing errors"	@echo "conda-env"
+	@echo "        Run ruff check on the project without fixing errors"
+	@echo "conda-env"
 	@echo "        Create conda environment 'jet' with dev setup"
-	@echo "darglint-check"
-	@echo "        Run darglint (docstring check) on the project"
-	@echo "pydocstyle-check"
-	@echo "        Run pydocstyle (docstring check) on the project"
 	@echo "arxiv"
 	@echo "        Run arxiv-collector to prepare a submission to arXiv (requires latexmk)"
 
@@ -53,12 +48,9 @@ install-dev:
 install-test:
 	@pip install -e ."[test,exp]"
 
-.PHONY: test test-light
+.PHONY: test
 
 test:
-	@pytest -vx --cov=jet test
-
-test-light:
 	@pytest -vx --cov=jet test
 
 .PHONY: lint
@@ -66,8 +58,6 @@ test-light:
 lint:
 	make ruff-check
 	make ruff-format-check
-	make darglint-check
-	make pydocstyle-check
 
 .PHONY: install-lint
 
@@ -89,16 +79,6 @@ ruff-format:
 
 ruff-format-check:
 	@ruff format --check .
-
-.PHONY: darglint-check
-
-darglint-check:
-	@darglint --verbosity 2 jet test docs/examples
-
-.PHONY: pydocstyle-check
-
-pydocstyle-check:
-	@pydocstyle --count .
 
 .PHONY: conda-env
 

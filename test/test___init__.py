@@ -15,7 +15,7 @@ from jet.utils import Primal, PrimalAndCoefficients, Value, ValueAndCoefficients
 from test.utils import report_nonclose
 
 
-def compare_jet_results(out1: ValueAndCoefficients, out2: ValueAndCoefficients):
+def compare_jet_results(out1: ValueAndCoefficients, out2: ValueAndCoefficients):  # noqa: D103
     value1, series1 = out1[0], out1[1:]
     value2, series2 = out2[0], out2[1:]
 
@@ -25,7 +25,7 @@ def compare_jet_results(out1: ValueAndCoefficients, out2: ValueAndCoefficients):
         report_nonclose(s1, s2, name=f"Coefficients {i + 1}")
 
 
-def check_jet(f: Callable[[Primal], Value], arg: PrimalAndCoefficients):
+def check_jet(f: Callable[[Primal], Value], arg: PrimalAndCoefficients):  # noqa: D103
     x, vs = arg
 
     rev_jet_f = rev_jet(f)

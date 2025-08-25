@@ -58,8 +58,6 @@ test = [
 # Dependencies needed for linting (semicolon/line-separated)
 lint = [
     "ruff",
-    "darglint",
-    "pydocstyle",
 ]
 # Dependencies needed to build the docs (semicolon/line-separated).
 doc = [
@@ -71,12 +69,6 @@ doc = [
 
 [tool.setuptools_scm]
 
-[tool.pydocstyle]
-convention = "google"
-match = '.*\.py'
-# exclude directories, see
-# https://github.com/PyCQA/pydocstyle/issues/363#issuecomment-625563088
-match_dir = '^(?!(test|.git)).*'
 
 [tool.setuptools]
 packages = ["jet"]
@@ -85,8 +77,9 @@ packages = ["jet"]
 line-length = 88
 
 [tool.ruff.lint]
-# Enable all rules from flake8 (E, F), plus additional ones including isort (I)
-select = ["E", "F", "B", "C", "W", "B9", "PLE", "PLW", "PLR", "I"]
+# Enable all rules from flake8 (E, F), plus additional ones including isort (I) and
+# docstring checks (D)
+select = ["E", "F", "B", "C", "W", "B9", "PLE", "PLW", "PLR", "I", "D"]
 ignore = [
     # E501 max-line-length (replaced by B950 (max-line-length + 10%))
     "E501",
@@ -128,3 +121,6 @@ exclude = [
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = ["pytest.raises", "pytest.warns", "pytest.mark.skip"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"

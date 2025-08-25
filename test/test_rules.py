@@ -64,17 +64,17 @@ CASES = []
 
 
 # swapping replicate nodes with elementwise functions
-class ReplicateElementwise(Module):
-    def __init__(self, op: Callable[[Tensor], Tensor], times: int, pos: int):
+class ReplicateElementwise(Module):  # noqa: D101
+    def __init__(self, op: Callable[[Tensor], Tensor], times: int, pos: int):  # noqa: D107
         super().__init__()
         self.op, self.times, self.pos = op, times, pos
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         return self.op(jet.utils.replicate(x, self.times, pos=self.pos))
 
 
-class SimpleReplicateElementwise(ReplicateElementwise):
-    def forward(self, x: Tensor) -> Tensor:
+class SimpleReplicateElementwise(ReplicateElementwise):  # noqa: D101
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         return jet.utils.replicate(self.op(x), self.times, pos=self.pos)
 
 
@@ -93,8 +93,8 @@ CASES.extend(
 
 
 # swapping replicate nodes with arithmetic operations involving one integer/float
-class ReplicateScalarArithmetic(Module):
-    def __init__(
+class ReplicateScalarArithmetic(Module):  # noqa: D101
+    def __init__(  # noqa: D107
         self,
         op: Callable[[float | int | Tensor, float | int | Tensor], Tensor],
         times: int,
@@ -109,7 +109,7 @@ class ReplicateScalarArithmetic(Module):
         self.scalar = scalar
         self.scalar_first = scalar_first
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         x_rep = jet.utils.replicate(x, self.times, pos=self.pos)
         return (
             self.op(self.scalar, x_rep)
@@ -118,8 +118,8 @@ class ReplicateScalarArithmetic(Module):
         )
 
 
-class SimpleReplicateScalarArithmetic(ReplicateScalarArithmetic):
-    def forward(self, x: Tensor) -> Tensor:
+class SimpleReplicateScalarArithmetic(ReplicateScalarArithmetic):  # noqa: D101
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         res = self.op(self.scalar, x) if self.scalar_first else self.op(x, self.scalar)
         return jet.utils.replicate(res, self.times, pos=self.pos)
 
@@ -145,8 +145,8 @@ CASES.extend(
 
 
 # swapping arithmetic operations that consume two replicate nodes
-class ReplicateTensorArithmetic(Module):
-    def __init__(
+class ReplicateTensorArithmetic(Module):  # noqa: D101
+    def __init__(  # noqa: D107
         self, op: Callable[[Tensor, Tensor], Tensor], times: int, pos: int, same: bool
     ):
         super().__init__()
@@ -155,7 +155,7 @@ class ReplicateTensorArithmetic(Module):
         self.pos = pos
         self.same = same
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         y = x if self.same else x + 1
         return self.op(
             jet.utils.replicate(x, self.times, pos=self.pos),
@@ -163,8 +163,8 @@ class ReplicateTensorArithmetic(Module):
         )
 
 
-class SimpleReplicateTensorArithmetic(ReplicateTensorArithmetic):
-    def forward(self, x):
+class SimpleReplicateTensorArithmetic(ReplicateTensorArithmetic):  # noqa: D101
+    def forward(self, x):  # noqa: D102
         y = x if self.same else x + 1
         return jet.utils.replicate(self.op(x, y), self.times, pos=self.pos)
 
@@ -208,18 +208,18 @@ CASES.append(
 
 
 # Pushing a replicate node through a sum_vmapped node
-class ReplicateSumVmapped(Module):
-    def __init__(self, pos1: int, pos2: int, times: int) -> None:
+class ReplicateSumVmapped(Module):  # noqa: D101
+    def __init__(self, pos1: int, pos2: int, times: int) -> None:  # noqa: D107
         super().__init__()
         self.pos1, self.pos2, self.times = pos1, pos2, times
 
-    def forward(self, x):
+    def forward(self, x):  # noqa: D102
         x_rep = jet.utils.replicate(x, self.times, pos=self.pos1)
         return jet.utils.sum_vmapped(x_rep, pos=self.pos2)
 
 
-class SimpleReplicateSumVmapped(ReplicateSumVmapped):
-    def forward(self, x):
+class SimpleReplicateSumVmapped(ReplicateSumVmapped):  # noqa: D101
+    def forward(self, x):  # noqa: D102
         if self.pos1 == self.pos2:
             return x * self.times
 
@@ -245,8 +245,8 @@ CASES.extend(
 
 
 # Pulling a sum_vmapped node through an arithmetic operation with an integer/float
-class SumVmappedScalarMultiplication(Module):
-    def __init__(
+class SumVmappedScalarMultiplication(Module):  # noqa: D101
+    def __init__(  # noqa: D107
         self,
         op: Callable[[float | int | Tensor, float | int | Tensor], Tensor],
         pos: int,
@@ -259,13 +259,13 @@ class SumVmappedScalarMultiplication(Module):
         self.scalar = scalar
         self.scalar_first = scalar_first
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         res = self.op(self.scalar, x) if self.scalar_first else self.op(x, self.scalar)
         return jet.utils.sum_vmapped(res, pos=self.pos)
 
 
-class SimpleSumVmappedScalarMultiplication(SumVmappedScalarMultiplication):
-    def forward(self, x: Tensor) -> Tensor:
+class SimpleSumVmappedScalarMultiplication(SumVmappedScalarMultiplication):  # noqa: D101
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         x_sum = jet.utils.sum_vmapped(x, pos=self.pos)
         return (
             self.op(self.scalar, x_sum)
@@ -295,18 +295,18 @@ CASES.extend(
 
 
 # pulling a sum_vmapped node through addition/subtraction of two tensors
-class SumVmappedTensorAddition(Module):
-    def __init__(self, op: Callable[[Tensor, Tensor], Tensor], pos: int):
+class SumVmappedTensorAddition(Module):  # noqa: D101
+    def __init__(self, op: Callable[[Tensor, Tensor], Tensor], pos: int):  # noqa: D107
         super().__init__()
         self.op, self.pos = op, pos
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         y = x + 1
         return jet.utils.sum_vmapped(self.op(x, y), pos=self.pos)
 
 
-class SimpleSumVmappedTensorAddition(SumVmappedTensorAddition):
-    def forward(self, x):
+class SimpleSumVmappedTensorAddition(SumVmappedTensorAddition):  # noqa: D101
+    def forward(self, x):  # noqa: D102
         return self.op(
             jet.utils.sum_vmapped(x, pos=self.pos),
             jet.utils.sum_vmapped(x + 1, pos=self.pos),
@@ -345,8 +345,8 @@ CASES.append(
 
 
 # Pull a sum_vmapped through a multiplication, one of whose arguments is a replicate
-class SumVmappedReplicateMultiplication(Module):
-    def __init__(
+class SumVmappedReplicateMultiplication(Module):  # noqa: D101
+    def __init__(  # noqa: D107
         self, times: int, shape: tuple[int, ...], pos: int, replicate_first: bool
     ):
         super().__init__()
@@ -358,7 +358,7 @@ class SumVmappedReplicateMultiplication(Module):
             times, *shape
         )
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         res = (
             jet.utils.replicate(x, self.times, pos=0) * self.y
             if self.replicate_first
@@ -367,8 +367,8 @@ class SumVmappedReplicateMultiplication(Module):
         return jet.utils.sum_vmapped(res, pos=self.pos)
 
 
-class SimpleSumVmappedReplicateMultiplication(SumVmappedReplicateMultiplication):
-    def forward(self, x: Tensor) -> Tensor:
+class SimpleSumVmappedReplicateMultiplication(SumVmappedReplicateMultiplication):  # noqa: D101
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         return (
             x * jet.utils.sum_vmapped(self.y, pos=self.pos)
             if self.replicate_first

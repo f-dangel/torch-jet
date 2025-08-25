@@ -35,8 +35,6 @@ via `make`:
 
     - Run linting with `make ruff`
 
-    - Run docstring checks with `make pydocstyle-check` and `make darglint-check`
-
 ## Documentation
 
 We use the [Google docstring

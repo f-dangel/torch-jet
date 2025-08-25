@@ -1,4 +1,4 @@
-name: Lint-format
+name: Lint
 
 on: [push, pull_request]
 
@@ -16,6 +16,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         make install-lint
-    - name: Run ruff format
+    - name: Run ruff
       run: |
+        make ruff-check
         make ruff-format-check

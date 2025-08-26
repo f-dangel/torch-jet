@@ -147,13 +147,9 @@ def _str_to_default_value(is_optional: bool, default_str: str | None) -> Any:
             default_value = True
         elif default_str == "False":
             default_value = False
-        # handle integers
-        elif default_str.isdigit() or (
-            default_str[0] == "-" and default_str[1:].isdigit()
-        ):
+        elif re.match(r"^-?\d+$", default_str):
             default_value = int(default_str)
-        # handle floats
-        elif re.match(r"^-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?$", default_str):
+        elif re.match(r"^-?\d+(?:\.\d+)?(?:[e][-+]?\d+)?$", default_str):
             default_value = float(default_str)
         else:
             raise NotImplementedError(f"Converting {default_str=} not supported.")

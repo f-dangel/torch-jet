@@ -1,6 +1,5 @@
 """Test the Laplacian."""
 
-from test.test___init__ import setup_case
 from typing import Any, Callable
 
 from einops import einsum
@@ -12,6 +11,7 @@ from torch.nn import Linear, Sequential, Tanh
 
 from jet.laplacian import Laplacian
 from jet.weighted_laplacian import C_func_diagonal_increments, get_weighting
+from test.test___init__ import setup_case
 
 DISTRIBUTIONS = Laplacian.SUPPORTED_DISTRIBUTIONS
 DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]

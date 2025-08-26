@@ -11,9 +11,6 @@ from einops import einsum
 from torch import (
     Tensor,
     allclose,
-)
-from torch import compile as torch_compile
-from torch import (
     device,
     dtype,
     eye,
@@ -22,6 +19,7 @@ from torch import (
     no_grad,
     rand,
 )
+from torch import compile as torch_compile
 from torch.func import hessian, jacrev, jvp, vmap
 from torch.nn import Linear, Sequential, Tanh
 from torch.random import fork_rng
@@ -673,9 +671,9 @@ if __name__ == "__main__":
             manual_seed(3)
             baseline_result = baseline_func_no()
 
-        assert (
-            baseline_result.shape == result.shape
-        ), f"Shapes do not match: {baseline_result.shape} != {result.shape}."
+        assert baseline_result.shape == result.shape, (
+            f"Shapes do not match: {baseline_result.shape} != {result.shape}."
+        )
         same = allclose(baseline_result, result)
         assert same, f"Results do not match: {result} != {baseline_result}."
         print("Results match.")

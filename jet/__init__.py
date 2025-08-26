@@ -72,7 +72,7 @@ def jet(
     return jet_mod
 
 
-def _replace_operations_with_taylor(  # noqa: C901
+def _replace_operations_with_taylor(  # noqa: C901, PLR0912, PLR0915
     mod: GraphModule, k: int
 ) -> GraphModule:
     """Replace operations in the graph with Taylor-mode equivalents.
@@ -101,7 +101,8 @@ def _replace_operations_with_taylor(  # noqa: C901
         assert output_node in dependent_on_constants
         warn(
             f"The {output_node=} does not depend on the placeholder nodes. "
-            f"The resulting jet will be trivially zero. {graph}"
+            f"The resulting jet will be trivially zero. {graph}",
+            stacklevel=2,
         )
         # insert a node that generates the trivial Taylor components based on the
         # function value
@@ -140,7 +141,6 @@ def _replace_operations_with_taylor(  # noqa: C901
     # replace all ops (including that of new_node) with their Taylor mode equivalents
     for node in tuple(graph.nodes):
         if node.op == "call_function":
-
             # figure out which arguments are constants, and which depend on placeholders
             is_taylor = []
             for arg in node.args:

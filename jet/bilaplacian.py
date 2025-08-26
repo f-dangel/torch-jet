@@ -143,7 +143,9 @@ class Bilaplacian(Module):
 
         return term1 + term2 + term3
 
-    def set_up_taylor_coefficients(self, x: Tensor) -> tuple[
+    def set_up_taylor_coefficients(
+        self, x: Tensor
+    ) -> tuple[
         tuple[Tensor, Tensor, Tensor, Tensor, Tensor],
         tuple[Tensor, Tensor, Tensor, Tensor, Tensor],
         tuple[Tensor, Tensor, Tensor, Tensor, Tensor],

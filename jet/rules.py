@@ -5,9 +5,8 @@ from abc import ABC, abstractmethod
 from typing import Any, Callable
 from warnings import warn
 
-from torch import Tensor, add, cos, cosh, div, mul
+from torch import Tensor, add, cos, cosh, div, mul, sigmoid, sin, sub, tanh
 from torch import pow as torch_pow
-from torch import sigmoid, sin, sub, tanh
 from torch.fx import Graph, GraphModule, Node
 from torch.nn.functional import linear
 
@@ -362,6 +361,7 @@ class PushReplicateLinear(Rule):
             warn(
                 "The `PushReplicateLinear` rule assumes that the replicated axis is"
                 f" not the last axis. If it is, the rule will fail. Got {pos=}.",
+                stacklevel=2,
             )
 
         # Create a new linear node
@@ -637,6 +637,7 @@ class PullSumVmappedLinear(Rule):
         warn(
             "The `PullSumVmappedLinear` rule assumes that the summed axis is not "
             f"the last axis. If it is, the rule will fail. Got {pos=}.",
+            stacklevel=2,
         )
 
         # swap the order of the `sum_vmapped` and the linear operation

@@ -198,7 +198,7 @@ def print_tensor_constants_and_shapes(mod: GraphModule):
         mod: The GraphModule to inspect.
     """
     # Count usages of each get_attr node by target name
-    usage_counts = defaultdict(int)  # noqa: B910
+    usage_counts = defaultdict(int)
     for node in mod.graph.nodes:
         for arg in node.args:
             if isinstance(arg, Node) and arg.op == "get_attr":

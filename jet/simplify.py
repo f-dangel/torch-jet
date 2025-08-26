@@ -80,7 +80,7 @@ def common_subexpression_elimination(graph: Graph, verbose: bool = False) -> boo
     return replaced
 
 
-def common_tensor_constant_elimination(  # noqa: C901
+def common_tensor_constant_elimination(  # noqa: C901, PLR0912
     mod: GraphModule, verbose: bool = False
 ) -> bool:
     """Eliminate duplicate tensor constants in a GraphModule by shape and value.
@@ -160,9 +160,8 @@ def common_tensor_constant_elimination(  # noqa: C901
             for other in others:
                 delattr(mod, other)
             replaced = True
-        else:
-            if verbose:
-                print(f"{ref_node} has no duplicates.")
+        elif verbose:
+            print(f"{ref_node} has no duplicates.")
 
     if replaced and verbose:
         print("Tensor constants and shapes after elimination:")

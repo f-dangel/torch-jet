@@ -10,8 +10,6 @@ from typing import Any, Callable
 import torch
 from packaging.version import parse
 
-HEREDIR = path.dirname(path.abspath(__file__))
-
 
 def download_native_functions_yaml() -> str:
     """Download native_functions.yaml from PyTorch GitHub repository.
@@ -29,7 +27,8 @@ def download_native_functions_yaml() -> str:
     tag = f"v{version.major}.{version.minor}.{version.micro}"
 
     # Maybe download the native_functions.yaml
-    savepath = path.join(HEREDIR, f"native_functions_{tag.replace('.', '_')}.yaml")
+    heredir = path.dirname(path.abspath(__file__))
+    savepath = path.join(heredir, f"native_functions_{tag.replace('.', '_')}.yaml")
     if not path.exists(savepath):
         url = (
             f"https://raw.githubusercontent.com/pytorch/pytorch/{tag}/"

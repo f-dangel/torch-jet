@@ -2,7 +2,6 @@
 
 import re
 import urllib.request
-from ast import literal_eval
 from functools import cache
 from inspect import Parameter, Signature
 from os import path
@@ -83,11 +82,17 @@ def parse_torch_builtin(f: Callable) -> Signature:
 
 
 def _str_to_param(param_str: str) -> Parameter | None:
+    """Convert a parameter string from native_functions.yaml to a Parameter object.
+
+    Args:
+        param_str: The parameter string to be converted.
+
+    Returns:
+        A Parameter object representing the parameter, or None if parsing fails.
+    """
     # Parse each parameter: "Type[dims] name=default" or "Type? name=default"
     # Examples:
-    # "Tensor input"
-    # "Tensor? bias=None"
-    # "bool[3] output_mask"
+    # "Tensor input", "Tensor? bias=None", "bool[3] output_mask"
     # Check if parameter is optional (has ? after type)
     is_optional = "?" in param_str.split()[0] if param_str else False
 
@@ -122,24 +127,25 @@ def _str_to_param(param_str: str) -> Parameter | None:
 
 
 def _str_to_default_value(is_optional: bool, default_str: str | None) -> Any:
-    # Parse default value
+    """Convert the default value string to an actual Python value.
+
+    Args:
+        is_optional: Whether the parameter is optional (indicated by a `?` in the type).
+        default_str: The default value as a string, or None if not specified.
+
+    Returns:
+        The default value in appropriate Python type, or None if not specified.
+
+    Raises:
+        NotImplementedError: If the default value string cannot be converted.
+    """
     if default_str == "None" or (is_optional and default_str is None):
         default_value = None
     elif default_str == "True":
         default_value = True
     elif default_str == "False":
         default_value = False
-    elif default_str and default_str.replace("-", "").replace(".", "").isdigit():
-        # Handle integers and floats
-        default_value = float(default_str) if "." in default_str else int(default_str)
-    elif default_str and default_str.startswith("[") and default_str.endswith("]"):
-        # Handle list defaults
-        try:
-            default_value = literal_eval(default_str)
-        except Exception:
-            default_value = default_str
     else:
-        # Keep as string for other cases
-        default_value = default_str or None
+        raise NotImplementedError(f"Converting {default_str=} not supported.")
 
     return default_value

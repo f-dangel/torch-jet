@@ -114,15 +114,11 @@ def _str_to_param(param_str: str) -> Parameter | None:
     else:
         return None
 
-    args = (param_name, Parameter.POSITIONAL_OR_KEYWORD)
     kwargs = {}
-
-    if default_str is None and not is_optional:
-        return Parameter(param_name, Parameter.POSITIONAL_OR_KEYWORD)
-    else:
+    if default_str is not None or is_optional:
         kwargs["default"] = _str_to_default_value(is_optional, default_str)
 
-    return Parameter(*args, **kwargs)
+    return Parameter(param_name, Parameter.POSITIONAL_OR_KEYWORD, **kwargs)
 
 
 def _str_to_default_value(is_optional: bool, default_str: str | None) -> Any:

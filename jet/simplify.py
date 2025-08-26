@@ -10,7 +10,6 @@ from typing import Callable
 from torch import Tensor, manual_seed
 from torch.fx import Graph, GraphModule
 from torch.nn import Module
-from torch.nn.functional import linear
 from torch.random import fork_rng
 
 from jet.rules import (
@@ -332,7 +331,7 @@ def simplify(  # noqa: C901
     for node in [
         n
         for n in graph.nodes
-        if n.op == "call_function" and n.target in {replicate, sum_vmapped, linear}
+        if n.op == "call_function" and n.target in {replicate, sum_vmapped}
     ]:
         with check_unaltered(mod, test_x):
             standardize_signature(node, verbose=verbose)

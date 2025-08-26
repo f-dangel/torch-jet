@@ -21,7 +21,16 @@ def download_native_functions_yaml() -> str:
     script. Only downloads if the file does not already exists.
 
     Returns:
-        The path to the downloaded (or existing) `native_functions.yaml` file.
+    script, with a version-specific filename (e.g., `native_functions_vX_Y_Z.yaml`).
+    Only downloads if the file for the current PyTorch version does not already exist.
+
+    If the installed PyTorch version changes, a new version-specific file will be
+    downloaded (if it does not already exist), and any previously downloaded files
+    for other versions will remain in the directory.
+
+    Returns:
+        The path to the downloaded (or existing) `native_functions.yaml` file for the
+        current PyTorch version.
     """
     # Get the installed PyTorch version
     version = parse(torch.__version__)

@@ -1,42 +1,79 @@
 """Parse signatures of specific PyTorch built-in functions."""
 
-import re
-import urllib.request
 from functools import cache
+from importlib.metadata import version as get_version
 from inspect import Parameter, Signature
-from os import path
+from pathlib import Path
+from re import match, sub
 from typing import Any, Callable
+from urllib.error import URLError
+from urllib.request import urlretrieve
+from warnings import warn
 
-import torch
 from packaging.version import parse
+from yaml import safe_load
 
 
-def download_native_functions_yaml() -> str:
-    """Download native_functions.yaml from PyTorch GitHub repository.
+def _get_native_functions_yaml() -> Path:
+    """Return the path to the PyTorch native_functions.yaml.
 
-    This function downloads the `native_functions.yaml` file corresponding to the
-    installed version of PyTorch. The file is saved in the same directory as this
-    script. Only downloads if the file does not already exists.
+        Downloads the file if it does not exist locally and stores
+        it next to this script, named according to the installed
+        PyTorch version.
 
     Returns:
-        The path to the downloaded (or existing) `native_functions.yaml` file for the
-        current PyTorch version.
+        Path to the downloaded (or existing) `native_functions.yaml`
+        file for the current PyTorch version.
+
+    Raises:
+        RuntimeError: If the file could not be downloaded.
     """
-    # Get the installed PyTorch version
-    version = parse(torch.__version__)
+    version = parse(get_version("torch"))
     tag = f"v{version.major}.{version.minor}.{version.micro}"
 
-    # Maybe download the native_functions.yaml
-    heredir = path.dirname(path.abspath(__file__))
-    savepath = path.join(heredir, f"native_functions_{tag.replace('.', '_')}.yaml")
-    if not path.exists(savepath):
+    heredir = Path(__file__).parent
+    path_to_native_functions = (
+        heredir / f"native_functions_{tag.replace('.', '_')}.yaml"
+    )
+
+    if not path_to_native_functions.exists():
+        warn(
+            f"{path_to_native_functions} not found! Attempting to download...",
+            stacklevel=2,
+        )
         url = (
             f"https://raw.githubusercontent.com/pytorch/pytorch/{tag}/"
             + "aten/src/ATen/native/native_functions.yaml"
         )
-        urllib.request.urlretrieve(url, savepath)
+        try:
+            urlretrieve(url, path_to_native_functions)
+        except URLError as e:
+            raise RuntimeError(f"Failed to download {url}: {e.reason}") from e
 
-    return savepath
+    return path_to_native_functions
+
+
+@cache
+def _preprocess(path: Path) -> dict[str, str]:
+    """Parse native_functions.yaml into a lookup dictionary.
+
+    Args:
+        path: Path to the native_functions.yaml file.
+
+    Returns:
+        A mapping from function name (e.g. "linear") to its raw argument string
+        (the contents inside the parentheses of the `func` entry).
+
+    Note:
+        Assumes each entry in the YAML has a key "func" of the form
+        "func_name(arg1, arg2, ...)".
+    """
+    with open(path, "r", encoding="utf-8") as file:
+        yaml_content = safe_load(file)
+    return {
+        entry["func"].split("(")[0]: entry["func"].split("(")[1].split(")")[0]
+        for entry in yaml_content
+    }
 
 
 @cache
@@ -44,7 +81,7 @@ def parse_torch_builtin(f: Callable) -> Signature:
     """Parse signature of a PyTorch built-in C++ function.
 
     This function handles specific PyTorch built-in functions that don't have
-    Python signatures accessible via inspect.signature().
+    Python signatures accessible via ``inspect.signature()``.
 
     Args:
         f: The callable whose signature is to be parsed.
@@ -54,30 +91,23 @@ def parse_torch_builtin(f: Callable) -> Signature:
 
     Raises:
         ValueError: If the function is not supported or recognized.
-    """
-    # Find the path to native_functions.yaml relative to this file
-    with open(download_native_functions_yaml(), "r") as file:
-        yaml_content = file.read()
 
-    # Find the function definition in the YAML file
-    # Look for "- func: function_name(" pattern
-    pattern = rf"- func: {re.escape(f.__name__)}\((.*?)\)"
-    search_result = re.search(pattern, yaml_content, re.DOTALL)
+    Note:
+        Assumes that native_functions.yaml contains entries with a "func"
+        key formatted as ``"name(arg1, arg2, ...)"``.
+    """
+    func_map = _preprocess(_get_native_functions_yaml())
+    search_result = func_map.get(f.__name__, "")
 
     if not search_result:
         raise ValueError(f"Function {f.__name__} not found in native_functions.yaml")
 
-    # Parse the function signature
-    signature_str = search_result[1].strip()
-
-    # Split into arguments
-    param_strings = signature_str.split(",")
-    param_strings = [p.strip() for p in param_strings]
-
-    # Convert parameter strings to Parameter objects
-    parameters = [_str_to_param(param_str) for param_str in param_strings]
-    parameters = [p for p in parameters if p is not None]
-
+    # Split into arguments and convert parameter strings to Parameter objects
+    parameters = [
+        p
+        for param_str in search_result.split(",")
+        if (p := _str_to_param(param_str.strip())) is not None
+    ]
     return Signature(parameters)
 
 
@@ -89,15 +119,22 @@ def _str_to_param(param_str: str) -> Parameter | None:
 
     Returns:
         A Parameter object representing the parameter, or None if parsing fails.
+
+    Examples:
+        >>> _str_to_param("Tensor input")
+        <Parameter "input">
+
+        >>> _str_to_param("Tensor? bias=None")
+        <Parameter "bias=None">
+
+        >>> _str_to_param("bool[3] output_mask")
+        <Parameter "output_mask">
     """
-    # Parse each parameter: "Type[dims] name=default" or "Type? name=default"
-    # Examples:
-    # "Tensor input", "Tensor? bias=None", "bool[3] output_mask"
     # Check if parameter is optional (has ? after type)
     is_optional = "?" in param_str.split()[0] if param_str else False
 
     # Remove array notation like [3] and optional marker ?
-    param_str_clean = re.sub(r"\[.*?\]", "", param_str)
+    param_str_clean = sub(r"\[.*?\]", "", param_str)
     param_str_clean = param_str_clean.replace("?", "")
 
     # Split by = to get default value if present
@@ -119,9 +156,11 @@ def _str_to_param(param_str: str) -> Parameter | None:
     else:
         return None
 
-    kwargs = {}
-    if default_str is not None or is_optional:
-        kwargs["default"] = _str_to_default_value(is_optional, default_str)
+    kwargs = (
+        {"default": _str_to_default_value(is_optional, default_str)}
+        if default_str is not None or is_optional
+        else {}
+    )
 
     return Parameter(param_name, Parameter.POSITIONAL_OR_KEYWORD, **kwargs)
 
@@ -147,9 +186,11 @@ def _str_to_default_value(is_optional: bool, default_str: str | None) -> Any:
             default_value = True
         elif default_str == "False":
             default_value = False
-        elif re.match(r"^-?\d+$", default_str):
+        # matches e.g., -2 or 3
+        elif match(r"^-?\d+$", default_str):
             default_value = int(default_str)
-        elif re.match(r"^-?\d+(?:\.\d+)?(?:[e][-+]?\d+)?$", default_str):
+        # matches e.g., -1.2, 1.443e+04
+        elif match(r"^-?\d+(?:\.\d+)?(?:[e][-+]?\d+)?$", default_str):
             default_value = float(default_str)
         else:
             raise NotImplementedError(f"Converting {default_str=} not supported.")

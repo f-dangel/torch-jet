@@ -2,41 +2,99 @@
 
 import re
 import urllib.request
+import warnings
 from functools import cache
 from inspect import Parameter, Signature
-from os import path
-from typing import Any, Callable
+from pathlib import Path
+from typing import Any, Callable, Optional
 
 import torch
+import yaml
 from packaging.version import parse
 
 
-def download_native_functions_yaml() -> str:
-    """Download native_functions.yaml from PyTorch GitHub repository.
+def _get_native_functions_yaml(
+    path_to_native_functions: Optional[Path] = None,
+) -> Path:
+    """Return the path to the PyTorch native_functions.yaml.
 
-    This function downloads the `native_functions.yaml` file corresponding to the
-    installed version of PyTorch. The file is saved in the same directory as this
-    script. Only downloads if the file does not already exists.
+        Downloads the file if it does not exist locally and stores
+        it at `path_to_native_functions`. By default, the file is
+        saved next to this script, named according to the installed
+        PyTorch version.
+
+    Args:
+        path_to_native_functions: Optional custom path to store or
+        look for the YAML file.
 
     Returns:
-        The path to the downloaded (or existing) `native_functions.yaml` file for the
-        current PyTorch version.
+        Path to the downloaded (or existing) `native_functions.yaml`
+        file for the current PyTorch version.
+
+    Raises:
+        RuntimeError: If the file could not be downloaded.
     """
-    # Get the installed PyTorch version
+
     version = parse(torch.__version__)
     tag = f"v{version.major}.{version.minor}.{version.micro}"
 
-    # Maybe download the native_functions.yaml
-    heredir = path.dirname(path.abspath(__file__))
-    savepath = path.join(heredir, f"native_functions_{tag.replace('.', '_')}.yaml")
-    if not path.exists(savepath):
+    if not path_to_native_functions:
+        heredir = Path(__file__).parent
+        path_to_native_functions = (
+            heredir / f"native_functions_{tag.replace(".", "_")}.yaml"
+        )
+
+    if not path_to_native_functions.exists():
+        warnings.warn(
+            f"{path_to_native_functions} not found! Attempting to download..."
+        )
         url = (
             f"https://raw.githubusercontent.com/pytorch/pytorch/{tag}/"
             + "aten/src/ATen/native/native_functions.yaml"
         )
-        urllib.request.urlretrieve(url, savepath)
+        try:
+            urllib.request.urlretrieve(url, path_to_native_functions)
+        except urllib.error.URLError as e:
+            raise RuntimeError(f"Failed to download {url}: {e.reason}") from e
 
-    return savepath
+    return path_to_native_functions
+
+
+@cache
+def _preprocess(path: Path) -> dict[str, str]:
+    """Parse native_functions.yaml into a lookup dictionary.
+
+    Args:
+        path: Path to the native_functions.yaml file.
+
+    Returns:
+        A mapping from function name (e.g. "linear") to its raw argument string
+        (the contents inside the parentheses of the `func` entry).
+
+    Note:
+        Assumes each entry in the YAML has a key "func" of the form
+        "func_name(arg1, arg2, ...)".
+    """
+    with open(path, "r", encoding="utf-8") as file:
+        yaml_content = yaml.safe_load(file)
+    func_map = {}
+    for entry in yaml_content:
+        func_name = entry["func"].split("(")[0]
+        func_map[func_name] = entry["func"].split("(")[1].split(")")[0]
+    return func_map
+
+
+def _search_signature(func_name: str, func_map: dict[str, str]) -> str:
+    """Return the raw argument string for a given function name.
+
+    Args:
+        func_name: Name of the function (e.g. "linear").
+        func_map: Preprocessed mapping of function names to argument strings.
+
+    Returns:
+        The raw argument string if found, otherwise an empty string.
+    """
+    return func_map.get(func_name, "")
 
 
 @cache
@@ -44,7 +102,7 @@ def parse_torch_builtin(f: Callable) -> Signature:
     """Parse signature of a PyTorch built-in C++ function.
 
     This function handles specific PyTorch built-in functions that don't have
-    Python signatures accessible via inspect.signature().
+    Python signatures accessible via ``inspect.signature()``.
 
     Args:
         f: The callable whose signature is to be parsed.
@@ -54,30 +112,23 @@ def parse_torch_builtin(f: Callable) -> Signature:
 
     Raises:
         ValueError: If the function is not supported or recognized.
+
+    Note:
+        Assumes that native_functions.yaml contains entries with a "func"
+        key formatted as ``"name(arg1, arg2, ...)"``.
     """
-    # Find the path to native_functions.yaml relative to this file
-    with open(download_native_functions_yaml(), "r") as file:
-        yaml_content = file.read()
-
-    # Find the function definition in the YAML file
-    # Look for "- func: function_name(" pattern
-    pattern = rf"- func: {re.escape(f.__name__)}\((.*?)\)"
-    search_result = re.search(pattern, yaml_content, re.DOTALL)
-
+    search_result = _search_signature(
+        f.__name__, _preprocess(_get_native_functions_yaml())
+    )
     if not search_result:
         raise ValueError(f"Function {f.__name__} not found in native_functions.yaml")
 
-    # Parse the function signature
-    signature_str = search_result[1].strip()
-
     # Split into arguments
-    param_strings = signature_str.split(",")
+    param_strings = search_result.split(",")
     param_strings = [p.strip() for p in param_strings]
-
     # Convert parameter strings to Parameter objects
     parameters = [_str_to_param(param_str) for param_str in param_strings]
     parameters = [p for p in parameters if p is not None]
-
     return Signature(parameters)
 
 
@@ -147,8 +198,10 @@ def _str_to_default_value(is_optional: bool, default_str: str | None) -> Any:
             default_value = True
         elif default_str == "False":
             default_value = False
+        # matches e.g., -2 or 3
         elif re.match(r"^-?\d+$", default_str):
             default_value = int(default_str)
+        # matches e.g., -1.2, 1.443e+04
         elif re.match(r"^-?\d+(?:\.\d+)?(?:[e][-+]?\d+)?$", default_str):
             default_value = float(default_str)
         else:

@@ -1,13 +1,13 @@
 """Tests for the PyTorch built-in signature parser module."""
 
-import warnings
 import urllib.request
+import warnings
 from inspect import Parameter, Signature
 from pathlib import Path
 from typing import Callable
 
-from pytest import mark, MonkeyPatch, raises
 import yaml
+from pytest import MonkeyPatch, mark, raises
 from torch import allclose, cos, sigmoid, sin, tanh
 from torch.nn.functional import celu, conv1d, conv2d, linear
 
@@ -80,7 +80,7 @@ def test_preprocess():
 
 
 def test_search_signature():
-    """Test behavior of _search_signature"""
+    """Test behavior of _search_signature."""
     func_map = _preprocess(mock_yaml_path)
     assert (
         _search_signature("linear", func_map)

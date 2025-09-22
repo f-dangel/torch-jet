@@ -34,7 +34,6 @@ def _get_native_functions_yaml(
     Raises:
         RuntimeError: If the file could not be downloaded.
     """
-
     version = parse(torch.__version__)
     tag = f"v{version.major}.{version.minor}.{version.micro}"
 
@@ -46,7 +45,8 @@ def _get_native_functions_yaml(
 
     if not path_to_native_functions.exists():
         warnings.warn(
-            f"{path_to_native_functions} not found! Attempting to download..."
+            f"{path_to_native_functions} not found! Attempting to download...",
+            stacklevel=2,
         )
         url = (
             f"https://raw.githubusercontent.com/pytorch/pytorch/{tag}/"

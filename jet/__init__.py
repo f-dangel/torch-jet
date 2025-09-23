@@ -119,9 +119,16 @@ def _replace_operations_with_taylor(  # noqa: C901, PLR0912, PLR0915
         dependent_on_placeholders.add(trivial_node)
 
     # find the input node and insert nodes for the Taylor coefficients
+    # currently we assume there is only one independent node (aka placeholder)
     (x,) = [node for node in graph.nodes if node.op == "placeholder"]
-    with graph.inserting_after(x):
-        vs = [graph.placeholder(name=f"v{i}") for i in reversed(range(1, k + 1))][::-1]
+    vs = []
+    current_node = x
+    # after loop we have vs = [x, v1, v2, ...] and similarly in the graph
+    for i in range(1, k + 1):
+        with graph.inserting_after(current_node):
+            v_i = graph.placeholder(name=f"v{i}")
+            vs.append(v_i)
+            current_node = v_i
 
     # find the nodes that consume the original input, replace each with a new node whose
     # argument is the tuple of original input and Taylor coefficients

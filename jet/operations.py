@@ -1,6 +1,7 @@
 """Implementation of AD primitives in Taylor-mode arithmetic."""
 
 import operator
+from typing import TypedDict
 
 from scipy.special import comb, factorial, stirling2
 from torch import Tensor, cos, mul, sigmoid, sin, tanh
@@ -15,6 +16,34 @@ from jet.utils import (
     integer_partitions,
     multiplicity,
 )
+
+
+class JetInfo(TypedDict, total=True):
+    """Metadata required for Taylor mode automatic differentiation.
+
+    This dictionary is passed through the FX graph as a structured kwarg,
+    instead of unpacking multiple loose arguments. Using a TypedDict ensures
+    that we can check for correct keys and value types.
+
+    Keys:
+        derivative_order (int):
+            The truncation order `K` of the Taylor expansion.
+            For example, if `derivative_order=3`, coefficients up to the
+            third derivative are computed.
+
+        is_taylor (tuple[bool, ...]):
+            A tuple flagging which inputs are Taylor coefficients.
+            Each entry corresponds to an argument of the primitive:
+              - `True` means the argument is treated as a Taylor-expanded input.
+              - `False` means the argument is treated as a constant.
+
+    Example:
+        >>> info: JetInfo = {"derivative_order": 2, "is_taylor": (True, False)}
+        >>> # This means: expand to 2nd order, first arg is Taylor, second is constant.
+    """
+
+    derivative_order: int
+    is_taylor: tuple[bool, ...]
 
 
 def _faa_di_bruno(vs: tuple[Primal, ...], K: int, dn: dict[int, Primal]) -> list[Value]:
@@ -51,9 +80,7 @@ def _faa_di_bruno(vs: tuple[Primal, ...], K: int, dn: dict[int, Primal]) -> list
     return vs_out
 
 
-def jet_sin(
-    s: PrimalAndCoefficients, K: int, is_taylor: tuple[bool, ...]
-) -> ValueAndCoefficients:
+def jet_sin(s: PrimalAndCoefficients, _jet_info: JetInfo) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the sine function.
 
     Args:
@@ -65,14 +92,14 @@ def jet_sin(
     Returns:
         The value and its Taylor coefficients.
     """
-    assert is_taylor == (True,)
+    assert _jet_info["is_taylor"] == (True,)
 
     x, vs = s[0], s[1:]
 
     # pre-compute derivatives
     sin_x = sin(x)
     dsin = {0: sin_x}
-    for k in range(1, K + 1):
+    for k in range(1, _jet_info["derivative_order"] + 1):
         if k == 1:
             dsin[k] = cos(x)
         elif k in {2, 3}:
@@ -80,14 +107,12 @@ def jet_sin(
         else:
             dsin[k] = dsin[k - 4]
 
-    vs_out = _faa_di_bruno(vs, K, dsin)
+    vs_out = _faa_di_bruno(vs, _jet_info["derivative_order"], dsin)
 
     return (sin_x, *vs_out)
 
 
-def jet_cos(
-    s: PrimalAndCoefficients, K: int, is_taylor: tuple[bool, ...]
-) -> ValueAndCoefficients:
+def jet_cos(s: PrimalAndCoefficients, _jet_info: JetInfo) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the cosine function.
 
     Args:
@@ -99,14 +124,14 @@ def jet_cos(
     Returns:
         The value and its Taylor coefficients.
     """
-    assert is_taylor == (True,)
+    assert _jet_info["is_taylor"] == (True,)
 
     x, vs = s[0], s[1:]
 
     # pre-compute derivatives
     cos_x = cos(x)
     dcos = {0: cos_x}
-    for k in range(1, K + 1):
+    for k in range(1, _jet_info["derivative_order"] + 1):
         if k == 1:
             dcos[k] = -1 * sin(x)
         elif k in {2, 3}:
@@ -114,14 +139,12 @@ def jet_cos(
         else:
             dcos[k] = dcos[k - 4]
 
-    vs_out = _faa_di_bruno(vs, K, dcos)
+    vs_out = _faa_di_bruno(vs, _jet_info["derivative_order"], dcos)
 
     return (cos_x, *vs_out)
 
 
-def jet_tanh(
-    s: PrimalAndCoefficients, K: int, is_taylor: tuple[bool, ...]
-) -> ValueAndCoefficients:
+def jet_tanh(s: PrimalAndCoefficients, _jet_info: JetInfo) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the hyperbolic tangent function.
 
     Args:
@@ -133,7 +156,7 @@ def jet_tanh(
     Returns:
         The value and its Taylor coefficients.
     """
-    assert is_taylor == (True,)
+    assert _jet_info["is_taylor"] == (True,)
 
     x, vs = s[0], s[1:]
 
@@ -145,18 +168,18 @@ def jet_tanh(
     # polynomials for tanh, tan, sech and sec in explicit form" by Boyadzhiev (2006)
     # (https://www.fq.math.ca/Papers1/45-4/quartboyadzhiev04_2007.pdf);
     # see also this answer: https://math.stackexchange.com/a/4226178
-    if K >= 1:
+    if _jet_info["derivative_order"] >= 1:
         tanh_inc = tanh_x + 1
         tanh_dec = tanh_x - 1
 
         # required powers of tanh_dec
         tanh_dec_powers = {1: tanh_dec}
-        if K >= 2:
-            for k in range(2, K + 1):
+        if _jet_info["derivative_order"] >= 2:
+            for k in range(2, _jet_info["derivative_order"] + 1):
                 tanh_dec_powers[k] = tanh_dec**k
 
         # Equations (3.3) and (3.4) from the above paper
-        for m in range(1, K + 1):
+        for m in range(1, _jet_info["derivative_order"] + 1):
             # Use that the Stirling number S(m>0, 0) = 0 to start the summation at 1
             term = None
             for k in range(1, m + 1):
@@ -168,14 +191,12 @@ def jet_tanh(
                 term = term_k if term is None else term + term_k
             dtanh[m] = (-2) ** m * tanh_inc * term
 
-    vs_out = _faa_di_bruno(vs, K, dtanh)
+    vs_out = _faa_di_bruno(vs, _jet_info["derivative_order"], dtanh)
 
     return (tanh_x, *vs_out)
 
 
-def jet_sigmoid(
-    s: PrimalAndCoefficients, K: int, is_taylor: tuple[bool, ...]
-) -> ValueAndCoefficients:
+def jet_sigmoid(s: PrimalAndCoefficients, _jet_info: JetInfo) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the sigmoid function.
 
     Args:
@@ -187,7 +208,7 @@ def jet_sigmoid(
     Returns:
         The value and its Taylor coefficients.
     """
-    assert is_taylor == (True,)
+    assert _jet_info["is_taylor"] == (True,)
 
     x, vs = s[0], s[1:]
 
@@ -198,13 +219,13 @@ def jet_sigmoid(
     # Use the Stirling form of the sigmoid derivatives, see Equation 20
     # of "On the Derivatives of the Sigmoid" by Minai and Williams (1993)
     # (https://eecs.ceas.uc.edu/~minaiaa/papers/minai_sigmoids_NN93.pdf)
-    if K >= 1:
+    if _jet_info["derivative_order"] >= 1:
         # The Stirling form requires sigmoid powers
         sigmoid_powers = {1: sigmoid_x}
-        for n in range(2, K + 2):
+        for n in range(2, _jet_info["derivative_order"] + 2):
             sigmoid_powers[n] = sigmoid_x**n
 
-        for n in range(1, K + 1):
+        for n in range(1, _jet_info["derivative_order"] + 1):
             term = None
             for k in range(1, n + 2):
                 scale = (
@@ -219,7 +240,7 @@ def jet_sigmoid(
                 term = term_k if term is None else term + term_k
             dsigmoid[n] = term
 
-    vs_out = _faa_di_bruno(vs, K, dsigmoid)
+    vs_out = _faa_di_bruno(vs, _jet_info["derivative_order"], dsigmoid)
 
     return (sigmoid_x, *vs_out)
 
@@ -228,8 +249,7 @@ def jet_linear(
     s: PrimalAndCoefficients,
     weight: Tensor,
     bias: Tensor | None = None,
-    K=None,
-    is_taylor: tuple[bool, ...] = (True, False, False),
+    _jet_info: JetInfo | None = None,
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the linear function.
 
@@ -247,19 +267,19 @@ def jet_linear(
     Raises:
         NotImplementedError: If Taylor coefficients are passed as weights or bias.
     """
-    if is_taylor not in {(True, False, False), (True, False)}:
-        raise NotImplementedError(f"Not implemented for {is_taylor=}.")
+    if _jet_info is None:
+        raise ValueError("JetInfos should be provided!")
+    if _jet_info["is_taylor"] not in {(True, False, False), (True, False)}:
+        raise NotImplementedError(f"Not implemented for {_jet_info["is_taylor"]=}.")
 
     return tuple(
-        linear(s[k], weight, bias=bias if k == 0 else None) for k in range(K + 1)
+        linear(s[k], weight, bias=bias if k == 0 else None)
+        for k in range(_jet_info["derivative_order"] + 1)
     )
 
 
 def jet_pow(
-    s: PrimalAndCoefficients,
-    exponent: float | int,
-    K: int,
-    is_taylor: tuple[bool, ...],
+    s: PrimalAndCoefficients, exponent: float | int, _jet_info: JetInfo
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the power function with integer exponent.
 
@@ -277,7 +297,7 @@ def jet_pow(
         NotImplementedError: If a Taylor coefficient is passed as exponent.
     """
     assert isinstance(exponent, (float, int))
-    if is_taylor != (True, False):
+    if _jet_info["is_taylor"] != (True, False):
         raise NotImplementedError
 
     x, vs = s[0], s[1:]
@@ -287,7 +307,7 @@ def jet_pow(
 
     # Pre-compute derivatives
     dpow = {0: pow_x}
-    for k in range(1, K + 1):
+    for k in range(1, _jet_info["derivative_order"] + 1):
         if exponent - k < 0 and int(exponent) == exponent:
             dpow[k] = None
         elif exponent == k:
@@ -299,7 +319,7 @@ def jet_pow(
             dpow[k] = scale * x if exponent - k == 1 else scale * x ** (exponent - k)
 
     # Compute Taylor coefficients using Faà di Bruno's formula
-    vs_out = _faa_di_bruno(vs, K, dpow)
+    vs_out = _faa_di_bruno(vs, _jet_info["derivative_order"], dpow)
 
     return (pow_x, *vs_out)
 
@@ -307,8 +327,7 @@ def jet_pow(
 def jet_add(
     s1: Primal | PrimalAndCoefficients | float | int,
     s2: Primal | PrimalAndCoefficients | float | int,
-    K: int,
-    is_taylor: tuple[bool, ...],
+    _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for addition.
 
@@ -322,21 +341,24 @@ def jet_add(
     Returns:
         The value and its Taylor coefficients.
     """
-    coeff1, coeff2 = is_taylor
+    coeff1, coeff2 = _jet_info["is_taylor"]
 
     if (coeff1, coeff2) == (True, True):
-        return tuple(s1[k] + s2[k] for k in range(K + 1))
+        return tuple(s1[k] + s2[k] for k in range(_jet_info["derivative_order"] + 1))
     elif (coeff1, coeff2) == (True, False):
-        return (s1[0] + s2,) + tuple(s1[k] for k in range(1, K + 1))
+        return (s1[0] + s2,) + tuple(
+            s1[k] for k in range(1, _jet_info["derivative_order"] + 1)
+        )
     elif (coeff1, coeff2) == (False, True):
-        return (s2[0] + s1,) + tuple(s2[k] for k in range(1, K + 1))
+        return (s2[0] + s1,) + tuple(
+            s2[k] for k in range(1, _jet_info["derivative_order"] + 1)
+        )
 
 
 def jet_sub(
     s1: Primal | PrimalAndCoefficients | float | int,
     s2: Primal | PrimalAndCoefficients | float | int,
-    K: int,
-    is_taylor: tuple[bool, ...],
+    _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for subtraction.
 
@@ -350,21 +372,24 @@ def jet_sub(
     Returns:
         The value and its Taylor coefficients.
     """
-    (coeff1, coeff2) = is_taylor
+    (coeff1, coeff2) = _jet_info["is_taylor"]
 
     if (coeff1, coeff2) == (True, True):
-        return tuple(s1[k] - s2[k] for k in range(K + 1))
+        return tuple(s1[k] - s2[k] for k in range(_jet_info["derivative_order"] + 1))
     elif (coeff1, coeff2) == (True, False):
-        return (s1[0] - s2,) + tuple(s1[k] for k in range(1, K + 1))
+        return (s1[0] - s2,) + tuple(
+            s1[k] for k in range(1, _jet_info["derivative_order"] + 1)
+        )
     elif (coeff1, coeff2) == (False, True):
-        return (s1 - s2[0],) + tuple(-s2[k] for k in range(1, K + 1))
+        return (s1 - s2[0],) + tuple(
+            -s2[k] for k in range(1, _jet_info["derivative_order"] + 1)
+        )
 
 
 def jet_mul(
     s1: Primal | PrimalAndCoefficients,
     s2: Primal | PrimalAndCoefficients,
-    K: int,
-    is_taylor: tuple[bool, ...],
+    _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for multiplication of two variables.
 
@@ -378,11 +403,11 @@ def jet_mul(
     Returns:
         The value and its Taylor coefficients.
     """
-    (coeff1, coeff2) = is_taylor
+    (coeff1, coeff2) = _jet_info["is_taylor"]
 
     if (coeff1, coeff2) == (True, True):
         s_out = ()
-        for k in range(K + 1):
+        for k in range(_jet_info["derivative_order"] + 1):
             term = None
             for j in range(k + 1):
                 term_j = comb(k, j, exact=True) * s1[j] * s2[k - j]
@@ -392,17 +417,16 @@ def jet_mul(
         return s_out
 
     elif (coeff1, coeff2) == (True, False):
-        return tuple(s2 * s1[k] for k in range(K + 1))
+        return tuple(s2 * s1[k] for k in range(_jet_info["derivative_order"] + 1))
     elif (coeff1, coeff2) == (False, True):
-        return tuple(s1 * s2[k] for k in range(K + 1))
+        return tuple(s1 * s2[k] for k in range(_jet_info["derivative_order"] + 1))
 
 
 def jet_replicate(
     s: PrimalAndCoefficients,
     times: int,
     pos: int = 0,
-    K=None,
-    is_taylor: tuple[bool, ...] = (False, False, False),
+    _jet_info: JetInfo | None = None,
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the replicate function.
 
@@ -420,17 +444,22 @@ def jet_replicate(
     Raises:
         NotImplementedError: If `is_taylor` is not one of the supported configurations.
     """
-    if is_taylor not in [(True, False, False), (True, False)]:
-        raise NotImplementedError(f"{is_taylor=} is not implemented.")
+    if _jet_info is None:
+        raise ValueError("JetInfos should be provided!")
 
-    return tuple(jet.utils.replicate(s[k], times, pos) for k in range(K + 1))
+    if _jet_info["is_taylor"] not in [(True, False, False), (True, False)]:
+        raise NotImplementedError(f"{_jet_info["is_taylor"]=} is not implemented.")
+
+    return tuple(
+        jet.utils.replicate(s[k], times, pos)
+        for k in range(_jet_info["derivative_order"] + 1)
+    )
 
 
 def jet_sum_vmapped(
     s: PrimalAndCoefficients,
     pos: int = 0,
-    K=None,
-    is_taylor: tuple[bool, ...] = (False, False),
+    _jet_info: JetInfo | None = None,
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the sum_vmapped function.
 
@@ -447,12 +476,18 @@ def jet_sum_vmapped(
     Raises:
         NotImplementedError: If `is_taylor` is not `(True, False)` or `(True,)`.
     """
-    if is_taylor not in [(True, False), (True,)]:
+    if _jet_info is None:
+        raise ValueError("JetInfos should be provided!")
+
+    if _jet_info["is_taylor"] not in [(True, False), (True,)]:
         raise NotImplementedError(
-            f"Got {is_taylor=}. Only supports (True, False) and (True,)."
+            f"Got {_jet_info["is_taylor"]=}. Only supports (True, False) and (True,)."
         )
 
-    return tuple(jet.utils.sum_vmapped(s[k], pos=pos) for k in range(K + 1))
+    return tuple(
+        jet.utils.sum_vmapped(s[k], pos=pos)
+        for k in range(_jet_info["derivative_order"] + 1)
+    )
 
 
 MAPPING = {

@@ -8,7 +8,7 @@ from torch import Tensor, tensor, zeros_like
 from torch.autograd import grad
 from torch.fx import Graph, GraphModule, Node
 
-from jet.operations import MAPPING
+from jet.operations import MAPPING, JetInfo
 from jet.tracing import capture_graph
 from jet.utils import Primal, PrimalAndCoefficients, Value, ValueAndCoefficients
 
@@ -184,7 +184,10 @@ def _replace_operations_with_taylor(  # noqa: C901, PLR0912, PLR0915
                 new_node = graph.call_function(
                     MAPPING[f],
                     args=node.args,
-                    kwargs={**node.kwargs, "K": k, "is_taylor": is_taylor},
+                    kwargs={
+                        **node.kwargs,
+                        "_jet_info": JetInfo(derivative_order=k, is_taylor=is_taylor),
+                    },
                 )
             node.replace_all_uses_with(new_node)
             graph.erase_node(node)

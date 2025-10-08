@@ -6,6 +6,7 @@ from torch import Tensor, eye, zeros
 from torch.nn import Module
 
 import jet
+from jet.ttc_coefficients import compute_all_gammas
 from jet.vmap import traceable_vmap
 
 
@@ -115,8 +116,9 @@ class Bilaplacian(Module):
         C1, C2, C3 = self.set_up_taylor_coefficients(x)
         D = self.in_dim
 
-        gamma_4_4 = 3 / 32
-        gamma_4_0 = 13 / 192
+        gamma_4_4 = float(compute_all_gammas((4,))[(4,)])
+        gammas = compute_all_gammas((2, 2))
+        gamma_4_0 = float(gammas[(4, 0)])
         # first summand
         jet_f = self.get_multijet(D)
         _, _, _, _, F4_1 = jet_f(*C1)
@@ -128,14 +130,14 @@ class Bilaplacian(Module):
             return term1
 
         # second summand
-        gamma_3_1 = -1 / 3
+        gamma_3_1 = float(gammas[(3, 1)])
         jet_f = self.get_multijet(D * (D - 1))
         _, _, _, _, F4_2 = jet_f(*C2)
         factor2 = 2 * gamma_3_1 / 24
         term2 = factor2 * jet.utils.sum_vmapped(F4_2)
 
         # third term
-        gamma_2_2 = 5 / 8
+        gamma_2_2 = float(gammas[(2, 2)])
         jet_f = self.get_multijet(D * (D - 1) // 2)
         _, _, _, _, F4_3 = jet_f(*C3)
         factor3 = 2 * gamma_2_2 / 24

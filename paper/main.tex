@@ -7,7 +7,7 @@
 % Before accepting by the NeurIPS conference, select one of the options below.
 % 0. "default" for submission
 % either empty (for submission), 'preprint', or 'final'
-\def\status{preprint}
+\def\status{main,final}
 \usepackage[\status]{neurips_2025}
 % the "default" option is equal to the "main" option, which is used for the Main Track with double-blind reviewing.
 % 1. "main" option is used for the Main Track
@@ -150,7 +150,7 @@
 
 % Include the checklist except for the pre-print version
 \ifthenelse{\equal{\status}{preprint}}{}{
-\newpage
+\clearpage
 % This command creates an un-numbered section and adds it to the table of contents
 % (see https://www.reddit.com/r/LaTeX/comments/10pjrwt/comment/j6kvo50/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button)
 \newcommand*{\nsection}[1]{\section*{#1}\addcontentsline{toc}{section}{#1}}

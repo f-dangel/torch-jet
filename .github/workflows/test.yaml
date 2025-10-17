@@ -25,3 +25,6 @@ jobs:
     - name: Run test
       run: |
         make test
+    - name: Run doctest
+      run: |
+        make doctest

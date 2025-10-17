@@ -63,7 +63,7 @@ Our approach contains the forward Laplacian as special case, is applicable to ra
   Due to the simple nature of our proposed rewrites, they could easily be absorbed into the just-in-time (JIT) compilation of ML frameworks without introducing a new interface or exposing complexity to users.
 
 \item \textbf{We empirically demonstrate that collapsing Taylor mode accelerates standard Taylor mode.}
-We implement a Taylor mode library for PyTorch \cite{paszke2019pytorch} that realizes the graph simplifications with \texttt{torch.fx} \cite{reed2022torch}.
+We implement a Taylor mode library\footnote{Available at \url{https://github.com/f-dangel/torch-jet}.} for PyTorch \cite{paszke2019pytorch} that realizes the graph simplifications with \texttt{torch.fx} \cite{reed2022torch}.
 On popular PDE operators, we empirically find that, compared to standard Taylor mode, collapsed Taylor mode achieves superior performance that is well-aligned with the theoretical expectation, while consistently outperforming nested first-order AD.
 \end{enumerate}
 

@@ -41,7 +41,7 @@ Applied to the Hessian, we can estimate the Laplacian of $f$ as
               \frac{1}{S} \sum_{s=1}^{S} \sum_{i,j=1}^D [\partial^2g(\vx)]_{i,j} [\vv_s]_i [\vv_s]_j
               =
               \frac{1}{S} \sum_{s=1}^{S} \left\langle \partial^2g(\vx), \vv_s^{\otimes 2} \right\rangle\,.
-              \shortintertext{Instead of propagating then summing the 2-jets, we can also sum the vectors and then propagate the sum, which is our proposed \textcolor{tab-green}{\textbf{collapsed Taylor mode}}:}
+              \shortintertext{Instead of propagating then summing the 2-jets, we can also sum the vectors and then propagate the sum (assuming we have a composition, see \cref{eq:laplacian-efficient}), which is our proposed \textcolor{tab-green}{\textbf{collapsed Taylor mode}}:}
               =& \frac{1}{S} \left\langle \partial^2g(\vx), \sum_{s=1}^{S} \vv_s^{\otimes 2} \right\rangle\,.
 \end{align*}
 
@@ -77,7 +77,7 @@ The forward propagation consumes $\vh_0 = \vh(\vx_0)$, the Jacobian $\nabla_{\vx
     &\!\! \in \sR
   \end{pmatrix}\,.
 \end{align*}
-Let us rewrite this in terms of rows of the Jacobian $[\nabla_{\vx_0} \vh_0]_{d,:} \in \sR^{C}$:
+Let us rewrite this in terms of rows of the Jacobian $[\nabla_{\vx_0} \vh_0]_{d,:} \in \sR^{C}$ (where the colon subscript denotes a slice):
 \begin{align*}
   \begin{pmatrix}
     \vh_0

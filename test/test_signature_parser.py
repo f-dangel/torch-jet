@@ -1,6 +1,5 @@
 """Tests for the PyTorch built-in signature parser module."""
 
-import urllib.request
 from importlib.metadata import version as get_version
 from inspect import Parameter, Signature
 from pathlib import Path
@@ -13,6 +12,7 @@ from torch import allclose, cos, sigmoid, sin, tanh
 from torch.nn.functional import celu, conv1d, conv2d, linear
 from yaml import dump
 
+import jet.signature_parser
 from jet.signature_parser import (
     _get_native_functions_yaml,
     _preprocess,
@@ -51,7 +51,7 @@ def test_get_native_functions_yaml_download(monkeypatch: MonkeyPatch):
         called["url"] = url
         dest.write_text("downloaded")
 
-    monkeypatch.setattr(urllib.request, "urlretrieve", fake_urlretrieve)
+    monkeypatch.setattr(jet.signature_parser, "urlretrieve", fake_urlretrieve)
 
     with catch_warnings(record=True) as w:
         simplefilter("always")

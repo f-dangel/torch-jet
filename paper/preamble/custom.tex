@@ -52,6 +52,55 @@ group-minimum-digits={3}%
   \unskip%
 }
 
+% Macro to extract the first number from '\num{...} (\num{...})'
+\makeatletter
+\newcommand{\extractfirstnum}[2]{%
+  % #1 = output PGF variable
+  % #2 = input string
+  % Use a box to prevent any typesetting
+  \setbox0=\hbox{%
+    \begingroup
+    \edef\temp{#2}%
+    \expandafter\extract@firstnum\temp\relax
+    \global\let\tempnum\extract@result
+    \endgroup
+  }%
+  \pgfmathsetmacro{#1}{\tempnum}%
+}
+\def\extract@firstnum#1#{\extract@@firstnum}
+\def\extract@@firstnum#1{%
+  \def\extract@result{#1}%
+}
+\makeatother
+
+% Macro that stores the first number from '\num{...} (\num{...})' in a PGF variable
+\newcommand{\inputMetricNumeric}[2]{%
+  % #1 = output PGF variable
+  % #2 = path
+  \CatchFileDef{\filecontents}{#2}{}% Read file content
+  \extractfirstnum{#1}{\filecontents}% Store numeric value in #1
+}
+
+% Macro that computes the ratio of first numbers from two files
+\newcommand{\inputMetricRatio}[2]{%
+  % #1 = path to numerator
+  % #2 = path to denominator
+  \inputMetricNumeric{\numerator}{#1}%
+  \inputMetricNumeric{\denominator}{#2}%
+  \unskip
+  {%
+    \sisetup{%
+      % scientific-notation=true,%
+      round-mode=figures,%
+      round-precision=2,%
+      detect-weight, % for bolding to work
+      tight-spacing=true, % less space around \cdot
+    }%
+    \pgfmathparse{\numerator / \denominator}%
+    \ \num{\pgfmathresult}% Print the processed content
+  }%
+}
+
 % ===================================================================
 % FIGURES & COLORS
 % ===================================================================

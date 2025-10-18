@@ -32,6 +32,7 @@ dependencies = [
     "einops",
     "numpy",
     "scipy",
+    "pyyaml", # used to parse native_functions.yaml
 ]
 
 # Require a specific Python version, e.g. Python 2.7 or >= 3.4

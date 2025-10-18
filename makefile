@@ -53,6 +53,11 @@ install-test:
 test:
 	@pytest -vx --cov=jet test
 
+.PHONY: doctest
+
+doctest:
+	@pytest -vx --doctest-modules jet
+
 .PHONY: lint
 
 lint:

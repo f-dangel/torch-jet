@@ -27,7 +27,7 @@ To standardize code style and enforce high quality, checks are carried out with
 Github actions when you push. You can also run them locally, as they are managed
 via `make`:
 
-- Run tests with `make test`
+- Run tests with `make test` and doctest with `make doctest`
 
 - Run all linters with `make lint`, or separately with:
 

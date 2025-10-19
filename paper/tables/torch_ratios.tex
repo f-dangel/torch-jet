@@ -6,6 +6,13 @@
   }\label{tab:benchmark-ratios}
   \vspace{0.5ex}
   \begin{small}
+    % Paths to result folders
+    \def\pathToExactLaplacian{jet/exp/exp01_benchmark_laplacian/performance/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_laplacian_vary_batch_size/}
+    \def\pathToStochasticLaplacian{jet/exp/exp01_benchmark_laplacian/performance/architecture_tanh_mlp_768_768_512_512_1_batch_size_2048_device_cuda_dim_50_distribution_normal_name_laplacian_vary_num_samples}
+    \def\pathToExactWeightedLaplacian{jet/exp/exp01_benchmark_laplacian/performance/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_weighted_laplacian_vary_batch_size_rank_ratio_1_0}
+    \def\pathToStochasticWeightedLaplacian{jet/exp/exp01_benchmark_laplacian/performance/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_weighted_laplacian_vary_batch_size_rank_ratio_1_0}
+    \def\pathToExactBilaplacian{jet/exp/exp01_benchmark_laplacian/performance/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_5_name_bilaplacian_vary_batch_size}
+    \def\pathToStochasticBilaplacian{jet/exp/exp01_benchmark_laplacian/performance/architecture_tanh_mlp_768_768_512_512_1_batch_size_256_device_cuda_dim_5_distribution_normal_name_bilaplacian_vary_num_samples}
     \begin{tabular}{cc|ccc}
       \toprule
       \textbf{Mode}
@@ -32,14 +39,14 @@
       & \num{0.77}
       \\
       & Empirical time ratio
-      & \num{0.55}
-      & \num{0.55}
-      & \num{0.88}
+      & \!\inputMetricRatio{\pathToExactLaplacian/jet_simplified_best.txt}{\pathToExactLaplacian/jet_naive_best.txt}
+      & \!\inputMetricRatio{\pathToExactWeightedLaplacian/jet_simplified_best.txt}{\pathToExactWeightedLaplacian/jet_naive_best.txt}
+      & \!\inputMetricRatio{\pathToExactBilaplacian/jet_simplified_best.txt}{\pathToExactBilaplacian/jet_naive_best.txt}
       \\
       & Empirical mem.\,ratio
-      & \num{0.65}
-      & \num{0.65}
-      & \num{0.78}
+      & \!\inputMetricRatio{\pathToExactLaplacian/jet_simplified_peakmem.txt}{\pathToExactLaplacian/jet_naive_peakmem.txt}
+      & \!\inputMetricRatio{\pathToExactWeightedLaplacian/jet_simplified_peakmem.txt}{\pathToExactWeightedLaplacian/jet_naive_peakmem.txt}
+      & \!\inputMetricRatio{\pathToExactBilaplacian/jet_simplified_peakmem.txt}{\pathToExactBilaplacian/jet_naive_peakmem.txt}
       \\
       \midrule
       \multirow{4}{*}{\textbf{Stochastic}}
@@ -59,14 +66,14 @@
       & \num{0.75}
       \\
       & Empirical time ratio
-      & \num{0.54}
-      & \num{0.54}
-      & \num{0.76}
+      & \!\inputMetricRatio{\pathToStochasticLaplacian/jet_simplified_best.txt}{\pathToStochasticLaplacian/jet_naive_best.txt}
+      & \!\inputMetricRatio{\pathToStochasticWeightedLaplacian/jet_simplified_best.txt}{\pathToStochasticWeightedLaplacian/jet_naive_best.txt}
+      & \!\inputMetricRatio{\pathToStochasticBilaplacian/jet_simplified_best.txt}{\pathToStochasticBilaplacian/jet_naive_best.txt}
       \\
       & Empirical mem.\,ratio
-      & \num{0.64}
-      & \num{0.64}
-      & \num{0.72}
+      & \!\inputMetricRatio{\pathToStochasticLaplacian/jet_simplified_peakmem.txt}{\pathToStochasticLaplacian/jet_naive_peakmem.txt}
+      & \!\inputMetricRatio{\pathToStochasticWeightedLaplacian/jet_simplified_peakmem.txt}{\pathToStochasticWeightedLaplacian/jet_naive_peakmem.txt}
+      & \!\inputMetricRatio{\pathToStochasticBilaplacian/jet_simplified_peakmem.txt}{\pathToStochasticBilaplacian/jet_naive_peakmem.txt}
       \\
       \bottomrule
     \end{tabular}

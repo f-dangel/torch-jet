@@ -1,7 +1,5 @@
 Taylor mode AD (or, simply, Taylor mode) computes higher-order derivatives---as needed, \eg, for PDE operators---through propagation of Taylor coefficients according to the chain rule.
 
-\input{figures/taylor_signature}
-
 \paragraph{Scalar case.}
 To illustrate Taylor mode, consider the scalar function $f: \sR \to \sR$ and extend the input variable $x$ to a path $x(t)$ with $x(0) = x_0$, whose form is a univariate Taylor polynomial of degree $K$, $\smash{x(t) = \sum_{k=0}^K \frac{t^k}{k!} x_k}$ with $x_k$ the $k$-th Taylor coefficient.
 If $f$ is smooth enough, we can evaluate Taylor coefficients of the transformed path $\smash{f(x(t)) = \sum_{k=0}^K \frac{t^k}{k!} f_k}$ with $\smash{f_k \coloneqq \frac{\mathrm{d}^k}{\mathrm{d}t^k} f(x(t)) |_{t=0}}$.
@@ -43,7 +41,6 @@ Given $K$ vectors $\vv_1, \dots, \vv_K \in \sR^D$, we write their tensor product
 for $d_1, \dots, d_K \in \{1, \dots, D\}$, and compactly write $\vv^{\otimes K} = \otimes_{k=1}^K \vv$.
 We define the inner product of two tensors $\smash{\tA, \tB \in (\sR^{D})^{\otimes K}}$ as the Euclidean inner product of their flattened versions
 \begin{align}\label{eq:derivative-tensor-scalar-product}
-  \textstyle % Comment out this line if we have enough space
   \left\langle
   \tA, \tB
   \right\rangle
@@ -57,22 +54,21 @@ We define the inner product of two tensors $\smash{\tA, \tB \in (\sR^{D})^{\otim
 \end{align}
 We allow broadcasting in \cref{eq:derivative-tensor-scalar-product}: if one tensor has more dimensions but matching trailing dimensions, we take the inner product for each component of the leading dimensions.
 This allows to express contractions with derivative tensors of vector-valued functions, \eg,
-contracting the $k$-th derivative tensor $\partial^k \vf(\vx_0) \in \sR^C \times (\sR^D)^{\otimes k}$, such that $\langle \tA, \partial^k \vf(\vx_0) \rangle \in \sR^C$. 
+contracting the $k$-th derivative tensor $\partial^k \vf(\vx_0) \in \sR^C \times (\sR^D)^{\otimes k}$, such that $\langle \tA, \partial^k \vf(\vx_0) \rangle \in \sR^C$.
 
 \paragraph{Multivariate case \& composition.}
 Evaluating the $K$-jet of $\vf$ at $\vx_0 \in \sR^D$ starts with the extension of $\vx_0$ to a smooth path $\vx: \sR \to \sR^D$ with $\vx(0) = \vx_0$.
-Formally, the $K$-jet of $\vf$ is defined as 
+Formally, the $K$-jet of $\vf$ is defined as
 \begin{align*}
-  \textstyle % Comment out this line if we have enough space
   J^K \vf : \sR \to \sR^C\,,
   \quad (J^K \vf)(t) := \sum_{k=0}^K \frac{t^k}{k!} \vf_k
   \quad \text{with} \quad
   \vf_k := \frac{\mathrm{d}^k}{\mathrm{d}t^k} \vf(\vx(t)) |_{t=0}
 \end{align*}
 and requires the $K$-jet of $\vx$, $(J^K \vx)(t) := \sum_{k=0}^K \frac{t^k}{k!} \vx_k$.
-As we are interested in the coefficients, we will slightly abuse the $K$-jet as mapping $(\vx_0, \dots, \vx_K) \mapsto (\vf_0, \dots, \vf_K)$  (see \cref{fig:utp} for an illustration). 
+As we are interested in the coefficients, we will slightly abuse the $K$-jet as mapping $(\vx_0, \dots, \vx_K) \mapsto (\vf_0, \dots, \vf_K)$  (see \cref{fig:utp} for an illustration).
 
-As is common for AD, propagating the coefficients is broken down into 
+As is common for AD, propagating the coefficients is broken down into
 composing $\vf$ of atomic functions with known derivatives and the chain rule.
 In the simplest case, let $\vf = \vg \circ \vh: \sR^D \to \sR^I \to \sR^C$ for two elemental functions $\vg, \vh$.
 Given the input $K$-jet for $\vx$, the coefficients $\vh_k = \smash{\frac{\mathrm{d}^k}{\mathrm{d}t^k}\vh(\vx(t))} |_{t=0}$ follow from the generalized Faà di Bruno formula (spelled out for some $k$s in \cref{sec:faa-di-bruno-cheatsheet})
@@ -186,7 +182,7 @@ In summary, the propagation scheme is (with $\vx_k \in \sR^D$, $\vh_k \in \sR^I$
       \end{array}
       \!\!\!\!
       \right)
-      =
+      \overset{\eqref{eq:taylor-mode-scalar}}{=}
       \left(\!\!\!
       \begin{array}{l}
         \vf_0 \!=\!  \vf(\vx_0)
@@ -225,6 +221,8 @@ In summary, the propagation scheme is (with $\vx_k \in \sR^D$, $\vh_k \in \sR^I$
 which describes the forward propagation of a \emph{single} $K$-jet.
 However, computing popular PDE operators requires propagating \emph{multiple} $K$-jets in parallel, then summing their results.
 We propose to pull this accumulation inside Taylor mode's propagation scheme, thereby collapsing it.
+
+\input{figures/taylor_signature}
 
 %%% Local Variables:
 %%% mode: LaTeX

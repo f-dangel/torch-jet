@@ -29,7 +29,7 @@ IMPORTANT, please:
 \item {\bf Claims}
     \item[] Question: Do the main claims made in the abstract and introduction accurately reflect the paper's contributions and scope?
     \item[] Answer: \answerYes{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
-    \item[] Justification: 
+    \item[] Justification:
     {We propose an acceleration technique for Taylor mode automatic differentiation (AD), describe the scope of its applicability and how it works, then empirically verify the claimed acceleration capabilities. This is clearly communicated in the abstract.}
     \item[] Guidelines:
     \begin{itemize}
@@ -42,7 +42,7 @@ IMPORTANT, please:
 \item {\bf Limitations}
     \item[] Question: Does the paper discuss the limitations of the work performed by the authors?
     \item[] Answer: \answerYes{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
-    \item[] Justification: 
+    \item[] Justification:
     {We specifically incorporate a paragraph about limitations of the implementation in \cref{sec:experiments} and state the assumptions (linear differential operator) under which the proposed optimization technique is applicable.}
     \item[] Guidelines:
     \begin{itemize}
@@ -76,7 +76,7 @@ IMPORTANT, please:
     \item {\bf Experimental result reproducibility}
     \item[] Question: Does the paper fully disclose all the information needed to reproduce the main experimental results of the paper to the extent that it affects the main claims and/or conclusions of the paper (regardless of whether the code and data are provided or not)?
     \item[] Answer: \answerYes{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
-    \item[] Justification: 
+    \item[] Justification:
     {
     We describe the experimental procedure, including hardware and hyper-parameter details, in \cref{sec:experiments}, together with a more detailed description in \cref{sec:jax-benchmark,sec:pytorch-benchmark}, where we also partially reproduce our results using a different ML library.
     We will open-source the code used to produce our results to further facilitate their reproducibility.
@@ -99,10 +99,10 @@ IMPORTANT, please:
 
 \item {\bf Open access to data and code}
     \item[] Question: Does the paper provide open access to the data and code, with sufficient instructions to faithfully reproduce the main experimental results, as described in supplemental material?
-    \item[] Answer: \answerNo{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
+    \item[] Answer: \answerYes{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
     \item[] Justification:
     {We will open-source the code for our PyTorch Taylor mode library (which is not the main contribution of our paper), as well as the code used to generate our results, including instructions how to reproduce them.
-    At the time of the submission deadline, both are not open-sourced yet.}
+      See the link in the main text.}
     \item[] Guidelines:
     \begin{itemize}
         \item The answer NA means that paper does not include experiments requiring code.
@@ -133,10 +133,10 @@ IMPORTANT, please:
 \item {\bf Experiment statistical significance}
     \item[] Question: Does the paper report error bars suitably and correctly defined or other appropriate information about the statistical significance of the experiments?
     \item[] Answer: \answerYes{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
-    \item[] Justification: 
+    \item[] Justification:
     {
     While we do not report error bars, we choose the experimental procedure to minimize noise: To measure runtime, we report the smallest number from repeating a run 50 times.
-    Reporting mean and standard deviations is less conclusive because runtimes on hardware can vary due to interference from other processes or warm-up effects during the first execution. 
+    Reporting mean and standard deviations is less conclusive because runtimes on hardware can vary due to interference from other processes or warm-up effects during the first execution.
     Reporting the minimum time as best approximation to the actual runtime
     is recommended, \eg in \url{https://realpython.com/python-profiling/}.
     }
@@ -156,7 +156,7 @@ IMPORTANT, please:
 \item {\bf Experiments compute resources}
     \item[] Question: For each experiment, does the paper provide sufficient information on the computer resources (type of compute workers, memory, time of execution) needed to reproduce the experiments?
     \item[] Answer: \answerYes{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
-    \item[] Justification: 
+    \item[] Justification:
     {We mention the exact type of GPU used in \cref{sec:experiments}.
     Since we evaluate runtime and memory performances, we used a single GPU.
     The total compute time can be estimated by multiplying our reported timings with the number of repetitions, then summing over all measurement points.
@@ -188,7 +188,7 @@ IMPORTANT, please:
 \item {\bf Broader impacts}
     \item[] Question: Does the paper discuss both potential positive societal impacts and negative societal impacts of the work performed?
     \item[] Answer: \answerNA{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
-    \item[] Justification: 
+    \item[] Justification:
     {
     Our work introduces algorithmic improvements to Taylor mode automatic differentiation.
     We think they positively impact the research landscape of scientific machine learning, by reducing computational resources.
@@ -207,7 +207,7 @@ IMPORTANT, please:
 \item {\bf Safeguards}
     \item[] Question: Does the paper describe safeguards that have been put in place for responsible release of data or models that have a high risk for misuse (e.g., pretrained language models, image generators, or scraped datasets)?
     \item[] Answer: \answerNA{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
-    \item[] Justification: 
+    \item[] Justification:
     {
     Our work neither uses data sets, nor trains models.
     }
@@ -257,7 +257,7 @@ IMPORTANT, please:
 \item {\bf Crowdsourcing and research with human subjects}
     \item[] Question: For crowdsourcing experiments and research with human subjects, does the paper include the full text of instructions given to participants and screenshots, if applicable, as well as details about compensation (if any)?
     \item[] Answer: \answerNA{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
-    \item[] Justification: 
+    \item[] Justification:
     {
     The paper does not involve crowdsourcing nor research with human subjects.
     }
@@ -271,7 +271,7 @@ IMPORTANT, please:
 \item {\bf Institutional review board (IRB) approvals or equivalent for research with human subjects}
     \item[] Question: Does the paper describe potential risks incurred by study participants, whether such risks were disclosed to the subjects, and whether Institutional Review Board (IRB) approvals (or an equivalent approval/review based on the requirements of your country or institution) were obtained?
     \item[] Answer: \answerNA{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
-    \item[] Justification: 
+    \item[] Justification:
     {
     The paper does not involve crowdsourcing nor research with human subjects.
     }
@@ -287,7 +287,7 @@ IMPORTANT, please:
     \item[] Question: Does the paper describe the usage of LLMs if it is an important, original, or non-standard component of the core methods in this research? Note that if the LLM is used only for writing, editing, or formatting purposes and does not impact the core methodology, scientific rigorousness, or originality of the research, declaration is not required.
     %this research?
     \item[] Answer: \answerNA{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
-    \item[] Justification: 
+    \item[] Justification:
     {
     Our work does not rely on LLM usage in any way.
     }

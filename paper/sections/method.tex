@@ -1,5 +1,5 @@
 We now describe how to collapse the Taylor mode AD computation of popular linear PDE operators and their stochastic approximations proposed in \cite{shi2024stochastic}, and provide a general recipe for computing and collapsing general linear differential operators by interpolation, using earlier work from \citet{griewank_evaluating_1999}.
-At its core, our procedure 
+At its core, our procedure
 uses the linearity of the highest Taylor coefficient's propagation rule.
 It allows to collapse coefficients along multiple directions and directly \textcolor{tab-green}{\bfseries propagate their sum}, rather than \textcolor{tab-orange}{\bfseries propagating then summing},
 yielding substantial reductions in computational cost.
@@ -8,7 +8,6 @@ yielding substantial reductions in computational cost.
 
 To derive our proposed method, we start with a sum of $K$th-order directional derivatives of the function $\vf$ along $R$ directions $\{\vv_r\}_{r=1}^R$, which is a common building block for all our PDE operators:
 \begin{align}\label{eq:sum-k-directional}
-  \textstyle % Comment out this line if we have enough space
   {\color{tab-orange}
   \sum_{r=1}^R
   }
@@ -19,7 +18,7 @@ To derive our proposed method, we start with a sum of $K$th-order directional de
 \end{align}
 (\eg the exact Laplacian uses $K = 2$, $R = \dim(\vx_0) = D$, and the unit vectors $\vv_r = \ve_r\in \R^D$ as directions; see \cref{sec:second-order-operators} below).
 Instead of nesting $K$ calls to 1\textsuperscript{st}-order AD, we can use $K$-jets to calculate each summand of \cref{eq:sum-k-directional} with Taylor mode.
-In total, we need $R$ $K$-jets, and have to set the $r$-th jet's coefficients to $\vx_{0, r} = \vx_0$, $\vx_{1, r} = \vv_r$ and $\vx_{2, r} = \ldots = \vx_{K, r} = \vzero$ (\cref{eq:sum-taylor-mode-naive} applies this to \cref{eq:taylor-mode-composition}). 
+In total, we need $R$ $K$-jets, and have to set the $r$-th jet's coefficients to $\vx_{0, r} = \vx_0$, $\vx_{1, r} = \vv_r$ and $\vx_{2, r} = \ldots = \vx_{K, r} = \vzero$ (\cref{eq:sum-taylor-mode-naive} applies this to \cref{eq:taylor-mode-composition}).
 
 Standard Taylor mode propagates $1 + KR$ vectors through every node of the computational graph (the $0$th component is shared across all jets, see \cref{fig:visual-abstract}).
 This gives the output jets $\smash{\{\{\vf_{k,r}\}_{k=1}^K\}_{r=1}^{R}}$, from which we only select the highest-degree coefficients $\smash{\{\vf_{K,r}\}_{r=1}^R}$, then sum them to obtain \cref{eq:sum-k-directional}.
@@ -53,7 +52,7 @@ Separating it in the highest coefficient's forward propagation, we get (using $\
   \left<
     \partial \vg(\vh_0),
     \vh_{K, r}
-  \right> 
+  \right>
   \shortintertext{and since the propagation rule is linear \wrt $\vh_{K,r}$, we can pull the summation inside:}
   {
   \color{tab-green}
@@ -96,7 +95,6 @@ In the following, we discuss how to collapse the Taylor mode computation of vari
 It contains the Hessian trace of each element of a function, \ie, for $\vf: \sR^D \to \sR^C$, it is
 \begin{subequations}
   \begin{align}\label{eq:laplacian}
-    \textstyle % Comment out this line if we have enough space
     \underbrace{
     \Delta \vf(\vx_0)
     }_{\in \sR^C}
@@ -106,12 +104,14 @@ It contains the Hessian trace of each element of a function, \ie, for $\vf: \sR^
     \right>
     \quad
     \begin{cases}
+      \displaystyle
       = \sum_{d=1}^D \left<
       \partial^2 \vf(\vx_0),
       \ve_d^{\otimes 2}
       \right>
       &\text{(exact)}
       \\
+      \displaystyle
       \overset{\text{\cite{shi2024stochastic}}}{\approx}
       \frac{1}{S} \sum_{s=1}^S
       \left<
@@ -149,7 +149,6 @@ The weighted Laplacian contains the weighted Hessian's trace $\Tr(\msigma \msigm
 If $\rank(\mD) = R$ and therefore $\msigma = (\vs_1, \dots, \vs_R) \in \sR^{D \times R}$, it is
 \begin{subequations}
   \begin{align}\label{eq:weighted-laplacian}
-    \textstyle % Comment out this line if we have enough space
     \underbrace{
     \Delta_\mD \vf(\vx_0)
     }_{\in \sR^C}
@@ -159,10 +158,12 @@ If $\rank(\mD) = R$ and therefore $\msigma = (\vs_1, \dots, \vs_R) \in \sR^{D \t
     \right>
     \quad
     \begin{cases}
+      \displaystyle
       = \sum_{r=1}^R
       \left< \partial^2 \vf(\vx_0), \vs_r^{\otimes 2} \right>
       & \text{(exact)}
       \\
+      \displaystyle
       \overset{\text{\cite{hu2024hutchinson}}}{\approx}
       \frac{1}{S}
       \sum_{s=1}^S
@@ -199,12 +200,14 @@ Hence, we extend our framework to also cover differential operators containing m
 As illustrative example, we will use the biharmonic operator with a 4-dimensional coefficient tensor:
 \begin{align}
   \label{eq:biharm}
-  \textstyle % Comment out this line if we have enough space
+  \underbrace{
   \Delta^2 \vf(\vx_0)
+  }_{\in \sR^C}
   % \coloneqq
   % \Delta(\Delta \vf(\vx_0))
   \quad
   \begin{cases}
+    \displaystyle
     =
     \sum_{d_1=1}^D \sum_{d_2=1}^D
     \left<
@@ -213,6 +216,7 @@ As illustrative example, we will use the biharmonic operator with a 4-dimensiona
     \right>
     & \text{(exact)}
     \\
+    \displaystyle
     \overset{\text{\cite{shi2024stochastic}}}{\approx}
     \frac{1}{3S}
     \sum_{s=1}^S
@@ -220,7 +224,7 @@ As illustrative example, we will use the biharmonic operator with a 4-dimensiona
     & \text{(stochastic)}
   \end{cases}\,.
 \end{align}
-We can directly collapse the stochastic version: draw $S$ standard normal vectors $\vv_1, \dots, \vv_S$ and propagate the coefficients $\{(\vx_{0,s}\!=\! \vx_0, \vx_{1,s} \!=\! \vv_s, \vx_{2,s} \!=\! \vx_{3,s} \!=\! \vx_{4,s} \!=\! \vzero)\}_{s=1}^S$.
+We can directly collapse the stochastic version: draw $S$ standard normal vectors $\vv_1, \dots, \vv_S$ and propagate the coefficients $\{(\vx_{0,s}= \vx_0, \vx_{1,s} = \vv_s, \vx_{2,s} = \vx_{3,s} = \vx_{4,s} = \vzero)\}_{s=1}^S$.
 With standard Taylor mode, this uses ${\color{tab-orange} 1 + 4S}$ vectors; collapsed Taylor mode uses ${\color{tab-green} 1 + 3S + 1}$ vectors.
 For the exact biharmonic operator, however, we need to develop an approach to compute mixed partials.
 
@@ -229,7 +233,6 @@ Assume we want to compute a linear differential operator of degree $K$.
 We can do so by contracting the $K$-th order derivative tensor $\partial^K \vf(\vx_0)$ with a coefficient tensor $\tC \in (\sR^D)^{\otimes K}$.
 We can always express this tensor in a tensor product basis, such that
 \begin{align}\label{eq:sums-k-directional}
-  \textstyle % Comment out this line if we have enough space
   \left<
   \partial^K \vf(\vx_0), \tC
   \right>
@@ -283,7 +286,6 @@ This construction allows us to rewrite \cref{eq:sums-k-directional} as
 \end{align*}
 and---since the coefficients $\gamma_{\vi,\vj}$ only depend on the problem structure ($K$, $I$ and $\vi$) and \emph{not} on the function $\vf$ and the directions $\vv_{d_i}$ \cite{griewank_evaluating_1999}---we can pull out the inner sum to obtain the final expression
 \begin{equation}\label{eq:ttc-general}
-  %\textstyle % Comment out this line if we have enough space
   \sum_{\vj \in \mathbb{N}^I, \lVert \vj \rVert_1 = K}
   \frac{\gamma_{\vi, \vj}}{K!}
   {\color{tab-orange}
@@ -297,7 +299,7 @@ and---since the coefficients $\gamma_{\vi,\vj}$ only depend on the problem struc
   \right>\,.
 \end{equation}
 
-We can evaluate \cref{eq:ttc-general} with standard Taylor mode: For each $\vj$, compute $\smash{\prod_{i=1}^{I}}D_i$ $K$-jets with coefficients $\vx_0, \vx_1 = \sum_i \vv_{d_i}[\vj]_i, \vx_2= \dots =\vx_K = \vzero$.
+We can evaluate \cref{eq:ttc-general} with standard Taylor mode: For each $\vj$, compute $\smash{\prod_{i=1}^{I}}D_i$ $K$-jets with coefficients $\vx_0, \vx_1 = \sum_i \vv_{d_i}[\vj]_i, \vx_2= \ldots =\vx_K = \vzero$.
 The sums from the tensor basis expansion can be collapsed with our proposed optimization, removing $\smash{\prod_{i=1}^{I}}D_i$ vectors from the propagation for each $\vj$.
 After repeating for each member $\vj$ of the interpolation family, we form the linear combination using the $\gamma_{{\vi, \vj}}$s, which yields the desired differential operator.
 We can often exploit symmetries in the $\gamma_{\vi, \vj}$s and basis vectors to further reduce the number of $K$-jets (see \cref{sec:appendix-biharmonic-details} for a complete example).
@@ -320,7 +322,7 @@ After collapsing, we get $1 + 3D + 1 + 3 D(D-1) + 1 + \nicefrac{3}{2} D(D-1)  + 
 \end{wrapfigure}
 This demonstrates the relevance of collapsing: it achieves a 25\,\% reduction in the quadratic coefficient.
 
-\paragraph{Summary \& relation to other approaches for computing mixed partials.} 
+\paragraph{Summary \& relation to other approaches for computing mixed partials.}
 The scheme we propose based on \citet{griewank_evaluating_1999}'s interpolation result allows to calculate \emph{general} linear differential operators beyond Laplacians, and is amenable to collapsing.
 Admittedly, \cref{eq:ttc-general} seems daunting at first glance.
 However, it (i) offers a one-fits-all recipe to construct schemes for general linear PDE operators, and (ii) does not use jets of order $K'>K$ to compute $K$-th order derivatives.

@@ -82,10 +82,19 @@
 \section{Conclusion}\label{sec:conclusion}
 \input{sections/conclusion.tex}
 
+% NeurIPS camera-ready instructions:
+% > After the 10 pages, you can include (in this order):
+% > acknowledgements, bibliography, checklist, and other appendices.
+
 \input{sections/acknowledgements.tex}
 
 \bibliography{references}
 \bibliographystyle{icml2024.bst}
+
+\clearpage
+
+\section{NeurIPS Paper Checklist}
+\input{sections/checklist.tex}
 
 \clearpage
 \appendix
@@ -147,16 +156,6 @@
 \section{Connections of Collapsed Taylor Mode to Existing Methods}
 \label{sec:connections}
 \input{sections/appendix_connections}
-
-% Include the checklist except for the pre-print version
-\ifthenelse{\equal{\status}{preprint}}{}{
-\clearpage
-% This command creates an un-numbered section and adds it to the table of contents
-% (see https://www.reddit.com/r/LaTeX/comments/10pjrwt/comment/j6kvo50/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button)
-\newcommand*{\nsection}[1]{\section*{#1}\addcontentsline{toc}{section}{#1}}
-\nsection{NeurIPS Paper Checklist}
-\input{sections/checklist.tex}
-}
 
 \end{document}
 %%% Local Variables:

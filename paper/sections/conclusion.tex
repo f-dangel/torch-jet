@@ -1,9 +1,14 @@
-Computing differential operators is a critical component in scientific machine learning, particularly for Physics-informed neural networks and variational Monte Carlo. 
+Computing differential operators is a critical component in scientific machine learning, particularly for Physics-informed neural networks and variational Monte-Carlo.
 Our work introduces collapsed Taylor mode, a simple yet effective optimization based on linearity in Fa\`a di Bruno's formula, that propagates the sum of highest-order Taylor coefficients, rather than propagating then summing.
 It contains recent advances in forward-mode schemes, recovering the forward Laplacian \cite{li2023forward}, while being applicable to stochastic Taylor mode \cite{shi2024stochastic,hu2024hutchinson}.
 We demonstrated that collapsed Taylor mode is useful to compute general linear differential operators, leveraging \citet{griewank_evaluating_1999}'s interpolation formula.
 Empirically, we confirmed speed-ups and memory savings for computing (randomized) Laplacians and biharmonic operators after collapsing Taylor mode, in accordance with our theoretical analysis, and confirmed its superiority to nesting first-order automatic differentiation.
 As the optimizations are achieved through simple graph rewrites based on linearity, we believe they could be integrated into existing just-in-time compilers without requiring a new interface or burdening users.
 
-Our work takes an important step towards making Taylor mode a practical alternative to nested first-order differentiation in scientific machine learning, while maintaining ease of use. 
+Our work takes an important step towards making Taylor mode a practical alternative to nested first-order differentiation in scientific machine learning, while maintaining ease of use.
 Future work could focus on integrating these optimizations directly into ML compilers, broadening operator coverage of our PyTorch implementation, and exploring additional graph optimizations for AD.
+
+%%% Local Variables:
+%%% mode: LaTeX
+%%% TeX-master: "../main"
+%%% End:

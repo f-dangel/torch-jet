@@ -1,4 +1,33 @@
-This section presents experiments, which show that the graph simplifications we propose to collapse standard Taylor mode are currently not applied by the \texttt{jit} compiler in JAX.
+This section presents experiments which show that the graph simplifications we propose to collapse standard Taylor mode are currently not applied by the \texttt{jit} compiler in JAX.
+
+\begin{figure*}[!t]
+  \centering
+
+  % From https://tex.stackexchange.com/a/7318
+  \newcolumntype{C}{ >{\centering\arraybackslash} m{0.11\textwidth} }
+  \newcolumntype{D}{ >{\centering\arraybackslash} m{0.4\textwidth} }
+  \begin{tabular}{CDD}
+    & \textbf{Laplacian $(D=50)$}
+    & \makecell{\textbf{Biharmonic $(D=5)$} \\ \textbf{(via nested Laplacians)}}
+    \\
+    \textbf{Exact}
+    & \includegraphics{jet/exp/exp04_jax_benchmark/figures/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_jax_laplacian_vary_batch_size.pdf}
+    & \includegraphics{jet/exp/exp04_jax_benchmark/figures/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_5_name_jax_bilaplacian_vary_batch_size.pdf}
+    \\
+    & $(N=2048)$
+    & $(N=256)$
+    \\
+    \textbf{Stochastic}
+    & \includegraphics{jet/exp/exp04_jax_benchmark/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_2048_device_cuda_dim_50_distribution_normal_name_jax_laplacian_vary_num_samples.pdf}
+    & \includegraphics{jet/exp/exp04_jax_benchmark/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_256_device_cuda_dim_5_distribution_normal_name_jax_bilaplacian_vary_num_samples.pdf}
+    \\
+  \end{tabular}
+  \captionof{figure}{\textbf{JAX's \texttt{jit} compiler does not apply our graph simplifications to standard Taylor mode.} Colors: \textcolor{tab-green}{Collapsed Taylor mode}, \textcolor{tab-orange}{standard Taylor mode}, and \textcolor{tab-blue}{nested first-order automatic differentiaion}, \textcolor{black!50!white}{opaque} memory consumptions are for non-differentiable computations.
+    Results are on GPU and we use a $D \to 768 \to 768 \to 512 \to 512 \to 1$ MLP with tanh activations, varying the batch size.
+    For each approach, we fit a line to the data and report the slope in \cref{tab:jax-benchmark} to quantify the relative speedup and memory reduction.
+  }
+  \label{fig:jax-benchmark}
+\end{figure*}
 
 \begin{figure*}[!t]
   \centering
@@ -132,33 +161,6 @@ This section presents experiments, which show that the graph simplifications we 
   \end{tabular}
   % Re-set the \num command to the original one
   \let\num\origsiunitxnum
-
-  \vspace{4ex}
-
-  % From https://tex.stackexchange.com/a/7318
-  \newcolumntype{C}{ >{\centering\arraybackslash} m{0.11\textwidth} }
-  \newcolumntype{D}{ >{\centering\arraybackslash} m{0.4\textwidth} }
-  \begin{tabular}{CDD}
-    & \textbf{Laplacian $(D=50)$}
-    & \makecell{\textbf{Biharmonic $(D=5)$} \\ \textbf{(via nested Laplacians)}}
-    \\
-    \textbf{Exact}
-    & \includegraphics{jet/exp/exp04_jax_benchmark/figures/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_jax_laplacian_vary_batch_size.pdf}
-    & \includegraphics{jet/exp/exp04_jax_benchmark/figures/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_5_name_jax_bilaplacian_vary_batch_size.pdf}
-    \\
-    & $(N=2048)$
-    & $(N=256)$
-    \\
-    \textbf{Stochastic}
-    & \includegraphics{jet/exp/exp04_jax_benchmark/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_2048_device_cuda_dim_50_distribution_normal_name_jax_laplacian_vary_num_samples.pdf}
-    & \includegraphics{jet/exp/exp04_jax_benchmark/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_256_device_cuda_dim_5_distribution_normal_name_jax_bilaplacian_vary_num_samples.pdf}
-    \\
-  \end{tabular}
-  \captionof{figure}{\textbf{JAX's \texttt{jit} compiler does not apply our graph simplifications to standard Taylor mode.} Colors: \textcolor{tab-green}{Collapsed Taylor mode}, \textcolor{tab-orange}{standard Taylor mode}, and \textcolor{tab-blue}{nested first-order automatic differentiaion}, \textcolor{black!50!white}{opaque} memory consumptions are for non-differentiable computations.
-    Results are on GPU and we use a $D \to 768 \to 768 \to 512 \to 512 \to 1$ MLP with tanh activations, varying the batch size.
-    For each approach, we fit a line to the data and report the slope in \cref{tab:jax-benchmark} to quantify the relative speedup and memory reduction.
-  }
-  \label{fig:jax-benchmark}
 \end{figure*}
 
 \paragraph{Comparing JAX implementations.} Similar to our PyTorch experiment in \Cref{sec:experiments}, we compare three implementations of the Laplacian in JAX (all compiled with \texttt{jax.jit}):
@@ -185,7 +187,7 @@ We fit linear functions to each of them and report the cost incurred by adding o
 From them, we draw the following conclusions:
 
 \begin{enumerate}
-\item \textbf{Performance is consistent between PyTorch and JAX.} Although our PyTorch implementation does not leverage compilation, the values reported in \cref{tab:benchmark,tab:jax-benchmark} are consistent and differ by at most a factor of two (in rare cases).
+\item \textbf{Performance is consistent between PyTorch and JAX.} Although our PyTorch implementation does not leverage compilation, the values reported in \cref{tab:benchmark,tab:jax-benchmark} are consistent and only in rare cases differ by a factor of more than two.
   This confirms that our PyTorch-based implementation of Taylor mode is reasonably efficient, and that the presented performance results in the main text are transferable to other frameworks like JAX.
 
 \item \textbf{Our implementation of collapsed Taylor mode based on graph rewrites in PyTorch achieves consistent speed-up with the Laplacian-specific implementation in JAX.}
@@ -208,8 +210,8 @@ For the biharmonic operator (right column of \cref{fig:jax-benchmark} and \cref{
 %   \newcolumntype{C}{ >{\centering\arraybackslash} m{0.11\textwidth} }
 %   \newcolumntype{D}{ >{\centering\arraybackslash} m{0.4\textwidth} }
 %   \begin{tabular}{CDD}
-%     & \textbf{PyTorch}
-        %     & \textbf{JAX}
+    %     & \textbf{PyTorch}
+    %     & \textbf{JAX}
 %     \\
 %     \textbf{Exact}
 %     & \includegraphics{jet/exp/exp01_benchmark_laplacian/figures/architecture_tanh_mlp_768_768_512_512_1_batch_size_256_device_cuda_name_bilaplacian_vary_dim.pdf}

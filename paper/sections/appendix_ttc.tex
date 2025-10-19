@@ -1,396 +1,399 @@
-This section introduces the notation we used in \cref{eq:ttc_general}. 
-The right side of the formula sums over all $\vj
-\in \mathbb{N}^I$ such that $\lVert \vj \rVert_1 := \sum_i [\vj]_i = K$. If $I=2$ and $\lVert \vj \rVert_1 = 4$, this index-set consists of $\left\{ (4,0), (0, 4), (3, 1), (1, 3),  (2, 2)\right\}$. 
+Here, we introduce the notation of \cref{eq:ttc_general}.
+The right side of the formula sums over all $\vj \in \sN^I$ such that $\lVert \vj \rVert_1 := \sum_i [\vj]_i = K$.
+For example, if $I=2$ and $\lVert \vj \rVert_1 = 4$, this index-set consists of $\left\{ (4,0), (0, 4), (3, 1), (1, 3), (2, 2)\right\}$.
 
 The coefficient $\gamma_{\vi, \vj}$ is defined as
 \begin{equation}
-\label{eq:ttc_coeff}
-    \gamma_{\vi, \vj} := \sum_{0 < \vm \leq \vi} (-1)^{\lVert \vi - \vm \rVert_1} 
-    \left(
+  \label{eq:ttc_coeff}
+  \gamma_{\vi, \vj} := \sum_{0 < \vm \leq \vi} (-1)^{\lVert \vi - \vm \rVert_1}
+  \left(
     \begin{matrix}
-        \vi \\
-        \vm
+      \vi \\
+      \vm
     \end{matrix}
-    \right) 
-    \left( 
+  \right)
+  \left(
     \begin{matrix}
-        \lVert \vi \rVert_1 \frac{\vm}{\lVert \vm \rVert_1} \\
-        \vj
-    \end{matrix} 
-    \right)  
-    \left( 
+      \lVert \vi \rVert_1 \frac{\vm}{\lVert \vm \rVert_1} \\
+      \vj
+    \end{matrix}
+  \right)
+  \left(
     \frac{\lVert \vm \rVert_1}{\lVert \vi \rVert_1}
-    \right)^{\lVert \vi \rVert_1}.
+  \right)^{\lVert \vi \rVert_1}\,.
 \end{equation}
-The summation ranges over the set $\left\{ \vm \in \mathbb{N}^I \mid [\vm]_1 \leq [\vi]_1, \dots, [\vm]_I \leq [\vi]_I, \lVert \vm \rVert_1 > 0 \right\}$. Furthermore, we utilize the generalized binomial coefficient
-\begin{equation}
-    \left(
-       \begin{matrix}
-        a \\
-        b
-    \end{matrix}
-    \right) := \prod_{l=0}^{b-1} \frac{a - l}{b - l}
-\end{equation}
-to allow the computation for all $a \in \mathbb{R}$ and $b \in \mathbb{N}$, which is defined to be $1$ if $b=0$. The generalized binomial coefficient of vectors is the product of all generalized binomial coefficients of the components:
-$
-\left(
+The summation ranges over the set $\left\{ \vm \in \sN^I \mid [\vm]_1 \leq [\vi]_1, \dots, [\vm]_I \leq [\vi]_I, \lVert \vm \rVert_1 > 0 \right\}$.
+Furthermore, we utilize the generalized binomial coefficient
+\begin{equation*}
+  \left(
     \begin{matrix}
-        \va \\
-        \vb
+      a \\
+      b
     \end{matrix}
-    \right) 
-    := 
-    \prod_{i=1}^I
-    \left(
-       \begin{matrix}
-        [\va]_i \\
-        [\vb]_i
+  \right) := \prod_{l=0}^{b-1} \frac{a - l}{b - l}
+\end{equation*}
+to allow the computation for all $a \in \sR$ and $b \in \sN$, which is defined to be $1$ if $b=0$.
+The generalized binomial coefficient of vectors is the component-wise product of generalized binomial coefficients:
+\begin{equation*}
+  \left(
+    \begin{matrix}
+      \va \\
+      \vb
     \end{matrix}
-    \right).
-$ 
-This notation also includes cases where the vector has components of $\mathbb{R}$.
+  \right)
+  :=
+  \prod_{i=1}^I
+  \left(
+    \begin{matrix}
+      [\va]_i \\
+      [\vb]_i
+    \end{matrix}
+  \right)\,.
+\end{equation*}
+This notation also includes cases where the vector $\va$ has components of $\sR$.
 
-\paragraph{Example coefficient computation}
-Below we compute the coefficient $\gamma_{(2, 2),(3, 1)}$ as used to compute the biharmonic operator. This coefficient reads
-\begin{align}
-    \gamma_{(2, 2),(3, 1)} = \sum_{
-    \substack{
-    \vm \in \mathbb{N}, \; ||\vm||_1 > 0 
-    \\
-    [\vm]_1 \leq 2, \; [\vm]_2 \leq 2
-    } 
-    }
-    (-1)^{ 2 - [\vm]_1 + 2 - [\vm]_2 } 
-    \left(
-    \begin{matrix}
-        2 \\
-        [\vm]_1
-    \end{matrix}
-    \right) 
-    \left(
-    \begin{matrix}
-        2 \\
-        [\vm]_2
-    \end{matrix}
-    \right) 
-    \left( 
-    \begin{matrix}
-        4 \frac{[\vm]_1}{\lVert \vm \rVert_1} \\
-        3
-    \end{matrix} 
-    \right) 
-    \left( 
-    \begin{matrix}
-        4 \frac{[\vm]_2}{\lVert \vm \rVert_1} \\
-        1
-    \end{matrix} 
-    \right)
-    \left( 
-    \frac{\lVert \vm \rVert_1}{4}
-    \right)^4.
-\end{align}
+\paragraph{Example computation.}
+Let's compute the coefficient $\gamma_{(2, 2),(3, 1)}$, used by the biharmonic operator:
+\begin{align*}
+  \gamma_{(2, 2),(3, 1)} = \,\,\,\,\,\mathclap{\sum_{
+  \substack{
+  \vm \in \sN, ||\vm||_1 > 0
+  \\
+  [\vm]_1 \leq 2, [\vm]_2 \leq 2
+  }
+  }
+  }\,\,\,\,\,\,\,
+  (-1)^{ 2 - [\vm]_1 + 2 - [\vm]_2 }
+  \left(
+  \begin{matrix}
+    2 \\
+    [\vm]_1
+  \end{matrix}
+  \right)
+  \left(
+  \begin{matrix}
+    2 \\
+    [\vm]_2
+  \end{matrix}
+  \right)
+  \left(
+  \begin{matrix}
+    4 \frac{[\vm]_1}{\lVert \vm \rVert_1} \\
+    3
+  \end{matrix}
+  \right)
+  \left(
+  \begin{matrix}
+    4 \frac{[\vm]_2}{\lVert \vm \rVert_1} \\
+    1
+  \end{matrix}
+  \right)
+  \left(
+  \frac{\lVert \vm \rVert_1}{4}
+  \right)^4\,.
+\end{align*}
 We have $\vm \in \{(1, 0), (2, 0), (1, 1), (2, 1), (2, 2), (1, 2), (0, 1), (0, 2)\}$, which results in the terms
-\begin{align}
-    &(-1)^{ 2 - 1 + 2 - 0} 
-    \left(
-    \begin{matrix}
-        2 \\
-        1
-    \end{matrix}
-    \right) 
-    \left(
-    \begin{matrix}
-        2 \\
-        0
-    \end{matrix}
-    \right) 
-    \left( 
-    \begin{matrix}
-        4 \frac{1}{1} \\
-        3
-    \end{matrix} 
-    \right) 
-    \left( 
-    \begin{matrix}
-        4 \frac{0}{1} \\
-        1
-    \end{matrix} 
-    \right)
-    \left( 
-    \frac{1}{4}
-    \right)^4
-    \\
-    +&
-    (-1)^{ 2 - 2 + 2 - 0 } 
-    \left(
-    \begin{matrix}
-        2 \\
-        2
-    \end{matrix}
-    \right) 
-    \left(
-    \begin{matrix}
-        2 \\
-        0
-    \end{matrix}
-    \right) 
-    \left( 
-    \begin{matrix}
-        4 \frac{2}{2} \\
-        3
-    \end{matrix} 
-    \right) 
-    \left( 
-    \begin{matrix}
-        4 \frac{0}{2} \\
-        1
-    \end{matrix} 
-    \right)
-    \left( 
-    \frac{2}{4}
-    \right)^4
-    \\
-    +&
-    (-1)^{ 2 - 1 + 2 - 1 } 
-    \left(
-    \begin{matrix}
-        2 \\
-        1
-    \end{matrix}
-    \right) 
-    \left(
-    \begin{matrix}
-        2 \\
-        1
-    \end{matrix}
-    \right) 
-    \left( 
-    \begin{matrix}
-        4 \frac{1}{2} \\
-        3
-    \end{matrix} 
-    \right) 
-    \left( 
-    \begin{matrix}
-        4 \frac{1}{2} \\
-        1
-    \end{matrix} 
-    \right)
-    \left( 
-    \frac{2}{4}
-    \right)^4
-    \\
-    +&
-    (-1)^{ 2 - 2 + 2 - 1 } 
-    \left(
-    \begin{matrix}
-        2 \\
-        2
-    \end{matrix}
-    \right) 
-    \left(
-    \begin{matrix}
-        2 \\
-        1
-    \end{matrix}
-    \right) 
-    \left( 
-    \begin{matrix}
-        4 \frac{2}{3} \\
-        3
-    \end{matrix} 
-    \right) 
-    \left( 
-    \begin{matrix}
-        4 \frac{1}{3} \\
-        1
-    \end{matrix} 
-    \right)
-    \left( 
-    \frac{3}{4}
-    \right)^4
-    \\
-    +&
-    (-1)^{ 2 - 2 + 2 - 2} 
-    \left(
-    \begin{matrix}
-        2 \\
-        2
-    \end{matrix}
-    \right) 
-    \left(
-    \begin{matrix}
-        2 \\
-        2
-    \end{matrix}
-    \right) 
-    \left( 
-    \begin{matrix}
-        4 \frac{2}{4} \\
-        3
-    \end{matrix} 
-    \right) 
-    \left( 
-    \begin{matrix}
-        4 \frac{2}{4} \\
-        1
-    \end{matrix} 
-    \right)
-    \left( 
-    \frac{4}{4}
-    \right)^4
-        \\
-    +&
-    (-1)^{ 2 - 1 + 2 - 2} 
-    \left(
-    \begin{matrix}
-        2 \\
-        1
-    \end{matrix}
-    \right) 
-    \left(
-    \begin{matrix}
-        2 \\
-        2
-    \end{matrix}
-    \right) 
-    \left( 
-    \begin{matrix}
-        4 \frac{1}{3} \\
-        3
-    \end{matrix} 
-    \right) 
-    \left( 
-    \begin{matrix}
-        4 \frac{2}{3} \\
-        1
-    \end{matrix} 
-    \right)
-    \left( 
-    \frac{3}{4}
-    \right)^4
-    \\
-    +&
-    (-1)^{ 2 - 0 + 2 - 1 } 
-    \left(
-    \begin{matrix}
-        2 \\
-        0
-    \end{matrix}
-    \right) 
-    \left(
-    \begin{matrix}
-        2 \\
-        1
-    \end{matrix}
-    \right) 
-    \left( 
-    \begin{matrix}
-        4 \frac{0}{1} \\
-        3
-    \end{matrix} 
-    \right) 
-    \left( 
-    \begin{matrix}
-        4 \frac{1}{1} \\
-        1
-    \end{matrix} 
-    \right)
-    \left( 
-    \frac{1}{4}
-    \right)^4
-    \\
-    +&
-    (-1)^{ 2 - 0 + 2 - 2 } 
-    \left(
-    \begin{matrix}
-        2 \\
-        0
-    \end{matrix}
-    \right) 
-    \left(
-    \begin{matrix}
-        2 \\
-        2
-    \end{matrix}
-    \right) 
-    \left( 
-    \begin{matrix}
-        4 \frac{0}{2} \\
-        3
-    \end{matrix} 
-    \right) 
-    \left( 
-    \begin{matrix}
-        4 \frac{2}{2} \\
-        1
-    \end{matrix} 
-    \right)
-    \left( 
-    \frac{2}{4}
-    \right)^4
-\end{align}
-The next step is to evaluate the binomial coefficients.  
-\begin{align}
-    &(-1) \cdot 2 \cdot 1 \cdot 4 \cdot 0 \cdot 
-    \left( 
-    \frac{1}{4}
-    \right)^4
-    \\
-    +&
-    1 \cdot 1 \cdot 4 \cdot 0 \cdot 
-    \left( 
-    \frac{2}{4}
-    \right)^4
-    \\
-    +&
-    2 \cdot 2 \cdot 0 \cdot 2 \cdot
-    \left( 
-    \frac{2}{4}
-    \right)^4
-    \\
-    -&
-    1 \cdot 2 \cdot \frac{8}{9}\frac{5}{6}\frac{2}{3} \cdot \frac{4}{3} \cdot
-    \left( 
-    \frac{3}{4}
-    \right)^4
-    \\
-    +&
-    1 \cdot 1 \cdot 0 \cdot 2 \cdot
-    \left( 
-    \frac{4}{4}
-    \right)^4
-        \\
-    -& 2 \cdot 1
-    \cdot \frac{4}{9}\frac{1}{6} \frac{-2}{3} \cdot \frac{8}{3} \cdot
-    \left( 
-    \frac{3}{4}
-    \right)^4
-    \\
-    -& 1 \cdot 2 \cdot 0 \cdot 4 \cdot
-    \left( 
-    \frac{1}{4}
-    \right)^4
-    \\
-    +&
-    \cdot 1 \cdot 1 \cdot 1 \cdot 0 \cdot 4 \cdot
-    \left( 
-    \frac{2}{4}
-    \right)^4
-\end{align}
-Removing the terms that are zero gives us the final result
-\begin{align}
-    \gamma_{(2, 2),(3, 1)} = &(-1) \cdot 2 \cdot \frac{8}{9}\frac{5}{6}\frac{2}{3} \cdot \frac{4}{3} \cdot
-    \left( 
-    \frac{3}{4}
-    \right)^4
-    - 2 \left(\frac{4}{9} \cdot \frac{1}{6} \cdot \frac{-2}{3}\right) \cdot \frac{8}{3} \cdot
-    \left( 
-    \frac{3}{4}
-    \right)^4 
-    \\
-    &=  \frac{-640}{486}\frac{81}{256} + \frac{128}{486}\frac{81}{256} = \frac{-5}{12}+\frac{1}{12} = -\frac{1}{3}.
-\end{align}
+\begin{align*}
+  =\phantom{+}&(-1)^{ 2 - 1 + 2 - 0}
+                \left(
+                \begin{matrix}
+                  2 \\
+                  1
+                \end{matrix}
+                \right)
+                \left(
+                \begin{matrix}
+                  2 \\
+                  0
+                \end{matrix}
+                \right)
+                \left(
+                \begin{matrix}
+                  4 \frac{1}{1} \\
+                  3
+                \end{matrix}
+                \right)
+                \left(
+                \begin{matrix}
+                  4 \frac{0}{1} \\
+                  1
+                \end{matrix}
+                \right)
+                \left(
+                \frac{1}{4}
+                \right)^4
+  \\
+  +&
+     (-1)^{ 2 - 2 + 2 - 0 }
+     \left(
+     \begin{matrix}
+       2 \\
+       2
+     \end{matrix}
+     \right)
+     \left(
+     \begin{matrix}
+       2 \\
+       0
+     \end{matrix}
+     \right)
+     \left(
+     \begin{matrix}
+       4 \frac{2}{2} \\
+       3
+     \end{matrix}
+     \right)
+     \left(
+     \begin{matrix}
+       4 \frac{0}{2} \\
+       1
+     \end{matrix}
+     \right)
+     \left(
+     \frac{2}{4}
+     \right)^4
+  \\
+  +&
+     (-1)^{ 2 - 1 + 2 - 1 }
+     \left(
+     \begin{matrix}
+       2 \\
+       1
+     \end{matrix}
+     \right)
+     \left(
+     \begin{matrix}
+       2 \\
+       1
+     \end{matrix}
+     \right)
+     \left(
+     \begin{matrix}
+       4 \frac{1}{2} \\
+       3
+     \end{matrix}
+     \right)
+     \left(
+     \begin{matrix}
+       4 \frac{1}{2} \\
+       1
+     \end{matrix}
+     \right)
+     \left(
+     \frac{2}{4}
+     \right)^4
+  \\
+  +&
+     (-1)^{ 2 - 2 + 2 - 1 }
+     \left(
+     \begin{matrix}
+       2 \\
+       2
+     \end{matrix}
+     \right)
+     \left(
+     \begin{matrix}
+       2 \\
+       1
+     \end{matrix}
+     \right)
+     \left(
+     \begin{matrix}
+       4 \frac{2}{3} \\
+       3
+     \end{matrix}
+     \right)
+     \left(
+     \begin{matrix}
+       4 \frac{1}{3} \\
+       1
+     \end{matrix}
+     \right)
+     \left(
+     \frac{3}{4}
+     \right)^4
+  \\
+  +&
+     (-1)^{ 2 - 2 + 2 - 2}
+     \left(
+     \begin{matrix}
+       2 \\
+       2
+     \end{matrix}
+     \right)
+     \left(
+     \begin{matrix}
+       2 \\
+       2
+     \end{matrix}
+     \right)
+     \left(
+     \begin{matrix}
+       4 \frac{2}{4} \\
+       3
+     \end{matrix}
+     \right)
+     \left(
+     \begin{matrix}
+       4 \frac{2}{4} \\
+       1
+     \end{matrix}
+     \right)
+     \left(
+     \frac{4}{4}
+     \right)^4
+  \\
+  +&
+     (-1)^{ 2 - 1 + 2 - 2}
+     \left(
+     \begin{matrix}
+       2 \\
+       1
+     \end{matrix}
+     \right)
+     \left(
+     \begin{matrix}
+       2 \\
+       2
+     \end{matrix}
+     \right)
+     \left(
+     \begin{matrix}
+       4 \frac{1}{3} \\
+       3
+     \end{matrix}
+     \right)
+     \left(
+     \begin{matrix}
+       4 \frac{2}{3} \\
+       1
+     \end{matrix}
+     \right)
+     \left(
+     \frac{3}{4}
+     \right)^4
+  \\
+  +&
+     (-1)^{ 2 - 0 + 2 - 1 }
+     \left(
+     \begin{matrix}
+       2 \\
+       0
+     \end{matrix}
+     \right)
+     \left(
+     \begin{matrix}
+       2 \\
+       1
+     \end{matrix}
+     \right)
+     \left(
+     \begin{matrix}
+       4 \frac{0}{1} \\
+       3
+     \end{matrix}
+     \right)
+     \left(
+     \begin{matrix}
+       4 \frac{1}{1} \\
+       1
+     \end{matrix}
+     \right)
+     \left(
+     \frac{1}{4}
+     \right)^4
+  \\
+  +&
+     (-1)^{ 2 - 0 + 2 - 2 }
+     \left(
+     \begin{matrix}
+       2 \\
+       0
+     \end{matrix}
+     \right)
+     \left(
+     \begin{matrix}
+       2 \\
+       2
+     \end{matrix}
+     \right)
+     \left(
+     \begin{matrix}
+       4 \frac{0}{2} \\
+       3
+     \end{matrix}
+     \right)
+     \left(
+     \begin{matrix}
+       4 \frac{2}{2} \\
+       1
+     \end{matrix}
+     \right)
+     \left(
+     \frac{2}{4}
+     \right)^4\,.
+\end{align*}
+The next step is to evaluate the binomial coefficients:
+\begin{align*}
+  =\phantom{+}&(-1) \cdot 2 \cdot 1 \cdot 4 \cdot 0 \cdot
+                \left(
+                \frac{1}{4}
+                \right)^4
+  \\
+  +&
+     1 \cdot 1 \cdot 4 \cdot 0 \cdot
+     \left(
+     \frac{2}{4}
+     \right)^4
+  \\
+  +&
+     2 \cdot 2 \cdot 0 \cdot 2 \cdot
+     \left(
+     \frac{2}{4}
+     \right)^4
+  \\
+  -&
+     1 \cdot 2 \cdot \frac{8}{9}\frac{5}{6}\frac{2}{3} \cdot \frac{4}{3} \cdot
+     \left(
+     \frac{3}{4}
+     \right)^4
+  \\
+  +&
+     1 \cdot 1 \cdot 0 \cdot 2 \cdot
+     \left(
+     \frac{4}{4}
+     \right)^4
+  \\
+  -& 2 \cdot 1
+     \cdot \frac{4}{9}\frac{1}{6} \frac{-2}{3} \cdot \frac{8}{3} \cdot
+     \left(
+     \frac{3}{4}
+     \right)^4
+  \\
+  -& 1 \cdot 2 \cdot 0 \cdot 4 \cdot
+     \left(
+     \frac{1}{4}
+     \right)^4
+  \\
+  +&
+     1 \cdot 1 \cdot 1 \cdot 0 \cdot 4 \cdot
+     \left(
+     \frac{2}{4}
+     \right)^4\,.
+\end{align*}
+After simplification, the final result is
+\begin{align*}
+  \gamma_{(2, 2),(3, 1)} = &(-1) \cdot 2 \cdot \frac{8}{9}\frac{5}{6}\frac{2}{3} \cdot \frac{4}{3} \cdot
+                             \left(
+                             \frac{3}{4}
+                             \right)^4
+                             - 2 \left(\frac{4}{9} \cdot \frac{1}{6} \cdot \frac{-2}{3}\right) \cdot \frac{8}{3} \cdot
+                             \left(
+                             \frac{3}{4}
+                             \right)^4
+  \\
+                           &=  \frac{-640}{486}\frac{81}{256} + \frac{128}{486}\frac{81}{256} = \frac{-5}{12}+\frac{1}{12} = -\frac{1}{3}.
+\end{align*}
 
 
 
@@ -400,165 +403,164 @@ Removing the terms that are zero gives us the final result
 
 To compute \cref{eq:biharm} with \cref{eq:ttc_general}, we first select $K = 4, I = 2, D_1 = D_2 = D, \vi = (2, 2), \vv_{d_1} = \ve_{d_1}$ and $\ve_{d_2} = \ve_{d_2}$. Then we insert these parameters into the general equation \cref{eq:ttc_general} and get
 \begin{equation} \label{eq:ttc_for_biharm}
-    \begin{aligned}
+  \begin{aligned}
     \Delta^2 \vf(\vx_0)
     &=
-    \sum_{\vj \in \mathbb{N}^2, \lVert \vj \rVert_1 = 4}
-    \gamma_{(2, 2), \vj}
-    \frac{1}{4!}
-    \sum_{d_1=1}^D \sum_{d_2=1}^D 
-    \left<
-    \partial^4 \vf(\vx_0),
-    \left(\ve_{d_1} [\vj]_1 + \ve_{d_2} [\vj]_2\right)^{\otimes 4}
-    \right>
+      \sum_{\vj \in \sN^2, \lVert \vj \rVert_1 = 4}
+      \gamma_{(2, 2), \vj}
+      \frac{1}{4!}
+      \sum_{d_1=1}^D \sum_{d_2=1}^D
+      \left<
+      \partial^4 \vf(\vx_0),
+      \left(\ve_{d_1} [\vj]_1 + \ve_{d_2} [\vj]_2\right)^{\otimes 4}
+      \right>
     \\
     &=
-    \frac{1}{24} 
-    \Big(
-    \gamma_{(2, 2), (4, 0)}
-    \sum_{d_1=1}^D \sum_{d_2=1}^D
-    \left<
-    \partial^4 \vf(\vx_0),
-    \left(4 \ve_{d_1}\right)^{\otimes 4}
-    \right>
+      \frac{1}{24}
+      \Big(
+      \gamma_{(2, 2), (4, 0)}
+      \sum_{d_1=1}^D \sum_{d_2=1}^D
+      \left<
+      \partial^4 \vf(\vx_0),
+      \left(4 \ve_{d_1}\right)^{\otimes 4}
+      \right>
     \\
     &+
-    \gamma_{(2, 2), (0, 4)}
-    \sum_{d_1=1}^D \sum_{d_2=1}^D 
-    \left<
-    \partial^4 \vf(\vx_0),
-    \left(4 \ve_{d_2} \right)^{\otimes 4}
-    \right>
+      \gamma_{(2, 2), (0, 4)}
+      \sum_{d_1=1}^D \sum_{d_2=1}^D
+      \left<
+      \partial^4 \vf(\vx_0),
+      \left(4 \ve_{d_2} \right)^{\otimes 4}
+      \right>
     \\
     &+
-    \gamma_{(2, 2), (3, 1)}
-    \sum_{d_1=1}^D \sum_{d_2=1}^D
-    \left<
-    \partial^4 \vf(\vx_0),
-    \left(3 \ve_{d_1} + \ve_{d_2}\right)^{\otimes 4}
-    \right>
+      \gamma_{(2, 2), (3, 1)}
+      \sum_{d_1=1}^D \sum_{d_2=1}^D
+      \left<
+      \partial^4 \vf(\vx_0),
+      \left(3 \ve_{d_1} + \ve_{d_2}\right)^{\otimes 4}
+      \right>
     \\
     &+
-    \gamma_{(2, 2), (1, 3)}
-    \sum_{d_1=1}^D \sum_{d_2=1}^D 
-    \left<
-    \partial^4 \vf(\vx_0),
-    \left(
-    \ve_{d_1} + 3 \ve_{d_2}
-    \right)^{\otimes 4}
-    \right>
+      \gamma_{(2, 2), (1, 3)}
+      \sum_{d_1=1}^D \sum_{d_2=1}^D
+      \left<
+      \partial^4 \vf(\vx_0),
+      \left(
+      \ve_{d_1} + 3 \ve_{d_2}
+      \right)^{\otimes 4}
+      \right>
     \\
     &+
-    \gamma_{(2, 2), (2, 2)}
-    \sum_{d_1=1}^D \sum_{d_2=1}^D 
-    \left<
-    \partial^4 \vf(\vx_0),
-    \left( 2 \ve_{d_1} +  2\ve_{d_2}\right)^{\otimes 4}
-    \right>
-    \Big).
-    \end{aligned}
+      \gamma_{(2, 2), (2, 2)}
+      \sum_{d_1=1}^D \sum_{d_2=1}^D
+      \left<
+      \partial^4 \vf(\vx_0),
+      \left( 2 \ve_{d_1} +  2\ve_{d_2}\right)^{\otimes 4}
+      \right>
+      \Big).
+  \end{aligned}
 \end{equation}
-Afterwards, we exploit the symmetry of the coefficients $\gamma_{(2, 2), (4, 0)} = \gamma_{(2, 2), (0, 4)}$ and $\gamma_{(2, 2), (3, 1)} = \gamma_{(2, 2), (1, 3)}$ yielding
-
+Now, exploit the symmetry of the coefficients $\gamma_{(2, 2), (4, 0)} = \gamma_{(2, 2), (0, 4)}$ and $\gamma_{(2, 2), (3, 1)} = \gamma_{(2, 2), (1, 3)}$:
 \begin{equation} \label{eq:ttc_for_biharm_2}
-    \begin{aligned}
-    &\frac{1}{24} 
-    \Big(
-    2D\gamma_{(2, 2),(4, 0)}
-    \sum_{d_1=1}^D 
-    \left<
-    \partial^4 \vf(\vx_0),
-    \left(4 \ve_{d_1}\right)^{\otimes 4}
-    \right>
+  \begin{aligned}
+    &=\frac{1}{24}
+      \Big(
+      2D\gamma_{(2, 2),(4, 0)}
+      \sum_{d_1=1}^D
+      \left<
+      \partial^4 \vf(\vx_0),
+      \left(4 \ve_{d_1}\right)^{\otimes 4}
+      \right>
     \\
     &+
-    2 \gamma_{(2, 2), (3, 1)}
-    \sum_{d_1=1}^D \sum_{d_2=1}^D
-    \left<
-    \partial^4 \vf(\vx_0),
-    \left( 
-    3 \ve_{d_1} + \ve_{d_2}
-    \right)^{\otimes 4}
-    \right>
+      2 \gamma_{(2, 2), (3, 1)}
+      \sum_{d_1=1}^D \sum_{d_2=1}^D
+      \left<
+      \partial^4 \vf(\vx_0),
+      \left(
+      3 \ve_{d_1} + \ve_{d_2}
+      \right)^{\otimes 4}
+      \right>
     \\
     &+
-    \gamma_{(2, 2), (2, 2)}
-    \sum_{d_1=1}^D \sum_{d_2=1}^D 
-    \left<
-    \partial^4 \vf(\vx_0),
-    \left( 2 \ve_{d_1} +  2\ve_{d_2}\right)^{\otimes 4}
-    \right>
-    \Big).
-    \end{aligned}
+      \gamma_{(2, 2), (2, 2)}
+      \sum_{d_1=1}^D \sum_{d_2=1}^D
+      \left<
+      \partial^4 \vf(\vx_0),
+      \left( 2 \ve_{d_1} +  2\ve_{d_2}\right)^{\otimes 4}
+      \right>
+      \Big)\,.
+  \end{aligned}
 \end{equation}
-Since the first sum captures all diagonal directions $e_{d_1} = e_{d_2}$, we extract this from the second and third sums to further reduce the computational effort. We obtain
+Since the first sum captures all diagonal directions $\ve_{d_1} = \ve_{d_2}$, we extract this from the second and third sums to further reduce the computational effort:
 \begin{equation} \label{eq:ttc_for_biharm3}
-    \begin{aligned}
-    &\frac{1}{24} 
-    \Big(
-    \left(
-    2D\gamma_{(2, 2), (4, 0)} + 2 \gamma_{(2, 2), (3, 1)} + \gamma_{(2, 2),(2, 2)}
-    \right)
-    \sum_{d_1=1}^D 
-    \left<
-    \partial^4 \vf(\vx_0),
-    \left( 4 \ve_{d_1} \right)^{\otimes 4}
-    \right>
+  \begin{aligned}
+    &=\frac{1}{24}
+      \Big(
+      \left(
+      2D\gamma_{(2, 2), (4, 0)} + 2 \gamma_{(2, 2), (3, 1)} + \gamma_{(2, 2),(2, 2)}
+      \right)
+      \sum_{d_1=1}^D
+      \left<
+      \partial^4 \vf(\vx_0),
+      \left( 4 \ve_{d_1} \right)^{\otimes 4}
+      \right>
     \\
     &+
-    2 \gamma_{(2, 2),(3, 1)}
-    \sum_{d_1=1}^D \sum_{\underset{d_2 \neq d_1}{d_2=1}}^D
-    \left<
-    \partial^4 \vf(\vx_0),
-    \left( 
-    3 \ve_{d_1} + \ve_{d_2}
-    \right)^{\otimes 4}
-    \right>
+      2 \gamma_{(2, 2),(3, 1)}
+      \sum_{d_1=1}^D \sum_{\underset{d_2 \neq d_1}{d_2=1}}^D
+      \left<
+      \partial^4 \vf(\vx_0),
+      \left(
+      3 \ve_{d_1} + \ve_{d_2}
+      \right)^{\otimes 4}
+      \right>
     \\
     &+
-    \gamma_{(2, 2), (2, 2)}
-    \sum_{d_1=1}^D \sum_{\underset{d_2 \neq d_1}{d_2 = 1}}^D 
-    \left<
-    \partial^4 \vf(\vx_0),
-    \left( 2 \ve_{d_1} +  2\ve_{d_2}\right)^{\otimes 4}
-    \right>
-    \Big).
-    \end{aligned}
+      \gamma_{(2, 2), (2, 2)}
+      \sum_{d_1=1}^D \sum_{\underset{d_2 \neq d_1}{d_2 = 1}}^D
+      \left<
+      \partial^4 \vf(\vx_0),
+      \left( 2 \ve_{d_1} +  2\ve_{d_2}\right)^{\otimes 4}
+      \right>
+      \Big).
+  \end{aligned}
 \end{equation}
-Exploiting further symmetries, one obtains
+Exploiting further symmetries in the last term's summation, we obtain
 \begin{equation} \label{eq:ttc_for_biharm_final}
-    \begin{aligned}
+  \begin{aligned}
     \Delta^2 \vf(\vx_0) &=
-    \frac{1}{24}
-    \Big(
-    \left(
-    2D\gamma_{(2, 2), (4, 0)} + 2 \gamma_{(2, 2), (3, 1)} + \gamma_{(2, 2),(2, 2)}
-    \right)
-    \sum_{d_1=1}^D
-    \left<
-    \partial^4 \vf(\vx_0),
-    \left(4 \ve_{d_1}\right)^{\otimes 4}
-    \right>
+                          \frac{1}{24}
+                          \Big(
+                          \left(
+                          2D\gamma_{(2, 2), (4, 0)} + 2 \gamma_{(2, 2), (3, 1)} + \gamma_{(2, 2),(2, 2)}
+                          \right)
+                          \sum_{d_1=1}^D
+                          \left<
+                          \partial^4 \vf(\vx_0),
+                          \left(4 \ve_{d_1}\right)^{\otimes 4}
+                          \right>
     \\
-    &+
-    2 \gamma_{(2, 2), (3, 1)}
-     \sum_{d_1=1}^D\sum_{\underset{d_2 \neq d_1}{d_2=1}}^D\!\!\!
-    \left<
-    \partial^4 \vf(\vx_0),
-     \left(
-    3 \ve_{d_1}+\ve_{d_2}
-    \right)^{\otimes 4}
-    \right>
+                        &+
+                          2 \gamma_{(2, 2), (3, 1)}
+                          \sum_{d_1=1}^D\sum_{\underset{d_2 \neq d_1}{d_2=1}}^D\!\!\!
+                          \left<
+                          \partial^4 \vf(\vx_0),
+                          \left(
+                          3 \ve_{d_1}+\ve_{d_2}
+                          \right)^{\otimes 4}
+                          \right>
     \\
-    & +
-    2 \gamma_{(2, 2), (2, 2)}
-    \sum_{d_1=1}^{D - 1} \sum_{d_2 = d_1 + 1}^D
-    \left<
-    \partial^4 \vf(\vx_0),
-   \left( 2 \ve_{d_1}+2\ve_{d_2}\right)^{ \otimes 4 }
-    \right>
-    \Big).
-    \end{aligned}
+                        & +
+                          2 \gamma_{(2, 2), (2, 2)}
+                          \sum_{d_1=1}^{D - 1} \sum_{d_2 = d_1 + 1}^D
+                          \left<
+                          \partial^4 \vf(\vx_0),
+                          \left( 2 \ve_{d_1}+2\ve_{d_2}\right)^{ \otimes 4 }
+                          \right>
+                          \Big)\,.
+  \end{aligned}
 \end{equation}
 
 
@@ -566,122 +568,138 @@ Exploiting further symmetries, one obtains
 
 A different approach to compute arbitrary-mixed derivatives was proposed in \cite{shi2024stochastic}. This approach relies, for the biharmonic operator, on the hand-selection of certain $6$-jets to extract the required derivatives. The degree and directions for the jets are obtained by considering the Faà di Bruno formula for the 6-th coefficient $\vf_6$ (see \cref{sec:faa-di-bruno-cheatsheet}). Selecting coefficients of the input $6$-jet to $\vx_1 = \ve_{d_1}, \vx_2 = \ve_{d_2}$ and  $\vx_3 = \vx_4 = \vx_5 = \vx_6 = \vzero$ leads us to
 \begin{align}\label{eq:felix-biharmonic-jet1}
-\begin{split}
+  \begin{split}
     \vf_6
     &=
-    \left<
-    \partial^{6} \vf(\vx_0), 
-    \otimes_{k=1}^6 \ve_{d_1}
-    \right>
-    +
-    15 
-    \left<
-    \partial^5 \vf(\vx_0), 
-    \left(\ve_{d_1}\right)^{\otimes 4} \otimes \ve_{d_2}
-    \right>
+      \left<
+      \partial^{6} \vf(\vx_0),
+      \ve_{d_1}^{\otimes 6}
+      \right>
+      +
+      15
+      \left<
+      \partial^5 \vf(\vx_0),
+      \ve_{d_1}^{\otimes 4} \otimes \ve_{d_2}
+      \right>
     \\
     &  \quad{}  +
-    {\color{blue}
-    45 
-    \left<
-    \partial^4 \vf(\vx_0),
-    \left(\ve_{d_1}\right)^{\otimes 2} \otimes \left(\ve_{d_2} \right)^{\otimes 2}
-    \right>
-    }
-+
-    15 
-    \left<
-    \partial^3 \vf(\vx_0), 
-    \otimes_{k=1}^3 \ve_{d_2}
-    \right>.
-    \end{split}
+      {\color{blue}
+      45
+      \left<
+      \partial^4 \vf(\vx_0),
+      \ve_{d_1}^{\otimes 2} \otimes \ve_{d_2}^{\otimes 2}
+      \right>
+      }
+      +
+      15
+      \left<
+      \partial^3 \vf(\vx_0),
+      \ve_{d_2}^{\otimes 3}
+      \right>.
+  \end{split}
 \end{align}
 Notice the \textcolor{blue}{blue term}, which has the same structure as the summands we want to compute for the biharmonic operator. Therefore, a first $6$-jet is computed as explained above. To cancel out the unwanted terms, we evaluate another $6$-jet with the same input except $\vx_2 = -\ve_{d_2}$ and adding the $6$-th coefficient of this jet to \cref{eq:felix-biharmonic-jet1} gives
 \begin{align}\label{eq:felix-biharmonic-jet2}
-    2 \left<
-    \partial^{6} \vf(\vx_0), 
-    \otimes_{k=1}^6 \ve_{d_1}
-    \right>
-    +
-    {\color{blue}
-    90
-    \left<
-    \partial^4 \vf(\vx_0),
-    \left(\ve_{d_1}\right)^{\otimes 2} \otimes \left(\ve_{d_2} \right)^{\otimes 2}
-    \right>.
-    }
+  2 \left<
+  \partial^{6} \vf(\vx_0),
+  \ve_{d_1}^{\otimes 6}
+  \right>
+  +
+  {\color{blue}
+  90
+  \left<
+  \partial^4 \vf(\vx_0),
+  \ve_{d_1}^{\otimes 2} \otimes \ve_{d_2}^{\otimes 2}
+  \right>.
+  }
 \end{align}
-Finally, a third $6$-jet is computing with $\vx_2 = \vzero$. The $6$-th coefficient of this jet contains only  
+Finally, a third $6$-jet is computed with $\vx_2 = \vzero$. The $6$-th coefficient of this jet contains only
 \begin{align}\label{eq:felix-biharmonic-jet3}
-    \left<
-    \partial^{6} \vf(\vx_0),
-    \otimes_{k=1}^6 \vx_1
-    \right>.
+  \left<
+  \partial^{6} \vf(\vx_0),
+  \vx_1^{\otimes 6}
+  \right>.
 \end{align}
-We obtain 
+We obtain
 \begin{equation}
-        {\color{blue}
+  {\color{blue}
     90
     \left<
-    \partial^4 \vf(\vx_0),
-    \left(\vx_1\right)^{\otimes 2} \otimes \left(\vx_2 \right)^{\otimes 2}
-    \right>    
-    }
+      \partial^4 \vf(\vx_0),
+      \vx_1^{\otimes 2} \otimes \vx_2^{\otimes 2}
+    \right>
+  }
 \end{equation}
 by subtracting twice of the $6$-th coefficient of the third jet from \cref{eq:felix-biharmonic-jet2}.
 
-To summarize the procedure, we evaluate the 6-jet three times. The first jet has the input $\vx_1 = \ve_{d_1}, \vx_2 = \ve_{d_2}$ and $\vx_3 = \vx_4 = \vx_5 = \vx_6 = \vzero$, the second jet has the same input jet apart from $\vx_2 = \- \ve_{d_2}$. The third 6-jet takes $\vx_2 = \vzero$. Then we add the $6$-th coefficient of the first and the second and subtract twice of the $6$-th coefficient of the third jet. Dividing by $90$ provides the derivative corresponding to the $d_1, d_2$ term of the biharmonic operator.
+To summarize the procedure, we evaluate the 6-jet three times.
+The first jet has the input $\vx_1 = \ve_{d_1}, \vx_2 = \ve_{d_2}$ and $\vx_3 = \vx_4 = \vx_5 = \vx_6 = \vzero$, the second jet has the same input jet apart from $\vx_2 = - \ve_{d_2}$, and the third 6-jet takes $\vx_2 = \vzero$.
+Then we add the $6$-th coefficient of the first and the second and subtract twice of the $6$-th coefficient of the third jet.
+Dividing by $90$ provides the derivative corresponding to the $d_1, d_2$ term of the biharmonic operator.
 
-The standard Taylor mode would propagate $1 + 18D^2$ vectors through every node, where we already exploit that all jets share $\vx_0$. 
-Leveraging our collapsed Taylor mode would have the cost of passing $1 + 3 + 15D^2$ vectors to every node of the compute graph. Still, this is very expensive in comparison to our approach described before. In addition, until now, the selection of the jet degree and the input coefficients requires substantial human effort.
+Standard Taylor mode would propagate $1 + 18D^2$ vectors through every node, if we already exploit that all jets share $\vx_0$.
+our collapsed Taylor mode would pass $1 + 3 + 15D^2$ vectors through every node of the compute graph.
+This is more costly compared to our approach described before.
+In addition, until now, the selection of the jet degree and the input coefficients requires substantial human effort.
 
-
-
-\subsection{Another Example}
-To make this process more clear we further add an example in the appendix: computing $\sum_{i=1}^D\sum_{j=1}^D\frac{\partial^3}{\partial x_i^2 x_j}f(x)$.
-This example is from Appendix F.2 of the stochastic Taylor derivative paper (Shi et al., 2024), which describes how to compute these 3rd-order derivatives using 7-jets.
+\subsection{Another Example: Mixed Third-order Derivatives}
+As an additional example, consider computing $\sum_{i=1}^D\sum_{j=1}^D\frac{\partial^3}{\partial x_i^2 x_j}\vf(\vx)$.
+This example is from \citep[][\S{}F.2]{shi2024stochastic}, which describes how to compute these 3rd-order derivatives using 7-jets.
 The interpolation formula allows using multiple 3-jets instead.
-We expect it to be favorable as Taylor mode scales quadratically in the derivative order and will experimentally verify that in a future version of the paper.
+We expect it to be favorable as Taylor mode scales polynomially in the derivative order.
 
+\paragraph{Procedure.}
+The goal is to compute $\sum_{i=1}^D\sum_{j=1}^D \frac{\partial^3}{\partial x_i^2 \partial x_j} \vf(\vx)$.
+We proceed as follows:
 
+\begin{enumerate}
+\item Formulate the operator in our notation:
+  \begin{equation*}
+    \sum_{i=1}^D\sum_{j=1}^D \langle\partial^3 \vf(\vx), \ve_i^{\otimes 2} \otimes \ve_j    \rangle
+  \end{equation*}
 
-\paragraph{Procedure for the Example} 
-The goal is to compute $\sum_{i=1}^D\sum_{j=1}^D \frac{\partial^3}{\partial x_i^2 \partial x_j} f(x)$.
+\item Compute the interpolation coefficients $\gamma_{\vp,\vq}$ for  $\vq \in \{(3, 0), (2, 1), (1, 2), (0, 3)\}$ and $\vp=(2, 1)$:
+  $\gamma_{(2, 1)(0, 3)} =  -\nicefrac{8}{81}, \gamma_{(2, 1)(1, 2)} = \nicefrac{16}{27}, \gamma_{(2, 1)(2, 1)} = -\nicefrac{16}{9}, \gamma_{(2, 1)(3, 0)} = \nicefrac{32}{81}$.
 
-0. (currently not automatic) Formulate the operator in our notation: 
-    $$
-    \sum_{i=1}^D\sum_{j=1}^D \langle\partial^3 f(x), e_i^{\otimes 2} \otimes e_j    \rangle
-    $$
-1. (automatic) Generate the interpolation coefficients $\gamma_{pq}$ where $p=(2, 1)$ and $q \in \{(3, 0), (2, 1), (1, 2), (0, 3)\}$. (We have a script for this)
+\item Apply the interpolation equation (\cref{eq:ttc_general}):
+  \begin{equation*}
+    = \sum_{i=1}^D\sum_{j=1}^D \sum_{\vq \in \sN^2, \; \left\lVert \vq \right\rVert_1 = 3} \langle\partial^3 \vf(\vx), \left([\vq]_1 \ve_i + [\vq]_2 \ve_j   \right)^{\otimes 3} \rangle
+  \end{equation*}
+  Collapsed Taylor mode can directly applied to these $4D^2$ 3-jets.
+  However, the full potential of requires some further steps that leverage the structure.
 
-    $\gamma_{(2, 1)(0, 3)} =  -8/81$
-    $\gamma_{(2, 1)(1, 2)} = 16/27$
-    $\gamma_{(2, 1)(2, 1)} = -16/9$
-    $\gamma_{(2, 1)(3, 0)} = 32/81$
+\item Expand and manually simplify, using symmetries.
+  The sums for $\gamma_{(2, 1)(3, 0)}$ and $\gamma_{(2, 1)(0, 3)}$ are similar; same for $\gamma_{(2, 1)(2, 1)}$ and $\gamma_{(2, 1)(1, 2)}$.
+  We only have $2D^2$-- 3 jets:
+  \begin{align*}
+    &= (\gamma_{(2, 1)(3, 0)} + \gamma_{(2, 1)(0, 3)}) \sum_{i=1}^D\sum_{j=1}^D \langle\partial^3 \vf(\vx), \left(3 \ve_i \right)^{\otimes 3} \rangle
+    \\
+    &\phantom{=} +
+      (\gamma_{(2, 1)(2, 1)} + \gamma_{(2, 1)(1, 2)}) \sum_{i=1}^D\sum_{j=1}^D \langle\partial^3 \vf(\vx), \left(2 \ve_i + \ve_j \right)^{\otimes 3} \rangle\,.
+  \end{align*}
 
-2. (automatic) Apply Equation 11
-    $$
-    \sum_{i=1}^D\sum_{j=1}^D \sum_{q \in \mathbb{N}^2, \; |q| = 3} \langle\partial^3 f(x), \left([q]_1 e_i + [q]_2 e_j   \right)^{\otimes 3} \rangle
-    $$
-Applying collapsed Taylor mode can directly applied to these $4D^2$ -- 3-jets. However, the full potential of our requires some further steps that leverages the structure. 
+  We further observe that the first summation is independent of $j$:
+  \begin{align*}
+    &= (\gamma_{(2, 1)(3, 0)} + \gamma_{(2, 1)(0, 3)})D
+      \sum_{i=1}^D \langle\partial^3 \vf(\vx), \left(3 \ve_i   \right)^{\otimes 3} \rangle
+    \\
+    &\phantom{=} +
+      (\gamma_{(2, 1)(2, 1)} + \gamma_{(2, 1)(1, 2)})
+      \sum_{i=1}^D\sum_{j=1}^D  \langle\partial^3 \vf(\vx), \left(2 \ve_i + \ve_j \right)^{\otimes 3} \rangle\,.
+  \end{align*}
+  Extracting the case $i=j$ from the last term gives our final form
+  \begin{align*}
+    &= ((\gamma_{(2, 1)(3, 0)}D + \gamma_{(2, 1)(0, 3)}D + \gamma_{(2, 1)(2, 1)} + \gamma_{(2, 1)(1, 2)})
+      \sum_{i=1}^D \langle\partial^3 \vf(\vx), \left(3 \ve_i \right)^{\otimes 3} \rangle
+    \\
+    &\phantom{=}+
+      (\gamma_{(2, 1)(2, 1)} + \gamma_{(2, 1)(1, 2)})
+      \sum_{i=1}^D\sum_{j=1, j \neq i}^D  \langle\partial^3 \vf(\vx), \left(2 \ve_i + \ve_j \right)^{\otimes 3} \rangle\,.
+  \end{align*}
+  This optimized version required $D^2$ 3-jets that can be collapsed.
+\end{enumerate}
 
-3. (currently not automatic) The sums for $\gamma_{(2, 1)(3, 0)}$ and $\gamma_{(2, 1)(0, 3)}$ are similar. As well as for $\gamma_{(2, 1)(2, 1)}$ and $\gamma_{(2, 1)(1, 2)}$. We only have $2D^2$-- 3 jets:
-    $(\gamma_{(2, 1)(3, 0)} + \gamma_{(2, 1)(0, 3)})
-    \sum_{i=1}^D\sum_{j=1}^D  \langle\partial^3 f(x), \left(3 e_i   \right)^{\otimes 3} \rangle$ 
-    $+(\gamma_{(2, 1)(2, 1)} + \gamma_{(2, 1)(1, 2)})
-    \sum_{i=1}^D\sum_{j=1}^D  \langle\partial^3 f(x), \left(2 e_i + e_j       \right)^{\otimes 3} \rangle$
-
-We further observe, that the first summation is independent of $j$:
-$(\gamma_{(2, 1)(3, 0)} + \gamma_{(2, 1)(0, 3)})D
-    \sum_{i=1}^D \langle\partial^3 f(x), \left(3 e_i   \right)^{\otimes 3} \rangle$ <br>
-    $+(\gamma_{(2, 1)(2, 1)} + \gamma_{(2, 1)(1, 2)})
-    \sum_{i=1}^D\sum_{j=1}^D  \langle\partial^3 f(x), \left(2 e_i + e_j       \right)^{\otimes 3} \rangle$
-
-Remove the case $i=j$ from the last term gives our final form
-$((\gamma_{(2, 1)(3, 0)}D + \gamma_{(2, 1)(0, 3)}D + \gamma_{(2, 1)(2, 1)} + \gamma_{(2, 1)(1, 2)})
-    \sum_{i=1}^D \langle\partial^3 f(x), \left(3 e_i   \right)^{\otimes 3} \rangle$ <br>
-    $+(\gamma_{(2, 1)(2, 1)} + \gamma_{(2, 1)(1, 2)})
-    \sum_{i=1}^D\sum_{j=1, j \neq i}^D  \langle\partial^3 f(x), \left(2 e_i + e_j       \right)^{\otimes 3} \rangle$
-
-
-This optimized version required $D^2 3-jets$ that can be further collapsed.
+%%% Local Variables:
+%%% mode: LaTeX
+%%% TeX-master: "../main"
+%%% End:

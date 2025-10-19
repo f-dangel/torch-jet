@@ -1,5 +1,5 @@
- Here, we present the schematic idea behind propagating $R$ $K$-jets through $\vf = \vg \circ \vh$ with starting jets $\left(J^K\vx\right)_r(t) = \sum_{k=0}^K \frac{t^k}{k!} \vx_{k,r}$.
-The following Taylor mode AD scheme results from inserting \cref{eq:sum-k-directional} into the \cref{eq:taylor-mode-composition}:
+ Here, we illustrate the idea behind propagating $R$ $K$-jets through $\vf = \vg \circ \vh$ with input jets $\smash{\left(J^K\vx\right)_r(t)} = \smash{\sum_{k=0}^K \frac{t^k}{k!} \vx_{k,r}}$.
+The Taylor mode scheme results from inserting \cref{eq:sum-k-directional} into \cref{eq:taylor-mode-composition}:
 \begin{align}\label{eq:sum-taylor-mode-naive}
   \begin{split}
       \begin{pmatrix*}
@@ -17,19 +17,19 @@ The following Taylor mode AD scheme results from inserting \cref{eq:sum-k-direct
         \begin{pmatrix*}[l]
           \vh_0 =  \vh(\vx_0)
           \\
-          \{\vh_{1,r}\} =  
+          \{\vh_{1,r}\} =
           \left\{
-          \left< 
+          \left<
           \partial \vh(\vx_0),
-          \vx_{1, r} 
+          \vx_{1, r}
           \right>
           \right\}
           \\
-          \{\vh_{2, r}\} = 
+          \{\vh_{2, r}\} =
           \left\{
-          \left< 
+          \left<
           \partial^2 \vh(\vx_0),
-          \vx_{1, r} \otimes \vx_{1, r} 
+          \vx_{1, r} \otimes \vx_{1, r}
           \right>
           +
           \left<
@@ -50,26 +50,26 @@ The following Taylor mode AD scheme results from inserting \cref{eq:sum-k-direct
           \tensorprod{s \in \sigma} \vx_{s, r}
           \right>
           \right\}
-        \end{pmatrix*} 
+        \end{pmatrix*}
         \\
         &\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
         \begin{pmatrix*}[l]
           \vg_0 =  \vg(\vh_0)
           \\
-          \{\vg_{1,r}\} = 
+          \{\vg_{1,r}\} =
           \left\{
-          \left< 
-          \partial \vg(\vh_0), 
+          \left<
+          \partial \vg(\vh_0),
           \vh_{1, r}
           \right>
           \right\}
           \\
-          \{\vg_{2,r}\} = 
+          \{\vg_{2,r}\} =
           \left\{
           \left<
-          \partial^2 \vg(\vh_0), 
+          \partial^2 \vg(\vh_0),
           \vh_{1, r} \otimes \vh_{1, r}\right>
-          + 
+          +
           \left< \partial \vg(\vh_0),
           \vh_{2, r}
           \right>
@@ -81,7 +81,7 @@ The following Taylor mode AD scheme results from inserting \cref{eq:sum-k-direct
           \left\{
           \displaystyle\sum_{
           \sigma \in \partitioning(K)
-          } 
+          }
           \nu(\sigma) \left<
           \partial^{|\sigma|} \vg(\vh_0),
           \tensorprod{s \in \sigma} \vh_{s, r}
@@ -95,17 +95,17 @@ The following Taylor mode AD scheme results from inserting \cref{eq:sum-k-direct
           \\
           \{\vf_{1,r}\} = \left\{
           \left<
-          \partial \vf(\vx_0), 
+          \partial \vf(\vx_0),
           \vx_{1, r}
           \right>
           \right\}
           \\
           \{\vf_{2,r}\} = \left\{
           \left<
-          \partial^2 \vf(\vx_0), 
+          \partial^2 \vf(\vx_0),
           \vx_{1,r} \otimes \vx_{1, r}
           \right>
-          + 
+          +
           \left< \partial \vf(\vx_0),
           \vx_{2, r}
           \right>
@@ -118,7 +118,7 @@ The following Taylor mode AD scheme results from inserting \cref{eq:sum-k-direct
           \displaystyle\sum_{
           \sigma \in \partitioning(K)
           }
-          \nu(\sigma) \left< 
+          \nu(\sigma) \left<
           \partial^{|\sigma|} \vf(\vx_0),
           \tensorprod{s \in \sigma} \vx_{s, r}
           \right>
@@ -127,10 +127,10 @@ The following Taylor mode AD scheme results from inserting \cref{eq:sum-k-direct
         \\
         &\overset{\text{slice}}{\to} \{ \vg_{K,r} \}
         \\
-        &\overset{\text{sum}}{\to} \sum_{r=1}^R \vg_{K,r} 
-          \overset{\{\vx_{1,r} = \vv_r, \vx_{2,r} =  \dots = \vx_{K, r} = \vzero \}}{=} 
+        &\overset{\text{sum}}{\to} \sum_{r=1}^R \vg_{K,r}
+          \overset{\{\vx_{1,r} = \vv_r, \vx_{2,r} =  \ldots = \vx_{K, r} = \vzero \}}{=}
           \sum_{r=1}^R \left<
-          \partial^K \vf(\vx_0), 
+          \partial^K \vf(\vx_0),
           \otimes_{k=1}^K \vv_r
           \right>
     \end{split}
@@ -152,19 +152,19 @@ Leveraging linearity in certain terms (in green) of the highest coefficient, as 
   &\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}        \begin{pmatrix*}[l]
           \vh_0 &=  \vh(\vx_0)
           \\
-          \{\vh_{1,r}\} &=  
+          \{\vh_{1,r}\} &=
           \left\{
-          \left< 
+          \left<
           \partial \vh(\vx_0),
-          \vx_{1, r} 
+          \vx_{1, r}
           \right>
           \right\}
           \\
-          \{\vh_{2, r}\} &= 
+          \{\vh_{2, r}\} &=
           \left\{
-          \left< 
+          \left<
           \partial^2 \vh(\vx_0),
-          \vx_{1, r} \otimes \vx_{1, r} 
+          \vx_{1, r} \otimes \vx_{1, r}
           \right>
           +
           \left<
@@ -184,32 +184,32 @@ Leveraging linearity in certain terms (in green) of the highest coefficient, as 
           \tensorprod{s \in \sigma} \vx_{s, r}
           \right>
           \\
-          &+ 
+          &+
           \left<
           \partial \vh(\vx_0),
           \textcolor{\colorcTM}{
           \displaystyle\sum_{r=1}^R \vx_{K, r}
           }
           \right>
-        \end{pmatrix*}      \nonumber \\    
+        \end{pmatrix*}      \nonumber \\
        &\overset{\text{(\ref{eq:faa-di-bruno})}}{\to}
         \begin{pmatrix*}[l]
           \vg_0 &=  \vg(\vh_0)
           \\
-          \{\vg_{1,r}\} &= 
+          \{\vg_{1,r}\} &=
           \left\{
-          \left< 
-          \partial \vg(\vh_0), 
+          \left<
+          \partial \vg(\vh_0),
           \vh_{1, r}
           \right>
           \right\}
           \\
-          \{\vg_{2,r}\} &= 
+          \{\vg_{2,r}\} &=
           \left\{
           \left<
-          \partial^2 \vg(\vh_0), 
+          \partial^2 \vg(\vh_0),
           \vh_{1, r} \otimes \vh_{1, r}\right>
-          + 
+          +
           \left< \partial \vg(\vh_0),
           \vh_{2, r}
           \right>
@@ -220,7 +220,7 @@ Leveraging linearity in certain terms (in green) of the highest coefficient, as 
           \textcolor{\colorcTM}{\displaystyle\sum_{r=1}^R\vg_{K,r}} &=
           \displaystyle \sum_{r=1}^R \sum_{
           \sigma \in \partitioning(K) \setminus \{\tilde{\sigma}\}
-          } 
+          }
           \nu(\sigma) \left<
           \partial^{|\sigma|} \vg(\vh_0),
           \tensorprod{s \in \sigma} \vh_{s, r}
@@ -232,26 +232,26 @@ Leveraging linearity in certain terms (in green) of the highest coefficient, as 
           \textcolor{\colorcTM}{\displaystyle \sum_{r=1}^R\vh_{K, r}}
           \right>
         \end{pmatrix*}
-         \end{align}      
+         \end{align}
 \begin{align*}%\label{eq:sum-taylor-mode-efficient}
-  %\begin{split} 
+  %\begin{split}
         &\overset{\text{(\ref{eq:faa-di-bruno})}}{=}
         \begin{pmatrix*}[l]
           \vf_0 &=  \vf(\vx_0)
           \\
           \{\vf_{1,r}\} &= \left\{
           \left<
-          \partial \vf(\vx_0), 
+          \partial \vf(\vx_0),
           \vx_{1, r}
           \right>
           \right\}
           \\
           \{\vf_{2,r}\} &= \left\{
           \left<
-          \partial^2 \vf(\vx_0), 
+          \partial^2 \vf(\vx_0),
           \vx_{1, r} \otimes \vx_{1, r}
           \right>
-          + 
+          +
           \left< \partial \vf(\vx_0),
           \vx_{2, r}
           \right>
@@ -263,10 +263,10 @@ Leveraging linearity in certain terms (in green) of the highest coefficient, as 
           \displaystyle \sum_{r=1}^R\sum_{
           \sigma \in \partitioning(K) \setminus \{ \tilde{\sigma} \}
           }
-          \nu(\sigma) \left< 
+          \nu(\sigma) \left<
           \partial^{|\sigma|} \vf(\vx_0),
           \tensorprod{s \in \sigma} \vx_{s, r}
-          \right> 
+          \right>
           \\
           &+
           \left<
@@ -276,19 +276,19 @@ Leveraging linearity in certain terms (in green) of the highest coefficient, as 
         \end{pmatrix*}
         \\
         &\overset{\text{slice}}{\to} \textcolor{\colorcTM}{\sum_{r=1}^R \vg_{K,r}}
-          \overset{\{\vx_{1,r} = \vv_r, \vx_{2,r} =  \dots = \vx_{K, r} = \vzero \}}{=} 
+          \overset{\{\vx_{1,r} = \vv_r, \vx_{2,r} =  \ldots = \vx_{K, r} = \vzero \}}{=}
           \sum_{r=1}^R \left<
-          \partial^K \vf(\vx_0), 
+          \partial^K \vf(\vx_0),
           \otimes_{k=1}^K \vv_r
           \right>
    % \end{split}
 \end{align*}
 
-\subsection{Second-order Operators --- Laplacian}
-Here, we will show details about the propagation schemes of the standard Taylor mode and the collapsed Taylor mode for the computation of the Laplacian of $\vf$. We consider the decomposition $\vf = \vg \circ \vh$.
+\subsection{Second-order Operators: Laplacian}
+Here, we show details about the propagation schemes of standard Taylor mode and collapsed Taylor mode for the computation of the Laplacian of $\vf$. We consider the decomposition $\vf = \vg \circ \vh$.
 
-\paragraph{Standard Taylor Mode AD}
-Using standard Taylor mode (see \cref{eq:sum-taylor-mode-naive}) to compute the Laplacian we obtain
+\paragraph{Standard Taylor mode.}
+Using standard Taylor mode (\cref{eq:sum-taylor-mode-naive}) to compute the Laplacian yields
 {
 \setlength{\abovedisplayskip}{0pt}
 \setlength{\belowdisplayskip}{0pt}
@@ -312,13 +312,13 @@ Using standard Taylor mode (see \cref{eq:sum-taylor-mode-naive}) to compute the 
         \right>
         \}
         \\
-        \{\vh_{2,d}\} = 
+        \{\vh_{2,d}\} =
         \{
         \left<
         \partial^2 \vh(\vx_0),
-        \vx_{1,d} \otimes \vx_{1,d} 
+        \vx_{1,d} \otimes \vx_{1,d}
         \right>
-        + 
+        +
         \left<
         \partial \vh(\vx_0),
         \vx_{2,d}
@@ -331,19 +331,19 @@ Using standard Taylor mode (see \cref{eq:sum-taylor-mode-naive}) to compute the 
         \vg_0 =  \vg(\vh_0)
         \\
         \{\vg_{1,d}\} = \{
-        \left<\partial \vg(\vh_0), 
+        \left<\partial \vg(\vh_0),
         \vh_{1,d}
         \right>
         \}
         \\
         \{\vg_{2,d}\} = \{
-        \left< 
-        \partial^2 \vg(\vh_0),
-        \vh_{1,d} \otimes \vh_{1,d} 
-        \right>
-        + 
         \left<
-        \partial \vg(\vh_0), 
+        \partial^2 \vg(\vh_0),
+        \vh_{1,d} \otimes \vh_{1,d}
+        \right>
+        +
+        \left<
+        \partial \vg(\vh_0),
         \vh_{2,d}
         \right>
         \}
@@ -365,9 +365,9 @@ Using standard Taylor mode (see \cref{eq:sum-taylor-mode-naive}) to compute the 
         \partial^2 \vf(\vx_0),
         \vx_{1,d} \otimes \vx_{1,d}
         \right>
-        + 
+        +
         \left<
-        \partial \vf(\vx_0), 
+        \partial \vf(\vx_0),
         \vx_{2,d}
         \right>
         \}
@@ -406,11 +406,11 @@ Using our proposed collapsed Taylor mode, we get
         \right>
         \}
         \\
-        \textcolor{\colorcTM}{\displaystyle\sum_{d=1}^D \vh_{2,d}} = \displaystyle\sum_{d=1}^D 
-        \left< \partial^2 \vh(\vx_0), 
-        \vx_{1,d} \otimes \vx_{1,d} 
-        \right> 
-        + 
+        \textcolor{\colorcTM}{\displaystyle\sum_{d=1}^D \vh_{2,d}} = \displaystyle\sum_{d=1}^D
+        \left< \partial^2 \vh(\vx_0),
+        \vx_{1,d} \otimes \vx_{1,d}
+        \right>
+        +
         \left<
         \partial \vh(\vx_0),
         \textcolor{\colorcTM}{\displaystyle\sum_{d=1}^D\vx_{2,d}}
@@ -423,30 +423,30 @@ Using our proposed collapsed Taylor mode, we get
         \\
         \{\vg_{1,d}\} = \{
         \left<
-        \partial \vg(\vh_0), 
+        \partial \vg(\vh_0),
         \vh_{1,d}
         \right>
         \}
         \\
-        \textcolor{\colorcTM}{\displaystyle\sum_{d=1}^D\vg_{2,d}} 
-        = 
+        \textcolor{\colorcTM}{\displaystyle\sum_{d=1}^D\vg_{2,d}}
+        =
         \displaystyle\sum_{d=1}^D
-        \left< 
+        \left<
         \partial^2 \vg(\vh_0),
         \vh_{1,d} \otimes \vh_{1,d}
         \right>
-        + 
-        \left< 
-        \partial \vg(\vh_0), 
+        +
+        \left<
+        \partial \vg(\vh_0),
         \textcolor{\colorcTM}{\displaystyle\sum_{d=1}^D\vh_{2,d}}
         \right>
-      \end{pmatrix*} 
+      \end{pmatrix*}
       \\
       &\overset{\text{(\ref{eq:taylor-mode-scalar})}}{=}
       \begin{pmatrix*}[l]
         \vf_0 =  \vf(\vx_0)
         \\
-        \{\vf_{1,d} \} = \{ 
+        \{\vf_{1,d} \} = \{
         \left<
         \partial \vf(\vx_0),
         \vx_{1,d}
@@ -455,7 +455,7 @@ Using our proposed collapsed Taylor mode, we get
         \\
         \textcolor{\colorcTM}{\displaystyle\sum_{d=1}^D \vf_{2,d}}
         =
-        \displaystyle\sum_{d=1}^D 
+        \displaystyle\sum_{d=1}^D
         \left<
         \partial^2 \vf(\vx_0),
         \vx_{1,d} \otimes \vx_{1,d}
@@ -473,3 +473,8 @@ Using our proposed collapsed Taylor mode, we get
   \end{split}
 \end{align}
 }
+
+%%% Local Variables:
+%%% mode: LaTeX
+%%% TeX-master: "../main"
+%%% End:

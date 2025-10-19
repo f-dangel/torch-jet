@@ -437,15 +437,15 @@
         \\
         2. Vectorize (illustration over four directions)
         \\
-        3. Set primal to $\vx_0$ for all directions, eliminate redundancies
+        3. Set anchor to $\vx_0$ for all directions, eliminate redundancies
         \\
         4. Collapse highest derivative
       };
 
       \draw[-Stealth, line width=5pt, purple] (function.south) to node [midway, xshift=1cm, scale=1.75] {\texttt{jet}}
-      node[pos=0, xshift=-20pt, yshift=-20pt] {\tikz[baseline]{\node[draw,circle,inner sep=1pt,scale=1.10]{\text{1.}};}} 
+      node[pos=0, xshift=-20pt, yshift=-20pt] {\tikz[baseline]{\node[draw,circle,inner sep=1pt,scale=1.10]{\text{1.}};}}
       (function|-taylor.north);
-      
+
       \draw[-Stealth, line width=5pt, purple] (taylor.east) to node [midway, yshift=1cm, scale=1.75] {\texttt{vmap}}
       node[pos=0, xshift=30pt, yshift=-15pt] {\tikz[baseline]{\node[draw,circle,inner sep=1pt,scale=1.10]{\text{2.}};}}
       (taylor.east-|vmapped.west);

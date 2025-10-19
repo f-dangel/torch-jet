@@ -18,13 +18,13 @@ Recall the propagation scheme \cref{eq:sum-taylor-mode-naive} and assume that th
       \\
       \vx_{2,r}
     \end{Bmatrix}
-    \overset{\ref{eq:sum-taylor-mode-naive}}{\to}
+    \overset{\eqref{eq:sum-taylor-mode-naive}}{\to}
     \begin{Bmatrix}
       \vf_{0,r} = \sin(\vx_0)
       \\
       \vf_{1,r} = \cos(\vx_0) \odot \vx_{1,r}
       \\
-      \vf_{2,r} = -\sin(\vx_0) \odot \vx_{1,r} \odot \vx_{1, r} + \cos(\vx_0) \odot \vx_{2,r} 
+      \vf_{2,r} = -\sin(\vx_0) \odot \vx_{1,r} \odot \vx_{1, r} + \cos(\vx_0) \odot \vx_{2,r}
     \end{Bmatrix}
   \\
   &\overset{\text{sum highest component}}{\to}
@@ -51,7 +51,7 @@ After applying both steps, the graph looks as follows:
 
 \input{figures/sin_2jet_after}
 
-Two important properties of the new graph are (i) the \texttt{replicate} node moved to an output node, hence the corresponding redundant computation was successfully removed (ii) the highest component \texttt{x2\_r} is immediately summed then propagated, \ie, we collapsed Taylor mode and avoid the separate propagation for all \texttt{x2\_r}. 
+Two important properties of the new graph are (i) the \texttt{replicate} node moved to an output node, hence the corresponding redundant computation was successfully removed (ii) the highest component \texttt{x2\_r} is immediately summed then propagated, \ie, we collapsed Taylor mode and avoid the separate propagation for all \texttt{x2\_r}.
 
 We will now illustrate the two simplification steps in full detail.
 The first stage starts from the original graph and pushes forward the replicate node, as illustrated step-by-step in \cref{fig:push-replicate-simplification}.

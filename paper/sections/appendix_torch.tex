@@ -2,17 +2,25 @@
 
 Here, we compare the theoretically estimated performance improvements based on counting the number of forward-propagated vectors with the empirically measured performance.
 
+\paragraph{The number of propagated vectors is a good empirical performance estimate.}
 To estimate the performance ratio between standard and collapsed Taylor mode, we can use the number of additional vectors both modes propagate forward as we increase either the batch size or the number of Monte-Carlo samples.
 This is a relatively simplistic proxy; \eg, it assumes that each vector adds the same computational load, which is inaccurate as vectors corresponding to higher coefficients require more work and memory (as the Faà di Bruno formula contains more terms in general).
 Conversely, while incrementing the MC samples does add additional vectors that are propagated, it does not introduce additional cost to compute or store the derivatives, as they are already computed with just a single sample.
-\Cref{tab:benchmark-ratios} summarizes the theoretical and empirical ratios. We find them to align quite well, despite the overly simplistic assumptions.
+\Cref{tab:benchmark-ratios} summarizes the theoretical and empirical ratios.
+We find them to align quite well, despite the overly simplistic assumptions.
 
-As concrete example, consider the exact Laplacian.
+\paragraph{Concrete example.}
+Consider the exact Laplacian.
 Adding one datum introduces {\color{tab-green}$2 + D$} versus {\color{tab-orange}$1 + 2D$} new vectors.
 For $D=50$, their ratio is $\nicefrac{\color{tab-green}(2 + D)}{\color{tab-orange}(1 + 2D)} \approx 0.51$.
 Empirically, we measure that adding one datum adds {\color{tab-orange}\inputMetricOnly{jet/exp/exp01_benchmark_laplacian/performance/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_laplacian_vary_batch_size/jet_naive_best.txt}\,ms} to standard, and {\color{tab-green}\inputMetricOnly{jet/exp/exp01_benchmark_laplacian/performance/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_laplacian_vary_batch_size/jet_simplified_best.txt}\,ms} to collapsed, Taylor mode (\cref{tab:benchmark}); the ratio of $\approx \!\!\!\inputMetricRatio{jet/exp/exp01_benchmark_laplacian/performance/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_laplacian_vary_batch_size/jet_simplified_best.txt}{jet/exp/exp01_benchmark_laplacian/performance/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_laplacian_vary_batch_size/jet_naive_best.txt}$ is close.
 
 \input{tables/torch_ratios}
+
+\paragraph{Compilation reduces memory, but not runtime.}
+In \cref{tab:benchmark-compiled}, we repeat the benchmark from \cref{tab:benchmark} using \texttt{torch.compile}.
+We observe that compiling can further reduce the memory footprint of all approaches for computing the Laplacian and weighted Laplacian, while the runtime remains roughly identical.
+For the Biharmonic operator, we observe that compilation leaves run time and memory footprint unchanged.
 
 \input{tables/torch_benchmark_compiled}
 

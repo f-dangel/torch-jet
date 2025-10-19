@@ -8,36 +8,37 @@ from torch import Tensor, tensor, zeros_like
 from torch.autograd import grad
 from torch.fx import Graph, GraphModule, Node
 
-from jet.operations import MAPPING, JetInfo
+from jet.jet_transformer import JetTransformer
 from jet.tracing import capture_graph
 from jet.utils import Primal, PrimalAndCoefficients, Value, ValueAndCoefficients
 
 
-def analyze_dependencies(graph: Graph) -> tuple[set[Node], set[Node]]:
+def analyze_dependencies(graph: Graph) -> tuple[set[str], set[str]]:
     """Determine nodes that depend on placeholders or only on constants.
 
+    Assume that all nodes have unique names
     Args:
         graph: The graph to analyze.
 
     Returns:
         A tuple containing two sets:
-        - The first set contains nodes that depend on placeholder nodes.
-        - The second set contains nodes that depend only on constants.
+        - The first set contains names of the nodes that depend on placeholder nodes.
+        - The second set contains names of the nodes that depend only on constants.
 
     Raises:
         RuntimeError: If the dependencies cannot be determined for a node.
     """
-    placeholder_nodes = {node for node in graph.nodes if node.op == "placeholder"}
-    constant_nodes = {node for node in graph.nodes if node.op == "get_attr"}
+    placeholder_nodes = {node.name for node in graph.nodes if node.op == "placeholder"}
+    constant_nodes = {node.name for node in graph.nodes if node.op == "get_attr"}
 
     for node in graph.nodes:
         if node.op in ["placeholder", "get_attr"]:
             continue
 
-        if any(n in placeholder_nodes for n in node.all_input_nodes):
-            placeholder_nodes.add(node)
-        elif all(n in constant_nodes for n in node.all_input_nodes):
-            constant_nodes.add(node)
+        if any(n.name in placeholder_nodes for n in node.all_input_nodes):
+            placeholder_nodes.add(node.name)
+        elif all(n.name in constant_nodes for n in node.all_input_nodes):
+            constant_nodes.add(node.name)
         else:
             raise RuntimeError(f"Could not detect dependencies for {node=}.\n{graph}")
 
@@ -73,13 +74,13 @@ def jet(
 
 
 def _replace_operations_with_taylor(  # noqa: C901, PLR0912, PLR0915
-    mod: GraphModule, k: int
+    mod: GraphModule, derivative_order: int
 ) -> GraphModule:
     """Replace operations in the graph with Taylor-mode equivalents.
 
     Args:
         mod: Traced PyTorch computation graph module.
-        k: The order of the Taylor expansion.
+        derivative_order: The order of the Taylor expansion.
 
     Returns:
         The overloaded computation graph module with Taylor arithmetic.
@@ -97,8 +98,8 @@ def _replace_operations_with_taylor(  # noqa: C901, PLR0912, PLR0915
 
     # If the output only depends on constants, the Taylor coefficients will be zero
     (output_node,) = [node for node in graph.nodes if node.op == "output"]
-    if output_node not in dependent_on_placeholders:
-        assert output_node in dependent_on_constants
+    if output_node.name not in dependent_on_placeholders:
+        assert output_node.name in dependent_on_constants
         warn(
             f"The {output_node=} does not depend on the placeholder nodes. "
             f"The resulting jet will be trivially zero. {graph}",
@@ -111,12 +112,13 @@ def _replace_operations_with_taylor(  # noqa: C901, PLR0912, PLR0915
         with graph.inserting_before(output_node):
             trivial_node = graph.call_function(
                 lambda *args: tuple(
-                    args[0] if i == 0 else zeros_like(args[0]) for i in range(k + 1)
+                    args[0] if i == 0 else zeros_like(args[0])
+                    for i in range(derivative_order + 1)
                 ),
                 args=(out_tensor,),
             )
             output_node.replace_input_with(out_tensor, trivial_node)
-        dependent_on_placeholders.add(trivial_node)
+        dependent_on_placeholders.add(trivial_node.name)
 
     # find the input node and insert nodes for the Taylor coefficients
     # currently we assume there is only one independent node (aka placeholder)
@@ -124,7 +126,7 @@ def _replace_operations_with_taylor(  # noqa: C901, PLR0912, PLR0915
     vs = []
     current_node = x
     # after loop we have vs = [x, v1, v2, ...] and similarly in the graph
-    for i in range(1, k + 1):
+    for i in range(1, derivative_order + 1):
         with graph.inserting_after(current_node):
             v_i = graph.placeholder(name=f"v{i}")
             vs.append(v_i)
@@ -143,66 +145,14 @@ def _replace_operations_with_taylor(  # noqa: C901, PLR0912, PLR0915
             )
         child_x.replace_all_uses_with(new_node)
         graph.erase_node(child_x)
-        dependent_on_placeholders.add(new_node)
+        dependent_on_placeholders.add(new_node.name)
 
-    # replace all ops (including that of new_node) with their Taylor mode equivalents
-    for node in tuple(graph.nodes):
-        if node.op == "call_function":
-            # figure out which arguments are constants, and which depend on placeholders
-            is_taylor = []
-            for arg in node.args:
-                if isinstance(arg, Node):
-                    in_placeholders = arg in dependent_on_placeholders
-                    in_constants = arg in dependent_on_constants
-                    assert int(in_placeholders) + int(in_constants) == 1
-                    is_taylor.append(in_placeholders)
-
-                elif isinstance(arg, tuple) and all(isinstance(a, Node) for a in arg):
-                    is_taylor.append(True)
-
-                elif isinstance(arg, (int, float)) or arg is None:
-                    is_taylor.append(False)
-
-                else:
-                    raise RuntimeError(
-                        f"Could not detect dependency of {arg} for {node.target=}."
-                    )
-            is_taylor = tuple(is_taylor)
-
-            f = node.target
-
-            # if all arguments are constants, we don't have to replace
-            if not any(is_taylor):
-                # add the node to constant dependencies
-                dependent_on_constants.add(node)
-                continue
-
-            elif f not in MAPPING.keys():
-                raise NotImplementedError(f"Unsupported {node.target=}.")
-
-            with graph.inserting_after(node):
-                new_node = graph.call_function(
-                    MAPPING[f],
-                    args=node.args,
-                    kwargs={
-                        **node.kwargs,
-                        "_jet_info": JetInfo(derivative_order=k, is_taylor=is_taylor),
-                    },
-                )
-            node.replace_all_uses_with(new_node)
-            graph.erase_node(node)
-            dependent_on_placeholders.add(new_node)
-
-        elif node.op == "call_module":
-            module = graph.get_submodule(node.target)
-            raise NotImplementedError(
-                f"Unsupported module: {module}. Consider adding it to the"
-                " `JetTracer.is_leaf_module` function."
-            )
-
-        elif node.op not in ["output", "placeholder", "get_attr"]:
-            raise NotImplementedError(f"Unsupported node operation: {node.op}")
-
+    mod = JetTransformer(
+        mod,
+        derivative_order,
+        dependent_on_placeholders,
+        dependent_on_constants,
+    ).transform()
     mod.graph.lint()
     mod.recompile()
 

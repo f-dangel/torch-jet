@@ -71,7 +71,7 @@ class JetModule(Module):
             k: The order of the jet.
         """
         super().__init__()
-        self.jet_f = jet.jet(f, k=k)
+        self.jet_f = jet.jet(f, derivative_order=k)
         self.k = k
         self.vs = vs
 
@@ -100,14 +100,14 @@ def test_nested_jet(config: dict[str, Any], k1: int, k2: int):
     manual_seed(0)
     # insert missing entries to make the config work with `setup_case`
     config["is_batched"] = False
-    f, x, vs = setup_case(config, k=k1 + k2)
+    f, x, vs = setup_case(config, derivative_order=k1 + k2)
     vs1, vs2 = vs[:k1], vs[k1:]
 
     # Compute the ground truth with autodiff
-    jet_rev_f = jet.rev_jet(f, order=k1, detach=False)
+    jet_rev_f = jet.rev_jet(f, derivative_order=k1, detach=False)
     jet_rev_f_x = lambda x: jet_rev_f(x, *vs1)[k1]  # noqa: E731
 
-    nested_jet_rev_f = jet.rev_jet(jet_rev_f_x, order=k2)
+    nested_jet_rev_f = jet.rev_jet(jet_rev_f_x, derivative_order=k2)
     nested_jet_rev_f_x = lambda x: nested_jet_rev_f(x, *vs2)[k2]  # noqa: E731
 
     truth = nested_jet_rev_f_x(x)

@@ -43,7 +43,7 @@ class JetInfo(TypedDict, total=True):
     """
 
     derivative_order: int
-    is_taylor: tuple[bool, ...]
+    is_taylor: tuple[tuple[bool, ...], dict[str, bool]]
 
 
 def _faa_di_bruno(
@@ -82,11 +82,13 @@ def _faa_di_bruno(
     return vs_out
 
 
-def jet_sin(s: PrimalAndCoefficients, _jet_info: JetInfo) -> ValueAndCoefficients:
+def jet_sin(
+    self_and_taylor_coefficients: PrimalAndCoefficients, _jet_info: JetInfo
+) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the sine function.
 
     Args:
-        s: The primal and its Taylor coefficients.
+        self_and_taylor_coefficients: The primal and its Taylor coefficients.
         K: The order of the Taylor expansion.
         is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
@@ -94,9 +96,10 @@ def jet_sin(s: PrimalAndCoefficients, _jet_info: JetInfo) -> ValueAndCoefficient
     Returns:
         The value and its Taylor coefficients.
     """
-    assert _jet_info["is_taylor"] == (True,)
+    if _jet_info["is_taylor"] != (True,):
+        raise NotImplementedError(f"Not implemented for {_jet_info["is_taylor"]=}.")
 
-    x, vs = s[0], s[1:]
+    x, vs = self_and_taylor_coefficients[0], self_and_taylor_coefficients[1:]
 
     # pre-compute derivatives
     sin_x = sin(x)
@@ -114,11 +117,13 @@ def jet_sin(s: PrimalAndCoefficients, _jet_info: JetInfo) -> ValueAndCoefficient
     return (sin_x, *vs_out)
 
 
-def jet_cos(s: PrimalAndCoefficients, _jet_info: JetInfo) -> ValueAndCoefficients:
+def jet_cos(
+    self_and_taylor_coefficients: PrimalAndCoefficients, _jet_info: JetInfo
+) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the cosine function.
 
     Args:
-        s: The primal and its Taylor coefficients.
+        self_and_taylor_coefficients: The primal and its Taylor coefficients.
         K: The order of the Taylor expansion.
         is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
@@ -126,9 +131,10 @@ def jet_cos(s: PrimalAndCoefficients, _jet_info: JetInfo) -> ValueAndCoefficient
     Returns:
         The value and its Taylor coefficients.
     """
-    assert _jet_info["is_taylor"] == (True,)
+    if _jet_info["is_taylor"] != (True,):
+        raise NotImplementedError(f"Not implemented for {_jet_info["is_taylor"]=}.")
 
-    x, vs = s[0], s[1:]
+    x, vs = self_and_taylor_coefficients[0], self_and_taylor_coefficients[1:]
 
     # pre-compute derivatives
     cos_x = cos(x)
@@ -146,11 +152,13 @@ def jet_cos(s: PrimalAndCoefficients, _jet_info: JetInfo) -> ValueAndCoefficient
     return (cos_x, *vs_out)
 
 
-def jet_tanh(s: PrimalAndCoefficients, _jet_info: JetInfo) -> ValueAndCoefficients:
+def jet_tanh(
+    self_and_taylor_coefficients: PrimalAndCoefficients, _jet_info: JetInfo
+) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the hyperbolic tangent function.
 
     Args:
-        s: The primal and its Taylor coefficients.
+        self_and_taylor_coefficients: The primal and its Taylor coefficients.
         K: The order of the Taylor expansion.
         is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
@@ -158,9 +166,10 @@ def jet_tanh(s: PrimalAndCoefficients, _jet_info: JetInfo) -> ValueAndCoefficien
     Returns:
         The value and its Taylor coefficients.
     """
-    assert _jet_info["is_taylor"] == (True,)
+    if _jet_info["is_taylor"] != (True,):
+        raise NotImplementedError(f"Not implemented for {_jet_info["is_taylor"]=}.")
 
-    x, vs = s[0], s[1:]
+    x, vs = self_and_taylor_coefficients[0], self_and_taylor_coefficients[1:]
 
     # pre-compute derivatives
     tanh_x = tanh(x)
@@ -198,11 +207,13 @@ def jet_tanh(s: PrimalAndCoefficients, _jet_info: JetInfo) -> ValueAndCoefficien
     return (tanh_x, *vs_out)
 
 
-def jet_sigmoid(s: PrimalAndCoefficients, _jet_info: JetInfo) -> ValueAndCoefficients:
+def jet_sigmoid(
+    self_and_taylor_coefficients: PrimalAndCoefficients, _jet_info: JetInfo
+) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the sigmoid function.
 
     Args:
-        s: The primal and its Taylor coefficients.
+        self_and_taylor_coefficients: The primal and its Taylor coefficients.
         K: The order of the Taylor expansion.
         is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
@@ -210,9 +221,9 @@ def jet_sigmoid(s: PrimalAndCoefficients, _jet_info: JetInfo) -> ValueAndCoeffic
     Returns:
         The value and its Taylor coefficients.
     """
-    assert _jet_info["is_taylor"] == (True,)
-
-    x, vs = s[0], s[1:]
+    if _jet_info["is_taylor"] != (True,):
+        raise NotImplementedError(f"Not implemented for {_jet_info["is_taylor"]=}.")
+    x, vs = self_and_taylor_coefficients[0], self_and_taylor_coefficients[1:]
 
     # pre-compute derivatives
     sigmoid_x = sigmoid(x)
@@ -248,7 +259,7 @@ def jet_sigmoid(s: PrimalAndCoefficients, _jet_info: JetInfo) -> ValueAndCoeffic
 
 
 def jet_linear(
-    s: PrimalAndCoefficients,
+    input_and_taylor_coefficients: PrimalAndCoefficients,
     weight: Tensor,
     bias: Tensor | None = None,
     _jet_info: JetInfo | None = None,
@@ -256,7 +267,7 @@ def jet_linear(
     """Taylor-mode arithmetic for the linear function.
 
     Args:
-        s: The primal and its Taylor coefficients.
+        input_and_taylor_coefficients: The primal and its Taylor coefficients.
         weight: The weight matrix.
         bias: The (optional) bias vector.
         K: The order of the Taylor expansion.
@@ -271,22 +282,24 @@ def jet_linear(
     """
     if _jet_info is None:
         raise ValueError("JetInfos should be provided!")
-    if _jet_info["is_taylor"] not in {(True, False, False), (True, False)}:
+    if _jet_info["is_taylor"] != ((True, False), {"bias": False}):
         raise NotImplementedError(f"Not implemented for {_jet_info["is_taylor"]=}.")
 
     return tuple(
-        linear(s[k], weight, bias=bias if k == 0 else None)
+        linear(input_and_taylor_coefficients[k], weight, bias=bias if k == 0 else None)
         for k in range(_jet_info["derivative_order"] + 1)
     )
 
 
 def jet_pow(
-    s: PrimalAndCoefficients, exponent: float | int, _jet_info: JetInfo
+    base_and_taylor_coefficients: PrimalAndCoefficients,
+    exponent: float | int,
+    _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the power function with integer exponent.
 
     Args:
-        s: The primal and its Taylor coefficients.
+        base_and_taylor_coefficients: The primal and its Taylor coefficients.
         exponent: The integer exponent.
         K: The order of the Taylor expansion.
         is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
@@ -300,9 +313,9 @@ def jet_pow(
     """
     assert isinstance(exponent, (float, int))
     if _jet_info["is_taylor"] != (True, False):
-        raise NotImplementedError
+        raise NotImplementedError(f"Not implemented for {_jet_info["is_taylor"]=}.")
 
-    x, vs = s[0], s[1:]
+    x, vs = base_and_taylor_coefficients[0], base_and_taylor_coefficients[1:]
 
     # Compute the primal value
     pow_x = x**exponent
@@ -327,15 +340,15 @@ def jet_pow(
 
 
 def jet_add(
-    s1: Primal | PrimalAndCoefficients | float | int,
-    s2: Primal | PrimalAndCoefficients | float | int,
+    a_and_taylor_coefficients: Primal | PrimalAndCoefficients | float | int,
+    b_and_taylor_coefficients: Primal | PrimalAndCoefficients | float | int,
     _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for addition.
 
     Args:
-        s1: The first primal and its Taylor coefficients, or a scalar.
-        s2: The second primal and its Taylor coefficients, or a scalar.
+        a_and_taylor_coefficients: The first primal and its Taylor coefficients, or a scalar.
+        b_and_taylor_coefficients: The second primal and its Taylor coefficients, or a scalar.
         K: The order of the Taylor expansion.
         is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
@@ -346,27 +359,32 @@ def jet_add(
     coeff1, coeff2 = _jet_info["is_taylor"]
 
     if (coeff1, coeff2) == (True, True):
-        return tuple(s1[k] + s2[k] for k in range(_jet_info["derivative_order"] + 1))
+        return tuple(
+            a_and_taylor_coefficients[k] + b_and_taylor_coefficients[k]
+            for k in range(_jet_info["derivative_order"] + 1)
+        )
     elif (coeff1, coeff2) == (True, False):
-        return (s1[0] + s2,) + tuple(
-            s1[k] for k in range(1, _jet_info["derivative_order"] + 1)
+        return (a_and_taylor_coefficients[0] + b_and_taylor_coefficients,) + tuple(
+            a_and_taylor_coefficients[k]
+            for k in range(1, _jet_info["derivative_order"] + 1)
         )
     elif (coeff1, coeff2) == (False, True):
-        return (s2[0] + s1,) + tuple(
-            s2[k] for k in range(1, _jet_info["derivative_order"] + 1)
+        return (b_and_taylor_coefficients[0] + a_and_taylor_coefficients,) + tuple(
+            b_and_taylor_coefficients[k]
+            for k in range(1, _jet_info["derivative_order"] + 1)
         )
 
 
 def jet_sub(
-    s1: Primal | PrimalAndCoefficients | float | int,
-    s2: Primal | PrimalAndCoefficients | float | int,
+    a_and_taylor_coefficients: Primal | PrimalAndCoefficients | float | int,
+    b_and_taylor_coefficients: Primal | PrimalAndCoefficients | float | int,
     _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for subtraction.
 
     Args:
-        s1: The first primal and its Taylor coefficients, or a scalar.
-        s2: The second primal and its Taylor coefficients, or a scalar.
+        a_and_taylor_coefficients: The first primal and its Taylor coefficients, or a scalar.
+        b_and_taylor_coefficients: The second primal and its Taylor coefficients, or a scalar.
         K: The order of the Taylor expansion.
         is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
@@ -377,27 +395,32 @@ def jet_sub(
     (coeff1, coeff2) = _jet_info["is_taylor"]
 
     if (coeff1, coeff2) == (True, True):
-        return tuple(s1[k] - s2[k] for k in range(_jet_info["derivative_order"] + 1))
+        return tuple(
+            a_and_taylor_coefficients[k] - b_and_taylor_coefficients[k]
+            for k in range(_jet_info["derivative_order"] + 1)
+        )
     elif (coeff1, coeff2) == (True, False):
-        return (s1[0] - s2,) + tuple(
-            s1[k] for k in range(1, _jet_info["derivative_order"] + 1)
+        return (a_and_taylor_coefficients[0] - b_and_taylor_coefficients,) + tuple(
+            a_and_taylor_coefficients[k]
+            for k in range(1, _jet_info["derivative_order"] + 1)
         )
     elif (coeff1, coeff2) == (False, True):
-        return (s1 - s2[0],) + tuple(
-            -s2[k] for k in range(1, _jet_info["derivative_order"] + 1)
+        return (a_and_taylor_coefficients - b_and_taylor_coefficients[0],) + tuple(
+            -b_and_taylor_coefficients[k]
+            for k in range(1, _jet_info["derivative_order"] + 1)
         )
 
 
 def jet_mul(
-    s1: Primal | PrimalAndCoefficients,
-    s2: Primal | PrimalAndCoefficients,
+    a_and_taylor_coefficients: Primal | PrimalAndCoefficients,
+    b_and_taylor_coefficients: Primal | PrimalAndCoefficients,
     _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for multiplication of two variables.
 
     Args:
-        s1: The first primal and its Taylor coefficients.
-        s2: The second primal and its Taylor coefficients.
+        a_and_taylor_coefficients: The first primal and its Taylor coefficients.
+        b_and_taylor_coefficients: The second primal and its Taylor coefficients.
         K: The order of the Taylor expansion.
         is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
@@ -412,20 +435,30 @@ def jet_mul(
         for k in range(_jet_info["derivative_order"] + 1):
             term = None
             for j in range(k + 1):
-                term_j = comb(k, j, exact=True) * s1[j] * s2[k - j]
+                term_j = (
+                    comb(k, j, exact=True)
+                    * a_and_taylor_coefficients[j]
+                    * b_and_taylor_coefficients[k - j]
+                )
                 term = term_j if term is None else term + term_j
             s_out = s_out + (term,)
 
         return s_out
 
     elif (coeff1, coeff2) == (True, False):
-        return tuple(s2 * s1[k] for k in range(_jet_info["derivative_order"] + 1))
+        return tuple(
+            b_and_taylor_coefficients * a_and_taylor_coefficients[k]
+            for k in range(_jet_info["derivative_order"] + 1)
+        )
     elif (coeff1, coeff2) == (False, True):
-        return tuple(s1 * s2[k] for k in range(_jet_info["derivative_order"] + 1))
+        return tuple(
+            a_and_taylor_coefficients * b_and_taylor_coefficients[k]
+            for k in range(_jet_info["derivative_order"] + 1)
+        )
 
 
 def jet_replicate(
-    s: PrimalAndCoefficients,
+    self_and_taylor_coefficients: PrimalAndCoefficients,
     times: int,
     pos: int = 0,
     _jet_info: JetInfo | None = None,
@@ -433,7 +466,7 @@ def jet_replicate(
     """Taylor-mode arithmetic for the replicate function.
 
     Args:
-        s: The primal and its Taylor coefficients.
+        self_and_taylor_coefficients: The primal and its Taylor coefficients.
         times: The number of times to replicate the tensor.
         pos: The position along which to replicate.
         K: The order of the Taylor expansion.
@@ -449,24 +482,24 @@ def jet_replicate(
     if _jet_info is None:
         raise ValueError("JetInfos should be provided!")
 
-    if _jet_info["is_taylor"] not in [(True, False, False), (True, False)]:
+    if _jet_info["is_taylor"] != ((True, False), {"pos": False}):
         raise NotImplementedError(f"{_jet_info["is_taylor"]=} is not implemented.")
 
     return tuple(
-        jet.utils.replicate(s[k], times, pos)
+        jet.utils.replicate(self_and_taylor_coefficients[k], times, pos)
         for k in range(_jet_info["derivative_order"] + 1)
     )
 
 
 def jet_sum_vmapped(
-    s: PrimalAndCoefficients,
+    self_and_taylor_coefficients: PrimalAndCoefficients,
     pos: int = 0,
     _jet_info: JetInfo | None = None,
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the sum_vmapped function.
 
     Args:
-        s: The primal and its Taylor coefficients.
+        self_and_taylor_coefficients: The primal and its Taylor coefficients.
         pos: The position along which to sum.
         K: The order of the Taylor expansion.
         is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
@@ -481,13 +514,13 @@ def jet_sum_vmapped(
     if _jet_info is None:
         raise ValueError("JetInfos should be provided!")
 
-    if _jet_info["is_taylor"] not in [(True, False), (True,)]:
+    if _jet_info["is_taylor"] != ((True,), {"pos": False}):
         raise NotImplementedError(
             f"Got {_jet_info["is_taylor"]=}. Only supports (True, False) and (True,)."
         )
 
     return tuple(
-        jet.utils.sum_vmapped(s[k], pos=pos)
+        jet.utils.sum_vmapped(self_and_taylor_coefficients[k], pos=pos)
         for k in range(_jet_info["derivative_order"] + 1)
     )
 

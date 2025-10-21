@@ -1,7 +1,7 @@
 """Utility functions for computing jets."""
 
 from collections import defaultdict
-from inspect import signature
+from inspect import Signature, signature
 from math import factorial, prod
 from typing import Any, Callable
 
@@ -227,6 +227,15 @@ def print_tensor_constants_and_shapes(mod: GraphModule):
     print(f"Total number of elements in tensor constants: {total}")
 
 
+def _get_signature(f: Callable) -> Signature:
+    try:
+        # Try to get the signature using inspect.signature
+        return signature(f)
+    except ValueError:
+        # For built-in PyTorch functions, use our custom parser
+        return parse_torch_builtin(f)
+
+
 def separate_args_and_kwargs(
     f: Callable, args: tuple[Any, ...], kwargs: dict[str, Any]
 ) -> tuple[tuple[Any, ...], dict[str, Any]]:
@@ -249,13 +258,7 @@ def separate_args_and_kwargs(
           are the corresponding values from `kwargs` or their default values if not
           provided.
     """
-    try:
-        # Try to get the signature using inspect.signature
-        sig = signature(f)
-    except ValueError:
-        # For built-in PyTorch functions, use our custom parser
-        sig = parse_torch_builtin(f)
-
+    sig = _get_signature(f)
     bound_args = sig.bind(*args, **kwargs)
     positional = tuple(
         bound_args.arguments[name]

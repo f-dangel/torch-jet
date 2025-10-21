@@ -4,13 +4,19 @@ from math import factorial
 from typing import Callable
 from warnings import warn
 
-from torch import Tensor, tensor, zeros_like
+from torch import Tensor, mul, tensor, zeros_like
 from torch.autograd import grad
 from torch.fx import Graph, GraphModule, Node
 
 from jet.jet_transformer import JetTransformer
 from jet.tracing import capture_graph
-from jet.utils import Primal, PrimalAndCoefficients, Value, ValueAndCoefficients
+from jet.utils import (
+    Primal,
+    PrimalAndCoefficients,
+    Value,
+    ValueAndCoefficients,
+    standardize_signature,
+)
 
 
 def analyze_dependencies(graph: Graph) -> tuple[set[str], set[str]]:

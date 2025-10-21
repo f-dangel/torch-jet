@@ -46,19 +46,21 @@ class JetInfo(TypedDict, total=True):
     is_taylor: tuple[bool, ...]
 
 
-def _faa_di_bruno(vs: tuple[Primal, ...], K: int, dn: dict[int, Primal]) -> list[Value]:
+def _faa_di_bruno(
+    vs: tuple[Primal, ...], derivative_order: int, dn: dict[int, Primal]
+) -> list[Value]:
     """Apply Faà di Bruno's formula for elementwise functions.
 
     Args:
         vs: The incoming Taylor coefficients.
-        K: The order of the Taylor expansion.
+        derivative_order: The order of the Taylor expansion.
         dn: A dictionary mapping the degree to the function's derivative.
 
     Returns:
         The outgoing Taylor coefficients.
     """
     vs_out = []
-    for k in range(K):
+    for k in range(derivative_order):
         for idx, sigma in enumerate(integer_partitions(k + 1)):
             if dn[len(sigma)] is None:
                 continue

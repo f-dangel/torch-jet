@@ -31,7 +31,7 @@ def check_jet(f: Callable[[Primal], Value], arg: PrimalAndCoefficients):  # noqa
     rev_jet_f = rev_jet(f)
     rev_jet_out = rev_jet_f(x, *vs)
 
-    jet_f = jet.jet(f, k=len(vs), verbose=True)
+    jet_f = jet.jet(f, derivative_order=len(vs), verbose=True)
     jet_out = jet_f(x, *vs)
 
     compare_jet_results(jet_out, rev_jet_out)
@@ -137,7 +137,7 @@ K_IDS = [f"{k=}" for k in K]
 
 
 def setup_case(
-    config: dict[str, Any], vmapsize: int = 0, k: int | None = None
+    config: dict[str, Any], vmapsize: int = 0, derivative_order: int | None = None
 ) -> tuple[Callable[[Primal], Value], Primal, tuple[Primal, ...]]:
     """Instantiate the function, its input, and Taylor coefficients.
 
@@ -145,7 +145,7 @@ def setup_case(
         config: Configuration dictionary of the test case.
         vmapsize: Whether to generate inputs and Taylor coefficients for a vmap-ed
             operation. `0` means no vmap is applied. Default: `0`.
-        k: The number of Taylor coefficients to generate. No coefficients are generated
+        derivative_order: The number of Taylor coefficients to generate. No coefficients are generated
             if `None`. Default: `None`.
 
     Returns:
@@ -161,7 +161,11 @@ def setup_case(
 
     vmap_shape = shape if vmapsize == 0 else (vmapsize, *shape)
     x = rand(*vmap_shape).double()
-    vs = () if k is None else tuple(rand(*vmap_shape).double() for _ in range(k))
+    vs = (
+        ()
+        if derivative_order is None
+        else tuple(rand(*vmap_shape).double() for _ in range(derivative_order))
+    )
 
     return f, x, vs
 
@@ -175,7 +179,7 @@ def test_jet(config: dict[str, Any], k: int):
         config: Configuration dictionary of the test case.
         k: The order of the jet to compute.
     """
-    f, x, vs = setup_case(config, k=k)
+    f, x, vs = setup_case(config, derivative_order=k)
     check_jet(f, (x, vs))
 
 
@@ -188,7 +192,7 @@ def test_symbolic_trace_jet(config: dict[str, Any], k: int):
         config: Configuration dictionary of the test case.
         k: The order of the jet to compute.
     """
-    f, _, _ = setup_case(config, k=k)
+    f, _, _ = setup_case(config, derivative_order=k)
     # generate the jet's compute graph
     jet_f = jet.jet(f, k)
 

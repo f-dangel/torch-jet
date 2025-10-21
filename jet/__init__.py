@@ -45,13 +45,13 @@ def analyze_dependencies(graph: Graph) -> tuple[set[Node], set[Node]]:
 
 
 def jet(
-    f: Callable[[Primal], Value], k: int, verbose: bool = False
+    f: Callable[[Primal], Value], derivative_order: int, verbose: bool = False
 ) -> Callable[[PrimalAndCoefficients], ValueAndCoefficients]:
     """Overload a function with its Taylor-mode equivalent.
 
     Args:
         f: Function to overload. Maps a tensor to another tensor.
-        k: The order of the Taylor expansion.
+        derivative_order: The order of the Taylor expansion.
         verbose: Whether to print the traced graphs before and after overloading.
             Default: `False`.
 
@@ -64,7 +64,7 @@ def jet(
     if verbose:
         print(f"Traced graph before jet overloading:\n{mod.graph}")
 
-    jet_mod = _replace_operations_with_taylor(mod, k)
+    jet_mod = _replace_operations_with_taylor(mod, derivative_order)
 
     if verbose:
         print(f"Traced graph after jet overloading:\n{jet_mod.graph}")
@@ -210,13 +210,15 @@ def _replace_operations_with_taylor(  # noqa: C901, PLR0912, PLR0915
 
 
 def rev_jet(
-    f: Callable[[Primal], Value], order: int | None = None, detach: bool = True
+    f: Callable[[Primal], Value],
+    derivative_order: int | None = None,
+    detach: bool = True,
 ) -> Callable[[PrimalAndCoefficients], ValueAndCoefficients]:
     """Implement Taylor-mode via nested reverse-mode autodiff.
 
     Args:
         f: Function to overload. Maps a tensor to another tensor.
-        order: Order of the Taylor expansion. Default: `None`.
+        derivative_order: Order of the Taylor expansion. Default: `None`.
         detach: Whether to detach the output of the function and its Taylor coefficients
             from the computation graph. Default: `True`.
 
@@ -244,23 +246,23 @@ def rev_jet(
         return grad(f, X, **grad_kwargs)[0] if f.requires_grad else zeros_like(X)
 
     def jet_f(
-        x: Primal, *vs: Primal, order: int | None = order
+        x: Primal, *vs: Primal, derivative_order: int | None = derivative_order
     ) -> ValueAndCoefficients:
         """Compute the function and its Taylor coefficients.
 
         Args:
             x: Input tensor.
             *vs: Taylor coefficients.
-            order: Order of the Taylor expansion. If `None`, the order is the number of
+            derivative_order: Order of the Taylor expansion. If `None`, the order is the number of
                 Taylor coefficients.
 
         Returns:
             Tuple containing the function value and its Taylor coefficients.
         """
-        if order is None:
-            order = len(vs)
+        if derivative_order is None:
+            derivative_order = len(vs)
         else:
-            assert order == len(vs)
+            assert derivative_order == len(vs)
 
         def path(t: Tensor):
             x_t = x + sum(
@@ -274,7 +276,7 @@ def rev_jet(
         vs_out = [zeros_like(f_x).flatten() for _ in vs]
 
         for i, dnf_dt in enumerate(f_x.flatten()):
-            for n in range(order):
+            for n in range(derivative_order):
                 dnf_dt = _maybe_grad(dnf_dt, t)
                 vs_out[n][i] = dnf_dt.detach() if detach else dnf_dt
 

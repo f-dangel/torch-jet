@@ -8,7 +8,7 @@ from warnings import catch_warnings, simplefilter
 
 from packaging.version import parse
 from pytest import MonkeyPatch, mark, raises
-from torch import allclose, cos, sigmoid, sin, tanh
+from torch import allclose, bernoulli, cos, sigmoid, sin, tanh
 from torch.nn.functional import celu, conv1d, conv2d, linear
 from yaml import dump
 
@@ -86,6 +86,7 @@ TORCH_BUILTINS = [
     (cos, [Parameter("self", POK)]),
     (tanh, [Parameter("self", POK)]),
     (sigmoid, [Parameter("self", POK)]),
+    (bernoulli, [Parameter("self", POK), Parameter("generator", POK, default=None)]),
     (
         linear,
         [
@@ -151,20 +152,16 @@ def test_parse_torch_builtin(config: tuple[Callable, list[Parameter]]):
 
 def test_str_to_param():
     """Test various the output of _str_to_param for various string inputs."""
-    assert _str_to_param("Tensor input") == Parameter(
-        "input", Parameter.POSITIONAL_OR_KEYWORD
-    )
+    assert _str_to_param("Tensor input") == Parameter("input", POK)
     assert _str_to_param("Tensor input=-1.0e-3") == Parameter(
-        "input", Parameter.POSITIONAL_OR_KEYWORD, default=-0.001
+        "input", POK, default=-0.001
     )
-    assert _str_to_param("Tensor? input") == Parameter(
-        "input", Parameter.POSITIONAL_OR_KEYWORD, default=None
-    )
-    assert _str_to_param("int[3]? bias") == Parameter(
-        "bias", Parameter.POSITIONAL_OR_KEYWORD, default=None
-    )
-    assert _str_to_param("float[2]? test=None") == Parameter(
-        "test", Parameter.POSITIONAL_OR_KEYWORD, default=None
+    assert _str_to_param("Tensor? input") == Parameter("input", POK, default=None)
+    assert _str_to_param("int[3]? bias") == Parameter("bias", POK, default=None)
+    assert _str_to_param("float[2]? test=None") == Parameter("test", POK, default=None)
+    assert _str_to_param("Tensor(a!) self") == Parameter("self", POK)
+    assert _str_to_param("Tensor(a!) self", keyword_only=True) == Parameter(
+        "self", POK, default=None
     )
 
 

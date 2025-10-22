@@ -16,7 +16,7 @@ To derive our proposed method, we start with a sum of $K$th-order directional de
   \vv_r^{\otimes K}
   \right> \, \in \sR^C
 \end{align}
-(\eg the exact Laplacian uses $K = 2$, $R = \dim(\vx_0) = D$, and the unit vectors $\vv_r = \ve_r\in \R^D$ as directions; see \cref{sec:second-order-operators} below).
+(\eg, the exact Laplacian uses $K = 2$, $R = \dim(\vx_0) = D$, and the unit vectors $\vv_r = \ve_r\in \R^D$ as directions; see \cref{sec:second-order-operators} below).
 Instead of nesting $K$ calls to 1\textsuperscript{st}-order AD, we can use $K$-jets to calculate each summand of \cref{eq:sum-k-directional} with Taylor mode.
 In total, we need $R$ $K$-jets, and have to set the $r$-th jet's coefficients to $\vx_{0, r} = \vx_0$, $\vx_{1, r} = \vv_r$ and $\vx_{2, r} = \ldots = \vx_{K, r} = \vzero$ (\cref{eq:sum-taylor-mode-naive} applies this to \cref{eq:taylor-mode-composition}).
 
@@ -249,7 +249,7 @@ We can always express this tensor in a tensor product basis, such that
 where the multi-index entries $\vi = (i_1, \dots, i_I)$ sum to $K$ and $D_j \leq D$.
 For the exact biharmonic operator (\cref{eq:biharm}), we identify $K = 4, I = 2, \vi = (2, 2), D_1 = D_2 = D, \vv_{d_1} = \ve_{d_1}$, and $\vv_{d_2} = \ve_{d_2}$.
 From the Fa\'a di Bruno formula, we know that we can only compute terms of the form $\langle \partial^{K} \vf(\vx_0), \vv^{\otimes K}\rangle$ with a $K$-jet.
-The challenge in \cref{eq:sums-k-directional} is that it includes terms where \emph{not} all directions coincide (\eg for the biharmonic we have $I=2$ different directions).
+The challenge in \cref{eq:sums-k-directional} is that it includes terms where \emph{not} all directions coincide (\eg, for the biharmonic we have $I=2$ different directions).
 
 Fortunately, \citet{griewank_evaluating_1999} derived an approach to reconstruct such mixed-direction terms by linearly combining a \emph{family} of $K$-jets that is determined by all vectors $\vj \in \sN^I$ whose entries sum to $K$, see \cref{fig:ttc_biharm_coeffs} for an illustration for the biharmonic (5 members).
 The $K$-jets along these directions are then combined with coefficients $\gamma_{\vi, \vj} \in \sR$, whose definition we provide in \cref{sec:appendix_ttc}.
@@ -316,7 +316,7 @@ After collapsing, we get $1 + 3D + 1 + 3 D(D-1) + 1 + \nicefrac{3}{2} D(D-1)  + 
   \vspace*{-0.5ex}
   \input{figures/ttc_bilaplacian}
   \vspace{-1ex}
-  \caption{\textbf{Illustration of \cref{eq:ttc-general} for the biharmonic operator}, \ie the 5 values of $\vj$ with $\lVert \vj \rVert_1 = 4$ and their coefficients $\gamma_{\vi, \vj}$ to interpolate the desired mixed partials.}
+  \caption{\textbf{Illustration of \cref{eq:ttc-general} for the biharmonic operator}, \ie, the 5 values of $\vj$ with $\lVert \vj \rVert_1 = 4$ and their coefficients $\gamma_{\vi, \vj}$ to interpolate the desired mixed partials.}
   \label{fig:ttc_biharm_coeffs}
 \end{wrapfigure}
 This demonstrates the relevance of collapsing: it achieves a 25\,\% reduction in the quadratic coefficient.

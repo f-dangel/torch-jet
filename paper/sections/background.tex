@@ -26,7 +26,7 @@ setting $x_1 = 1, x_2 = x_3 = 0$ yields $f_1 = \partial f(x_0), f_2 = \partial^2
 We call the univariate Taylor polynomial of a function $x(t)$ of degree $K$, represented by the coefficients $(x_0, \dots, x_K)$, the \emph{$K$-jet of $x$}, following the terminology of JAX's Taylor mode \cite{bettencourt2019taylor}.
 
 \paragraph{Notation for multivariate case.}
-We consider the general case of computing higher-order derivatives, \eg PDE operators, of a vector-to-vector function $\vf: \sR^D \to \sR^C$.
+We consider the general case of computing higher-order derivatives, \eg, PDE operators, of a vector-to-vector function $\vf: \sR^D \to \sR^C$.
 This requires additional notation to generalize \cref{eq:taylor-mode-scalar}.
 Given $K$ vectors $\vv_1, \dots, \vv_K \in \sR^D$, we write their tensor product as
 \begin{equation*}
@@ -100,7 +100,7 @@ Given the input $K$-jet for $\vx$, the coefficients $\vh_k = \smash{\frac{\mathr
     \right)
   }\,.
 \end{align}
-Here, $\partitioning(k)$ is the integer partitioning of $k$ (a set of sets), $\nu$ is a multiplicity function, and $n_s$ counts occurrences of $s$ in a set $\sigma$ (\eg $n_1(\{1,1,3\}) = 2$ and $n_3 = 1$).
+Here, $\partitioning(k)$ is the integer partitioning of $k$ (a set of sets), $\nu$ is a multiplicity function, and $n_s$ counts occurrences of $s$ in a set $\sigma$ (\eg, $n_1(\{1,1,3\})\!=\!2$ and $n_3 \!= \!1$).
 Propagating the $\vh_k$s through $\vg$ results in the $K$-jet for $\vf$.
 In summary, the propagation scheme is (with $\vx_k \in \sR^D$, $\vh_k \in \sR^I$, $\vf_k \in \sR^C$)
 \begin{align}\label{eq:taylor-mode-composition}

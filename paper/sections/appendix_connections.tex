@@ -36,7 +36,7 @@ Applied to the Hessian, we can estimate the Laplacian of $f$ as
   \Delta f(\vx)
   \approx&
            \frac{1}{S} \sum_{s=1}^{S} \vv_s^{\top} \nabla^2 f(\vx) \vv_s\,.
-           \shortintertext{Using our tensor notation, we can rewrite this into a sum of terms involving $\left\langle \partial^2f(\vx), \vv_s^{\otimes 2} \right\rangle$, which can be computed with \textcolor{tab-orange}{\textbf{vanilla Taylor mode}} using $S$ 2-jets (see \Cref{eq:taylor-mode-composition}):}
+           \shortintertext{Using our tensor notation, we can rewrite this into a sum of terms involving $\left\langle \partial^2f(\vx), \vv_s^{\otimes 2} \right\rangle$, which can be computed with \textcolor{tab-orange}{\textbf{vanilla Taylor mode}} using $S$ 2-jets (see \cref{eq:taylor-mode-composition}):}
            =&
               \frac{1}{S} \sum_{s=1}^{S} \sum_{i,j=1}^D [\partial^2f(\vx)]_{i,j} [\vv_s]_i [\vv_s]_j
               =
@@ -46,7 +46,7 @@ Applied to the Hessian, we can estimate the Laplacian of $f$ as
 \end{align*}
 
 \subsection{Connection to the Forward Laplacian}
-We start by writing out the propagation rules of the forward Laplacian (Equations (5-7) in \citet{li2023forward}) for a function $f = g \circ \vh$ with $g: \sR^C \to \sR$ whose input we denote by $\vh_0 \in \sR^C$.
+We start by writing out the propagation rules of the forward Laplacian (eqs.~(5-7) in \citet{li2023forward}) for a function $f = g \circ \vh$ with $g: \sR^C \to \sR$ whose input we denote by $\vh_0 \in \sR^C$.
 The forward propagation consumes $\vh_0 = \vh(\vx_0)$, the Jacobian $\nabla_{\vx_0} \vh_0 = \nabla_{\vx_0} \vh(\vx_0) \in \sR^{D \times C}$, and the Laplacian $\Delta_{\vx_0} \vh_0 = \Delta_{\vx_0} \vh(\vx_0) \in \sR^C$:
 \begin{align*}
   \begin{pmatrix}

@@ -10,16 +10,16 @@ Hence, we re-implemented Taylor mode in PyTorch, taking heavy inspiration from t
 
 This deliberate choice imposes certain limitations.
 First, as of now, our Taylor mode in PyTorch supports only a small number of primitives, because the Taylor arithmetic in \cref{eq:faa-di-bruno} needs to be implemented case by case (this of course also applies to JAX's Taylor mode, which has broader operator coverage).
-Second, while our Taylor mode implementation is competitive with JAX's, we did not fully optimize it (\eg we do \emph{not} use in-place operations, and we do \emph{not} implement the efficient schemes from \citet[][\S13]{griewank2008evaluating}, but stick to Fa\`a di Bruno (\cref{eq:faa-di-bruno})).
+Second, while our Taylor mode implementation is competitive with JAX's, we did not fully optimize it (\eg, we do \emph{not} use in-place operations, and we do \emph{not} implement the efficient schemes from \citet[][\S13]{griewank2008evaluating}, but stick to Fa\`a di Bruno (\cref{eq:faa-di-bruno})).
 Given our implementation's superiority compared to nested first-order AD that we demonstrate below, these are promising future efforts that will further improve performance, and we believe that making Taylor mode available to the PyTorch community is also an important step towards establishing its use.
 
 \paragraph{Usage (overview in \cref{sec:appendix-visual-tour}).}
-Our implementation takes a PyTorch function (\eg a neural net) and first captures its computational graph using \texttt{torch.fx}'s symbolic tracing mechanism.
+Our implementation takes a PyTorch function (\eg, a neural net) and first captures its computational graph using \texttt{torch.fx}'s symbolic tracing mechanism.
 Then, it replaces each operation with its Taylor arithmetic, which yields the computational graph of the function's $K$-jet.
 Users can then write a function to compute their differential operator with this vanilla Taylor mode.
 Collapsing is achieved using a function \texttt{simplify}, which traces the computation again, rewrites the graph, and propagates the summation of highest coefficients up to its leafs.
 This requires one backward traversal through the graph (\cref{sec:graph-simplifications} presents a detailed example).
-The simplified graph produces the same result, but propagates summed coefficients, \ie uses collapsed Taylor mode.
+The simplified graph produces the same result, but propagates summed coefficients, \ie, uses collapsed Taylor mode.
 
 \paragraph{Experimental setup.}
 We empirically validate our proposed collapsing approach in PyTorch.
@@ -28,10 +28,10 @@ To implement the (weighted) Laplacian and its stochastic counterpart, we use vec
 For the biharmonic operator, we simply nest two VHVPs.
 For the weighted Laplacian's coefficient matrix, we choose a full-rank diagonal matrix (\cref{sec:rank-deficient-weighted-laplacian} shows results for rank-deficient weightings).
 To avoid confounding factors, all implementations are executed without compilation (our JAX experiments with the Laplacian in \cref{sec:jax-benchmark} confirm that \texttt{jit} does not affect the relative performance).
-As common for PINNs \cite[\eg][]{shi2024stochastic,dangel2024kroneckerfactored}, we use a 5-layer MLP $\smash{f_\vtheta}: D \to 768 \to 768 \to 512 \to 512 \to 1$ with $\tanh$ activations and trainable parameters $\vtheta$, and compute the PDE operators on batches of size $N$.
+As common for PINNs \cite[\eg,][]{shi2024stochastic,dangel2024kroneckerfactored}, we use a 5-layer MLP $\smash{f_\vtheta}: D \to 768 \to 768 \to 512 \to 512 \to 1$ with $\tanh$ activations and trainable parameters $\vtheta$, and compute the PDE operators on batches of size $N$.
 We measure three performance metrics:
 \textbf{(1) runtime} reports the smallest execution time of 50 repetitions.
-\textbf{(2) Peak memory (non-differentiable)} measures the maximum allocated GPU memory when computing the PDE operator's value (\eg used in VMC \cite{pfau2020ab}) inside a \texttt{torch.no\_grad} context.
+\textbf{(2) Peak memory (non-differentiable)} measures the maximum allocated GPU memory when computing the PDE operator's value (\eg, used in VMC \cite{pfau2020ab}) inside a \texttt{torch.no\_grad} context.
 \textbf{(3) Peak memory (differentiable)} is the maximum memory usage when computing the PDE operator inside a \texttt{torch.enable\_grad} context, which allows backpropagation to $\vtheta$ (required for training PINNs, or alternative VMC works \cite{webber2022rayleigh, toulouse2007optimization}). This demands saving intermediates, which uses more memory but does not affect runtime.
 As memory allocation does not fluctuate much, we measure it in a single run.
 
@@ -59,7 +59,7 @@ Empirically, we measure that adding one datum adds {\color{tab-orange}\inputMetr
 %Because Taylor mode performs a single forward propagation, in contrast to nested differentiation, which needs to store intermediates for future differentiation, its memory consumption is much better, specifically for non-differentiable computations.
 
 \paragraph{Comparison with JAX.} We also conducted experiments with JAX (+ \texttt{jit}) to rule out artifacts from choosing PyTorch, implementation mistakes in our Taylor mode library, or unexpected simplifications from the JIT compiler.
-We find that the choice of ML framework does not affect the results.
+We find that the choice of the ML framework does not affect the results.
 \Eg, when computing the exact Laplacian with nested first-order AD, PyTorch consumes \inputMetricOnly{jet/exp/exp01_benchmark_laplacian/performance/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_laplacian_vary_batch_size/hessian_trace_best.txt}\,ms per datum (\cref{tab:benchmark}), while JAX uses \inputMetricOnly{jet/exp/exp04_jax_benchmark/performance/architecture_tanh_mlp_768_768_512_512_1_device_cuda_dim_50_name_jax_laplacian_vary_batch_size/hessian_trace_best.txt}\,ms (\cref{fig:vanilla-taylor-not-enough,tab:jax-benchmark}).
 We find the same trend when comparing our collapsed Taylor mode and JAX's forward Laplacian.
 Interestingly, we noticed that JAX's Taylor mode was consistently slower than our PyTorch implementation, despite using \texttt{jit}.

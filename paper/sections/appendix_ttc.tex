@@ -1,6 +1,6 @@
 Here, we introduce the notation of \cref{eq:ttc_general}.
-The right side of the formula sums over all $\vj \in \sN^I$ such that $\lVert \vj \rVert_1 := \sum_i [\vj]_i = K$.
-For example, if $I=2$ and $\lVert \vj \rVert_1 = 4$, this index-set consists of $\left\{ (4,0), (0, 4), (3, 1), (1, 3), (2, 2)\right\}$.
+The right side of the formula sums over the set of all $\vj \in \sN^I$ such that $\lVert \vj \rVert_1 := \sum_i [\vj]_i = K$.
+For example, if $I=2$ and $\lVert \vj \rVert_1 = 4$, this set is $\left\{ (4,0), (0, 4), (3, 1), (1, 3), (2, 2)\right\}$.
 
 The coefficient $\gamma_{\vi, \vj}$ is defined as
 \begin{equation}
@@ -53,7 +53,7 @@ The generalized binomial coefficient of vectors is the component-wise product of
 This notation also includes cases where the vector $\va$ has components of $\sR$.
 
 \paragraph{Example computation.}
-Let's compute the coefficient $\gamma_{(2, 2),(3, 1)}$, used by the biharmonic operator:
+Let us compute the coefficient $\gamma_{(2, 2),(3, 1)}$, used by the biharmonic operator:
 \begin{align*}
   \gamma_{(2, 2),(3, 1)} = \,\,\,\,\,\mathclap{\sum_{
   \substack{
@@ -461,7 +461,7 @@ To compute \cref{eq:biharm} with \cref{eq:ttc_general}, we first select $K = 4, 
       \Big).
   \end{aligned}
 \end{equation}
-Now, exploit the symmetry of the coefficients $\gamma_{(2, 2), (4, 0)} = \gamma_{(2, 2), (0, 4)}$ and $\gamma_{(2, 2), (3, 1)} = \gamma_{(2, 2), (1, 3)}$:
+Now, exploit the symmetry of the coefficients $\gamma_{(2, 2), (4, 0)} = \gamma_{(2, 2), (0, 4)}$ and $\gamma_{(2, 2), (3, 1)} = \gamma_{(2, 2), (1, 3)}$ and the corresponding tensor basis expansion:
 \begin{equation} \label{eq:ttc_for_biharm_2}
   \begin{aligned}
     &=\frac{1}{24}
@@ -666,7 +666,7 @@ We proceed as follows:
     = \sum_{i=1}^D\sum_{j=1}^D \sum_{\vq \in \sN^2, \; \left\lVert \vq \right\rVert_1 = 3} \langle\partial^3 \vf(\vx), \left([\vq]_1 \ve_i + [\vq]_2 \ve_j   \right)^{\otimes 3} \rangle
   \end{equation*}
   Collapsed Taylor mode can directly applied to these $4D^2$ 3-jets.
-  However, the full potential of requires some further steps that leverage the structure.
+  However, to exploit the full potential some further steps that leverage the structure are required.
 
 \item Expand and manually simplify, using symmetries.
   The sums for $\gamma_{(2, 1)(3, 0)}$ and $\gamma_{(2, 1)(0, 3)}$ are similar; same for $\gamma_{(2, 1)(2, 1)}$ and $\gamma_{(2, 1)(1, 2)}$.

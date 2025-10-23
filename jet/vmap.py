@@ -332,7 +332,7 @@ def traceable_vmap(  # noqa: C901
     # If the output only depends on constants, the vmap-ed result will be simply
     # a copy of these constant
     (output,) = [node for node in graph.nodes if node.op == "output"]
-    if output not in placeholder_deps:
+    if output.name not in placeholder_deps:
         warn(
             f"The {output=} does not depend on the placeholder nodes. "
             f"The resulting vmap will be a replicate. {graph}",
@@ -351,17 +351,17 @@ def traceable_vmap(  # noqa: C901
         for node in tuple(graph.nodes):
             # node is purely generated from constant -> no replacement required
             if node.op == "call_function" and all(
-                in_node in constant_deps for in_node in node.all_input_nodes
+                in_node.name in constant_deps for in_node in node.all_input_nodes
             ):
-                constant_deps.add(node)
+                constant_deps.add(node.name)
 
             elif node.op == "call_function":
                 # FIXME Brittle if kwargs are supplied in random order
                 is_const = tuple(
                     isinstance(arg, (float, int, str))
                     or (isinstance(arg, tuple) and all(isinstance(a, int) for a in arg))
-                    or arg in constant_deps
                     or arg is None
+                    or arg.name in constant_deps
                     for arg in list(node.args) + list(node.kwargs.values())
                 )
                 f = node.target

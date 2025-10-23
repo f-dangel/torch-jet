@@ -1,0 +1,132 @@
+% Poster template of Vector Institute.
+% Inspired by the MPI-IS template, with adapted colors and logos.
+
+\ProvidesPackage{postertheme/vector_institute/vector_institute}[2023/07/06]
+
+% ===================================================================
+% FONTS (SIMILAR TO BEAMER TEMPLATE
+% ===================================================================
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+
+% use Roboto font (beamertheme also uses option 'light'
+\usepackage[sfdefault,condensed]{roboto}
+% use Inconsolata font for monospace (texttt)
+\usepackage{inconsolata}
+
+\usepackage{xcolor}
+\input{postertheme/colors/vector_institute}
+
+% ===================================================================
+% LISTINGS
+% ===================================================================
+\usepackage{listings}
+% define style for listings
+\lstdefinestyle{vector_institute}{
+  backgroundcolor=\color{VectorGray},
+  commentstyle=\bfseries\color{VectorBlue},
+  keywordstyle=\bfseries\color{VectorBlack},
+  numberstyle=\small\color{VectorBlack!50},
+  stringstyle=\bfseries\color{VectorPink},
+  basicstyle=\ttfamily\Large,
+  xleftmargin=3.2ex,
+  breakatwhitespace=false,
+  breaklines=true,
+  captionpos=t,
+  keepspaces=true,
+  numbers=left,
+  numbersep=7pt,
+  showspaces=false,
+  showstringspaces=false,
+  showtabs=false,
+  tabsize=4,
+}
+% use the above style as default
+\lstset{style=vector_institute}
+
+\definecolorstyle{VectorPosterColorStyle}{
+  % \colorlet{colorOne}{black}
+  % \colorlet{colorTwo}{MoMLPosterGray}
+  % \colorlet{colorThree}{MoMLPosterGray}
+}{% Background Colors
+  % \colorlet{backgroundcolor}{colorTwo!50}
+  % \colorlet{framecolor}{colorTwo!50}% Title Colors
+  \colorlet{titlefgcolor}{white}
+  \colorlet{titlebgcolor}{VectorBlack}% Block Colors
+  % \colorlet{titlebgcolor}{TUanthrazit}% Block Colors
+  % \colorlet{blocktitlebgcolor}{TUred}
+  \colorlet{blocktitlebgcolor}{VectorBlack}
+  % \colorlet{blocktitlefgcolor}{black}
+  % \colorlet{blockbodybgcolor}{colorTwo!50}
+  % \colorlet{blockbodyfgcolor}{black}% Innerblock Colors
+  % \colorlet{innerblocktitlebgcolor}{white}
+  % \colorlet{innerblocktitlefgcolor}{black}
+  % \colorlet{innerblockbodybgcolor}{white}
+  % \colorlet{innerblockbodyfgcolor}{black}% Note colors
+  % \colorlet{notefgcolor}{black}
+  % \colorlet{notebgcolor}{white}
+  % \colorlet{notefrcolor}{white}
+}
+\usecolorstyle{VectorPosterColorStyle}
+
+
+
+\newcommand{\specialblock}[2]{%
+  {
+    \colorlet{backgroundcolor}{white}
+    \colorlet{innerblocktitlebgcolor}{white}
+    \colorlet{innerblockbodybgcolor}{white}
+    \colorlet{blocktitlefgcolor}{white}
+    \colorlet{blocktitlebgcolor}{white}
+    \colorlet{blockbodybgcolor}{white}
+    \block{#1}{#2}
+  }
+}
+
+\newcommand{\ribbon}[1]{%
+  {
+    \colorlet{backgroundcolor}{VectorPink}
+    \colorlet{innerblocktitlebgcolor}{VectorPink}
+    \colorlet{innerblockbodybgcolor}{VectorPink}
+    \colorlet{blocktitlefgcolor}{VectorPink}
+    \colorlet{blockbodyfgcolor}{black}
+    \colorlet{blocktitlebgcolor}{VectorPink}
+    \colorlet{blockbodybgcolor}{VectorPink}
+    \block{}{#1}
+  }
+}
+
+\newcommand{\backgroundgradient}{
+  % Draw color gradient in background
+  % Define topleft and bottomright (https://tex.stackexchange.com/a/505515)
+  % TikZposter only defines topright and bottomleft
+  \coordinate (topleft)     at (topright -| bottomleft);
+  \coordinate (bottomright) at (topright |- bottomleft);
+  \filldraw[%
+  right color=VectorPink,%
+  left color=VectorBlue,%
+  shading=axis,%
+  shading angle=45,%
+  ] (topleft) rectangle  (bottomright);%
+}
+
+\newcommand{\posterfooter}[1]{
+  \node [above right,
+  outer sep=0pt,
+  minimum width=\paperwidth,
+  minimum height=35mm, align=flush right,  text width=\linewidth,
+  fill=titlebgcolor] at (bottomleft) {
+    \Large\color{titlefgcolor}{#1}
+    \hspace*{15mm}};
+}
+
+\newcommand{\headerlogo}{
+  % Place logos around title
+  \makeatletter%
+  \node[anchor=east, xshift=-1cm, align=right] at
+  ($ (TP@title.south east)!0.275!(TP@title.north east) $)
+  {\includegraphics[height=5cm]{postertheme/vector_institute/assets/logo_horizontal_inverted}
+  };%
+  \makeatother
+}

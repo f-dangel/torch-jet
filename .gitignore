@@ -25,6 +25,7 @@
 **.pdf-view-restore
 **.deps-*
 paper/main.pdf
+poster/main.pdf
 .aider*
 docs/generated/
 docs/examples/*.png

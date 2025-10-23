@@ -16,7 +16,8 @@ from jet.utils import Primal, PrimalAndCoefficients, Value, ValueAndCoefficients
 def analyze_dependencies(graph: Graph) -> tuple[set[str], set[str]]:
     """Determine nodes that depend on placeholders or only on constants.
 
-    Assume that all nodes have unique names
+    Assume that all nodes have unique names.
+
     Args:
         graph: The graph to analyze.
 

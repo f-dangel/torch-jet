@@ -24,15 +24,14 @@ class JetTransformer(Transformer):
     depend only on constants are left unchanged, while those depending on
     placeholders are replaced by the corresponding jet operations defined
     in `jet.operations.MAPPING`.
-
     """
 
     def __init__(
         self,
         module: GraphModule,
         derivative_order: int,
-        dependent_on_placeholders: tuple[str, ...],
-        dependent_on_constants: tuple[str, ...],
+        dependent_on_placeholders: set[str],
+        dependent_on_constants: set[str],
     ):
         """Initialize the JetTransformer.
 
@@ -44,9 +43,9 @@ class JetTransformer(Transformer):
         Args:
             module: The traced computation graph module to be transformed.
             derivative_order: The order of the Taylor expansion.
-            dependent_on_placeholders: Tuple of node names that depend on
+            dependent_on_placeholders: set of node names that depend on
                 placeholder (input) nodes.
-            dependent_on_constants: Tuple of node names that depend only on
+            dependent_on_constants: set of node names that depend only on
                 constant (attribute) nodes.
         """
         super().__init__(module)
@@ -75,13 +74,20 @@ class JetTransformer(Transformer):
 
         Raises:
             RuntimeError: If dependency status cannot be determined for any argument.
+            RuntimeError: If an argument dependent either on placeholders and only on
+            constants or neither on placeholders nor only on constants
         """
         is_taylor = []
         for arg in args:
             if isinstance(arg, Proxy):
                 in_placeholders = arg.node.name in self.dependent_on_placeholders
                 in_constants = arg.node.name in self.dependent_on_constants
-                assert int(in_placeholders) + int(in_constants) == 1
+                if not (in_placeholders ^ in_constants):
+                    raise RuntimeError(
+                        f"Node {arg.node=} can not depend on placeholders and only on constants!"
+                        if in_placeholders  # both are true
+                        else f"Node {arg.node=} should either depend on placeholders or only on constants!"
+                    )
                 is_taylor.append(in_placeholders)
 
             elif isinstance(arg, tuple) and all(isinstance(a, Proxy) for a in arg):

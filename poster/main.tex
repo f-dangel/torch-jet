@@ -1,0 +1,108 @@
+\documentclass[a0paper]{tikzposter}
+% Force a 16 by 9 ratio, 33.1 is same height as a0
+\geometry{paperwidth=58.844in,paperheight=33.1in}
+
+\usepackage{amsmath}
+\usepackage{postertheme/vector_institute/vector_institute}
+
+\input{../paper/preamble/goodfellow.tex}
+
+% \useblockstyle{Envelope}
+% \usebackgroundstyle{Empty}
+\usetitlestyle{Filled}
+
+\title{
+  \fontsize{180}{90}\selectfont
+  \bf Collapsing Taylor Mode Automatic Differentiation
+}
+\author{\Huge
+  Felix Dangel*, Tim Siebert*, Marius Zeinhofer, Andrea Walther
+}
+\institute{
+  \LARGE
+  Vector Institute (Canada), TODO (Germany), ETH Z\"urich)
+}
+
+
+\begin{document}
+% ==============================================================================
+% HEADER & FOOTER
+
+\backgroundgradient % Adds the background features
+\maketitle
+\headerlogo % Adds Vector logo to header
+\posterfooter{Poster footer with additional information} % Footer
+
+\hspace{-35cm}
+\begin{columns}
+  \centering
+  \begin{column}{1.85}
+    \centering \ribbon{\centering\fontsize{120}{80}\selectfont\textcolor{white}{\bf
+        \underline{TL;DR:}\quad We accelerate Taylor mode for practically relevant differential operators. \\[0.5ex]
+        \hspace{-9.75ex}\underline{\phantom{;\!}How:}\quad By simple graph rewrites that collapse Taylor coefficients.}}
+  \end{column}
+\end{columns}
+\hspace{2cm}
+
+\begin{columns}
+  \column{0.598}
+  \block{Background: Taylor Mode}{
+    \begin{minipage}{0.63\linewidth}
+      TODO
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.33\linewidth}
+      \centering
+      \includegraphics[width=\linewidth]{example-image-a}
+    \end{minipage}
+
+    \begin{center}
+      \centering
+      Figure of compute graph
+
+      \includegraphics[width=0.5\linewidth]{example-image-a}
+    \end{center}
+
+    FYI: So far, only JAX implemented Taylor mode.
+
+    Our paper introduces a PyTorch library for Taylor mode.
+    \begin{center}
+      \texttt{pip install jet-for-pytorch}
+    \end{center}
+  }
+
+  \column{0.598}
+  \block{Main idea: Use linearity to collapse computations}{
+    What is better?
+    \begin{align*}
+      \mW \left( \sum_n \vx_n \right)
+      \intertext{or}
+      \sum_n \left( \mW \vx_n \right)
+    \end{align*}
+
+    Applies to:
+    \begin{itemize}
+    \item Laplacian $\to$ forward Laplacian
+    \item Randomized Taylor mode (e.g. stochastic Laplacian estimator)
+    \item General linear PDE operators (e.g. Bilaplacian)
+    \end{itemize}
+  }
+
+  \column{0.598}
+  \block{Practical Improvements}{
+
+    Some experiments here.
+
+    \vspace{5cm}
+
+    {\Huge \bfseries Want to work on similar topics? Felix is hiring!}
+
+
+  }
+\end{columns}
+
+\end{document}
+%%% Local Variables:
+%%% mode: LaTeX
+%%% TeX-master: t
+%%% End:

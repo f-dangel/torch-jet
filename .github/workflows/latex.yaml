@@ -13,3 +13,9 @@ jobs:
         with:
           working_directory: paper
           root_file: main.tex
+      - name: poster
+        uses: xu-cheng/latex-action@v3
+        with:
+          working_directory: poster
+          root_file: main.tex
+          texlive_version: 2023 # Throws an error with more recent versions

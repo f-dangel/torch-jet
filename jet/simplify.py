@@ -334,7 +334,9 @@ def simplify(  # noqa: C901
         if n.op == "call_function" and n.target in {replicate, sum_vmapped}
     ]:
         with check_unaltered(mod, test_x):
-            standardize_signature(node, verbose=verbose)
+            node.args, node.kwargs = standardize_signature(
+                node.target, node.args, node.kwargs, verbose=verbose
+            )
 
     # Initialize PushReplicate* rules
     replicate_rules = [

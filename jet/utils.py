@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 from torch import Tensor, device, dtype, empty, randn
 from torch.fx import GraphModule, Node
+from torch.fx.node import Argument
 from torch.nn import Module
 
 from jet.signature_parser import parse_torch_builtin
@@ -237,7 +238,7 @@ def _get_signature(f: Callable) -> Signature:
 
 
 def separate_args_and_kwargs(
-    f: Callable, args: tuple[Any, ...], kwargs: dict[str, Any]
+    f: Callable, args: tuple[Argument, ...], kwargs: dict[str, Argument]
 ) -> tuple[tuple[Any, ...], dict[str, Any]]:
     """Return mandatory arguments in positional and optional arguments in keyword form.
 
@@ -277,7 +278,12 @@ def separate_args_and_kwargs(
     return positional, optional
 
 
-def standardize_signature(node: Node, verbose: bool = False):
+def standardize_signature(
+    f: Callable,
+    args: tuple[Argument, ...],
+    kwargs: dict[str, Argument],
+    verbose: bool = False,
+) -> tuple[tuple[Argument, ...], dict[str, Argument]]:
     """Standardize the args and kwargs of a node (inplace).
 
     This function modifies the node's args and kwargs to match the signature of the
@@ -287,25 +293,27 @@ def standardize_signature(node: Node, verbose: bool = False):
     E.g., the call `replicate(x, times=4)` is standardized to `replicate(x, 4, pos=0)`.
 
     Args:
-        node: The node to standardize. It should be a call_function node with a target
-            that has a signature.
+        f: The function that should be standardized.
+        args: The current arguments.
+        kwargs: The current keyword arguments.
         verbose: If True, print the node's args and kwargs before and after.
             Default: `False`.
+
+    Returns:
+        Standardized arguments and keywords.
 
     Raises:
         ValueError: If the node is not a call_function node.
     """
-    if node.op != "call_function":
-        raise ValueError(f"{node=} is not a call_function node {node.op=}.")
+    if verbose:
+        print(f"Standardizing {f=}: {args=}, {kwargs=} ->", end=" ")
+
+    new_args, new_kwargs = separate_args_and_kwargs(f, args, kwargs)
 
     if verbose:
-        print(f"Standardizing {node=}: {node.args=}, {node.kwargs=} ->", end=" ")
+        print(f"{args=}, {kwargs=}.")
 
-    new_args, new_kwargs = separate_args_and_kwargs(node.target, node.args, node.kwargs)
-    node.args, node.kwargs = new_args, new_kwargs
-
-    if verbose:
-        print(f"{node.args=}, {node.kwargs=}.")
+    return new_args, new_kwargs
 
 
 def recursive_hasattr(obj: Any, attr: str) -> bool:

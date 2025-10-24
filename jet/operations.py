@@ -1,7 +1,7 @@
 """Implementation of AD primitives in Taylor-mode arithmetic."""
 
 import operator
-from typing import TypedDict
+from typing import TypedDict, Union
 
 from scipy.special import comb, factorial, stirling2
 from torch import Tensor, cos, mul, sigmoid, sin, tanh
@@ -16,6 +16,11 @@ from jet.utils import (
     integer_partitions,
     multiplicity,
 )
+
+IsTaylorType = Union[
+    tuple[bool, ...],  # only positional args
+    tuple[tuple[bool, ...], dict[str, bool]],  # positional + kwargs
+]
 
 
 class JetInfo(TypedDict, total=True):
@@ -43,7 +48,7 @@ class JetInfo(TypedDict, total=True):
     """
 
     derivative_order: int
-    is_taylor: tuple[tuple[bool, ...], dict[str, bool]]
+    is_taylor: IsTaylorType
 
 
 def _faa_di_bruno(
@@ -83,7 +88,7 @@ def _faa_di_bruno(
 
 
 def jet_sin(
-    self_and_taylor_coefficients: PrimalAndCoefficients, _jet_info: JetInfo
+    self_and_taylor_coefficients: PrimalAndCoefficients, *, _jet_info: JetInfo
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the sine function.
 
@@ -118,7 +123,7 @@ def jet_sin(
 
 
 def jet_cos(
-    self_and_taylor_coefficients: PrimalAndCoefficients, _jet_info: JetInfo
+    self_and_taylor_coefficients: PrimalAndCoefficients, *, _jet_info: JetInfo
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the cosine function.
 
@@ -153,7 +158,7 @@ def jet_cos(
 
 
 def jet_tanh(
-    self_and_taylor_coefficients: PrimalAndCoefficients, _jet_info: JetInfo
+    self_and_taylor_coefficients: PrimalAndCoefficients, *, _jet_info: JetInfo
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the hyperbolic tangent function.
 
@@ -208,7 +213,7 @@ def jet_tanh(
 
 
 def jet_sigmoid(
-    self_and_taylor_coefficients: PrimalAndCoefficients, _jet_info: JetInfo
+    self_and_taylor_coefficients: PrimalAndCoefficients, *, _jet_info: JetInfo
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the sigmoid function.
 
@@ -262,7 +267,8 @@ def jet_linear(
     input_and_taylor_coefficients: PrimalAndCoefficients,
     weight: Tensor,
     bias: Tensor | None = None,
-    _jet_info: JetInfo | None = None,
+    *,
+    _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the linear function.
 
@@ -294,6 +300,7 @@ def jet_linear(
 def jet_pow(
     base_and_taylor_coefficients: PrimalAndCoefficients,
     exponent: float | int,
+    *,
     _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the power function with integer exponent.
@@ -342,6 +349,7 @@ def jet_pow(
 def jet_add(
     a_and_taylor_coefficients: Primal | PrimalAndCoefficients | float | int,
     b_and_taylor_coefficients: Primal | PrimalAndCoefficients | float | int,
+    *,
     _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for addition.
@@ -378,6 +386,7 @@ def jet_add(
 def jet_sub(
     a_and_taylor_coefficients: Primal | PrimalAndCoefficients | float | int,
     b_and_taylor_coefficients: Primal | PrimalAndCoefficients | float | int,
+    *,
     _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for subtraction.
@@ -414,6 +423,7 @@ def jet_sub(
 def jet_mul(
     a_and_taylor_coefficients: Primal | PrimalAndCoefficients,
     b_and_taylor_coefficients: Primal | PrimalAndCoefficients,
+    *,
     _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for multiplication of two variables.
@@ -461,7 +471,8 @@ def jet_replicate(
     self_and_taylor_coefficients: PrimalAndCoefficients,
     times: int,
     pos: int = 0,
-    _jet_info: JetInfo | None = None,
+    *,
+    _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the replicate function.
 
@@ -494,7 +505,8 @@ def jet_replicate(
 def jet_sum_vmapped(
     self_and_taylor_coefficients: PrimalAndCoefficients,
     pos: int = 0,
-    _jet_info: JetInfo | None = None,
+    *,
+    _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
     """Taylor-mode arithmetic for the sum_vmapped function.
 

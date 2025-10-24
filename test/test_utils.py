@@ -50,7 +50,9 @@ def test_standardize_signature():
         n = g.create_node(
             "call_function", jet.utils.replicate, args=args, kwargs=kwargs
         )
-        standardize_signature(n, verbose=True)
+        n.args, n.kwargs = standardize_signature(
+            n.target, n.args, n.kwargs, verbose=True
+        )
         assert n.args == (x, times)
         pos = args[2] if len(args) == 3 else kwargs.get("pos", 0)
         assert n.kwargs == {"pos": pos}

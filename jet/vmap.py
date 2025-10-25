@@ -168,7 +168,7 @@ def vmap_linear(
 
     Raises:
         NotImplementedError: If the input tensor is constant or if the weight tensor
-        is not constant, or if the bias is not constant.
+            is not constant, or if the bias is not constant.
         ValueError: If vmapsize is not positive.
     """
     if is_const[0] or not is_const[1]:

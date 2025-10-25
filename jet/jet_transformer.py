@@ -8,18 +8,13 @@ inputs from those that depend only on constants and substitutes the
 corresponding jet operations from `jet.operations.MAPPING`.
 """
 
+from torch import mul
 from torch.fx import GraphModule, Proxy, Transformer
 from torch.fx.node import Argument, Target
 from torch.fx.traceback import get_current_meta
 
 from jet.operations import MAPPING, IsTaylorType, JetInfo
 from jet.utils import standardize_signature
-
-
-class JetDependencyError(RuntimeError):
-    """Error type for cases where dependencies of a node can node be detected."""
-
-    pass
 
 
 class JetTransformer(Transformer):
@@ -83,13 +78,13 @@ class JetTransformer(Transformer):
             False if it depends only on constants.
 
         Raises:
-            JetDependencyError: if the argument’s dependency cannot be determined or is contradictory.
+            RuntimeError: if the argument’s dependency cannot be determined or is contradictory.
         """
         if isinstance(arg, Proxy):
             in_placeholders = arg.node.name in self.dependent_on_placeholders
             in_constants = arg.node.name in self.dependent_on_constants
             if not in_placeholders ^ in_constants:
-                raise JetDependencyError(
+                raise RuntimeError(
                     f"Node {arg.node=} can not depend on placeholders and only on constants!"
                     if in_placeholders  # both are true
                     else f"Node {arg.node=} should either depend on placeholders or only on constants!"
@@ -103,7 +98,7 @@ class JetTransformer(Transformer):
             return False
 
         else:
-            raise JetDependencyError(f"Could not detect dependency of {arg}.")
+            raise RuntimeError(f"Could not detect dependency of {arg}.")
 
     def _constant_proxy(
         self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Argument]
@@ -196,35 +191,20 @@ class JetTransformer(Transformer):
         Returns:
             The transformed `torch.fx.Proxy` node.
         """
-        from torch import mul
-
-        # Skip standardization for anonymous lambdas and torch.mul
-        if (
-            hasattr(target, "__name__")
-            and target.__name__ != "<lambda>"
-            and target is not mul
-        ):
+        # FIXME handle multiplication before JetTransform (see issue #107)
+        if hasattr(target, "__name__") and target is not mul:
             args, kwargs = standardize_signature(target, args, kwargs)
 
         is_taylor_args = tuple(self._check_dependency(arg) for arg in args)
         is_taylor_kwargs = {
             key: self._check_dependency(arg) for key, arg in kwargs.items()
         }
-
-        is_taylor = (
-            (is_taylor_args, is_taylor_kwargs) if is_taylor_kwargs else is_taylor_args
-        )
-
-        no_taylor_flag = not (
-            any(is_taylor_args) or any(is_taylor_kwargs.values())
-            if is_taylor_kwargs
-            else any(is_taylor_args)
-        )
+        no_taylor_flag = any(is_taylor_args) or any(is_taylor_kwargs.values())
 
         return (
-            self._constant_proxy(target, args, kwargs)
+            self._jet_proxy(target, args, kwargs, (is_taylor_args, is_taylor_kwargs))
             if no_taylor_flag
-            else self._jet_proxy(target, args, kwargs, is_taylor)
+            else self._constant_proxy(target, args, kwargs)
         )
 
     def call_module(

@@ -229,6 +229,14 @@ def print_tensor_constants_and_shapes(mod: GraphModule):
 
 
 def _get_signature(f: Callable) -> Signature:
+    """Determines the signature of a function.
+
+    Args:
+        f: The function whose signature is to be determined.
+
+    Returns:
+        The function signature.
+    """
     try:
         # Try to get the signature using inspect.signature
         return signature(f)
@@ -301,9 +309,6 @@ def standardize_signature(
 
     Returns:
         Standardized arguments and keywords.
-
-    Raises:
-        ValueError: If the node is not a call_function node.
     """
     if verbose:
         print(f"Standardizing {f=}: {args=}, {kwargs=} ->", end=" ")
@@ -311,7 +316,7 @@ def standardize_signature(
     new_args, new_kwargs = separate_args_and_kwargs(f, args, kwargs)
 
     if verbose:
-        print(f"{args=}, {kwargs=}.")
+        print(f"{new_args=}, {new_kwargs=}.")
 
     return new_args, new_kwargs
 

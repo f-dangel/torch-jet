@@ -1,7 +1,7 @@
 """Implementation of AD primitives in Taylor-mode arithmetic."""
 
 import operator
-from typing import TypedDict, Union
+from typing import TypedDict
 
 from scipy.special import comb, factorial, stirling2
 from torch import Tensor, cos, mul, sigmoid, sin, tanh
@@ -17,10 +17,7 @@ from jet.utils import (
     multiplicity,
 )
 
-IsTaylorType = Union[
-    tuple[bool, ...],  # only positional args
-    tuple[tuple[bool, ...], dict[str, bool]],  # positional + kwargs
-]
+IsTaylorType = tuple[tuple[bool, ...], dict[str, bool]]  # positional + kwargs
 
 
 class JetInfo(TypedDict, total=True):
@@ -31,19 +28,19 @@ class JetInfo(TypedDict, total=True):
     that we can check for correct keys and value types.
 
     Keys:
-        derivative_order (int):
+        derivative_order:
             The truncation order `K` of the Taylor expansion.
             For example, if `derivative_order=3`, coefficients up to the
             third derivative are computed.
 
-        is_taylor (tuple[bool, ...]):
-            A tuple flagging which inputs are Taylor coefficients.
-            Each entry corresponds to an argument of the primitive:
+        is_taylor:
+            A tuple containing a tuple and a dict flagging which inputs are Taylor coefficients.
+            Each entry of the tuple (dict) corresponds to an arg (kwarg) of the primitive:
               - `True` means the argument is treated as a Taylor-expanded input.
               - `False` means the argument is treated as a constant.
 
     Example:
-        >>> info: JetInfo = {"derivative_order": 2, "is_taylor": (True, False)}
+        >>> info: JetInfo = {"derivative_order": 2, "is_taylor": ((True, False), {"bias": False})}
         >>> # This means: expand to 2nd order, first arg is Taylor, second is constant.
     """
 
@@ -94,14 +91,13 @@ def jet_sin(
 
     Args:
         self_and_taylor_coefficients: The primal and its Taylor coefficients.
-        K: The order of the Taylor expansion.
-        is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
+        _jet_info: Indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
 
     Returns:
         The value and its Taylor coefficients.
     """
-    if _jet_info["is_taylor"] != (True,):
+    if _jet_info["is_taylor"] != ((True,), {}):
         raise NotImplementedError(f"Not implemented for {_jet_info["is_taylor"]=}.")
 
     x, vs = self_and_taylor_coefficients[0], self_and_taylor_coefficients[1:]
@@ -129,14 +125,13 @@ def jet_cos(
 
     Args:
         self_and_taylor_coefficients: The primal and its Taylor coefficients.
-        K: The order of the Taylor expansion.
-        is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
+        _jet_info: Indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
 
     Returns:
         The value and its Taylor coefficients.
     """
-    if _jet_info["is_taylor"] != (True,):
+    if _jet_info["is_taylor"] != ((True,), {}):
         raise NotImplementedError(f"Not implemented for {_jet_info["is_taylor"]=}.")
 
     x, vs = self_and_taylor_coefficients[0], self_and_taylor_coefficients[1:]
@@ -164,14 +159,13 @@ def jet_tanh(
 
     Args:
         self_and_taylor_coefficients: The primal and its Taylor coefficients.
-        K: The order of the Taylor expansion.
-        is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
+        _jet_info: Indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
 
     Returns:
         The value and its Taylor coefficients.
     """
-    if _jet_info["is_taylor"] != (True,):
+    if _jet_info["is_taylor"] != ((True,), {}):
         raise NotImplementedError(f"Not implemented for {_jet_info["is_taylor"]=}.")
 
     x, vs = self_and_taylor_coefficients[0], self_and_taylor_coefficients[1:]
@@ -219,14 +213,13 @@ def jet_sigmoid(
 
     Args:
         self_and_taylor_coefficients: The primal and its Taylor coefficients.
-        K: The order of the Taylor expansion.
-        is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
+        _jet_info: Indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
 
     Returns:
         The value and its Taylor coefficients.
     """
-    if _jet_info["is_taylor"] != (True,):
+    if _jet_info["is_taylor"] != ((True,), {}):
         raise NotImplementedError(f"Not implemented for {_jet_info["is_taylor"]=}.")
     x, vs = self_and_taylor_coefficients[0], self_and_taylor_coefficients[1:]
 
@@ -276,8 +269,7 @@ def jet_linear(
         input_and_taylor_coefficients: The primal and its Taylor coefficients.
         weight: The weight matrix.
         bias: The (optional) bias vector.
-        K: The order of the Taylor expansion.
-        is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
+        _jet_info: Indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
 
     Returns:
@@ -308,8 +300,7 @@ def jet_pow(
     Args:
         base_and_taylor_coefficients: The primal and its Taylor coefficients.
         exponent: The integer exponent.
-        K: The order of the Taylor expansion.
-        is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
+        _jet_info: Indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
 
     Returns:
@@ -319,7 +310,7 @@ def jet_pow(
         NotImplementedError: If a Taylor coefficient is passed as exponent.
     """
     assert isinstance(exponent, (float, int))
-    if _jet_info["is_taylor"] != (True, False):
+    if _jet_info["is_taylor"] != ((True, False), {}):
         raise NotImplementedError(f"Not implemented for {_jet_info["is_taylor"]=}.")
 
     x, vs = base_and_taylor_coefficients[0], base_and_taylor_coefficients[1:]
@@ -357,14 +348,16 @@ def jet_add(
     Args:
         a_and_taylor_coefficients: The first primal and its Taylor coefficients, or a scalar.
         b_and_taylor_coefficients: The second primal and its Taylor coefficients, or a scalar.
-        K: The order of the Taylor expansion.
-        is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
+        _jet_info: Indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
 
     Returns:
         The value and its Taylor coefficients.
     """
-    coeff1, coeff2 = _jet_info["is_taylor"]
+    if _jet_info["is_taylor"][1] != {}:
+        raise NotImplementedError(f"Not implemented for {_jet_info["is_taylor"]=}.")
+
+    (coeff1, coeff2) = _jet_info["is_taylor"][0]
 
     if (coeff1, coeff2) == (True, True):
         return tuple(
@@ -394,14 +387,16 @@ def jet_sub(
     Args:
         a_and_taylor_coefficients: The first primal and its Taylor coefficients, or a scalar.
         b_and_taylor_coefficients: The second primal and its Taylor coefficients, or a scalar.
-        K: The order of the Taylor expansion.
-        is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
+        _jet_info: Indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
 
     Returns:
         The value and its Taylor coefficients.
     """
-    (coeff1, coeff2) = _jet_info["is_taylor"]
+    if _jet_info["is_taylor"][1] != {}:
+        raise NotImplementedError(f"Not implemented for {_jet_info["is_taylor"]=}.")
+
+    (coeff1, coeff2) = _jet_info["is_taylor"][0]
 
     if (coeff1, coeff2) == (True, True):
         return tuple(
@@ -431,14 +426,16 @@ def jet_mul(
     Args:
         a_and_taylor_coefficients: The first primal and its Taylor coefficients.
         b_and_taylor_coefficients: The second primal and its Taylor coefficients.
-        K: The order of the Taylor expansion.
-        is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
+        _jet_info: Indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
 
     Returns:
         The value and its Taylor coefficients.
     """
-    (coeff1, coeff2) = _jet_info["is_taylor"]
+    if _jet_info["is_taylor"][1] != {}:
+        raise NotImplementedError(f"Not implemented for {_jet_info["is_taylor"]=}.")
+
+    (coeff1, coeff2) = _jet_info["is_taylor"][0]
 
     if (coeff1, coeff2) == (True, True):
         s_out = ()
@@ -480,8 +477,7 @@ def jet_replicate(
         self_and_taylor_coefficients: The primal and its Taylor coefficients.
         times: The number of times to replicate the tensor.
         pos: The position along which to replicate.
-        K: The order of the Taylor expansion.
-        is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
+        _jet_info: Indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
 
     Returns:
@@ -490,14 +486,11 @@ def jet_replicate(
     Raises:
         NotImplementedError: If `is_taylor` is not one of the supported configurations.
     """
-    if _jet_info is None:
-        raise ValueError("JetInfos should be provided!")
-
     if _jet_info["is_taylor"] != ((True, False), {"pos": False}):
         raise NotImplementedError(f"{_jet_info["is_taylor"]=} is not implemented.")
 
     return tuple(
-        jet.utils.replicate(self_and_taylor_coefficients[k], times, pos)
+        jet.utils.replicate(self_and_taylor_coefficients[k], times, pos=pos)
         for k in range(_jet_info["derivative_order"] + 1)
     )
 
@@ -513,8 +506,7 @@ def jet_sum_vmapped(
     Args:
         self_and_taylor_coefficients: The primal and its Taylor coefficients.
         pos: The position along which to sum.
-        K: The order of the Taylor expansion.
-        is_taylor: A tuple indicating which arguments are Taylor coefficients (`True`)
+        _jet_info: Indicating which arguments are Taylor coefficients (`True`)
             and which are constants (`False`).
 
     Returns:
@@ -528,7 +520,7 @@ def jet_sum_vmapped(
 
     if _jet_info["is_taylor"] != ((True,), {"pos": False}):
         raise NotImplementedError(
-            f"Got {_jet_info["is_taylor"]=}. Only supports (True, False) and (True,)."
+            f"Got {_jet_info["is_taylor"]=}. Only supports ((True,), {{'pos': False}}."
         )
 
     return tuple(

@@ -5,7 +5,7 @@ from importlib.metadata import version as get_version
 from inspect import Parameter, Signature
 from pathlib import Path
 from re import match, sub
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 from urllib.error import URLError
 from urllib.request import urlretrieve
 from warnings import warn
@@ -115,9 +115,7 @@ def parse_torch_builtin(f: Callable) -> Signature:
     return Signature(parameters)
 
 
-def _str_to_param(
-    param_str: str, keyword_only: Optional[bool] = False
-) -> Parameter | None:
+def _str_to_param(param_str: str, keyword_only: bool = False) -> Parameter | None:
     """Convert a parameter string from native_functions.yaml to a Parameter object.
 
     Args:

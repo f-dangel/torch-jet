@@ -121,33 +121,6 @@ def _replace_operations_with_taylor(  # noqa: C901, PLR0912, PLR0915
             output_node.replace_input_with(out_tensor, trivial_node)
         dependent_on_placeholders.add(trivial_node.name)
 
-    # find the input node and insert nodes for the Taylor coefficients
-    # currently we assume there is only one independent node (aka placeholder)
-    (x,) = [node for node in graph.nodes if node.op == "placeholder"]
-    vs = []
-    current_node = x
-    # after loop we have vs = [x, v1, v2, ...] and similarly in the graph
-    for i in range(1, derivative_order + 1):
-        with graph.inserting_after(current_node):
-            v_i = graph.placeholder(name=f"v{i}")
-            vs.append(v_i)
-            current_node = v_i
-
-    # find the nodes that consume the original input, replace each with a new node whose
-    # argument is the tuple of original input and Taylor coefficients
-    children_x = [node for node in graph.nodes if x in node.args]
-    for child_x in children_x:
-        with graph.inserting_after(child_x):
-            where = child_x.args.index(x)
-            new_args = list(child_x.args)
-            new_args[where] = (x, *vs)
-            new_node = graph.call_function(
-                child_x.target, args=tuple(new_args), kwargs=child_x.kwargs
-            )
-        child_x.replace_all_uses_with(new_node)
-        graph.erase_node(child_x)
-        dependent_on_placeholders.add(new_node.name)
-
     mod = JetTransformer(
         mod,
         derivative_order,

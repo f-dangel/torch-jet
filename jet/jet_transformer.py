@@ -18,7 +18,17 @@ from jet.operations import MAPPING, JetInfo
 class JetTransformer(Transformer):
     """Transformer that replaces nodes with their Taylor mode (jet) equivalents.
 
-    The `JetTransformer` inspects each node in a traced
+    The `JetTransformer` inserts additional placeholder nodes corresponding to
+    higher-order Taylor (jet) coefficients for each original placeholder node.
+    These additional placeholders represent the higher-order derivatives of the
+    independent variable in a Taylor mode automatic differentiation context.
+
+    The transformed graph will contain one new placeholder for each Taylor
+    coefficient, and a new node combining all of them into a tuple. This tuple
+    acts as the unified input representation for the variable and all its
+    associated jet coefficients.
+
+    Additionally the `JetTransformer` inspects each node in a traced
     `torch.fx.GraphModule` and determines whether it depends on
     placeholder inputs (i.e., variables) or only on constants. Nodes that
     depend only on constants are left unchanged, while those depending on
@@ -52,6 +62,8 @@ class JetTransformer(Transformer):
         self.derivative_order = derivative_order
         self.dependent_on_placeholders = dependent_on_placeholders
         self.dependent_on_constants = dependent_on_constants
+        # used as name for the combined node
+        self.placeholder_and_coefficient_name = "jet_placeholder_coefficients"
 
     def _is_taylor(
         self, target: Target, args: tuple[Argument, ...]
@@ -220,3 +232,51 @@ class JetTransformer(Transformer):
             f"Unsupported module: {target=}. Consider adding it to the"
             " `JetTracer.is_leaf_module` function."
         )
+
+    def placeholder(
+        self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Argument]
+    ):
+        """Replace a single placeholder node with a tuple of placeholder coefficients.
+
+        This method intercepts the creation of placeholder nodes during graph
+        transformation. For each original placeholder, it:
+          1. Creates the base placeholder (e.g., ``x``).
+          2. Creates additional placeholder nodes ``v1, v2, ..., vN`` for each
+             derivative coefficient up to ``derivative_order``.
+          3. Combines them into a tuple node ``(x, v1, ..., vN)``.
+          4. Returns this tuple node as the replacement for the original placeholder.
+
+        The tuple node will later serve as the single argument representing
+        the independent variable and its jet coefficients throughout the transformed graph.
+
+        Args:
+            target: The name of the placeholder being transformed (e.g., ``"x"``).
+            args: Positional arguments (unused for placeholders).
+            kwargs: Keyword arguments (unused for placeholders).
+
+        Returns:
+            A proxy representing a tuple of the base variable and
+            its coefficient placeholders.
+        """
+        # Create the base placeholder (the independent variable)
+        base_proxy = super().placeholder(target, args, kwargs)
+
+        # Create additional placeholders representing higher-order coefficients
+        coeffs = [
+            self.tracer.create_proxy(
+                "placeholder", f"{target}_v{i}", (), {}, name=f"{target}_v{i}"
+            )
+            for i in range(1, self.derivative_order + 1)
+        ]
+
+        # Combine the base and coefficient placeholders into a single tuple node
+        # Note: tuple() accepts a single iterable argument, hence the double parentheses.
+        tuple_proxy = self.tracer.create_proxy(
+            "call_function",
+            tuple,
+            ((base_proxy, *coeffs),),  # Pass as one iterable argument
+            {},
+            name=f"{target}_{self.placeholder_and_coefficient_name}",
+        )
+        self.dependent_on_placeholders.add(tuple_proxy.node.name)
+        return tuple_proxy

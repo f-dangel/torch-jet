@@ -15,9 +15,9 @@ from jet.utils import Primal, PrimalAndCoefficients, Value, ValueAndCoefficients
 from test.utils import report_nonclose
 
 
-def compare_jet_results(
+def compare_jet_results(  # noqa: D103
     out1: ValueAndCoefficients, out2: ValueAndCoefficients
-):  # noqa: D103
+):
     value1, series1 = out1[0], out1[1:]
     value2, series2 = out2[0], out2[1:]
 
@@ -82,13 +82,11 @@ JET_CASES = [
     # subtraction of a tensor and a float
     {"f": lambda x: x - 2.0, "shape": (5,), "id": "sub-2.0"},
     # addition of x with itself
-    {"f": lambda x: x + x, "shape": (1,), "id": "add-x-x"},
-    {"f": lambda x: x + x, "shape": (3,), "id": "add-x-x"},
+    {"f": lambda x: x + x, "shape": (5,), "id": "add-x-x_"},
     # multiplication of a tensor and a float
     {"f": lambda x: x * 3.0, "shape": (5,), "id": "mul-3.0"},
-    # addition of x with itself
-    {"f": lambda x: x * x, "shape": (1,), "id": "mul-x-x"},
-    {"f": lambda x: x * x, "shape": (3,), "id": "mul-x-x"},
+    # multiplication of x with itself
+    {"f": lambda x: x * x, "shape": (5,), "id": "mul-x-x_"},
     {"f": lambda x: jet.utils.replicate(x, 6), "shape": (5,), "id": "replicate-6"},
     # 2d sin(sin) function
     {"f": lambda x: sin(sin(x)), "shape": (2,), "id": "sin-sin"},

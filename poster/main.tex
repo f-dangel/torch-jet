@@ -98,16 +98,16 @@
 
     \begin{center}
         {\tikzset{%
-            every matrix/.append style={column sep=2ex, row sep=2.5ex},%
-            every node/.append style={scale=0.75},%
-            every path/.append style={line width=2.5pt},%
-            Stealth/.append style={scale=2},%
+            every matrix/.append style={column sep=1ex, row sep=1.25ex},%
+            every node/.append style={scale=0.375},%
+            every path/.append style={line width=1.25pt},%
+            Stealth/.append style={scale=1},%
           }
-          \begin{tikzpicture}
-            \node [inner xsep=80pt, inner ysep=30pt, draw=tab-orange, rounded corners=15pt, line width=10pt] (graph-before) {\scalebox{0.5}{\input{../paper/figures/sin_2jet_5.tex}}};
+          \begin{tikzpicture}[scale=0.5, every node/.style={scale=0.5, transform shape}]
+            \node [inner xsep=40pt, inner ysep=15pt, draw=tab-orange, rounded corners=7.5pt, line width=5pt] (graph-before) {\input{../paper/figures/sin_2jet_5.tex}};
             \coordinate (separator) at ($(graph-before.north east)!0.46!(graph-before.south east)$);
-            \draw[tab-orange, fill=tab-orange, line width=5pt, rounded corners=15pt] (graph-before.south west) rectangle (separator);
-            \node [inner xsep=80pt, inner ysep=30pt, draw=tab-orange, rounded corners=15pt, line width=10pt] at (graph-before) {\scalebox{0.5}{\input{../paper/figures/sin_2jet_5.tex}}};
+            \draw[tab-orange, fill=tab-orange, line width=2.5pt, rounded corners=7.5pt] (graph-before.south west) rectangle (separator);
+            \node [inner xsep=40pt, inner ysep=15pt, draw=tab-orange, rounded corners=7.5pt, line width=5pt] at (graph-before) {\input{../paper/figures/sin_2jet_5.tex}};
             \node [anchor=north east, align=center,font=\bfseries\LARGE] at (separator) {Propagate then sum};
           \end{tikzpicture}
         }
@@ -181,18 +181,18 @@
     % Example: Collapsing multiple 2-jets of the sine function.
     \begin{center}
         {\tikzset{%
-            every matrix/.append style={column sep=2ex, row sep=2.5ex},%
-            every node/.append style={scale=0.75},%
-            every path/.append style={line width=2.5pt},%
-            Stealth/.append style={scale=2},%
+            every matrix/.append style={column sep=1ex, row sep=1.25ex},%
+            every node/.append style={scale=0.375},%
+            every path/.append style={line width=1.25pt},%
+            Stealth/.append style={scale=1},%
           }
-          \begin{tikzpicture}
-            \node[inner xsep=80pt, inner ysep=20pt, draw=tab-green, rounded corners=15pt, line width=10pt] (graph-after) {\scalebox{0.5}{\input{../paper/figures/sin_2jet_8.tex}}};
+          \begin{tikzpicture}[scale=0.5, every node/.style={scale=0.5, transform shape}]
+            \node[inner xsep=40pt, inner ysep=10pt, draw=tab-green, rounded corners=7.5pt, line width=5pt] (graph-after) {\input{../paper/figures/sin_2jet_8.tex}};
 
             \coordinate (separator) at ($(graph-after.north east)!0.46!(graph-after.south east)$);
-            \draw [tab-green, line width=5pt, rounded corners=15pt, fill=tab-green] (graph-after.south west) rectangle (separator);
+            \draw [tab-green, line width=2.5pt, rounded corners=7.5pt, fill=tab-green] (graph-after.south west) rectangle (separator);
             % Re-draw
-            \node[inner xsep=80pt, inner ysep=20pt, draw=tab-green, rounded corners=15pt, line width=10pt] at (graph-after) {\scalebox{0.5}{\input{../paper/figures/sin_2jet_8.tex}}};
+            \node[inner xsep=40pt, inner ysep=10pt, draw=tab-green, rounded corners=7.5pt, line width=5pt] at (graph-after) {\input{../paper/figures/sin_2jet_8.tex}};
 
             \node [anchor=north east, align=center,font=\bfseries\LARGE] at (separator) {Sum then propagate};
           \end{tikzpicture}

@@ -104,10 +104,10 @@
             Stealth/.append style={scale=2},%
           }
           \begin{tikzpicture}
-            \node [inner xsep=80pt, inner ysep=30pt, draw=tab-orange, rounded corners=15pt, line width=10pt] (graph-before) {\input{../paper/figures/sin_2jet_5.tex}};
+            \node [inner xsep=80pt, inner ysep=30pt, draw=tab-orange, rounded corners=15pt, line width=10pt] (graph-before) {\scalebox{0.5}{\input{../paper/figures/sin_2jet_5.tex}}};
             \coordinate (separator) at ($(graph-before.north east)!0.46!(graph-before.south east)$);
             \draw[tab-orange, fill=tab-orange, line width=5pt, rounded corners=15pt] (graph-before.south west) rectangle (separator);
-            \node [inner xsep=80pt, inner ysep=30pt, draw=tab-orange, rounded corners=15pt, line width=10pt] at (graph-before) {\input{../paper/figures/sin_2jet_5.tex}};
+            \node [inner xsep=80pt, inner ysep=30pt, draw=tab-orange, rounded corners=15pt, line width=10pt] at (graph-before) {\scalebox{0.5}{\input{../paper/figures/sin_2jet_5.tex}}};
             \node [anchor=north east, align=center,font=\bfseries\LARGE] at (separator) {Propagate then sum};
           \end{tikzpicture}
         }
@@ -187,12 +187,12 @@
             Stealth/.append style={scale=2},%
           }
           \begin{tikzpicture}
-            \node[inner xsep=80pt, inner ysep=20pt, draw=tab-green, rounded corners=15pt, line width=10pt] (graph-after) {\input{../paper/figures/sin_2jet_8.tex}};
+            \node[inner xsep=80pt, inner ysep=20pt, draw=tab-green, rounded corners=15pt, line width=10pt] (graph-after) {\scalebox{0.5}{\input{../paper/figures/sin_2jet_8.tex}}};
 
             \coordinate (separator) at ($(graph-after.north east)!0.46!(graph-after.south east)$);
             \draw [tab-green, line width=5pt, rounded corners=15pt, fill=tab-green] (graph-after.south west) rectangle (separator);
             % Re-draw
-            \node[inner xsep=80pt, inner ysep=20pt, draw=tab-green, rounded corners=15pt, line width=10pt] at (graph-after) {\input{../paper/figures/sin_2jet_8.tex}};
+            \node[inner xsep=80pt, inner ysep=20pt, draw=tab-green, rounded corners=15pt, line width=10pt] at (graph-after) {\scalebox{0.5}{\input{../paper/figures/sin_2jet_8.tex}}};
 
             \node [anchor=north east, align=center,font=\bfseries\LARGE] at (separator) {Sum then propagate};
           \end{tikzpicture}

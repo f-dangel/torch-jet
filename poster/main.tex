@@ -97,14 +97,13 @@
     \vspace{0.85ex}
 
     \begin{center}
-      \resizebox{!}{12cm}{%
         {\tikzset{%
             every matrix/.append style={column sep=2ex, row sep=2.5ex},%
             every node/.append style={scale=0.75},%
             every path/.append style={line width=2.5pt},%
             Stealth/.append style={scale=2},%
           }
-          \begin{tikzpicture}
+          \begin{tikzpicture}[scale=1.5, transform shape]
             \node [inner xsep=80pt, inner ysep=30pt, draw=tab-orange, rounded corners=15pt, line width=10pt] (graph-before) {\input{../paper/figures/sin_2jet_5.tex}};
             \coordinate (separator) at ($(graph-before.north east)!0.46!(graph-before.south east)$);
             \draw[tab-orange, fill=tab-orange, line width=5pt, rounded corners=15pt] (graph-before.south west) rectangle (separator);
@@ -112,7 +111,6 @@
             \node [anchor=north east, align=center,font=\bfseries\LARGE] at (separator) {Propagate then sum};
           \end{tikzpicture}
         }
-      }
     \end{center}
   }
 
@@ -182,14 +180,13 @@
 
     % Example: Collapsing multiple 2-jets of the sine function.
     \begin{center}
-      \resizebox{!}{12cm}{
         {\tikzset{%
             every matrix/.append style={column sep=2ex, row sep=2.5ex},%
             every node/.append style={scale=0.75},%
             every path/.append style={line width=2.5pt},%
             Stealth/.append style={scale=2},%
           }
-          \begin{tikzpicture}
+          \begin{tikzpicture}[scale=1.5, transform shape]
             \node[inner xsep=80pt, inner ysep=20pt, draw=tab-green, rounded corners=15pt, line width=10pt] (graph-after) {\input{../paper/figures/sin_2jet_8.tex}};
 
             \coordinate (separator) at ($(graph-after.north east)!0.46!(graph-after.south east)$);
@@ -200,7 +197,6 @@
             \node [anchor=north east, align=center,font=\bfseries\LARGE] at (separator) {Sum then propagate};
           \end{tikzpicture}
         }
-      }
     \end{center}
   }
 

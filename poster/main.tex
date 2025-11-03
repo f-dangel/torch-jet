@@ -108,7 +108,7 @@
             \node [inner xsep=80pt, inner ysep=30pt, draw=tab-orange, rounded corners=15pt, line width=10pt] (graph-before) {\input{../paper/figures/sin_2jet_5.tex}};
             \coordinate (separator) at ($(graph-before.north east)!0.46!(graph-before.south east)$);
             \draw[tab-orange, fill=tab-orange, line width=5pt, rounded corners=15pt] (graph-before.south west) rectangle (separator);
-            \node [inner xsep=80pt, inner ysep=30pt, draw=tab-orange, rounded corners=15pt, line width=10pt] (graph-before) {\input{../paper/figures/sin_2jet_5.tex}};
+            \node [inner xsep=80pt, inner ysep=30pt, draw=tab-orange, rounded corners=15pt, line width=10pt] at (graph-before) {\input{../paper/figures/sin_2jet_5.tex}};
             \node [anchor=north east, align=center,font=\bfseries\LARGE] at (separator) {Propagate then sum};
           \end{tikzpicture}
         }

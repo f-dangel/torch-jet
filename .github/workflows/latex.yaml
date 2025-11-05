@@ -22,5 +22,5 @@ jobs:
       - name: animation
         uses: xu-cheng/latex-action@v3
         with:
-          working_directory: poster/figures
+          working_directory: poster
           root_file: anim.tex

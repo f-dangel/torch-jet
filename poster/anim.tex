@@ -1,0 +1,35 @@
+\documentclass[tikz]{standalone}
+\usepackage{tikz}
+\usepackage{graphicx}
+
+\begin{document}
+
+% This creates a .pdf animation (viewing only supported by Adobe Reader)
+% \usepackage{animate}
+% \animategraphics[autoplay,loop]{0.3}{figures/sin_2jet_}{0}{3}
+
+\begin{tikzpicture}
+  \node (img) {\includegraphics{figures/sin_2jet_0}};
+  \node [anchor=south west, yshift=2ex] at (img.north west) {\textbf{(1/4) Start:} Propagate then sum (inefficient)};
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (img) {\includegraphics{figures/sin_2jet_1}};
+  \node [anchor=south west, yshift=2ex] at (img.north west) {\textbf{(2/4) Graph rewrite:} Pull \texttt{sum} upwards};
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (img) {\includegraphics{figures/sin_2jet_2}};
+  \node [anchor=south west, yshift=2ex] at (img.north west) {\textbf{(3/4) Graph rewrite:} Pull \texttt{sum} upwards};
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \node (img) {\includegraphics{figures/sin_2jet_3}};
+  \node [anchor=south west, yshift=2ex] at (img.north west) {\textbf{(4/4) End:} Sum then propagate (efficient)};
+\end{tikzpicture}
+
+\end{document}
+%%% Local Variables:
+%%% mode: LaTeX
+%%% TeX-master: t
+%%% End:

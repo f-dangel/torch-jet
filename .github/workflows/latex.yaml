@@ -19,3 +19,8 @@ jobs:
           working_directory: poster
           root_file: main.tex
           texlive_version: 2023 # Throws an error with more recent versions
+      - name: animation
+        uses: xu-cheng/latex-action@v3
+        with:
+          working_directory: poster/figures
+          root_file: anim.tex

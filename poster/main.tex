@@ -3,25 +3,46 @@
 \geometry{paperwidth=58.844in,paperheight=33.1in}
 
 \usepackage{amsmath}
+\usepackage{siunitx}
+\usepackage{booktabs}
+\usepackage{makecell} % table cells with multiple lines of text
+\usepackage{multirow}
 \usepackage{postertheme/vector_institute/vector_institute}
 
+\definecolor{colorbrewer-green}{RGB}{27, 158, 119}
+\colorlet{tab-green}{colorbrewer-green}
+\definecolor{colorbrewer-orange}{RGB}{217, 95, 2}
+\colorlet{tab-orange}{colorbrewer-orange}
+\definecolor{colorbrewer-blue}{RGB}{117, 112, 179}
+\colorlet{tab-blue}{colorbrewer-blue}
+
 \input{../paper/preamble/goodfellow.tex}
+\usetikzlibrary{calc,positioning}
 
 % \useblockstyle{Envelope}
 % \usebackgroundstyle{Empty}
 \usetitlestyle{Filled}
 
 \title{
-  \fontsize{180}{90}\selectfont
+  \fontsize{180}{198}\selectfont
   \bf Collapsing Taylor Mode Automatic Differentiation
 }
-\author{\Huge
+\author{
+  \fontsize{60}{66}\selectfont
   Felix Dangel*, Tim Siebert*, Marius Zeinhofer, Andrea Walther
 }
 \institute{
-  \LARGE
-  Vector Institute (Canada), TODO (Germany), ETH Z\"urich)
+  \fontsize{50}{55}\selectfont
+  Vector Institute (Canada),
+  Humboldt University \& Zuse Institute Berlin (Germany),
+  ETH Z\"urich (Switzerland)
 }
+
+% Make the most-used fonts bigger
+\renewcommand{\normalsize}{\fontsize{40}{44}\selectfont}
+\renewcommand{\large}{\fontsize{45}{49.5}\selectfont}
+\renewcommand{\Large}{\fontsize{50}{55}\selectfont}
+\renewcommand{\LARGE}{\fontsize{55}{60.5}\selectfont}
 
 
 \begin{document}
@@ -31,7 +52,8 @@
 \backgroundgradient % Adds the background features
 \maketitle
 \headerlogo % Adds Vector logo to header
-\posterfooter{Poster footer with additional information} % Footer
+% \posterfooter{Poster footer with additional information} % Footer
+
 
 \hspace{-35cm}
 \begin{columns}
@@ -39,65 +61,187 @@
   \begin{column}{1.85}
     \centering \ribbon{\centering\fontsize{120}{80}\selectfont\textcolor{white}{\bf
         \underline{TL;DR:}\quad We accelerate Taylor mode for practically relevant differential operators. \\[0.5ex]
-        \hspace{-9.75ex}\underline{\phantom{;\!}How:}\quad By simple graph rewrites that collapse Taylor coefficients.}}
+        \hspace{-3.5ex}\underline{\phantom{;\!}How:}\quad By linearity-based graph rewrites that collapse Taylor coefficients.}}
   \end{column}
 \end{columns}
 \hspace{2cm}
 
 \begin{columns}
   \column{0.598}
-  \block{Background: Taylor Mode}{
-    \begin{minipage}{0.63\linewidth}
-      TODO
-    \end{minipage}
-    \hfill
-    \begin{minipage}{0.33\linewidth}
-      \centering
-      \includegraphics[width=\linewidth]{example-image-a}
-    \end{minipage}
+  \block{Background: What is Taylor Mode Autodiff?}{
 
     \begin{center}
-      \centering
-      Figure of compute graph
-
-      \includegraphics[width=0.5\linewidth]{example-image-a}
+      \textbf{Taylor mode generalizes forward mode to higher-order derivatives.}
     \end{center}
 
-    FYI: So far, only JAX implemented Taylor mode.
-
-    Our paper introduces a PyTorch library for Taylor mode.
+    \vspace{1.5ex}
     \begin{center}
+      \includegraphics[width=0.7\linewidth]{figures/taylor}
+    \end{center}
+
+    \vspace{1ex}
+
+    Fa\`a di-Bruno's formula describes the propagation of Taylor coefficients (jets). Choosing different Taylor coefficients computes different derivatives.
+
+    \vspace{1.5ex}
+    \begin{center}
+      \textbf{Only JAX implements Taylor mode. We implement it for PyTorch.}
+      \vspace{0.5ex}
+
       \texttt{pip install jet-for-pytorch}
     \end{center}
+
+    \vspace{0.85ex}
+
+    \begin{center}
+      \textbf{For PDE operators, we typically need to run Taylor mode along multiple directions, then sum the resulting derivatives.}
+    \end{center}
+
+    \vspace{0.85ex}
+
+    \begin{center}
+      \begin{tikzpicture}
+        \node [inner xsep=80pt, inner ysep=30pt, draw=tab-orange, rounded corners=15pt, line width=10pt] (graph-before) {\includegraphics[height=11.5cm]{figures/sin_2jet_before}};
+        \coordinate (separator) at ($(graph-before.north east)!0.46!(graph-before.south east)$);
+        \draw[tab-orange, fill=tab-orange, line width=5pt, rounded corners=15pt] (graph-before.south west) rectangle (separator);
+        % Re-draw
+        \node [inner xsep=80pt, inner ysep=30pt, draw=tab-orange, rounded corners=15pt, line width=10pt] {\includegraphics[height=11.5cm]{figures/sin_2jet_before}};
+        \node [anchor=north east, align=center] at (separator) {\textbf{Propagate then sum}};
+      \end{tikzpicture}
+    \end{center}
   }
 
   \column{0.598}
-  \block{Main idea: Use linearity to collapse computations}{
-    What is better?
+
+  \block{}{
+    \begin{minipage}[c]{0.5\linewidth}
+      \centering
+      \LARGE \bfseries
+      Interested in similar topics?
+
+      Felix is hiring for 2026!
+
+      % (Concordia University \& Mila, Montreal)
+    \end{minipage}
+    \begin{minipage}[c]{0.49\linewidth}
+      \includegraphics[height=3cm]{logos/logo-concordia.pdf}
+      % [trim={left bottom right top},clip]
+      \includegraphics[trim={6cm 8cm 6cm 8cm},clip, height=3cm]{logos/logo-mila.png}
+
+    \end{minipage}
+  }
+
+  \block{Main Idea: Use Linearity to Collapse the Propagation}{
+
+    \begin{center}
+      \textbf{Linearity is nice because order does not matter (associativity).}
+    \end{center}
+    \vspace{2.5ex}
     \begin{align*}
-      \mW \left( \sum_n \vx_n \right)
-      \intertext{or}
-      \sum_n \left( \mW \vx_n \right)
+      \begin{array}{c}
+        \text{Given a matrix $\mW$}
+        \\
+        \text{and vectors $\{\vx_n\}$,}
+        \\
+        \text{what is better?}
+      \end{array}
+      \qquad
+      \begin{array}{c c c}
+        \displaystyle
+        \color{tab-orange}
+        \sum_n \left( \mW \vx_n \right)
+        & \qquad\text{or}\qquad
+        & \color{tab-green}
+          \displaystyle \mW \Big( \sum_n \vx_n \Big)
+        \\
+        \color{tab-orange}
+        \text{\normalsize \textbf{(act then sum)}}
+        &
+        &
+          \color{tab-green}
+          \text{\normalsize \textbf{(sum then act)}}
+      \end{array}
     \end{align*}
 
-    Applies to:
-    \begin{itemize}
-    \item Laplacian $\to$ forward Laplacian
-    \item Randomized Taylor mode (e.g. stochastic Laplacian estimator)
-    \item General linear PDE operators (e.g. Bilaplacian)
-    \end{itemize}
+    \vspace{2.9ex}
+
+    \textbf{Our insight:} Fa\`a di-Bruno's formula exhibits linearity in the sum of highest Taylor components.
+    We can choose the better order and propagate the summed Taylor coefficient.
+    \textbf{We call this \textcolor{tab-green}{`collapsing' Taylor mode}.}
+
+    \vspace{2.5ex}
+
+    \textbf{Collapsing reduces FLOPs, memory, and can be automated (e.g.\,in \texttt{jit}).}
+
+    \vspace{2ex}
+
+    % Example: Collapsing multiple 2-jets of the sine function.
+    \begin{center}
+      % \resizebox{!}{12cm}{
+      % {\tikzset{%
+      % every matrix/.append style={column sep=2ex, row sep=2.5ex},%
+      % every node/.append style={scale=0.75},%
+      % every path/.append style={line width=2.5pt},%
+      % Stealth/.append style={scale=2},%
+      % }
+      \begin{tikzpicture}
+        \node [inner xsep=80pt, inner ysep=30pt, draw=tab-green, rounded corners=15pt, line width=10pt] (graph-after) {\includegraphics[height=11.5cm]{figures/sin_2jet_after}};
+        \coordinate (separator) at ($(graph-after.north east)!0.46!(graph-after.south east)$);
+        \draw [tab-green, line width=5pt, rounded corners=15pt, fill=tab-green] (graph-after.south west) rectangle (separator);
+        % Re-draw
+        \node [inner xsep=80pt, inner ysep=30pt, draw=tab-green, rounded corners=15pt, line width=10pt] {\includegraphics[height=11.5cm]{figures/sin_2jet_after}};
+        \node [anchor=north east, align=center] at (separator) {\textbf{Sum then propagate}};
+      \end{tikzpicture}
+      % }
+      % }
+    \end{center}
   }
 
+
   \column{0.598}
-  \block{Practical Improvements}{
+  \block{Scope \& Performance}{
+    \begin{minipage}[t]{0.45\linewidth}
+      \begin{center}
+        \textbf{Collapsed Taylor mode contains and improves existing methods.}
+      \end{center}
 
-    Some experiments here.
+      \vspace{1.5ex}
 
-    \vspace{5cm}
+      \begin{itemize}
+      \item \textcolor{tab-orange}{\textbf{Laplacian}}
+        \\
+        {\color{tab-green} $\Leftrightarrow$ \textbf{forward Laplacian}}
+        \\[0.1ex]
 
-    {\Huge \bfseries Want to work on similar topics? Felix is hiring!}
+      \item \textcolor{tab-orange}{\textbf{Stochastic Taylor mode}}
+        \\
+        {\color{tab-green}$\to$ \textbf{collapses samples}}
+        \\[0.1ex]
 
+      \item \textcolor{tab-orange}{\textbf{General linear PDE operators}}
+        \\
+        {\color{tab-green}$\to$ \textbf{collapses interpolation}}
+      \end{itemize}
+      \vspace{1.5ex}
+      \begin{center}
+        \textbf{Collapsing improves vanilla Taylor mode and outperforms nesting  first-order autodiff.}
+      \end{center}
 
+    \end{minipage}
+    \hfill
+    \begin{minipage}[t]{0.495\linewidth}
+      \centering
+      \vspace*{-1ex}
+      \includegraphics[width=0.9\linewidth]{figures/overview.pdf}
+    \end{minipage}
+    \begin{center}
+    \end{center}
+
+    \vspace{1ex}
+
+    \begin{center}
+      \input{tables/benchmark}
+    \end{center}
   }
 \end{columns}
 

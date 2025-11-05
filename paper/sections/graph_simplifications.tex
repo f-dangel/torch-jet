@@ -42,14 +42,22 @@ Here, $\sin$ applies element-wise and $\odot$ denotes element-wise multiplicatio
 The computational graph for this procedure is displayed in the following diagram, with input and output nodes highlighted in dark and light gray. The suffix \texttt{\_r} means that all $R$ corresponding tensors are stacked along their leading axis.
 $\texttt{replicate}$ is a function that replicates a tensor $R$ times along a new leading axis, which is in PyTorch usually for free and without additional memory overhead (using \texttt{torch.expand}). All other functions refer to those of the PyTorch API:
 
-\input{figures/sin_2jet_before}
+\begin{figure}[!h]
+  \centering
+  \scalebox{0.66}{\input{figures/sin_2jet_0.tex}}
+\end{figure}
 
 Our simplification proceeds in two steps.
 First, propagate \texttt{replicate} nodes down the graph to remove repeated computations on the same tensors. This is done in a forward traversal through the graph.
 Second, in a single backward traversal through the graph, we propagate the \texttt{sum} node up.
 After applying both steps, the graph looks as follows:
 
-\input{figures/sin_2jet_after}
+\begin{figure}[!h]
+  \centering
+  \scalebox{0.66}{
+    \input{figures/sin_2jet_9.tex}
+  }
+\end{figure}
 
 Two important properties of the new graph are (i) the \texttt{replicate} node moved to an output node, hence the corresponding redundant computation was successfully removed (ii) the highest component \texttt{x2\_r} is immediately summed then propagated, \ie, we collapsed Taylor mode and avoid the separate propagation for all \texttt{x2\_r}.
 

@@ -124,9 +124,21 @@
 \newcommand{\headerlogo}{
   % Place logos around title
   \makeatletter%
-  \node[anchor=east, xshift=-1cm, align=right] at
-  ($ (TP@title.south east)!0.275!(TP@title.north east) $)
+  \node[anchor=east, xshift=-1cm, align=right] (vector-logo)
+  at ($ (TP@title.south east)!0.275!(TP@title.north east) $)
   {\includegraphics[height=5cm]{postertheme/vector_institute/assets/logo_horizontal_inverted}
   };%
+  \node[anchor=east, xshift=10cm, align=left] (zib-logo) at
+  ($ (TP@title.south west)!0.275!(TP@title.north west) $)
+  {\includegraphics[height=5cm]{logos/logo-zib}
+  };%
   \makeatother
+  \node[anchor=east] (eth-logo)
+  at (vector-logo.west)
+  {\includegraphics[height=5cm]{logos/logo-eth-inverted}
+  };%
+  \node[anchor=west] (hu-logo)
+  at (zib-logo.east)
+  {\includegraphics[height=5cm]{logos/logo-hu-berlin}
+  };%
 }

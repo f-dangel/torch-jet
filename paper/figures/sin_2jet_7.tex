@@ -1,10 +1,9 @@
-\begin{figure}[!h]
-  \centering
+{
   \tikzset{state/.style={rectangle, rounded corners, align=left, font=\ttfamily, draw=black, anchor=west, align=left, inner sep=5pt}}
   \tikzset{leaf/.style={fill=gray!50!white}}
   \tikzset{output/.style={fill=gray!25!white}}
-  \scalebox{0.66}{
-    \begin{tikzpicture}
+  \tikzset{sum/.style={fill=green!25!white}}
+\begin{tikzpicture}
       % draw the nodes
       \matrix [%
       ampersand replacement=\&,% to use inside a savebox
@@ -17,17 +16,16 @@
         \& \node[state, output] (f0-d) {f0\_r = replicate(f0)};
         \\
         \node[state, leaf] (x1-d) {x1\_r};
-        \& \node[state] (d2f) {d2f = -f0};
+        \& \node[state] (d2f-d) {d2f = -f0};
         \& \node[state] (df) {df = cos(x0)};
-        \& \node[state, output] (f1-d) {f1\_r = 
-        einsum(``r...,...\\->r...'', df, x1\_r)};
+        \& \node[state, output] (f1-d) {f1\_r = einsum(``...,r...\\->r...'', df, x1\_r)};
         \\
         \&
-        \& \node[state] (temp1) {temp1 = einsum(``...,r...,r...\\->...'', df, x1\_r, x1\_r)};
+        \& \node[state, sum] (temp1) {temp1 = einsum(``...,r...,r...\\->...'', df, x1\_r, x1\_r)};
         \\
         \node[state, leaf] (x2-d) {x2\_r};
-        \& \node[state] (x2) {x2 = sum(x2\_r, dim=0)};
-        \& \node[state] (temp2) {temp2 = einsum(``...,...\\->...'', d2f, x2)};
+        \& \node[state, sum] (temp2) {temp2 = einsum(``...,r...\\->...'', d2f, x2\_r)};
+        \&
         \& \node[state, output] (f2) {f2 = temp1 + temp2};
         \\
       };
@@ -36,27 +34,20 @@
       \tikzset{arrow/.style={-Stealth}}
       \path
       (x0) edge [arrow] (f0)
-      (x0) edge [arrow] (df)
-      (x1-d) edge [arrow, out=18, in=175] (f1-d)
       (f0) edge [arrow] (f0-d)
-      (f0) edge [arrow] (d2f)
-      (d2f) edge [arrow, out=-50, in=160] (temp2)
-      (df) edge [arrow, out=-60, in=100] (temp1)
+      (x0) edge [arrow, out=-30, in=170] (df)
+      (f0) edge [arrow] (d2f-d)
       (df) edge [arrow] (f1-d)
-      (x2-d) edge [arrow] (x2)
+      (x1-d) edge [arrow, out=18, in=175] (f1-d)
+      (d2f-d) edge [arrow] (temp2)
+      (df) edge [arrow, out=-60, in=100] (temp1)
+      (x2-d) edge [arrow] (temp2)
       (x1-d) edge [arrow, out=-25,in=170] (temp1)
       (temp1) edge [arrow] (f2)
       (temp2) edge [arrow] (f2)
-      (x2) edge [arrow] (temp2)
       ;
     \end{tikzpicture}
-  }
-\end{figure}
-%%% Local Variables:
-%%% mode: LaTeX
-%%% TeX-master: "../main"
-%%% End:
-
+    }
 %%% Local Variables:
 %%% mode: LaTeX
 %%% TeX-master: "../main"

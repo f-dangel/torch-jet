@@ -101,11 +101,11 @@
 
     \begin{center}
       \begin{tikzpicture}
-        \node [inner xsep=80pt, inner ysep=30pt, draw=tab-orange, rounded corners=15pt, line width=10pt] (graph-before) {\includegraphics[height=11.5cm]{figures/sin_2jet_before}};
+        \node [inner xsep=80pt, inner ysep=30pt, draw=tab-orange, rounded corners=15pt, line width=10pt] (graph-before) {\includegraphics[height=11.5cm]{figures/sin_2jet_0}};
         \coordinate (separator) at ($(graph-before.north east)!0.46!(graph-before.south east)$);
         \draw[tab-orange, fill=tab-orange, line width=5pt, rounded corners=15pt] (graph-before.south west) rectangle (separator);
         % Re-draw
-        \node [inner xsep=80pt, inner ysep=30pt, draw=tab-orange, rounded corners=15pt, line width=10pt] {\includegraphics[height=11.5cm]{figures/sin_2jet_before}};
+        \node [inner xsep=80pt, inner ysep=30pt, draw=tab-orange, rounded corners=15pt, line width=10pt] {\includegraphics[height=11.5cm]{figures/sin_2jet_0}};
         \node [anchor=north east, align=center] at (separator) {\textbf{Propagate then sum}};
       \end{tikzpicture}
     \end{center}
@@ -185,11 +185,11 @@
       % Stealth/.append style={scale=2},%
       % }
       \begin{tikzpicture}
-        \node [inner xsep=80pt, inner ysep=30pt, draw=tab-green, rounded corners=15pt, line width=10pt] (graph-after) {\includegraphics[height=11.5cm]{figures/sin_2jet_after}};
+        \node [inner xsep=80pt, inner ysep=30pt, draw=tab-green, rounded corners=15pt, line width=10pt] (graph-after) {\includegraphics[height=11.5cm]{figures/sin_2jet_3}};
         \coordinate (separator) at ($(graph-after.north east)!0.46!(graph-after.south east)$);
         \draw [tab-green, line width=5pt, rounded corners=15pt, fill=tab-green] (graph-after.south west) rectangle (separator);
         % Re-draw
-        \node [inner xsep=80pt, inner ysep=30pt, draw=tab-green, rounded corners=15pt, line width=10pt] {\includegraphics[height=11.5cm]{figures/sin_2jet_after}};
+        \node [inner xsep=80pt, inner ysep=30pt, draw=tab-green, rounded corners=15pt, line width=10pt] {\includegraphics[height=11.5cm]{figures/sin_2jet_3}};
         \node [anchor=north east, align=center] at (separator) {\textbf{Sum then propagate}};
       \end{tikzpicture}
       % }

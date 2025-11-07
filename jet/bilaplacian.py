@@ -78,7 +78,12 @@ class Bilaplacian(Module):
             multijet_f = traceable_vmap(jet_f, n)
             setattr(self, f"jets_f_{n}", multijet_f)
 
-    def get_multijet(self, multi: int):
+    def get_multijet(
+        self, multi: int
+    ) -> Callable[
+        [Tensor, Tensor, Tensor, Tensor, Tensor],
+        tuple[Tensor, Tensor, Tensor, Tensor, Tensor],
+    ]:
         """Get the multi-jet function for a given number of jets.
 
         Args:

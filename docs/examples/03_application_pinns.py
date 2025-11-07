@@ -9,6 +9,7 @@ Let's get the imports out of the way.
 """
 
 from math import log10, pi, sqrt
+from os import getenv
 from time import time
 
 from hessianfree.optimizer import HessianFree
@@ -382,7 +383,12 @@ while timer.elapsed() < T_MAX:
 #
 # Indeed, training with the Hessian-free optimizer outperforms Adam:
 
-with plt.rc_context(bundles.neurips2024()):
+
+# LaTeX is not available in Github actions.
+# Therefore, we are turning it off if the script executes on GHA.
+USETEX = not getenv("CI")
+
+with plt.rc_context(bundles.neurips2024(usetex=USETEX)):
     fig, ax = plt.subplots(ncols=2, sharey=True, dpi=150)
     ax[0].set_ylabel("L$_2$ error")
     ax[0].set_xlabel("Iterations")

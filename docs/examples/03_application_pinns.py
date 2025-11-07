@@ -396,3 +396,5 @@ with plt.rc_context(bundles.neurips2024()):
     ax[1].semilogy(hf_time, hf_l2, label="Hessian-free (2nd-order)")
 
     ax[1].legend()
+
+assert adam_l2[-1] > hf_l2[-1]

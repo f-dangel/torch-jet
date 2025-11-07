@@ -8,30 +8,30 @@ Neural Networks (PINNs).
 Let's get the imports out of the way.
 """
 
-from matplotlib import pyplot as plt
-from hessianfree.optimizer import HessianFree
-from tueplots import bundles
-from math import log10
+from math import log10, pi, sqrt
+from time import time
 
-from torch.optim import Adam
-from jet.laplacian import Laplacian
-from jet.simplify import simplify
-from torch.nn import Sequential, Linear, Tanh
+from hessianfree.optimizer import HessianFree
+from matplotlib import pyplot as plt
 from torch import (
-    no_grad,
     Tensor,
-    sin,
-    vmap,
+    cat,
+    float64,
+    manual_seed,
+    no_grad,
     prod,
     rand,
-    manual_seed,
-    cat,
-    zeros,
-    float64,
     randint,
+    sin,
+    vmap,
+    zeros,
 )
-from math import pi, sqrt
-from time import time
+from torch.nn import Linear, Sequential, Tanh
+from torch.optim import Adam
+from tueplots import bundles
+
+from jet.laplacian import Laplacian
+from jet.simplify import simplify
 
 _ = manual_seed(42)  # make deterministic
 

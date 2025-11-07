@@ -67,6 +67,7 @@ doc = [
     "mkdocstrings[python]==0.30.0",
     "mkdocs-gallery==0.10.4",
     "hessianfree @ git+https://git@github.com/ltatzel/PyTorchHessianFree.git@main",
+    "pytest"
 ]
 
 [tool.setuptools_scm]

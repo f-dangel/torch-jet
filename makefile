@@ -41,7 +41,7 @@ uninstall:
 .PHONY: install-dev
 
 install-dev:
-	@pip install -e ."[test,lint,exp]"
+	@pip install -e ."[test,lint,exp,doc]"
 
 .PHONY: install-test
 

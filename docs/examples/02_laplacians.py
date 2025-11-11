@@ -8,6 +8,7 @@ mode and (ii) how to collapse it to get better performance.
 Let's get the imports out of our way.
 """
 
+from os import getenv
 from time import perf_counter
 from typing import Callable
 
@@ -475,7 +476,11 @@ colors = [
     (27 / 255, 158 / 255, 119 / 255),
 ]
 
-with plt.rc_context(bundles.neurips2024()):
+# LaTeX is not available in Github actions.
+# Therefore, we are turning it off if the script executes on GHA.
+USETEX = not getenv("CI")
+
+with plt.rc_context(bundles.neurips2024(usetex=USETEX)):
     plt.figure(dpi=150)
     bars = plt.bar(methods, times, color=colors)
 

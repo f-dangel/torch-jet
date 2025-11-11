@@ -62,10 +62,15 @@ lint = [
 ]
 # Dependencies needed to build the docs (semicolon/line-separated).
 doc = [
+    "hessianfree @ git+https://git@github.com/ltatzel/PyTorchHessianFree.git@main",
+    "matplotlib",
     "mkdocs==1.6.1",
     "mkdocs-material==9.6.13",
     "mkdocstrings[python]==0.30.0",
     "mkdocs-gallery==0.10.4",
+    "pydot",
+    "pytest",
+    "tueplots",
 ]
 
 [tool.setuptools_scm]

@@ -228,6 +228,25 @@ class JetTransformer(Transformer):
             " `JetTracer.is_leaf_module` function."
         )
 
+    def call_method(
+        self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Argument]
+    ) -> Proxy:
+        """Handle method call nodes such as `x.sin()`.
+
+        This implementation currently disallows method calls.
+
+        Args:
+            target: Name of the method to be called.
+            args: Positional arguments.
+            kwargs: Keyword arguments.
+
+        Raises:
+            NotImplementedError: Always, as method calls are not supported.
+        """
+        raise NotImplementedError(
+            f"Encountered unsupported call_method node ({target})"
+        )
+
     def placeholder(
         self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Argument]
     ):

@@ -432,7 +432,7 @@ def f(x: Tensor) -> Tensor:
     return x.sin()
 
 
-with raises(ValueError):
+with raises(NotImplementedError):
     jet(f, 2)  # crashes because sin is called via a "call_method" node
 
 # %%

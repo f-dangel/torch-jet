@@ -78,7 +78,12 @@ class Bilaplacian(Module):
             multijet_f = traceable_vmap(jet_f, n)
             setattr(self, f"jets_f_{n}", multijet_f)
 
-    def get_multijet(self, multi: int):
+    def _get_multijet(
+        self, multi: int
+    ) -> Callable[
+        [Tensor, Tensor, Tensor, Tensor, Tensor],
+        tuple[Tensor, Tensor, Tensor, Tensor, Tensor],
+    ]:
         """Get the multi-jet function for a given number of jets.
 
         Args:
@@ -107,7 +112,7 @@ class Bilaplacian(Module):
             X3 = zeros(num_samples, *self.in_shape, **self.in_meta)
             X4 = zeros(num_samples, *self.in_shape, **self.in_meta)
 
-            jet_f = self.get_multijet(num_samples)
+            jet_f = self._get_multijet(num_samples)
             _, _, _, _, F4 = jet_f(X0, X1, X2, X3, X4)
             # need to divide the Laplacian by number of MC samples
             return jet.utils.sum_vmapped(F4) / (3 * num_samples)
@@ -120,7 +125,7 @@ class Bilaplacian(Module):
         gammas = compute_all_gammas((2, 2))
         gamma_4_0 = float(gammas[(4, 0)])
         # first summand
-        jet_f = self.get_multijet(D)
+        jet_f = self._get_multijet(D)
         _, _, _, _, F4_1 = jet_f(*C1)
         factor1 = (gamma_4_4 + 2 * (D - 1) * gamma_4_0) / 24
         term1 = factor1 * jet.utils.sum_vmapped(F4_1)
@@ -131,14 +136,14 @@ class Bilaplacian(Module):
 
         # second summand
         gamma_3_1 = float(gammas[(3, 1)])
-        jet_f = self.get_multijet(D * (D - 1))
+        jet_f = self._get_multijet(D * (D - 1))
         _, _, _, _, F4_2 = jet_f(*C2)
         factor2 = 2 * gamma_3_1 / 24
         term2 = factor2 * jet.utils.sum_vmapped(F4_2)
 
         # third term
         gamma_2_2 = float(gammas[(2, 2)])
-        jet_f = self.get_multijet(D * (D - 1) // 2)
+        jet_f = self._get_multijet(D * (D - 1) // 2)
         _, _, _, _, F4_3 = jet_f(*C3)
         factor3 = 2 * gamma_2_2 / 24
         term3 = factor3 * jet.utils.sum_vmapped(F4_3)

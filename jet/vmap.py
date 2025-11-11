@@ -114,12 +114,12 @@ vmap_mul = vmap_basic_binary(operator.mul)
 
 
 def vmap_pow(
-    x: Tensor, exponent: float | int, is_const: tuple[bool, bool], vmapsize: int
+    base: Tensor, exponent: float | int, is_const: tuple[bool, bool], vmapsize: int
 ) -> Tensor:
     """Vectorized power operation.
 
     Args:
-        x: Input tensor.
+        base: Input tensor.
         exponent: Exponent tensor or scalar.
         is_const: Tuple indicating which arguments are constant (and therefore do not
             have a batch axis).
@@ -137,7 +137,7 @@ def vmap_pow(
     if not isinstance(exponent, (float, int)):
         raise NotImplementedError("Exponent must be a float or int.")
 
-    return x**exponent
+    return base**exponent
 
 
 vmap_cos = vmap_elementwise(cos)
@@ -147,7 +147,7 @@ vmap_tanh = vmap_elementwise(tanh)
 
 
 def vmap_linear(
-    x: Tensor,
+    input: Tensor,
     weight: Tensor,
     bias: Tensor | None = None,
     is_const: tuple[bool, ...] = (True, True, True),
@@ -156,7 +156,7 @@ def vmap_linear(
     """Vectorized linear transformation.
 
     Args:
-        x: Input tensor.
+        input: Input tensor.
         weight: Weight tensor.
         bias: Optional bias tensor.
         is_const: Tuple indicating which arguments are constant (and therefore do not
@@ -167,18 +167,20 @@ def vmap_linear(
         A tensor containing the result of the vmap-ed linear transformation.
 
     Raises:
-        NotImplementedError: If the input tensor x is constant or if the weight tensor
-            W is not constant, or if the bias is not constant.
+        NotImplementedError: If the input tensor is constant or if the weight tensor
+            is not constant, or if the bias is not constant.
         ValueError: If vmapsize is not positive.
     """
     if is_const[0] or not is_const[1]:
-        raise NotImplementedError("x must be non-constant, W must be constant.")
+        raise NotImplementedError(
+            "input must be non-constant, weight must be constant."
+        )
     if bias is not None and not is_const[2]:
         raise NotImplementedError("bias must be constant.")
     if vmapsize <= 0:
         raise ValueError(f"vmapsize must be positive, got {vmapsize=}.")
 
-    return linear(x, weight, bias)
+    return linear(input, weight, bias)
 
 
 def vmap_sample(
@@ -217,7 +219,7 @@ def vmap_sample(
 
 
 def vmap_replicate(
-    x: Tensor,
+    input: Tensor,
     times: int,
     pos: int = 0,
     is_const: tuple[bool, ...] = (True, True),
@@ -226,7 +228,7 @@ def vmap_replicate(
     """Vectorized replicate operation.
 
     Args:
-        x: Input tensor.
+        input: Input tensor.
         times: Number of times to replicate the tensor.
         pos: Position of the new axis. Default: `0`.
         is_const: Tuple indicating which arguments are constant (and therefore do not
@@ -237,7 +239,7 @@ def vmap_replicate(
         A tensor containing the vmap-ed replicated input tensor.
 
     Raises:
-        NotImplementedError: If the input tensor x is constant.
+        NotImplementedError: If the input tensor is constant.
         ValueError: If vmapsize is not positive.
     """
     if is_const[0]:
@@ -245,7 +247,7 @@ def vmap_replicate(
     if vmapsize <= 0:
         raise ValueError(f"vmapsize must be positive, got {vmapsize=}.")
 
-    return jet.utils.replicate(x, times, pos=pos + 1)
+    return jet.utils.replicate(input, times, pos=pos + 1)
 
 
 def vmap_sum_vmapped(

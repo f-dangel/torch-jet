@@ -112,8 +112,8 @@ def _replace_operations_with_taylor(  # noqa: C901, PLR0912, PLR0915
         assert isinstance(out_tensor, Node)
         with graph.inserting_before(output_node):
             trivial_node = graph.call_function(
-                lambda *args: tuple(
-                    args[0] if i == 0 else zeros_like(args[0])
+                lambda arg: tuple(
+                    arg if i == 0 else zeros_like(arg)
                     for i in range(derivative_order + 1)
                 ),
                 args=(out_tensor,),

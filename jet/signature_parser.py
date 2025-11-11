@@ -102,20 +102,25 @@ def parse_torch_builtin(f: Callable) -> Signature:
     if not search_result:
         raise ValueError(f"Function {f.__name__} not found in native_functions.yaml")
 
-    # Split into arguments and convert parameter strings to Parameter objects
-    parameters = [
-        p
-        for param_str in search_result.split(",")
-        if (p := _str_to_param(param_str.strip())) is not None
-    ]
+    # Split into arguments and convert parameter strings to Parameter objects.
+    # After encountering "*", all following parameters are keyword-only.
+    keyword_only = False
+    parameters = []
+    for param_str in map(str.strip, search_result.split(",")):
+        if param_str == "*":
+            keyword_only = True
+        elif param := _str_to_param(param_str, keyword_only):
+            parameters.append(param)
+
     return Signature(parameters)
 
 
-def _str_to_param(param_str: str) -> Parameter | None:
+def _str_to_param(param_str: str, keyword_only: bool = False) -> Parameter | None:
     """Convert a parameter string from native_functions.yaml to a Parameter object.
 
     Args:
         param_str: The parameter string to be converted.
+        keyword_only: Inform if keyword is enforced.
 
     Returns:
         A Parameter object representing the parameter, or None if parsing fails.
@@ -129,13 +134,19 @@ def _str_to_param(param_str: str) -> Parameter | None:
 
         >>> _str_to_param("bool[3] output_mask")
         <Parameter "output_mask">
+
+        >>> _str_to_param("Tensor(a!) self")
+        <Parameter "self">
+
+        >>> _str_to_param("Tensor(a!) self", keyword_only=True)
+        <Parameter "self=None">
     """
     # Check if parameter is optional (has ? after type)
     is_optional = "?" in param_str.split()[0] if param_str else False
 
-    # Remove array notation like [3] and optional marker ?
+    # Remove array notation like [3] and optional marker ? or mutable marker !
     param_str_clean = sub(r"\[.*?\]", "", param_str)
-    param_str_clean = param_str_clean.replace("?", "")
+    param_str_clean = param_str_clean.replace("?", "").replace("!", "")
 
     # Split by = to get default value if present
     if "=" in param_str_clean:
@@ -156,9 +167,10 @@ def _str_to_param(param_str: str) -> Parameter | None:
     else:
         return None
 
+    default_str = "None" if default_str is None and keyword_only else default_str
     kwargs = (
         {"default": _str_to_default_value(is_optional, default_str)}
-        if default_str is not None or is_optional
+        if (default_str is not None or is_optional)
         else {}
     )
 

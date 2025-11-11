@@ -8,11 +8,13 @@ inputs from those that depend only on constants and substitutes the
 corresponding jet operations from `jet.operations.MAPPING`.
 """
 
+from torch import mul
 from torch.fx import GraphModule, Proxy, Transformer
 from torch.fx.node import Argument, Target
 from torch.fx.traceback import get_current_meta
 
-from jet.operations import MAPPING, JetInfo
+from jet.operations import MAPPING, IsTaylorType, JetInfo
+from jet.utils import standardize_signature
 
 
 class JetTransformer(Transformer):
@@ -65,54 +67,38 @@ class JetTransformer(Transformer):
         # used as name for the combined node
         self.placeholder_and_coefficient_name = "jet_placeholder_coefficients"
 
-    def _is_taylor(
-        self, target: Target, args: tuple[Argument, ...]
-    ) -> tuple[bool, ...]:
-        """Determine whether node arguments depend on placeholders.
-
-        For each argument, checks whether it corresponds to a node that depends
-        on placeholders or constants. Returns a tuple of booleans indicating
-        for each argument whether it should be treated as part of a Taylor
-        expansion.
+    def _check_dependency(self, arg: Argument) -> bool:
+        """Determine if an argument depends on placeholders.
 
         Args:
-            target: The function or operation associated with the current node.
-            args: The node arguments to inspect.
+            arg: The argument to check.
 
         Returns:
-            Tuple of booleans, where each entry indicates whether the
-            corresponding argument depends on placeholders (``True``) or
-            constants (``False``).
+            True if the argument depends on placeholders (Taylor variable),
+            False if it depends only on constants.
 
         Raises:
-            RuntimeError: If dependency status cannot be determined for any argument.
-            RuntimeError: If an argument dependent either on placeholders and only on
-            constants or neither on placeholders nor only on constants
+            RuntimeError: if the argument’s dependency cannot be determined or is contradictory.
         """
-        is_taylor = []
-        for arg in args:
-            if isinstance(arg, Proxy):
-                in_placeholders = arg.node.name in self.dependent_on_placeholders
-                in_constants = arg.node.name in self.dependent_on_constants
-                if not (in_placeholders ^ in_constants):
-                    raise RuntimeError(
-                        f"Node {arg.node=} can not depend on placeholders and only on constants!"
-                        if in_placeholders  # both are true
-                        else f"Node {arg.node=} should either depend on placeholders or only on constants!"
-                    )
-                is_taylor.append(in_placeholders)
-
-            elif isinstance(arg, tuple) and all(isinstance(a, Proxy) for a in arg):
-                is_taylor.append(True)
-
-            elif isinstance(arg, (int, float)) or arg is None:
-                is_taylor.append(False)
-
-            else:
+        if isinstance(arg, Proxy):
+            in_placeholders = arg.node.name in self.dependent_on_placeholders
+            in_constants = arg.node.name in self.dependent_on_constants
+            if not in_placeholders ^ in_constants:
                 raise RuntimeError(
-                    f"Could not detect dependency of {arg} for {target=}."
+                    f"Node {arg.node=} can not depend on placeholders and only on constants!"
+                    if in_placeholders  # both are true
+                    else f"Node {arg.node=} should either depend on placeholders or only on constants!"
                 )
-        return tuple(is_taylor)
+            return in_placeholders
+
+        elif isinstance(arg, tuple) and all(isinstance(a, Proxy) for a in arg):
+            return True
+
+        elif isinstance(arg, (int, float)) or arg is None:
+            return False
+
+        else:
+            raise RuntimeError(f"Could not detect dependency of {arg}.")
 
     def _constant_proxy(
         self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Argument]
@@ -150,7 +136,7 @@ class JetTransformer(Transformer):
         target: Target,
         args: tuple[Argument, ...],
         kwargs: dict[str, Argument],
-        is_taylor: tuple[bool, ...],
+        is_taylor: IsTaylorType,
     ) -> Proxy:
         """Create a proxy node representing a jet (Taylor mode) operation.
 
@@ -163,7 +149,7 @@ class JetTransformer(Transformer):
             target: The function or operation being replaced.
             args: The node arguments.
             kwargs: The keyword arguments.
-            is_taylor: Tuple of booleans indicating argument dependency on placeholders.
+            is_taylor: Indicating args and kwargs dependencies on placeholders.
 
         Returns:
             The created `torch.fx.Proxy` node corresponding to a jet operation.
@@ -171,7 +157,7 @@ class JetTransformer(Transformer):
         Raises:
             NotImplementedError: If no jet operation is defined for the given target.
         """
-        if target not in MAPPING.keys():
+        if target not in MAPPING:
             raise NotImplementedError(f"Unsupported {target=}.")
 
         new_proxy = self.tracer.create_proxy(
@@ -205,11 +191,20 @@ class JetTransformer(Transformer):
         Returns:
             The transformed `torch.fx.Proxy` node.
         """
-        is_taylor = self._is_taylor(target, args)
+        # FIXME handle multiplication before JetTransform (see issue #107)
+        if hasattr(target, "__name__") and target is not mul:
+            args, kwargs = standardize_signature(target, args, kwargs)
+
+        is_taylor_args = tuple(self._check_dependency(arg) for arg in args)
+        is_taylor_kwargs = {
+            key: self._check_dependency(arg) for key, arg in kwargs.items()
+        }
+        no_taylor_flag = any(is_taylor_args) or any(is_taylor_kwargs.values())
+
         return (
-            self._constant_proxy(target, args, kwargs)
-            if not any(is_taylor)
-            else self._jet_proxy(target, args, kwargs, is_taylor)
+            self._jet_proxy(target, args, kwargs, (is_taylor_args, is_taylor_kwargs))
+            if no_taylor_flag
+            else self._constant_proxy(target, args, kwargs)
         )
 
     def call_module(

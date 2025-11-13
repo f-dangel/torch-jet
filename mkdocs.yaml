@@ -30,6 +30,9 @@ markdown_extensions:
     - pymdownx.snippets # code highlighting
     - pymdownx.superfences # code highlighting
     - footnotes
+    - admonition # boxes
+    - pymdownx.details # boxes
+
 plugins:
     - mkdocstrings:
         default_handler: python

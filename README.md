@@ -5,11 +5,11 @@ It is similar to JAX's Taylor mode ([`jax.experimental.jet`](https://docs.jax.de
 
 The repository also hosts the Python functionality+experiments and LaTeX source for our NeurIPS 2025 paper ["Collapsing Taylor Mode Automatic Differentiation"](https://openreview.net/forum?id=XgQVL1uP34), which allows to further accelerate Taylor mode for many practical differential operators.
 
-> [!WARNING]
-> 🔪 **Expect rough edges.** 🔪
-> This is a prototype with limited scope (e.g. operator coverage).
-> We highly recommend double-checking your results with PyTorch's autodiff.
-> Please help us improve the package by providing feedback, filing issues, and opening pull requests.
+!!! warning "🔪 **Expect rough edges.** 🔪"
+
+    This is a research prototype with various limitations (e.g. operator coverage).
+    We highly recommend double-checking your results with PyTorch's autodiff.
+    Please help us improve the package by providing feedback, filing issues, and opening pull requests.
 
 ## Getting Started
 

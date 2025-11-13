@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 
 # MAIN LIBRARY
 [project]
-name = "jet"
+name = "jet-for-pytorch"
 authors = [
     { name = "Felix Dangel" },
 ]

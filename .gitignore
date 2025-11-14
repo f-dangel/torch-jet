@@ -27,5 +27,6 @@
 paper/main.pdf
 poster/main.pdf
 .aider*
+.envrc
 docs/generated/
 docs/examples/*.png

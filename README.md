@@ -22,7 +22,7 @@ pip install jet-for-pytorch
 
 ### Examples
 
-TODO Coming soon, once we host the documentation on readthedocs.
+See the [documentation](https://torch-jet.readthedocs.io/en/latest/generated/gallery/).
 
 ## Citing
 

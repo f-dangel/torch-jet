@@ -21,7 +21,9 @@ from torch.nn.functional import relu
 from jet import jet
 from jet.tracing import capture_graph
 
-HEREDIR = path.dirname(path.abspath(__name__))  # script directory for figure savepaths
+HEREDIR = path.dirname(path.abspath(__name__))
+# We need to store figures here so they will be picked up in the built doc
+GALLERYDIR = path.join(path.dirname(HEREDIR), "generated", "gallery")
 
 _ = manual_seed(0)  # make deterministic
 
@@ -277,8 +279,8 @@ def visualize_graph(mod: GraphModule, savefile: str, name: str = ""):
 # Let's visualize two compute graphs: The original function $f$, and its 2-jet function
 # $f_{2\text{-jet}}$:
 
-visualize_graph(capture_graph(f), path.join(HEREDIR, "01_f.png"))
-visualize_graph(f_jet, path.join(HEREDIR, "01_f_jet.png"))
+visualize_graph(capture_graph(f), path.join(GALLERYDIR, "01_f.png"))
+visualize_graph(f_jet, path.join(GALLERYDIR, "01_f_jet.png"))
 
 # %%
 #
@@ -307,7 +309,7 @@ visualize_graph(f_jet, path.join(HEREDIR, "01_f_jet.png"))
 # We can take an even 'deeper' look into this graph by tracing it again, which will
 # 'unroll' the operations of the `jet.operations.*` functions:
 
-visualize_graph(capture_graph(f_jet), path.join(HEREDIR, "01_f_jet_unrolled.png"))
+visualize_graph(capture_graph(f_jet), path.join(GALLERYDIR, "01_f_jet_unrolled.png"))
 
 # %%
 #

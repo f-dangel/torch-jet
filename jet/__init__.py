@@ -59,7 +59,22 @@ def jet(
 
     Returns:
         The overloaded function that computes the function and its Taylor coefficients
-        from the input tensor and its Taylor coefficients.
+            from the input tensor and its Taylor coefficients.
+
+    Examples:
+        >>> from torch import sin, cos, Tensor
+        >>> from jet import jet
+        >>> f = sin
+        >>> jet2_f = jet(f, 2)
+        >>> # Set up the Taylor coefficients
+        >>> x0, x1, x2 = Tensor([0.123]), Tensor([-0.456]), Tensor([0.789])
+        >>> # Compute the function value and its Taylor coefficients
+        >>> f0, f1, f2 = jet2_f(x0, x1, x2)
+        >>> # Manually verify the Taylor coefficients (Faa di Bruno)
+        >>> df, d2f = cos(x0), -sin(x0) # derivatives of the sin function
+        >>> assert f0.allclose(sin(x0))
+        >>> assert f1.allclose(df * x1)
+        >>> assert f2.allclose(df * x2 + d2f * x1 ** 2)
     """
     mod = capture_graph(f)
 

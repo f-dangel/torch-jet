@@ -10,7 +10,20 @@ from jet.vmap import traceable_vmap
 
 
 class Laplacian(Module):
-    """Module that computes the exact or randomized Laplacian of a function using jets.
+    r"""Module that computes the exact or randomized Laplacian of a function using jets.
+
+    The Laplacian of a function $f(\mathbf{x}) \in \mathbb{R}$ with
+    $\mathbf{x} \in \mathbb{R}^D$ is defined as the Hessian trace, or
+
+    $$
+    \Delta f(\mathbf{x})
+    =
+    \sum_{i=d}^D
+    \frac{\partial^2 f(\mathbf{x})}{\partial x_d^2} \in \mathbb{R}\,.
+    $$
+
+    For functions that produce vectors or tensors, the Laplacian
+    is defined per output component and has the same shape as $f(\mathbf{x})$.
 
     Attributes:
         SUPPORTED_DISTRIBUTIONS: List of supported distributions for the random vectors.
@@ -49,6 +62,22 @@ class Laplacian(Module):
         Raises:
             ValueError: If the provided distribution is not supported or if the number
                 of samples is not positive.
+
+        Examples:
+            >>> from torch import manual_seed, rand, zeros
+            >>> from torch.func import hessian
+            >>> from torch.nn import Linear, Tanh, Sequential
+            >>> from jet.laplacian import Laplacian
+            >>> _ = manual_seed(0) # make deterministic
+            >>> f = Sequential(Linear(3, 1), Tanh())
+            >>> x0 = rand(3)
+            >>> # Compute the Laplacian via Taylor mode
+            >>> _, _, laplacian = Laplacian(f, dummy_x=zeros(3))(x0)
+            >>> assert laplacian.shape == f(x0).shape
+            >>> # Compute the Laplacian with PyTorch's autodiff (Hessian trace)
+            >>> laplacian_pt = hessian(f)(x0).squeeze(0).trace().unsqueeze(0)
+            >>> assert laplacian.shape == laplacian_pt.shape
+            >>> assert laplacian_pt.allclose(laplacian)
         """
         super().__init__()
 
@@ -90,10 +119,10 @@ class Laplacian(Module):
 
         Returns:
             Tuple containing the replicated function value, the weighted and/or
-            randomized Jacobian and Laplacian.
+                randomized Jacobian and Laplacian.
         """
         X0 = jet.utils.replicate(x, self.num_jets)
-        X1 = self.set_up_first_taylor_coefficient(x)
+        X1 = self._set_up_first_taylor_coefficient(x)
         X2 = zeros(self.num_jets, *self.in_shape, **self.in_meta)
         F0, F1, F2 = self.jet_f(X0, X1, X2)
         if self.randomization is not None:
@@ -102,7 +131,7 @@ class Laplacian(Module):
             F2 = F2 * monte_carlo_scaling
         return F0, F1, jet.utils.sum_vmapped(F2)
 
-    def set_up_first_taylor_coefficient(self, x: Tensor) -> Tensor:
+    def _set_up_first_taylor_coefficient(self, x: Tensor) -> Tensor:
         """Create the first Taylor coefficients for the Laplacian computation.
 
         Args:

@@ -11,13 +11,20 @@ from jet.vmap import traceable_vmap
 
 
 class Bilaplacian(Module):
-    """Module that computes the Bi-Laplacian of a function using jets.
+    r"""Module that computes the Bi-Laplacian of a function using jets.
 
-    The Bi-Laplacian of a function f(x) ∈ R with x ∈ Rⁿ
-    is defined as the Laplacian of the Laplacian, or
-    Δ²f(x) = ∑ᵢ ∑ⱼ ∂⁴f(x) / ∂xᵢ²∂xⱼ² ∈ R.
+    The Bi-Laplacian of a function $f(\mathbf{x}) \in \mathbb{R}$ with
+    $\mathbf{x} \in \mathbb{R}^D$ is defined as the Laplacian of the Laplacian, or
+
+    $$
+    \Delta^2 f(\mathbf{x})
+    =
+    \sum_{i=1}^D \sum_{j=1}^D
+    \frac{\partial^4 f(\mathbf{x})}{\partial x_i^2 \partial x_j^2} \in \mathbb{R}\,.
+    $$
+
     For functions that produce vectors or tensors, the Bi-Laplacian
-    is defined per output component and has the same shape as f(x).
+    is defined per output component and has the same shape as $f(\mathbf{x})$.
 
     Attributes:
         SUPPORTED_DISTRIBUTIONS: List of supported distributions for the random vectors.
@@ -47,6 +54,23 @@ class Bilaplacian(Module):
         Raises:
             ValueError: If the provided distribution is not supported or if the number
                 of samples is not positive.
+
+        Examples:
+            >>> from torch import manual_seed, rand, zeros
+            >>> from torch.func import hessian
+            >>> from torch.nn import Linear, Tanh, Sequential
+            >>> from jet.bilaplacian import Bilaplacian
+            >>> _ = manual_seed(0) # make deterministic
+            >>> f = Sequential(Linear(3, 1), Tanh())
+            >>> x0 = rand(3)
+            >>> # Compute the Bilaplacian via Taylor mode
+            >>> bilaplacian = Bilaplacian(f, dummy_x=zeros(3))(x0)
+            >>> assert bilaplacian.shape == f(x0).shape
+            >>> # Compute the Bilaplacian with PyTorch's autodiff
+            >>> laplacian_pt = lambda x: hessian(f)(x).squeeze(0).trace().unsqueeze(0)
+            >>> bilaplacian_pt = hessian(laplacian_pt)(x0).squeeze(0).trace().unsqueeze(0)
+            >>> assert bilaplacian.shape == bilaplacian_pt.shape
+            >>> assert bilaplacian_pt.allclose(bilaplacian)
         """
         super().__init__()
 

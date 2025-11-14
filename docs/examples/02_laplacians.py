@@ -8,7 +8,7 @@ mode and (ii) how to collapse it to get better performance.
 Let's get the imports out of our way.
 """
 
-from os import getenv
+from os import getenv, path
 from time import perf_counter
 from typing import Callable
 
@@ -24,6 +24,10 @@ from jet import jet, utils
 from jet.simplify import simplify
 from jet.tracing import capture_graph
 from jet.vmap import traceable_vmap
+
+HEREDIR = path.dirname(path.abspath(__name__))
+# We need to store figures here so they will be picked up in the built doc
+GALLERYDIR = path.join(path.dirname(HEREDIR), "generated", "gallery")
 
 _ = manual_seed(0)  # make deterministic
 
@@ -273,18 +277,18 @@ def visualize_graph(mod: GraphModule, savefile: str, name: str = ""):
 
 # Graph 1: Simply capture the module that computes the Laplacian
 mod_traced = capture_graph(mod)
-visualize_graph(mod_traced, "02_laplacian_module.png")
+visualize_graph(mod_traced, path.join(GALLERYDIR, "02_laplacian_module.png"))
 assert hessian_trace_laplacian.allclose(mod_traced(x))
 
 # Graph 2: Simplify the module by removing replicate computations
 mod_standard = simplify(mod_traced, pull_sum_vmapped=False)
-visualize_graph(mod_standard, "02_laplacian_standard.png")
+visualize_graph(mod_standard, path.join(GALLERYDIR, "02_laplacian_standard.png"))
 assert hessian_trace_laplacian.allclose(mod_standard(x))
 
 # Graph 3: Simplify the module by removing replicate computations and pulling up the
 # summations to directly propagate sums of Taylor coefficients
 mod_collapsed = simplify(mod_traced, pull_sum_vmapped=True)
-visualize_graph(mod_collapsed, "02_laplacian_collapsed.png")
+visualize_graph(mod_collapsed, path.join(GALLERYDIR, "02_laplacian_collapsed.png"))
 assert hessian_trace_laplacian.allclose(mod_collapsed(x))
 
 # %%

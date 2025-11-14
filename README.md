@@ -1,6 +1,6 @@
 # Taylor Mode Autodiff in PyTorch
 
-This library provides a PyTorch implementation Taylor mode automatic differentiation, a generalization of forward mode to higher-order derivatives.
+This library provides a PyTorch implementation of Taylor mode automatic differentiation, a generalization of forward mode to higher-order derivatives.
 It is similar to JAX's Taylor mode ([`jax.experimental.jet`](https://docs.jax.dev/en/latest/jax.experimental.jet.html)).
 
 The repository also hosts the Python functionality+experiments and LaTeX source for our NeurIPS 2025 paper ["Collapsing Taylor Mode Automatic Differentiation"](https://openreview.net/forum?id=XgQVL1uP34), which allows to further accelerate Taylor mode for many practical differential operators.

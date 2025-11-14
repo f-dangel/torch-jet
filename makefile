@@ -42,6 +42,7 @@ uninstall:
 
 install-dev:
 	@pip install -e ."[test,lint,exp,doc]"
+	@pip install -e . -r docs/gh_requirements.txt
 
 .PHONY: install-test
 

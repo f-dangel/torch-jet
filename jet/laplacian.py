@@ -90,10 +90,10 @@ class Laplacian(Module):
 
         Returns:
             Tuple containing the replicated function value, the weighted and/or
-            randomized Jacobian and Laplacian.
+                randomized Jacobian and Laplacian.
         """
         X0 = jet.utils.replicate(x, self.num_jets)
-        X1 = self.set_up_first_taylor_coefficient(x)
+        X1 = self._set_up_first_taylor_coefficient(x)
         X2 = zeros(self.num_jets, *self.in_shape, **self.in_meta)
         F0, F1, F2 = self.jet_f(X0, X1, X2)
         if self.randomization is not None:
@@ -102,7 +102,7 @@ class Laplacian(Module):
             F2 = F2 * monte_carlo_scaling
         return F0, F1, jet.utils.sum_vmapped(F2)
 
-    def set_up_first_taylor_coefficient(self, x: Tensor) -> Tensor:
+    def _set_up_first_taylor_coefficient(self, x: Tensor) -> Tensor:
         """Create the first Taylor coefficients for the Laplacian computation.
 
         Args:

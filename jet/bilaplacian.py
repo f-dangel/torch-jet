@@ -118,7 +118,7 @@ class Bilaplacian(Module):
             return jet.utils.sum_vmapped(F4) / (3 * num_samples)
 
         # three lists of 4-jet coefficients, one for each term
-        C1, C2, C3 = self.set_up_taylor_coefficients(x)
+        C1, C2, C3 = self._set_up_taylor_coefficients(x)
         D = self.in_dim
 
         gamma_4_4 = float(compute_all_gammas((4,))[(4,)])
@@ -150,7 +150,7 @@ class Bilaplacian(Module):
 
         return term1 + term2 + term3
 
-    def set_up_taylor_coefficients(
+    def _set_up_taylor_coefficients(
         self, x: Tensor
     ) -> tuple[
         tuple[Tensor, Tensor, Tensor, Tensor, Tensor],

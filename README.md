@@ -35,7 +35,7 @@ If you find the `jet` package useful for your research, consider citing
   author =       {Felix Dangel and Tim Siebert and Marius Zeinhofer and Andrea
                   Walther},
   year =         2025,
-  journal =      {Advances in Neural Information Processing Systems (NeurIPS)},
+  booktitle =    {Advances in Neural Information Processing Systems (NeurIPS)},
 }
 
 ```

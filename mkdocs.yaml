@@ -44,6 +44,7 @@ plugins:
                       separate_signature: true
                       docstring_section_style: list
                       merge_init_into_class: true
+                      line_length: 88
     - gallery:
           conf_script: docs/gallery_conf.py
           examples_dirs: docs/examples

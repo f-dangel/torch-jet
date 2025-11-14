@@ -12,6 +12,9 @@ build-backend = "setuptools.build_meta"
 name = "jet"
 authors = [
     { name = "Felix Dangel" },
+    { name = "Tim Siebert" },
+    { name = "Marius Zeinhofer" },
+    { name = "Andrea Walther" },
 ]
 urls = { Repository = "https://github.com/f-dangel/torch-jet" }
 description = "Taylor-mode automatic differentiation for PyTorch"

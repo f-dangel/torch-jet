@@ -1,0 +1,733 @@
+\documentclass{beamer}
+
+
+% Metropolis theme for a clean modern look
+\usetheme[progressbar=frametitle, numbering=none]{metropolis}
+
+% Optional: Better fonts and layout
+\usepackage{lmodern}
+\usepackage{booktabs}  % for better tables
+\usepackage{hyperref}
+\usepackage{svg}
+
+
+% Title graphic (HU logo)
+\titlegraphic{\hfill\includegraphics[width=2cm]{HU_logo.pdf}}
+
+\usepackage[absolute,overlay]{textpos}
+
+\titlegraphic{\hfill\includegraphics[width=2cm]{HU_logo.pdf}}
+
+\addtobeamertemplate{frametitle}{}{%
+  \begin{textblock*}{2cm}(0.2cm,8.5cm)
+    \includegraphics[width=1.0cm]{HU_logo.pdf}
+  \end{textblock*}
+}
+
+% HU corporate colors (optional customization)
+\definecolor{HUblue}{RGB}{0,51,102}
+\setbeamercolor{title}{fg=HUblue}
+\setbeamercolor{frametitle}{fg=HUblue}
+\setbeamercolor{structure}{fg=HUblue}
+\setbeamercolor{background canvas}{bg=white}
+
+
+
+%\usetheme{{CambridgeUS}} 
+\usecolortheme{seahorse}
+\useinnertheme{circles} 
+\usepackage[ngerman]{babel}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{graphics}	
+\usepackage{xy}
+\usepackage{tikz}
+\usepackage{bm}
+\usepackage{cleveref}
+\usepackage{mathtools}
+\usepackage{wrapfig} % side-wrap text next to a figure
+\usepackage{subcaption} % \subfigure environment
+\usepackage{tabularx} % tables with automatic line break
+\captionsetup[subfigure]{% subfigure captions are left-aligned
+  justification=justified,%
+  singlelinecheck=false,%
+}%
+\usepackage{tikz} % for drawings in LaTeX
+\usetikzlibrary{
+  arrows.meta, % for prettier arrows
+  matrix, % for matrix of nodes
+  positioning, % for relative node positioning
+  calc, % for position calculations
+  plotmarks, % for pgfplots markers
+}
+\usepackage{pgfplots} % for drawing axis plots
+\usetikzlibrary{arrows,automata,backgrounds}
+\setbeamertemplate{footline}[frame number]
+
+\definecolor{tab-orange}{rgb}{1.0, 0.498, 0.055}
+\definecolor{tab-blue}{rgb}{0.121, 0.466, 0.705}
+\definecolor{tab-green}{rgb}{0.173, 0.627, 0.173}
+
+\newcommand{\colorcTM}{tab-green}
+\newcommand{\colorTM}{tab-orange}
+\newcommand{\colorcTMname}{green}
+
+% Random variables
+\def\reta{{\textnormal{$\eta$}}}
+\def\ra{{\textnormal{a}}}
+\def\rb{{\textnormal{b}}}
+\def\rc{{\textnormal{c}}}
+\def\rd{{\textnormal{d}}}
+\def\re{{\textnormal{e}}}
+\def\rf{{\textnormal{f}}}
+\def\rg{{\textnormal{g}}}
+\def\rh{{\textnormal{h}}}
+\def\ri{{\textnormal{i}}}
+\def\rj{{\textnormal{j}}}
+\def\rk{{\textnormal{k}}}
+\def\rl{{\textnormal{l}}}
+% rm is already a command, just don't name any random variables m
+\def\rn{{\textnormal{n}}}
+\def\ro{{\textnormal{o}}}
+\def\rp{{\textnormal{p}}}
+\def\rq{{\textnormal{q}}}
+\def\rr{{\textnormal{r}}}
+\def\rs{{\textnormal{s}}}
+\def\rt{{\textnormal{t}}}
+\def\ru{{\textnormal{u}}}
+\def\rv{{\textnormal{v}}}
+\def\rw{{\textnormal{w}}}
+\def\rx{{\textnormal{x}}}
+\def\ry{{\textnormal{y}}}
+\def\rz{{\textnormal{z}}}
+
+% Random vectors
+\def\rvepsilon{{\mathbf{\epsilon}}}
+\def\rvtheta{{\mathbf{\theta}}}
+\def\rva{{\mathbf{a}}}
+\def\rvb{{\mathbf{b}}}
+\def\rvc{{\mathbf{c}}}
+\def\rvd{{\mathbf{d}}}
+\def\rve{{\mathbf{e}}}
+\def\rvf{{\mathbf{f}}}
+\def\rvg{{\mathbf{g}}}
+\def\rvh{{\mathbf{h}}}
+\def\rvu{{\mathbf{i}}}
+\def\rvj{{\mathbf{j}}}
+\def\rvk{{\mathbf{k}}}
+\def\rvl{{\mathbf{l}}}
+\def\rvm{{\mathbf{m}}}
+\def\rvn{{\mathbf{n}}}
+\def\rvo{{\mathbf{o}}}
+\def\rvp{{\mathbf{p}}}
+\def\rvq{{\mathbf{q}}}
+\def\rvr{{\mathbf{r}}}
+\def\rvs{{\mathbf{s}}}
+\def\rvt{{\mathbf{t}}}
+\def\rvu{{\mathbf{u}}}
+\def\rvv{{\mathbf{v}}}
+\def\rvw{{\mathbf{w}}}
+\def\rvx{{\mathbf{x}}}
+\def\rvy{{\mathbf{y}}}
+\def\rvz{{\mathbf{z}}}
+
+% Elements of random vectors
+\def\erva{{\textnormal{a}}}
+\def\ervb{{\textnormal{b}}}
+\def\ervc{{\textnormal{c}}}
+\def\ervd{{\textnormal{d}}}
+\def\erve{{\textnormal{e}}}
+\def\ervf{{\textnormal{f}}}
+\def\ervg{{\textnormal{g}}}
+\def\ervh{{\textnormal{h}}}
+\def\ervi{{\textnormal{i}}}
+\def\ervj{{\textnormal{j}}}
+\def\ervk{{\textnormal{k}}}
+\def\ervl{{\textnormal{l}}}
+\def\ervm{{\textnormal{m}}}
+\def\ervn{{\textnormal{n}}}
+\def\ervo{{\textnormal{o}}}
+\def\ervp{{\textnormal{p}}}
+\def\ervq{{\textnormal{q}}}
+\def\ervr{{\textnormal{r}}}
+\def\ervs{{\textnormal{s}}}
+\def\ervt{{\textnormal{t}}}
+\def\ervu{{\textnormal{u}}}
+\def\ervv{{\textnormal{v}}}
+\def\ervw{{\textnormal{w}}}
+\def\ervx{{\textnormal{x}}}
+\def\ervy{{\textnormal{y}}}
+\def\ervz{{\textnormal{z}}}
+
+% Random matrices
+\def\rmA{{\mathbf{A}}}
+\def\rmB{{\mathbf{B}}}
+\def\rmC{{\mathbf{C}}}
+\def\rmD{{\mathbf{D}}}
+\def\rmE{{\mathbf{E}}}
+\def\rmF{{\mathbf{F}}}
+\def\rmG{{\mathbf{G}}}
+\def\rmH{{\mathbf{H}}}
+\def\rmI{{\mathbf{I}}}
+\def\rmJ{{\mathbf{J}}}
+\def\rmK{{\mathbf{K}}}
+\def\rmL{{\mathbf{L}}}
+\def\rmM{{\mathbf{M}}}
+\def\rmN{{\mathbf{N}}}
+\def\rmO{{\mathbf{O}}}
+\def\rmP{{\mathbf{P}}}
+\def\rmQ{{\mathbf{Q}}}
+\def\rmR{{\mathbf{R}}}
+\def\rmS{{\mathbf{S}}}
+\def\rmT{{\mathbf{T}}}
+\def\rmU{{\mathbf{U}}}
+\def\rmV{{\mathbf{V}}}
+\def\rmW{{\mathbf{W}}}
+\def\rmX{{\mathbf{X}}}
+\def\rmY{{\mathbf{Y}}}
+\def\rmZ{{\mathbf{Z}}}
+
+% Elements of random matrices
+\def\ermA{{\textnormal{A}}}
+\def\ermB{{\textnormal{B}}}
+\def\ermC{{\textnormal{C}}}
+\def\ermD{{\textnormal{D}}}
+\def\ermE{{\textnormal{E}}}
+\def\ermF{{\textnormal{F}}}
+\def\ermG{{\textnormal{G}}}
+\def\ermH{{\textnormal{H}}}
+\def\ermI{{\textnormal{I}}}
+\def\ermJ{{\textnormal{J}}}
+\def\ermK{{\textnormal{K}}}
+\def\ermL{{\textnormal{L}}}
+\def\ermM{{\textnormal{M}}}
+\def\ermN{{\textnormal{N}}}
+\def\ermO{{\textnormal{O}}}
+\def\ermP{{\textnormal{P}}}
+\def\ermQ{{\textnormal{Q}}}
+\def\ermR{{\textnormal{R}}}
+\def\ermS{{\textnormal{S}}}
+\def\ermT{{\textnormal{T}}}
+\def\ermU{{\textnormal{U}}}
+\def\ermV{{\textnormal{V}}}
+\def\ermW{{\textnormal{W}}}
+\def\ermX{{\textnormal{X}}}
+\def\ermY{{\textnormal{Y}}}
+\def\ermZ{{\textnormal{Z}}}
+
+% Vectors
+\def\vzero{{\bm{0}}}
+\def\vone{{\bm{1}}}
+\def\vmu{{\bm{\mu}}}
+\def\vnu{{\bm{\nu}}}
+\def\vtheta{{\bm{\theta}}}
+\def\vepsilon{{\bm{\epsilon}}}
+\def\vgamma{{\bm{\gamma}}}
+\def\vdelta{{\bm{\delta}}}
+\def\vDelta{{\bm{\Delta}}}
+\def\va{{\bm{a}}}
+\def\vb{{\bm{b}}}
+\def\vc{{\bm{c}}}
+\def\vd{{\bm{d}}}
+\def\ve{{\bm{e}}}
+\def\vetilde{\bm{\tilde{e}}}
+\def\vell{{\bm{\ell}}}
+\def\vf{{\bm{f}}}
+\def\vg{{\bm{g}}}
+\def\vh{{\bm{h}}}
+\def\vi{{\bm{i}}}
+\def\vj{{\bm{j}}}
+\def\vk{{\bm{k}}}
+\def\vl{{\bm{l}}}
+\def\vm{{\bm{m}}}
+\def\vmhat{{\bm{\hat{m}}}}
+\def\vn{{\bm{n}}}
+\def\vo{{\bm{o}}}
+\def\vp{{\bm{p}}}
+\def\vphi{{\bm{\phi}}}
+\def\vq{{\bm{q}}}
+\def\vr{{\bm{r}}}
+\def\vs{{\bm{s}}}
+\def\vstilde{\bm{\tilde{s}}}
+\def\vt{{\bm{t}}}
+\def\vu{{\bm{u}}}
+\def\vv{{\bm{v}}}
+\def\vvhat{{\bm{\hat{v}}}}
+\def\vw{{\bm{w}}}
+\def\vx{{\bm{x}}}
+\def\vy{{\bm{y}}}
+\def\vytilde{{\bm{\tilde{y}}}}
+\def\vyhat{{\bm{\hat{y}}}}
+\def\vz{{\bm{z}}}
+
+% Elements of vectors
+\def\evalpha{{\alpha}}
+\def\evbeta{{\beta}}
+\def\evepsilon{{\epsilon}}
+\def\evlambda{{\lambda}}
+\def\evomega{{\omega}}
+\def\evmu{{\mu}}
+\def\evpsi{{\psi}}
+\def\evsigma{{\sigma}}
+\def\evtheta{{\theta}}
+\def\eva{{a}}
+\def\evb{{b}}
+\def\evc{{c}}
+\def\evd{{d}}
+\def\eve{{e}}
+\def\evf{{f}}
+\def\evg{{g}}
+\def\evh{{h}}
+\def\evi{{i}}
+\def\evj{{j}}
+\def\evk{{k}}
+\def\evl{{l}}
+\def\evm{{m}}
+\def\evn{{n}}
+\def\evo{{o}}
+\def\evp{{p}}
+\def\evq{{q}}
+\def\evr{{r}}
+\def\evs{{s}}
+\def\evt{{t}}
+\def\evu{{u}}
+\def\evv{{v}}
+\def\evw{{w}}
+\def\evx{{x}}
+\def\evy{{y}}
+\def\evyhat{{\hat{y}}}
+\def\evz{{z}}
+
+% Matrix
+\def\mA{{\bm{A}}}
+\def\mB{{\bm{B}}}
+\def\mC{{\bm{C}}}
+\def\mD{{\bm{D}}}
+\def\mE{{\bm{E}}}
+\def\mF{{\bm{F}}}
+\def\mG{{\bm{G}}}
+\def\mGtilde{\bm{\tilde{G}}}
+\def\mH{{\bm{H}}}
+\def\mI{{\bm{I}}}
+\def\mJ{{\bm{J}}}
+\def\mK{{\bm{K}}}
+\def\mL{{\bm{L}}}
+\def\mM{{\bm{M}}}
+\def\mN{{\bm{N}}}
+\def\mO{{\bm{O}}}
+\def\mP{{\bm{P}}}
+\def\mQ{{\bm{Q}}}
+\def\mR{{\bm{R}}}
+\def\mS{{\bm{S}}}
+\def\mT{{\bm{T}}}
+\def\mU{{\bm{U}}}
+\def\mV{{\bm{V}}}
+\def\mW{{\bm{W}}}
+\def\mX{{\bm{X}}}
+\def\mY{{\bm{Y}}}
+\def\mZ{{\bm{Z}}}
+\def\mBeta{{\bm{\beta}}}
+\def\mGamma{{\bm{\Gamma}}}
+\def\mPhi{{\bm{\Phi}}}
+\def\mPi{{\bm{\Pi}}}
+\def\mLambda{{\bm{\Lambda}}}
+\def\mSigma{{\bm{\Sigma}}}
+\def\msigma{{\bm{\sigma}}}
+\def\mOmega{{\bm{\Omega}}}
+\def\mStilde{\bm{\tilde{\mS}}}
+\def\mGtilde{\bm{\tilde{\mG}}}
+\def\mGoverline{{\bm{\overline{G}}}}
+
+% Tensor
+\DeclareMathAlphabet{\mathsfit}{\encodingdefault}{\sfdefault}{m}{sl}
+\SetMathAlphabet{\mathsfit}{bold}{\encodingdefault}{\sfdefault}{bx}{n}
+\newcommand{\tens}[1]{\bm{\mathsfit{#1}}}
+\def\tA{{\tens{A}}}
+\def\tB{{\tens{B}}}
+\def\tC{{\tens{C}}}
+\def\tD{{\tens{D}}}
+\def\tE{{\tens{E}}}
+\def\tF{{\tens{F}}}
+\def\tG{{\tens{G}}}
+\def\tH{{\tens{H}}}
+\def\tI{{\tens{I}}}
+\def\tJ{{\tens{J}}}
+\def\tK{{\tens{K}}}
+\def\tL{{\tens{L}}}
+\def\tM{{\tens{M}}}
+\def\tN{{\tens{N}}}
+\def\tO{{\tens{O}}}
+\def\tP{{\tens{P}}}
+\def\tPi{\bm{\mathsf{\Pi}}}
+\def\tQ{{\tens{Q}}}
+\def\tR{{\tens{R}}}
+\def\tS{{\tens{S}}}
+\def\tT{{\tens{T}}}
+\def\tU{{\tens{U}}}
+\def\tV{{\tens{V}}}
+\def\tW{{\tens{W}}}
+\def\tX{{\tens{X}}}
+\def\tY{{\tens{Y}}}
+\def\tZ{{\tens{Z}}}
+
+% Graph
+\def\gA{{\mathcal{A}}}
+\def\gB{{\mathcal{B}}}
+\def\gC{{\mathcal{C}}}
+\def\gD{{\mathcal{D}}}
+\def\gE{{\mathcal{E}}}
+\def\gF{{\mathcal{F}}}
+\def\gG{{\mathcal{G}}}
+\def\gH{{\mathcal{H}}}
+\def\gI{{\mathcal{I}}}
+\def\gJ{{\mathcal{J}}}
+\def\gK{{\mathcal{K}}}
+\def\gL{{\mathcal{L}}}
+\def\gM{{\mathcal{M}}}
+\def\gN{{\mathcal{N}}}
+\def\gO{{\mathcal{O}}}
+\def\gP{{\mathcal{P}}}
+\def\gQ{{\mathcal{Q}}}
+\def\gR{{\mathcal{R}}}
+\def\gS{{\mathcal{S}}}
+\def\gT{{\mathcal{T}}}
+\def\gU{{\mathcal{U}}}
+\def\gV{{\mathcal{V}}}
+\def\gW{{\mathcal{W}}}
+\def\gX{{\mathcal{X}}}
+\def\gY{{\mathcal{Y}}}
+\def\gZ{{\mathcal{Z}}}
+
+% Sets
+\def\sA{{\mathbb{A}}}
+\def\sB{{\mathbb{B}}}
+\def\sC{{\mathbb{C}}}
+\def\sD{{\mathbb{D}}}
+% Don't use a set called E, because this would be the same as our symbol
+% for expectation.
+\def\sF{{\mathbb{F}}}
+\def\sG{{\mathbb{G}}}
+\def\sH{{\mathbb{H}}}
+\def\sI{{\mathbb{I}}}
+\def\sJ{{\mathbb{J}}}
+\def\sK{{\mathbb{K}}}
+\def\sL{{\mathbb{L}}}
+\def\sM{{\mathbb{M}}}
+\def\sN{{\mathbb{N}}}
+\def\sO{{\mathbb{O}}}
+\def\sP{{\mathbb{P}}}
+\def\sQ{{\mathbb{Q}}}
+\def\sR{{\mathbb{R}}}
+\def\sS{{\mathbb{S}}}
+\def\sT{{\mathbb{T}}}
+\def\sU{{\mathbb{U}}}
+\def\sV{{\mathbb{V}}}
+\def\sW{{\mathbb{W}}}
+\def\sX{{\mathbb{X}}}
+\def\sY{{\mathbb{Y}}}
+\def\sYhat{{\hat{\mathbb{Y}}}}
+\def\sZ{{\mathbb{Z}}}
+% Blackboard Greek characters: https://tex.stackexchange.com/a/3260
+\DeclareSymbolFont{bbold}{U}{bbold}{m}{n}
+\DeclareSymbolFontAlphabet{\mathbbold}{bbold}
+\def\sTheta{{\mathbbold{\Theta}}}
+\def\sOmega{{\mathbbold{\Omega}}}
+
+% Entries of a matrix
+\def\emLambda{{\Lambda}}
+\def\emA{{A}}
+\def\emB{{B}}
+\def\emC{{C}}
+\def\emD{{D}}
+\def\emE{{E}}
+\def\emF{{F}}
+\def\emG{{G}}
+\def\emH{{H}}
+\def\emI{{I}}
+\def\emJ{{J}}
+\def\emK{{K}}
+\def\emL{{L}}
+\def\emM{{M}}
+\def\emN{{N}}
+\def\emO{{O}}
+\def\emP{{P}}
+\def\emQ{{Q}}
+\def\emR{{R}}
+\def\emS{{S}}
+\def\emT{{T}}
+\def\emU{{U}}
+\def\emV{{V}}
+\def\emW{{W}}
+\def\emX{{X}}
+\def\emY{{Y}}
+\def\emZ{{Z}}
+\def\emSigma{{\Sigma}}
+\def\emPi{{\Pi}}
+
+% entries of a tensor
+% Same font as tensor, without \bm wrapper
+\newcommand{\etens}[1]{\mathsfit{#1}}
+\def\etLambda{{\etens{\Lambda}}}
+\def\etA{{\etens{A}}}
+\def\etB{{\etens{B}}}
+\def\etC{{\etens{C}}}
+\def\etD{{\etens{D}}}
+\def\etE{{\etens{E}}}
+\def\etF{{\etens{F}}}
+\def\etG{{\etens{G}}}
+\def\etH{{\etens{H}}}
+\def\etI{{\etens{I}}}
+\def\etJ{{\etens{J}}}
+\def\etK{{\etens{K}}}
+\def\etL{{\etens{L}}}
+\def\etM{{\etens{M}}}
+\def\etN{{\etens{N}}}
+\def\etO{{\etens{O}}}
+\def\etP{{\etens{P}}}
+\def\etPi{\mathsf{\Pi}}
+\def\etQ{{\etens{Q}}}
+\def\etR{{\etens{R}}}
+\def\etS{{\etens{S}}}
+\def\etT{{\etens{T}}}
+\def\etU{{\etens{U}}}
+\def\etV{{\etens{V}}}
+\def\etW{{\etens{W}}}
+\def\etX{{\etens{X}}}
+\def\etY{{\etens{Y}}}
+\def\etZ{{\etens{Z}}}
+
+% The true underlying data generating distribution
+\newcommand{\pdata}{p_{\mathrm{data}}}
+% The empirical distribution defined by the training set
+\newcommand{\ptrain}{\hat{p}_{\mathrm{data}}}
+\newcommand{\Ptrain}{\hat{P}_{\mathrm{data}}}
+% The model distribution
+\newcommand{\pmodel}{p_{\rm{model}}}
+\newcommand{\Pmodel}{P_{\rm{model}}}
+\newcommand{\ptildemodel}{\tilde{p}_{\rm{model}}}
+% Stochastic autoencoder distributions
+\newcommand{\pencode}{p_{\rm{encoder}}}
+\newcommand{\pdecode}{p_{\rm{decoder}}}
+\newcommand{\precons}{p_{\rm{reconstruct}}}
+
+\newcommand{\laplace}{\mathrm{Laplace}} % Laplace distribution
+
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Ls}{\mathcal{L}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\emp}{\tilde{p}}
+\newcommand{\lr}{\alpha}
+\newcommand{\reg}{\lambda}
+\newcommand{\rect}{\mathrm{rectifier}}
+\newcommand{\softmax}{\mathrm{softmax}}
+\newcommand{\onehot}{\mathrm{onehot}}
+\newcommand{\sigmoid}{\sigma}
+\newcommand{\softplus}{\zeta}
+\newcommand{\KL}{D_{\mathrm{KL}}}
+\newcommand{\Var}{\mathrm{Var}}
+\newcommand{\standarderror}{\mathrm{SE}}
+\newcommand{\Cov}{\mathrm{Cov}}
+% Wolfram Mathworld says $L^2$ is for function spaces and $\ell^2$ is for vectors
+% But then they seem to use $L^2$ for vectors throughout the site, and so does
+% wikipedia.
+\newcommand{\normlzero}{L^0}
+\newcommand{\normlone}{L^1}
+\newcommand{\normltwo}{L^2}
+\newcommand{\normlp}{L^p}
+\newcommand{\normmax}{L^\infty}
+
+\newcommand{\parents}{Pa} % See usage in notation.tex. Chosen to match Daphne's book.
+
+\DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\minimize}{minimize}
+\DeclareMathOperator*{\maximize}{maximize}
+
+\DeclareMathOperator{\sign}{sign}
+\DeclareMathOperator{\partitioning}{part}
+\DeclareMathOperator{\mean}{mean}
+\DeclareMathOperator{\vmap}{vmap}
+\DeclareMathOperator{\reshape}{reshape}
+\DeclareMathOperator{\Tr}{Tr}
+\DeclareMathOperator{\diag}{diag}
+\DeclareMathOperator{\eig}{eig}
+\DeclareMathOperator{\rank}{rank}
+\DeclareMathOperator{\vecspan}{span}
+\DeclareMathOperator{\overlap}{overlap}
+\DeclareMathOperator{\Cat}{Cat}
+\DeclareMathOperator{\flatten}{vec}
+\DeclareMathOperator{\blockdiag}{blockdiag}
+
+%%%%% NEW MATH DEFINITIONS %%%%%
+\newcommand{\jac}{\mathrm{J}}
+\newcommand{\grad}[1]{\ensuremath{\nabla_{\!{#1}}}}
+\newcommand{\gradsquared}[1]{\ensuremath{\nabla_{\!{#1}}^{2}}}
+
+% || for KLDivergence
+\DeclarePairedDelimiterX{\KLdivx}[2]{(}{)}{%
+  #1\;\delimsize\|\;#2%
+}
+\newcommand{\KLdiv}{\KL\KLdivx}
+
+% | for a | b
+\newcommand{\giventhat}[2]{#1\;|\;#2}
+
+% tensor product spaces
+\newcommand{\tensorprod}[1]{%
+  \mathbin{\mathop{\otimes}\limits_{#1}}%
+}
+
+\let\ab\allowbreak
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: "../main"
+%%% End:
+
+
+\newcommand{\NN}{\mathbb{N}}
+\newcommand{\RR}{\mathbb{R}}
+\newcommand{\CC}{\mathbb{C}}
+\newcommand{\ZZ}{\mathbb{Z}}
+\newcommand{\KK}{\mathbb{K}}
+\newcommand{\ol}{\overline}
+
+
+\title{Collapsing Taylor Mode Automatic Differentiation}
+
+\author[shortname]{
+  Felix Dangel\textsuperscript{1*} \and
+  \underline{Tim Siebert}\textsuperscript{2,3*} \and
+  Marius Zeinhofer\textsuperscript{4} \and
+  Andrea Walther\textsuperscript{2,3}
+}
+
+\institute[]{
+  \textsuperscript{1} Vector Institute, Toronto, Canada \\
+  \textsuperscript{2} Humboldt-Universität zu Berlin, Germany \\ 
+  \textsuperscript{3} Zuse Institute Berlin, Germany \\
+  \textsuperscript{4} ETH Zurich, Switzerland \\
+  \textsuperscript{*}Equal contribution
+}
+
+\setbeamerfont{title}{size=\huge}
+
+\begin{document}
+
+\maketitle
+
+
+
+
+
+\begin{frame}{Motivation \& Limitation of Taylor Mode}
+\small
+\begin{columns}[T, totalwidth=\textwidth]
+  % Left column: text
+  \hspace{-1.2cm}
+  \begin{column}{0.55\textwidth}
+     \vspace{1.3cm}
+    \begin{itemize}
+      \only<1-2>{\item Computing differential operators of neural nets became a crucial task in scientific machine learning.}
+      \only<3-5>{\item However, in praxis popular Taylor mode implementations are not enough to beat nested first-order implementations.}
+      \only<2-2>{\item Those derivative operators are theoretically most efficiently computed using Taylor mode AD.}   
+      \only<4-5>{\item Exploiting the operator's structure can outperform nesting (see e.g.,\cite{li2023forward}).}
+    \end{itemize}
+  \end{column}
+
+  % Right column: figure
+  \only<3-5>{\begin{column}{0.65\textwidth}
+    \centering
+    \vspace{-1.0cm} % adjust to align vertically
+    \hspace{-1.3cm}
+    \includegraphics[width=\textwidth]{taylor_not_enough.pdf}
+  \end{column}}
+\end{columns}
+\only<5->{%
+  \vspace{1em}
+  \begin{block}{\centering \normalsize Key Insight}
+    \centering
+    \textbf{Exploiting structure outperforms nested first-order and vanilla Taylor mode!}
+  \end{block}
+}
+\end{frame}
+
+
+
+ \begin{frame}{Taylor Mode --- Overview}
+    \only<1->\input{taylor_signature}
+    \begin{itemize}
+        \item<2-> Where $\vx_k := \frac{d^k}{dt^k}\vx(t)$ and $\vf_k := \frac{d^k}{dt^k}\vf(t)$
+        \item<3-> \textcolor{red}{Use Faà di Bruno formula to compute the coefficients!!}
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Example Problem --- Laplace}
+  \only<1>{\begin{align*}
+    \begin{array}{rlrlrlll}
+      \vx_{0}, &\{(\vx_{1, d}, &\vx_{2,d})\}_{d=1}^D
+                                                                   \quad
+      &{\color{tab-orange} 1 + D + D\, \text{vectors}}
+        \quad
+      &\text{(exact)}
+      \\[1ex]
+      \vx_{0}, &\{(\vx_{1, s}, &\vx_{2,s})\}_{s=1}^S
+                                                                  \quad
+      &{\color{tab-orange} 1 + S + S\, \text{vectors}}
+        \quad
+      &\text{(stochastic)}
+    \end{array}
+  \end{align*}}
+  \only<2>{\begin{align*}
+    \begin{array}{rlrlrlll}
+      \vx_{0}, &\{\vx_{1, d}\}_{d=1}^D, & \sum_d\vx_{2,d}
+                                                                   \quad
+      &{\color{tab-orange} 1 + D + 1\, \text{vectors}}
+        \quad
+      &\text{(exact)}
+      \\[1ex]
+      \vx_{0}, &\{\vx_{1, s}\}_{s=1}^S, &\sum_s \vx_{2,s}
+                                                                  \quad
+      &{\color{tab-orange} 1 + S + 1\, \text{vectors}}
+        \quad
+      &\text{(stochastic)}
+    \end{array}
+  \end{align*}}
+\end{frame}
+
+
+
+
+\begin{frame}{Exploiting Structure}
+\centering
+\includegraphics[width=0.5\linewidth]{slides/overview.pdf}
+\end{frame}
+
+\begin{frame}{But How?}
+  \centering
+  \only<1-1>{\includegraphics[width=1.0\linewidth]{slides/sin_2jet_0.pdf}}
+  \only<2-2>{\includegraphics[width=1.0\linewidth]{slides/sin_2jet_1.pdf}}
+  \only<3-3>{\includegraphics[width=1.0\linewidth]{slides/sin_2jet_2.pdf}}
+  \only<4-4>{\includegraphics[width=1.0\linewidth]{slides/sin_2jet_3.pdf}}
+\end{frame}
+
+
+
+\begin{frame}{Performance Results}
+    \vspace{-2.9cm}
+    \hspace*{-2.5cm}\makebox[\textwidth][l]{% right-aligned inside full text width
+        \includegraphics[width=1.5\linewidth]{slides/performance.pdf}
+    }
+\end{frame}
+
+
+
+\begin{frame}
+        \frametitle{References}
+        \bibliographystyle{amsalpha}
+        \bibliography{references}
+\end{frame}
+\end{document}
+
+

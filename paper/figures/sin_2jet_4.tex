@@ -11,21 +11,21 @@
     row sep=4ex,%
     ]{
       \node[state, leaf] (x0) {x0};
+      \& \node[state] (x0-d) {f0 = sin(x0)};
       \&
-      \& \node[state] (f0) {f0 = sin(x0)};
       \& \node[state, replicate] (f0-d) {f0\_r = replicate(f0)};
       \\
+      \& \node[state] (df-d) {df = cos(x0)};
+      \& \node[state] (d2f-d) {d2f= -f0};
+      \\
       \node[state, leaf] (x1-d) {x1\_r};
-      \& \node[state] (d2f-d) {d2f = -f0};
-      \& \node[state] (df) {df = cos(x0)};
+      \&
+      \& \node[state, replicate] (temp1-d) {temp1\_r = einsum(``...,r...,r...\\->r...'', d2f, x1\_r, x1\_r)};
       \& \node[state, output] (f1-d) {f1\_r =
         einsum(``...,r...\\->r...'', df, x1\_r)};
       \\
-      \&
-      \& \node[state, replicate] (temp1-d) {temp1\_r = einsum(``...,r...,r...\\->r...'', df, x1\_r, x1\_r)};
-      \\
       \node[state, leaf] (x2-d) {x2\_r};
-      \& \node[state, replicate] (temp2-d) {temp2\_r = einsum(``...,r...\\->r...'', d2f, x2\_r)};
+      \& \node[state, replicate] (temp2-d) {temp2\_r = einsum(``...,r...\\->r...'', df, x2\_r)};
       \& \node[state] (f2-d) {f2\_r = temp1\_r + temp2\_r};
       \& \node[state, output] (f2) {f2 = sum(f2\_r, dim=0)};
       \\
@@ -34,22 +34,23 @@
     % draw the relations
     \tikzset{arrow/.style={-Stealth}}
     \path
-    (x0) edge [arrow] (f0)
-    (f0) edge [arrow] (f0-d)
-    (x0) edge [arrow, out=-30, in=170] (df)
-    (f0) edge [arrow] (d2f-d)
-    (df) edge [arrow] (f1-d)
-    (x1-d) edge [arrow, out=18, in=175] (f1-d)
-    (d2f-d) edge [arrow] (temp2-d)
-    (df) edge [arrow, out=-60, in=100] (temp1-d)
+    (x0) edge [arrow] (x0-d)
+    (x0) edge [arrow] (df-d)
+    (x0-d) edge [arrow] (f0-d)
+    (df-d) edge [arrow] (temp2-d)
+    (x0-d) edge [arrow] (d2f-d)
+    (df-d) edge [arrow, out=-8, in=169] (f1-d)
+    (x1-d) edge [arrow, out=10, in=167] (f1-d)
+    (d2f-d) edge [arrow] (temp1-d)
     (x2-d) edge [arrow] (temp2-d)
-    (x1-d) edge [arrow, out=-25,in=170] (temp1-d)
+    (x1-d) edge [arrow] (temp1-d)
     (temp1-d) edge [arrow] (f2-d)
     (temp2-d) edge [arrow] (f2-d)
     (f2-d) edge [arrow] (f2)
     ;
   \end{tikzpicture}
 }
+
 %%% Local Variables:
 %%% mode: LaTeX
 %%% TeX-master: "../main"

@@ -1,6 +1,6 @@
 \documentclass[a0paper]{tikzposter}
-% Force a 16 by 9 ratio, 33.1 is same height as a0
-\geometry{paperwidth=58.844in,paperheight=33.1in}
+%\geometry{paperwidth=46.8in,paperheight=33.1in}
+\geometry{paperwidth=60.0in,paperheight=36.0in}
 
 \usepackage{amsmath}
 \usepackage{siunitx}
@@ -60,8 +60,8 @@
   \centering
   \begin{column}{1.85}
     \centering \ribbon{\centering\fontsize{120}{80}\selectfont\textcolor{white}{\bf
-        \underline{TL;DR:}\quad We accelerate Taylor mode for practically relevant differential operators. \\[0.5ex]
-        \hspace{-3.5ex}\underline{\phantom{;\!}How:}\quad By linearity-based graph rewrites that collapse Taylor coefficients.}}
+        \underline{TL;DR:}\quad We accelerate Taylor mode for practical differential operators. \\[0.5ex]
+        \hspace{-3.5ex}\underline{\phantom{;\!}How:}\quad By linearity-based graph rewrites that collapse the propagation.}}
   \end{column}
 \end{columns}
 \hspace{2cm}
@@ -99,16 +99,15 @@
 
     \vspace{0.85ex}
 
-    \begin{center}
+    \hspace*{-0.1cm}
       \begin{tikzpicture}
-        \node [inner xsep=80pt, inner ysep=30pt, draw=tab-orange, rounded corners=15pt, line width=10pt] (graph-before) {\includegraphics[height=11.5cm]{figures/sin_2jet_0}};
+        \node [inner xsep=20pt, inner ysep=30pt, draw=tab-orange, rounded corners=15pt, line width=10pt] (graph-before) {\includegraphics[height=12.0cm]{figures/sin_2jet_0}};
         \coordinate (separator) at ($(graph-before.north east)!0.46!(graph-before.south east)$);
         \draw[tab-orange, fill=tab-orange, line width=5pt, rounded corners=15pt] (graph-before.south west) rectangle (separator);
         % Re-draw
-        \node [inner xsep=80pt, inner ysep=30pt, draw=tab-orange, rounded corners=15pt, line width=10pt] {\includegraphics[height=11.5cm]{figures/sin_2jet_0}};
-        \node [anchor=north east, align=center] at (separator) {\textbf{Propagate then sum}};
+        \node [inner xsep=20pt, inner ysep=30pt, draw=tab-orange, rounded corners=15pt, line width=10pt] {\includegraphics[height=12.0cm]{figures/sin_2jet_0}};
+        \node [anchor=north east, align=center, yshift=3cm] at (separator) {\textbf{Propagate then sum}};
       \end{tikzpicture}
-    \end{center}
   }
 
   \column{0.598}
@@ -173,10 +172,8 @@
 
     \textbf{Collapsing reduces FLOPs, memory, and can be automated (e.g.\,in \texttt{jit}).}
 
-    \vspace{2ex}
-
+    \vspace{0.85cm}
     % Example: Collapsing multiple 2-jets of the sine function.
-    \begin{center}
       % \resizebox{!}{12cm}{
       % {\tikzset{%
       % every matrix/.append style={column sep=2ex, row sep=2.5ex},%
@@ -184,17 +181,17 @@
       % every path/.append style={line width=2.5pt},%
       % Stealth/.append style={scale=2},%
       % }
+      \hspace*{-0.4cm}
       \begin{tikzpicture}
-        \node [inner xsep=80pt, inner ysep=30pt, draw=tab-green, rounded corners=15pt, line width=10pt] (graph-after) {\includegraphics[height=11.5cm]{figures/sin_2jet_3}};
+        \node [inner xsep=20pt, inner ysep=30pt, draw=tab-green, rounded corners=15pt, line width=10pt] (graph-after) {\includegraphics[height=13.0cm]{figures/sin_2jet_3}};
         \coordinate (separator) at ($(graph-after.north east)!0.46!(graph-after.south east)$);
         \draw [tab-green, line width=5pt, rounded corners=15pt, fill=tab-green] (graph-after.south west) rectangle (separator);
         % Re-draw
-        \node [inner xsep=80pt, inner ysep=30pt, draw=tab-green, rounded corners=15pt, line width=10pt] {\includegraphics[height=11.5cm]{figures/sin_2jet_3}};
-        \node [anchor=north east, align=center] at (separator) {\textbf{Sum then propagate}};
+        \node [inner xsep=20pt, inner ysep=30pt, draw=tab-green, rounded corners=15pt, line width=10pt] {\includegraphics[height=13.0cm]{figures/sin_2jet_3}};
+        \node [anchor=north east, align=center, yshift=3cm] at (separator) {\textbf{Sum then propagate}};
       \end{tikzpicture}
       % }
       % }
-    \end{center}
   }
 
 

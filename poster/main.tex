@@ -1,5 +1,5 @@
 \documentclass[a0paper]{tikzposter}
-%\geometry{paperwidth=46.8in,paperheight=33.1in}
+% \geometry{paperwidth=46.8in,paperheight=33.1in}
 \geometry{paperwidth=60.0in,paperheight=36.0in}
 
 \usepackage{amsmath}
@@ -59,9 +59,12 @@
 \begin{columns}
   \centering
   \begin{column}{1.85}
-    \centering \ribbon{\centering\fontsize{120}{80}\selectfont\textcolor{white}{\bf
-        \underline{TL;DR:}\quad We accelerate Taylor mode for practical differential operators. \\[0.5ex]
-        \hspace{-3.5ex}\underline{\phantom{;\!}How:}\quad By linearity-based graph rewrites that collapse the propagation.}}
+    \centering \ribbon{\centering\fontsize{120}{80}\selectfont\textcolor{white}{
+        \hfill \includegraphics[width=9.75cm]{logos/qrcode}\\[-4.4ex]
+        \bf
+        \hspace{-5ex}\underline{TL;DR:}\quad We accelerate Taylor mode for practical differential operators.
+        \\[0.75ex]
+        \hspace{1.5ex}\underline{\phantom{;\!}How:}\quad By linearity-based graph rewrites that collapse the propagation.\qquad}}
   \end{column}
 \end{columns}
 \hspace{2cm}
@@ -70,16 +73,17 @@
   \column{0.598}
   \block{Background: What is Taylor Mode Autodiff?}{
 
+    \vspace{0.5ex}
     \begin{center}
       \textbf{Taylor mode generalizes forward mode to higher-order derivatives.}
     \end{center}
 
-    \vspace{1.5ex}
+    \vspace{2ex}
     \begin{center}
-      \includegraphics[width=0.7\linewidth]{figures/taylor}
+      \includegraphics[width=0.9\linewidth]{figures/taylor}
     \end{center}
 
-    \vspace{1ex}
+    \vspace{1.75ex}
 
     Fa\`a di-Bruno's formula describes the propagation of Taylor coefficients (jets). Choosing different Taylor coefficients computes different derivatives.
 
@@ -91,23 +95,23 @@
       \texttt{pip install jet-for-pytorch}
     \end{center}
 
-    \vspace{0.85ex}
+    \vspace{1.5ex}
 
     \begin{center}
       \textbf{For PDE operators, we typically need to run Taylor mode along multiple directions, then sum the resulting derivatives.}
     \end{center}
 
-    \vspace{0.85ex}
+    \vspace{1ex}
 
     \hspace*{-0.1cm}
-      \begin{tikzpicture}
-        \node [inner xsep=20pt, inner ysep=30pt, draw=tab-orange, rounded corners=15pt, line width=10pt] (graph-before) {\includegraphics[height=12.0cm]{figures/sin_2jet_0}};
-        \coordinate (separator) at ($(graph-before.north east)!0.46!(graph-before.south east)$);
-        \draw[tab-orange, fill=tab-orange, line width=5pt, rounded corners=15pt] (graph-before.south west) rectangle (separator);
-        % Re-draw
-        \node [inner xsep=20pt, inner ysep=30pt, draw=tab-orange, rounded corners=15pt, line width=10pt] {\includegraphics[height=12.0cm]{figures/sin_2jet_0}};
-        \node [anchor=north east, align=center, yshift=3cm] at (separator) {\textbf{Propagate then sum}};
-      \end{tikzpicture}
+    \begin{tikzpicture}
+      \node [inner xsep=20pt, inner ysep=30pt, draw=tab-orange, rounded corners=15pt, line width=10pt] (graph-before) {\includegraphics[height=12.0cm]{figures/sin_2jet_0}};
+      \coordinate (separator) at ($(graph-before.north east)!0.7!(graph-before.south east)$);
+      \draw[tab-orange, fill=tab-orange, line width=5pt, rounded corners=15pt] (graph-before.south west) rectangle (separator);
+      % Re-draw
+      \node [inner xsep=20pt, inner ysep=30pt, draw=tab-orange, rounded corners=15pt, line width=10pt] {\includegraphics[height=12.0cm]{figures/sin_2jet_0}};
+      \node [anchor=north east, align=center, yshift=6.5cm] at (separator) {\textbf{\textcolor{tab-orange}{Propagate then sum}}};
+    \end{tikzpicture}
   }
 
   \column{0.598}
@@ -132,19 +136,23 @@
 
   \block{Main Idea: Use Linearity to Collapse the Propagation}{
 
+    \vspace{0.5ex}
+
     \begin{center}
       \textbf{Linearity is nice because order does not matter (associativity).}
     \end{center}
-    \vspace{2.5ex}
-    \begin{align*}
-      \begin{array}{c}
-        \text{Given a matrix $\mW$}
-        \\
-        \text{and vectors $\{\vx_n\}$,}
-        \\
-        \text{what is better?}
-      \end{array}
-      \qquad
+    \vspace{2.25ex}
+
+    \hspace{1.5ex}
+    \begin{tikzpicture}
+    \node[anchor=west, draw=VectorBlack, minimum width=0.92\linewidth, rounded corners=15pt, line width=7pt, align=center]{
+      \begin{minipage}[t]{0.89\linewidth}
+        \centering
+      \vspace{0.5ex}
+      \textbf{Quiz:}
+      Given a matrix $\mW$ and vectors $\{\vx_n\}$, what is better? \\[0.75ex]
+      \scalebox{1.25}{%
+      $
       \begin{array}{c c c}
         \displaystyle
         \color{tab-orange}
@@ -160,9 +168,13 @@
           \color{tab-green}
           \text{\normalsize \textbf{(sum then act)}}
       \end{array}
-    \end{align*}
+      $}
+      \end{minipage}
+    };
+    \end{tikzpicture}
 
-    \vspace{2.9ex}
+
+    \vspace{3ex}
 
     \textbf{Our insight:} Fa\`a di-Bruno's formula exhibits linearity in the sum of highest Taylor components.
     We can choose the better order and propagate the summed Taylor coefficient.
@@ -172,32 +184,23 @@
 
     \textbf{Collapsing reduces FLOPs, memory, and can be automated (e.g.\,in \texttt{jit}).}
 
-    \vspace{0.85cm}
-    % Example: Collapsing multiple 2-jets of the sine function.
-      % \resizebox{!}{12cm}{
-      % {\tikzset{%
-      % every matrix/.append style={column sep=2ex, row sep=2.5ex},%
-      % every node/.append style={scale=0.75},%
-      % every path/.append style={line width=2.5pt},%
-      % Stealth/.append style={scale=2},%
-      % }
-      \hspace*{-0.4cm}
-      \begin{tikzpicture}
-        \node [inner xsep=20pt, inner ysep=30pt, draw=tab-green, rounded corners=15pt, line width=10pt] (graph-after) {\includegraphics[height=13.0cm]{figures/sin_2jet_3}};
-        \coordinate (separator) at ($(graph-after.north east)!0.46!(graph-after.south east)$);
-        \draw [tab-green, line width=5pt, rounded corners=15pt, fill=tab-green] (graph-after.south west) rectangle (separator);
-        % Re-draw
-        \node [inner xsep=20pt, inner ysep=30pt, draw=tab-green, rounded corners=15pt, line width=10pt] {\includegraphics[height=13.0cm]{figures/sin_2jet_3}};
-        \node [anchor=north east, align=center, yshift=3cm] at (separator) {\textbf{Sum then propagate}};
-      \end{tikzpicture}
-      % }
-      % }
+    \vspace{1ex}
+    \hspace*{-0.4cm}
+    \begin{tikzpicture}
+      \node [inner xsep=20pt, inner ysep=30pt, draw=tab-green, rounded corners=15pt, line width=10pt] (graph-after) {\includegraphics[height=13.0cm]{figures/sin_2jet_3}};
+      \coordinate (separator) at ($(graph-after.north east)!0.7!(graph-after.south east)$);
+      \draw [tab-green, line width=5pt, rounded corners=15pt, fill=tab-green] (graph-after.south west) rectangle (separator);
+      % Re-draw
+      \node [inner xsep=20pt, inner ysep=30pt, draw=tab-green, rounded corners=15pt, line width=10pt] {\includegraphics[height=13.0cm]{figures/sin_2jet_3}};
+      \node [anchor=north east, align=center, yshift=6.5cm] at (separator) {\textbf{\textcolor{tab-green}{Sum then propagate}}};
+    \end{tikzpicture}
   }
 
 
   \column{0.598}
   \block{Scope \& Performance}{
-    \begin{minipage}[t]{0.45\linewidth}
+    \begin{minipage}[t]{0.4\linewidth}
+      \vspace{0.5ex}
       \begin{center}
         \textbf{Collapsed Taylor mode contains and improves existing methods.}
       \end{center}
@@ -215,26 +218,26 @@
         {\color{tab-green}$\to$ \textbf{collapses samples}}
         \\[0.1ex]
 
-      \item \textcolor{tab-orange}{\textbf{General linear PDE operators}}
+      \item \textcolor{tab-orange}{\textbf{General linear PDE ops}}
         \\
         {\color{tab-green}$\to$ \textbf{collapses interpolation}}
       \end{itemize}
-      \vspace{1.5ex}
+      \vspace{3.4ex}
       \begin{center}
         \textbf{Collapsing improves vanilla Taylor mode and outperforms nesting  first-order autodiff.}
       \end{center}
 
     \end{minipage}
     \hfill
-    \begin{minipage}[t]{0.495\linewidth}
+    \begin{minipage}[t]{0.55\linewidth}
       \centering
-      \vspace*{-1ex}
-      \includegraphics[width=0.9\linewidth]{figures/overview.pdf}
+      \vspace*{-0.25ex}
+      \includegraphics[width=0.92\linewidth]{figures/overview.pdf}
     \end{minipage}
     \begin{center}
     \end{center}
 
-    \vspace{1ex}
+    \vspace{1.9ex}
 
     \begin{center}
       \input{tables/benchmark}

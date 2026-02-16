@@ -10,11 +10,10 @@ First, the imports.
 from os import path
 
 from pytest import raises
-from torch import Tensor, cos, manual_seed, ones_like, rand, sin, zeros_like
+from torch import Tensor, cos, manual_seed, ones_like, rand, sin, zeros, zeros_like
 from torch.func import hessian
 from torch.fx import GraphModule
 from torch.fx.passes.graph_drawer import FxGraphDrawer
-from torch.fx.proxy import TraceError
 from torch.nn import Linear, Sequential, Tanh
 from torch.nn.functional import relu
 
@@ -126,10 +125,10 @@ _ = manual_seed(0)  # make deterministic
 # Define a function and obtain its jet function
 f = sin  # propagates x₀ ↦ f(x₀)
 k = 2  # jet degree
-f_jet = jet(f, k)  # propagates (x₀, x₁, x₂) ↦ (f₀, f₁, f₂)
+x = rand(1)
+f_jet = jet(f, k, example_input=x)  # propagates (x₀, x₁, x₂) ↦ (f₀, f₁, f₂)
 
 # Set up the Taylor coefficients to compute the second derivative
-x = rand(1)
 
 x0 = x
 x1 = ones_like(x)
@@ -197,11 +196,10 @@ else:
 # Let's try this out and compute the Hessian diagonal with Taylor mode.
 # This time, we will use a neural network with $\mathrm{tanh}$ activations:
 
-f = Sequential(Linear(3, 1), Tanh())
-f_jet = jet(f, 2)
-
 D = 3
+f = Sequential(Linear(D, 1), Tanh())
 x = rand(D)
+f_jet = jet(f, 2, example_input=x)
 
 # constant Taylor coefficients
 x0 = x
@@ -279,7 +277,7 @@ def visualize_graph(mod: GraphModule, savefile: str, name: str = ""):
 # Let's visualize two compute graphs: The original function $f$, and its 2-jet function
 # $f_{2\text{-jet}}$:
 
-visualize_graph(capture_graph(f), path.join(GALLERYDIR, "01_f.png"))
+visualize_graph(capture_graph(f, example_input=x), path.join(GALLERYDIR, "01_f.png"))
 visualize_graph(f_jet, path.join(GALLERYDIR, "01_f_jet.png"))
 
 # %%
@@ -382,8 +380,8 @@ def f(x: Tensor, y: Tensor) -> Tensor:
     return x + y
 
 
-with raises(TypeError):
-    jet(f, 2)
+with raises(RuntimeError):
+    jet(f, 2, example_input=rand(3))
 
 # %%
 #
@@ -396,34 +394,34 @@ with raises(TypeError):
 # Typically, if a function is not supported, you will encounter an error. For instance,
 # the ReLU function is currently not supported:
 
-f = relu
+f = lambda x: relu(x)
 
 with raises(NotImplementedError):
-    jet(f, 2)
+    jet(f, 2, example_input=rand(3))
 
 # %%
 #
 # ---
 #
-# **`jet` only knows how to overload `op_code="functional_call"` nodes.**
+# **With ``make_fx`` tracing, method calls are automatically handled.**
 #
-# There is another scenario of unsupported-ness. PyTorch compute graphs consist of
-# nodes that have different types. Currently, `jet`'s Taylor arithmetic overloading
-# exclusively works for nodes of type `op_code="functional_call"` and crashes if it
-# encounters a different node type.
+# Previously, ``jet`` only supported ``call_function`` nodes and would crash on
+# method calls like ``x.sin()``. With ``make_fx`` tracing, all operations are
+# decomposed into ATen-level function calls, so this limitation no longer exists.
 #
 # For example, the following works
 
 f = sin
-_ = jet(f, 2)  # works because sin is called via a "functional_call" node
+_ = jet(f, 2, example_input=rand(3))  # works because sin traces to aten.sin
 
 # %%
 #
-# but the following does not, although the function is the same:
+# and so does calling sin as a method, since ``make_fx`` decomposes both to the
+# same ATen operation:
 
 
 def f(x: Tensor) -> Tensor:
-    """Function that calls sin as a method (currently not supported).
+    """Function that calls sin as a method.
 
     Args:
         x: Input tensor.
@@ -434,8 +432,7 @@ def f(x: Tensor) -> Tensor:
     return x.sin()
 
 
-with raises(NotImplementedError):
-    jet(f, 2)  # crashes because sin is called via a "call_method" node
+_ = jet(f, 2, example_input=rand(3))  # also works with make_fx tracing
 
 # %%
 #
@@ -444,11 +441,11 @@ with raises(NotImplementedError):
 #
 #### Untraceable Functions
 #
-# **`jet` inherits all limitations of `torch.fx.symbolic_trace`.**
+# **`jet` inherits all limitations of `make_fx` tracing.**
 #
 # We need to capture the function's compute graph to overload it to obtain a jet.
-# We use `torch.fx.symbolic_trace` to achieve this. It has certain limitations
-# (please see the documentation) that our `jet` implementation inherits.
+# We use ``make_fx`` to achieve this. It has certain limitations
+# (please see the documentation) that our ``jet`` implementation inherits.
 #
 # For instance, data-dependent control flow cannot be traced:
 
@@ -465,11 +462,11 @@ def f(x: Tensor):
     return sin(x) if x.sum() > 0 else cos(x)
 
 
-with raises(TraceError):
-    jet(f, 2)  # crashes because f cannot be traced
+with raises(RuntimeError):
+    jet(f, 2, example_input=rand(3))  # crashes because f cannot be traced
 
 # %%
 #
-# This is a fundamental limitation of `torch.fx` and cannot be fixed at the moment.
-# It may be possible to support in the future if control flow operators are added to
-# PyTorch's tracing mechanism.
+# This is a fundamental limitation of ``make_fx`` tracing and cannot be fixed at the
+# moment. It may be possible to support in the future if control flow operators are
+# added to PyTorch's tracing mechanism.

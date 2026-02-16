@@ -8,7 +8,8 @@ mode and (ii) how to collapse it to get better performance.
 Let's get the imports out of our way.
 """
 
-from os import getenv, path
+from os import path
+from shutil import which
 from time import perf_counter
 from typing import Callable
 
@@ -220,8 +221,10 @@ class Laplacian(Module):
         # We use make_fx(vmap(f_jet)) to trace the vmapped jet function into a
         # GraphModule. This gives us a graph we can inspect and simplify.
         vmapped = vmap(f_jet, randomness="different")
-        example_X = zeros(D, D)
-        self.vmap_f_jet = make_fx(vmapped)(example_X, example_X, example_X)
+        # NOTE: make_fx requires separate tensor objects for each argument;
+        # passing the same object multiple times causes input aliasing.
+        ex0, ex1, ex2 = zeros(D, D), zeros(D, D), zeros(D, D)
+        self.vmap_f_jet = make_fx(vmapped)(ex0, ex1, ex2)
 
     def forward(self, x: Tensor) -> Tensor:
         """Compute the Laplacian.
@@ -480,9 +483,8 @@ colors = [
     (27 / 255, 158 / 255, 119 / 255),
 ]
 
-# LaTeX is not available in Github actions.
-# Therefore, we are turning it off if the script executes on GHA.
-USETEX = not getenv("CI")
+# Use LaTeX if available
+USETEX = which("latex") is not None
 
 with plt.rc_context(bundles.neurips2024(usetex=USETEX)):
     plt.figure(dpi=150)

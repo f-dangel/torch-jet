@@ -1,16 +1,13 @@
 """Utility functions for computing jets."""
 
 from collections import defaultdict
-from inspect import Signature, signature
 from math import factorial, prod
-from typing import Any, Callable
+from typing import Any
 
+import torch
 from torch import Tensor, device, dtype, empty, randn
 from torch.fx import GraphModule, Node
-from torch.fx.node import Argument
 from torch.nn import Module
-
-from jet.signature_parser import parse_torch_builtin
 
 # type annotation for arguments and Taylor coefficients in input and output space
 Primal = Tensor
@@ -64,6 +61,7 @@ def multiplicity(sigma: tuple[int, ...]) -> float:
     return multiplicity
 
 
+@torch.library.custom_op("jet::replicate", mutates_args=())
 def replicate(x: Tensor, times: int, pos: int = 0) -> Tensor:
     """Repeat a tensor along a new axis.
 
@@ -77,9 +75,29 @@ def replicate(x: Tensor, times: int, pos: int = 0) -> Tensor:
     """
     repeat = x.ndim * [-1]
     repeat = repeat[:pos] + [times] + repeat[pos:]
-    return x.unsqueeze(pos).expand(*repeat)
+    return x.unsqueeze(pos).expand(*repeat).clone()
 
 
+@replicate.register_fake
+def _replicate_fake(x: Tensor, times: int, pos: int = 0) -> Tensor:
+    new_shape = list(x.shape)
+    new_shape.insert(pos, times)
+    return x.new_empty(new_shape)
+
+
+def _replicate_setup_context(ctx, inputs, output):
+    _, _, pos = inputs
+    ctx.pos = pos
+
+
+def _replicate_backward(ctx, grad_output):
+    return grad_output.sum(ctx.pos), None, None
+
+
+replicate.register_autograd(_replicate_backward, setup_context=_replicate_setup_context)
+
+
+@torch.library.custom_op("jet::sum_vmapped", mutates_args=())
 def sum_vmapped(x: Tensor, pos: int = 0) -> Tensor:
     """Sum out a vmap-ed axis.
 
@@ -91,6 +109,28 @@ def sum_vmapped(x: Tensor, pos: int = 0) -> Tensor:
         Sum of the vmap-ed tensor.
     """
     return x.sum(pos)
+
+
+@sum_vmapped.register_fake
+def _sum_vmapped_fake(x: Tensor, pos: int = 0) -> Tensor:
+    new_shape = list(x.shape)
+    del new_shape[pos]
+    return x.new_empty(new_shape)
+
+
+def _sum_vmapped_setup_context(ctx, inputs, output):
+    x, pos = inputs
+    ctx.pos = pos
+    ctx.x_shape = x.shape
+
+
+def _sum_vmapped_backward(ctx, grad_output):
+    return grad_output.unsqueeze(ctx.pos).expand(ctx.x_shape), None
+
+
+sum_vmapped.register_autograd(
+    _sum_vmapped_backward, setup_context=_sum_vmapped_setup_context
+)
 
 
 def rademacher(*shape: int, dtype: dtype | None = None, device: device | None = None):
@@ -226,99 +266,6 @@ def print_tensor_constants_and_shapes(mod: GraphModule):
         print(f"Name: {node.target}, Shape: {tuple(tensor.shape)}, Usages: {count}")
 
     print(f"Total number of elements in tensor constants: {total}")
-
-
-def _get_signature(f: Callable) -> Signature:
-    """Determines the signature of a function.
-
-    Args:
-        f: The function whose signature is to be determined.
-
-    Returns:
-        The function signature.
-    """
-    try:
-        # Try to get the signature using inspect.signature
-        return signature(f)
-    except ValueError:
-        # For built-in PyTorch functions, use our custom parser
-        return parse_torch_builtin(f)
-
-
-def separate_args_and_kwargs(
-    f: Callable, args: tuple[Argument, ...], kwargs: dict[str, Argument]
-) -> tuple[tuple[Any, ...], dict[str, Any]]:
-    """Return mandatory arguments in positional and optional arguments in keyword form.
-
-    This function standardizes the arguments and keyword arguments of a callable to
-    ensure that mandatory arguments are passed positionally and optional arguments are
-    passed as keyword arguments. It uses the signature of the callable to determine
-    which arguments are mandatory and which are optional.
-
-    Args:
-        f: The callable whose signature is to be analyzed.
-        args: Positional arguments passed to the callable.
-        kwargs: Keyword arguments passed to the callable.
-
-    Returns:
-        A tuple containing:
-        - A tuple of positional arguments that are mandatory
-        - A dictionary of optional arguments, where keys are argument names and values
-          are the corresponding values from `kwargs` or their default values if not
-          provided.
-    """
-    sig = _get_signature(f)
-    bound_args = sig.bind(*args, **kwargs)
-    positional = tuple(
-        bound_args.arguments[name]
-        for name, param in sig.parameters.items()
-        if name in bound_args.arguments and param.default is param.empty
-    )
-    optional = {
-        name: (
-            bound_args.arguments[name]
-            if name in bound_args.arguments
-            else param.default
-        )
-        for name, param in sig.parameters.items()
-        if param.default is not param.empty
-    }
-    return positional, optional
-
-
-def standardize_signature(
-    f: Callable,
-    args: tuple[Argument, ...],
-    kwargs: dict[str, Argument],
-    verbose: bool = False,
-) -> tuple[tuple[Argument, ...], dict[str, Argument]]:
-    """Standardize the args and kwargs of a node (inplace).
-
-    This function modifies the node's args and kwargs to match the signature of the
-    function it calls. It ensures that positional arguments are grouped together and
-    keyword arguments are separated, with defaults applied where necessary.
-
-    E.g., the call `replicate(x, times=4)` is standardized to `replicate(x, 4, pos=0)`.
-
-    Args:
-        f: The function that should be standardized.
-        args: The current arguments.
-        kwargs: The current keyword arguments.
-        verbose: If True, print the node's args and kwargs before and after.
-            Default: `False`.
-
-    Returns:
-        Standardized arguments and keywords.
-    """
-    if verbose:
-        print(f"Standardizing {f=}: {args=}, {kwargs=} ->", end=" ")
-
-    new_args, new_kwargs = separate_args_and_kwargs(f, args, kwargs)
-
-    if verbose:
-        print(f"{new_args=}, {new_kwargs=}.")
-
-    return new_args, new_kwargs
 
 
 def recursive_hasattr(obj: Any, attr: str) -> bool:

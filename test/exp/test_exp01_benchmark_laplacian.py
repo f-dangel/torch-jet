@@ -128,9 +128,13 @@ def test_randomized_laplacian_functions_identical(
     laps = {}
     for strategy in SUPPORTED_STRATEGIES:
         manual_seed(1)
-        laps[strategy] = laplacian_function(
+        lap_fn = laplacian_function(
             f, x, is_batched, strategy, randomization=randomization, weighting=weighting
-        )()
+        )
+        # Seed before evaluation so all strategies use the same random state
+        # (make_fx tracing consumes random state, so we re-seed after construction)
+        manual_seed(42)
+        laps[strategy] = lap_fn()
 
     first_key = list(laps.keys())[0]
     for key in laps:
@@ -247,9 +251,13 @@ def test_randomized_bilaplacian_functions_identical(
     bilaps = {}
     for strategy in SUPPORTED_STRATEGIES:
         manual_seed(1)
-        bilaps[strategy] = bilaplacian_function(
+        bilap_fn = bilaplacian_function(
             f, x, is_batched, strategy, randomization=randomization
-        )()
+        )
+        # Seed before evaluation so all strategies use the same random state
+        # (make_fx tracing consumes random state, so we re-seed after construction)
+        manual_seed(42)
+        bilaps[strategy] = bilap_fn()
 
     first_key = list(bilaps.keys())[0]
     for key in bilaps:

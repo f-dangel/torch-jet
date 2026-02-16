@@ -8,13 +8,12 @@ inputs from those that depend only on constants and substitutes the
 corresponding jet operations from `jet.operations.MAPPING`.
 """
 
-from torch import mul
+import torch
 from torch.fx import GraphModule, Proxy, Transformer
 from torch.fx.node import Argument, Target
 from torch.fx.traceback import get_current_meta
 
 from jet.operations import MAPPING, IsTaylorType, JetInfo
-from jet.utils import standardize_signature
 
 
 class JetTransformer(Transformer):
@@ -67,6 +66,23 @@ class JetTransformer(Transformer):
         # used as name for the combined node
         self.placeholder_and_coefficient_name = "jet_placeholder_coefficients"
 
+    def get_attr(
+        self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Argument]
+    ) -> Proxy:
+        """Handle get_attr nodes and register them as constant-dependent.
+
+        Args:
+            target: The attribute name.
+            args: Positional arguments.
+            kwargs: Keyword arguments.
+
+        Returns:
+            The created proxy node.
+        """
+        proxy = super().get_attr(target, args, kwargs)
+        self.dependent_on_constants.add(proxy.node.name)
+        return proxy
+
     def _check_dependency(self, arg: Argument) -> bool:
         """Determine if an argument depends on placeholders.
 
@@ -94,7 +110,10 @@ class JetTransformer(Transformer):
         elif isinstance(arg, tuple) and all(isinstance(a, Proxy) for a in arg):
             return True
 
-        elif isinstance(arg, (int, float)) or arg is None:
+        elif isinstance(arg, (int, float, bool, str, list)) or arg is None:
+            return False
+
+        elif isinstance(arg, (torch.dtype, torch.device, torch.memory_format)):
             return False
 
         else:
@@ -191,10 +210,6 @@ class JetTransformer(Transformer):
         Returns:
             The transformed `torch.fx.Proxy` node.
         """
-        # FIXME handle multiplication before JetTransform (see issue #107)
-        if hasattr(target, "__name__") and target is not mul:
-            args, kwargs = standardize_signature(target, args, kwargs)
-
         is_taylor_args = tuple(self._check_dependency(arg) for arg in args)
         is_taylor_kwargs = {
             key: self._check_dependency(arg) for key, arg in kwargs.items()

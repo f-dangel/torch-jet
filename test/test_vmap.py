@@ -1,15 +1,13 @@
-"""Test symbolic vmap."""
+"""Test that make_fx(vmap(f)) produces correct results."""
 
 from typing import Any
 
 from pytest import mark
-from torch import Tensor, cos, manual_seed, ones, rand, sigmoid, sin, tanh, vmap
+from torch import Tensor, cos, manual_seed, ones, rand, sigmoid, sin, tanh, vmap, zeros
+from torch.fx.experimental.proxy_tensor import make_fx
 from torch.nn import Linear, Sequential, Tanh
 from torch.nn.functional import linear
 from torch.random import fork_rng
-
-import jet.utils
-from jet.vmap import traceable_vmap
 
 VMAP_CASES = [
     # output does not depend on placeholder
@@ -46,31 +44,12 @@ VMAP_CASES = [
         "shape": (4,),
         "id": "tanh-mlp-4-3-2",
     },
-    # replicate
-    {"f": lambda x: jet.utils.replicate(x, 5), "shape": (2,), "id": "replicate-5"},
-    # sum_vmapped
-    {
-        "f": lambda x: jet.utils.sum_vmapped(x),
-        "shape": (6, 2),
-        "id": "sum_vmapped_pos0",
-    },
-    {
-        "f": lambda x: jet.utils.sum_vmapped(x, pos=1),
-        "shape": (6, 2),
-        "id": "sum_vmapped_pos1",
-    },
-    # sample
-    {
-        "f": lambda x: jet.utils.sample(x, "normal", (3, 2)),
-        "shape": (4,),
-        "id": "sample_normal",
-    },
 ]
 
 
 @mark.parametrize("config", VMAP_CASES, ids=[c["id"] for c in VMAP_CASES])
-def test_traceable_vmap(config: dict[str, Any], vmapsize: int = 3):
-    """Ensure trace-able vmap behaves like torch.vmap.
+def test_make_fx_vmap(config: dict[str, Any], vmapsize: int = 3):
+    """Ensure make_fx(vmap(f)) behaves like torch.vmap.
 
     Args:
         config: Configuration for the test case.
@@ -84,7 +63,10 @@ def test_traceable_vmap(config: dict[str, Any], vmapsize: int = 3):
 
     # set up batched functions
     vmap_f = vmap(f, randomness="different")
-    tr_vmap_f = traceable_vmap(f, vmapsize)
+
+    # trace the vmapped function with make_fx
+    example_x = zeros(vmapsize, *shape)
+    traced_vmap_f = make_fx(vmap_f)(example_x)
 
     # compare their results
     with fork_rng():
@@ -92,7 +74,7 @@ def test_traceable_vmap(config: dict[str, Any], vmapsize: int = 3):
         truth = vmap_f(x)
     with fork_rng():
         manual_seed(1)
-        result = tr_vmap_f(x)
+        result = traced_vmap_f(x)
 
     if isinstance(truth, tuple):
         assert len(truth) == len(result)

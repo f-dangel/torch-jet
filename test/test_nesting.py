@@ -46,13 +46,13 @@ NEST_CASES = [
     },
     # replicate
     {"f": lambda x: jet.utils.replicate(x, 5), "shape": (2,), "id": "replicate-5"},
-    # sum_vmapped
-    {"f": lambda x: jet.utils.sum_vmapped(x), "shape": (3, 5), "id": "sum_vmapped-3"},
-    # sum_vmapped(sin)
+    # sum
+    {"f": lambda x: x.sum(0), "shape": (3, 5), "id": "sum-3"},
+    # sum(sin)
     {
-        "f": lambda x: jet.utils.sum_vmapped(sin(x), pos=1),
+        "f": lambda x: sin(x).sum(1),
         "shape": (6, 2),
-        "id": "sum_vmapped_pos1",
+        "id": "sum_pos1",
     },
 ]
 
@@ -61,7 +61,11 @@ class JetModule(Module):
     """A module that computes the k-th jet of a function f."""
 
     def __init__(
-        self, f: Callable[[Tensor], Tensor], vs: tuple[Tensor, ...], k: int
+        self,
+        f: Callable[[Tensor], Tensor],
+        vs: tuple[Tensor, ...],
+        k: int,
+        example_input: Tensor | None = None,
     ) -> None:
         """Initialize the JetModule.
 
@@ -69,9 +73,10 @@ class JetModule(Module):
             f: The function to compute the jet of.
             vs: The Taylor coefficients for the jet.
             k: The order of the jet.
+            example_input: Example input for tracing.
         """
         super().__init__()
-        self.jet_f = jet.jet(f, derivative_order=k)
+        self.jet_f = jet.jet(f, derivative_order=k, example_input=example_input)
         self.k = k
         self.vs = vs
 
@@ -114,12 +119,12 @@ def test_nested_jet(config: dict[str, Any], k1: int, k2: int):
 
     # Compute the nested jet with the `jet` function
     # Compute the first jet and evaluate it at the first set of vectors
-    jet_f = JetModule(f, vs1, k1)
-    print(f"Jet: {capture_graph(jet_f)}")
+    jet_f = JetModule(f, vs1, k1, example_input=x)
+    print(f"Jet: {capture_graph(jet_f, x)}")
 
     # Compute the second jet and evaluate it at the second set of vectors
-    nested_jet_f = JetModule(jet_f, vs2, k2)
-    print(f"Nested Jet: {capture_graph(nested_jet_f)}")
+    nested_jet_f = JetModule(jet_f, vs2, k2, example_input=x)
+    print(f"Nested Jet: {capture_graph(nested_jet_f, x)}")
 
     # Compare
     result = nested_jet_f(x)

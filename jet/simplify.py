@@ -1,6 +1,5 @@
 """Functions to simplify a compute graph captured with `torch.fx`."""
 
-import operator
 from collections import defaultdict
 from contextlib import contextmanager
 from functools import partial
@@ -30,9 +29,6 @@ from jet.tracing import capture_graph
 from jet.utils import (
     print_tensor_constants_and_shapes,
     recursive_getattr,
-    replicate,
-    standardize_signature,
-    sum_vmapped,
 )
 
 
@@ -272,6 +268,7 @@ def simplify(  # noqa: C901
     eliminate_tensor_constants: bool = True,
     verbose: bool = False,
     test_x: Tensor | None = None,
+    example_input: Tensor | None = None,
 ) -> GraphModule:
     """Simplify a compute graph.
 
@@ -305,38 +302,19 @@ def simplify(  # noqa: C901
             simplification to make sure it does not change the correctness.
             This is expensive and should be considered for debugging purposes only.
             If `None`, the verification step will be skipped. Default: `None`.
+        example_input: A concrete example input tensor for tracing with ``make_fx``.
+            Required when ``mod`` is not already a ``GraphModule``. Default: `None`.
 
     Returns:
         The simplified graph module.
     """
-    mod = capture_graph(mod)
+    mod = capture_graph(mod, example_input=example_input)
 
     nodes_before = len(list(mod.graph.nodes))
     if verbose:
         print(f"Traced graph before simplification:\n{mod.graph}")
 
-    # Replace all call_method[mul] with call_function[operator.mul] because the
-    # simplification logic is only supported for call_function nodes at the moment
     graph = mod.graph
-    for node in [n for n in graph.nodes if n.op == "call_method" and n.target == "mul"]:
-        with check_unaltered(mod, test_x), graph.inserting_before(node):
-            # replace the node with a call_function node
-            new_node = graph.call_function(
-                operator.mul, args=node.args, kwargs=node.kwargs
-            )
-            node.replace_all_uses_with(new_node)
-            graph.erase_node(node)
-
-    # Unify the args/kwargs of replicate and sum_vmapped nodes
-    for node in [
-        n
-        for n in graph.nodes
-        if n.op == "call_function" and n.target in {replicate, sum_vmapped}
-    ]:
-        with check_unaltered(mod, test_x):
-            node.args, node.kwargs = standardize_signature(
-                node.target, node.args, node.kwargs, verbose=verbose
-            )
 
     # Initialize PushReplicate* rules
     replicate_rules = [
@@ -347,7 +325,7 @@ def simplify(  # noqa: C901
         PushReplicateSumVmapped(),
     ]
     # Initialize PullSumVmapped* rules
-    sum_vmapped_rules = [
+    sum_rules = [
         PullSumVmappedTensorAddition(),
         PullSumVmappedScalarMultiplication(),
         PullSumVmappedReplicateMultiplication(),
@@ -364,7 +342,7 @@ def simplify(  # noqa: C901
             common_tensor_constant_elimination, mod, verbose=verbose
         ),
         "push_replicate": lambda: apply_once(replicate_rules, mod, verbose=verbose),
-        "pull_sum_vmapped": lambda: apply_once(sum_vmapped_rules, mod, verbose=verbose),
+        "pull_sum_vmapped": lambda: apply_once(sum_rules, mod, verbose=verbose),
     }
 
     # round 1 of simplifications: remove redundancies in the graph

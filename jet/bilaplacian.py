@@ -3,11 +3,12 @@
 from typing import Callable
 
 from torch import Tensor, eye, zeros
+from torch.func import vmap
+from torch.fx.experimental.proxy_tensor import make_fx
 from torch.nn import Module
 
 import jet
 from jet.ttc_coefficients import compute_all_gammas
-from jet.vmap import traceable_vmap
 
 
 class Bilaplacian(Module):
@@ -90,7 +91,7 @@ class Bilaplacian(Module):
                 raise ValueError(f"{num_samples=} must be positive.")
         self.randomization = randomization
 
-        jet_f = jet.jet(f, 4)
+        jet_f = jet.jet(f, 4, example_input=dummy_x)
         D = self.in_dim
         num_jets = (
             {self.randomization[1]}
@@ -99,7 +100,12 @@ class Bilaplacian(Module):
         )
         num_jets = {n for n in num_jets if n > 0}
         for n in num_jets:
-            multijet_f = traceable_vmap(jet_f, n)
+            # Create batched version using native vmap + make_fx tracing
+            vmapped = vmap(jet_f, randomness="different")
+            example_args = tuple(
+                zeros(n, *self.in_shape, **self.in_meta) for _ in range(5)
+            )
+            multijet_f = make_fx(vmapped)(*example_args)
             setattr(self, f"jets_f_{n}", multijet_f)
 
     def _get_multijet(

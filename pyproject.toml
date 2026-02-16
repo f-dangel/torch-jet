@@ -84,6 +84,7 @@ packages = ["jet"]
 
 [tool.ruff]
 line-length = 88
+exclude = ["experiments"]
 
 [tool.ruff.lint]
 # Enable all rules from flake8 (E, F), plus additional ones including isort (I) and

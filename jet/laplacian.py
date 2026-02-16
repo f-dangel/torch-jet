@@ -3,10 +3,11 @@
 from typing import Callable
 
 from torch import Tensor, eye, zeros
+from torch.func import vmap
+from torch.fx.experimental.proxy_tensor import make_fx
 from torch.nn import Module
 
 import jet
-from jet.vmap import traceable_vmap
 
 
 class Laplacian(Module):
@@ -104,11 +105,16 @@ class Laplacian(Module):
                 raise ValueError(f"{num_samples=} must be positive.")
         self.randomization = randomization
 
-        jet_f = jet.jet(f, 2)
+        jet_f = jet.jet(f, 2, example_input=dummy_x)
         self.num_jets = (
             self.rank_weightings if randomization is None else randomization[1]
         )
-        self.jet_f = traceable_vmap(jet_f, self.num_jets)
+        # Create batched version using native vmap + make_fx tracing
+        vmapped = vmap(jet_f, randomness="different")
+        X0_ex = zeros(self.num_jets, *self.in_shape, **self.in_meta)
+        X1_ex = zeros(self.num_jets, *self.in_shape, **self.in_meta)
+        X2_ex = zeros(self.num_jets, *self.in_shape, **self.in_meta)
+        self.jet_f = make_fx(vmapped)(X0_ex, X1_ex, X2_ex)
 
     def forward(self, x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         """Compute the (weighted and/or randomized) Laplacian of f at x.

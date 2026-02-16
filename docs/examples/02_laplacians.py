@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 from torch import Tensor, eye, manual_seed, rand, stack, vmap, zeros, zeros_like
 from torch.func import hessian
 from torch.fx import GraphModule
+from torch.fx.experimental.proxy_tensor import make_fx
 from torch.fx.passes.graph_drawer import FxGraphDrawer
 from torch.nn import Linear, Module, Sequential, Tanh
 from tueplots import bundles
@@ -23,7 +24,6 @@ from tueplots import bundles
 from jet import jet, utils
 from jet.simplify import simplify
 from jet.tracing import capture_graph
-from jet.vmap import traceable_vmap
 
 HEREDIR = path.dirname(path.abspath(__name__))
 # We need to store figures here so they will be picked up in the built doc
@@ -113,7 +113,7 @@ print(hessian_trace_laplacian)
 # Let's set up the jet function:
 
 k = 2
-f_jet = jet(f, k)
+f_jet = jet(f, k, example_input=x)
 
 # %%
 #
@@ -217,11 +217,11 @@ class Laplacian(Module):
     def __init__(self):
         """Initialize the Laplacian module."""
         super().__init__()
-        # NOTE We cannot use `torch.vmap` here because it will result in a structure
-        # that cannot be traced, hence we would not be able to look at the graph nor
-        # rewrite it. Therefore, we have our own `traceable_vmap` which is compatible
-        # with `torch.fx` tracing (but has other limitations, see below).
-        self.vmap_f_jet = traceable_vmap(f_jet, vmapsize=D)
+        # We use make_fx(vmap(f_jet)) to trace the vmapped jet function into a
+        # GraphModule. This gives us a graph we can inspect and simplify.
+        vmapped = vmap(f_jet, randomness="different")
+        example_X = zeros(D, D)
+        self.vmap_f_jet = make_fx(vmapped)(example_X, example_X, example_X)
 
     def forward(self, x: Tensor) -> Tensor:
         """Compute the Laplacian.
@@ -276,7 +276,7 @@ def visualize_graph(mod: GraphModule, savefile: str, name: str = ""):
 # (we evaluated approaches 2 and 3 in our paper).
 
 # Graph 1: Simply capture the module that computes the Laplacian
-mod_traced = capture_graph(mod)
+mod_traced = capture_graph(mod, example_input=x)
 visualize_graph(mod_traced, path.join(GALLERYDIR, "02_laplacian_module.png"))
 assert hessian_trace_laplacian.allclose(mod_traced(x))
 

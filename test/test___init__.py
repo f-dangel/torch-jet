@@ -33,7 +33,7 @@ def check_jet(f: Callable[[Primal], Value], arg: PrimalAndCoefficients):  # noqa
     rev_jet_f = rev_jet(f)
     rev_jet_out = rev_jet_f(x, *vs)
 
-    jet_f = jet.jet(f, derivative_order=len(vs), verbose=True)
+    jet_f = jet.jet(f, derivative_order=len(vs), example_input=x, verbose=True)
     jet_out = jet_f(x, *vs)
 
     compare_jet_results(jet_out, rev_jet_out)
@@ -127,8 +127,8 @@ JET_CASES = [
     {"f": lambda x: sin(x) - x, "shape": (3,), "id": "sin-neg-residual"},
     # multiplication two variables
     {"f": f_multiply, "shape": (5,), "id": "multiply-variables"},
-    # sum_vmapped
-    {"f": lambda x: jet.utils.sum_vmapped(x), "shape": (3, 5), "id": "sum_vmapped-3"},
+    # sum
+    {"f": lambda x: x.sum(0), "shape": (3, 5), "id": "sum-3"},
 ]
 
 # set the `is_batched` flag for all cases
@@ -198,9 +198,9 @@ def test_symbolic_trace_jet(config: dict[str, Any], k: int):
         config: Configuration dictionary of the test case.
         k: The order of the jet to compute.
     """
-    f, _, _ = setup_case(config, derivative_order=k)
+    f, x, vs = setup_case(config, derivative_order=k)
     # generate the jet's compute graph
-    jet_f = jet.jet(f, k)
+    jet_f = jet.jet(f, k, example_input=x)
 
-    # try tracing it
-    capture_graph(jet_f)
+    # try tracing it with example inputs (primal + coefficients)
+    capture_graph(jet_f, x if not vs else vs[0])

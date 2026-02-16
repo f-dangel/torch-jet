@@ -10,7 +10,7 @@ First, the imports.
 from os import path
 
 from pytest import raises
-from torch import Tensor, cos, manual_seed, ones_like, rand, sin, zeros, zeros_like
+from torch import Tensor, cos, manual_seed, ones_like, rand, sin, zeros_like
 from torch.func import hessian
 from torch.fx import GraphModule
 from torch.fx.passes.graph_drawer import FxGraphDrawer
@@ -394,7 +394,10 @@ with raises(RuntimeError):
 # Typically, if a function is not supported, you will encounter an error. For instance,
 # the ReLU function is currently not supported:
 
-f = lambda x: relu(x)
+
+def f(x):  # noqa: D103
+    return relu(x)
+
 
 with raises(NotImplementedError):
     jet(f, 2, example_input=rand(3))

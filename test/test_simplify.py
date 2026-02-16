@@ -220,7 +220,7 @@ def test_simplify_laplacian(
     print("Laplacian via jet matches Laplacian via simplified module.")
 
     # NOTE: With make_fx(vmap(jet_f)), the graph structure is different from the
-    # old traceable_vmap approach. Replicate/sum_vmapped nodes may not appear in
+    # old traceable_vmap approach. Replicate/sum nodes may not appear in
     # the output since the vmap is traced at the ATen level. We verify correctness
     # above by comparing outputs.
 

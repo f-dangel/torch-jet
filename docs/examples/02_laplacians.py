@@ -237,7 +237,7 @@ class Laplacian(Module):
         """
         X0, X1, X2 = utils.replicate(x, D), eye(D), zeros(D, D)
         _, _, F2 = self.vmap_f_jet(X0, X1, X2)
-        return utils.sum_vmapped(F2)
+        return F2.sum(0)
 
 
 mod = Laplacian()
@@ -284,13 +284,13 @@ visualize_graph(mod_traced, path.join(GALLERYDIR, "02_laplacian_module.png"))
 assert hessian_trace_laplacian.allclose(mod_traced(x))
 
 # Graph 2: Simplify the module by removing replicate computations
-mod_standard = simplify(mod_traced, pull_sum_vmapped=False)
+mod_standard = simplify(mod_traced, pull_sum=False)
 visualize_graph(mod_standard, path.join(GALLERYDIR, "02_laplacian_standard.png"))
 assert hessian_trace_laplacian.allclose(mod_standard(x))
 
 # Graph 3: Simplify the module by removing replicate computations and pulling up the
 # summations to directly propagate sums of Taylor coefficients
-mod_collapsed = simplify(mod_traced, pull_sum_vmapped=True)
+mod_collapsed = simplify(mod_traced, pull_sum=True)
 visualize_graph(mod_collapsed, path.join(GALLERYDIR, "02_laplacian_collapsed.png"))
 assert hessian_trace_laplacian.allclose(mod_collapsed(x))
 
@@ -314,7 +314,7 @@ print(f"3) Collapsing simplifications: {len(mod_collapsed.graph.nodes)} nodes")
 #
 # Next, let's have a look at the computation graphs. Don't try to understand all the
 # details here, instead let's focus on two kinds of operations:
-# `jet.utils.replicate` (dark orange), and `jet.utils.sum_vmapped` (brown,
+# `jet.utils.replicate` (dark orange), and `sum` (brown,
 # second-to-last node in Graphs 1 and 2).
 #
 # | Captured | Standard simplifications | Collapsing simplifications |
@@ -336,24 +336,24 @@ print(f"3) Collapsing simplifications: {len(mod_collapsed.graph.nodes)} nodes")
 # - Graph 3 (**Collapsing simplifications**) goes one step further than Graph 2 and
 #   performs the 'collapsing' of Taylor mode we present in our paper.
 #
-#     Let's note one more thing: Graphs 1 and 2 both have a `jet.utils.sum_vmapped`
+#     Let's note one more thing: Graphs 1 and 2 both have a `sum`
 #     node at the end, which sums the Hessian diagonal elements to obtain the Laplacian.
 #     If we take an even closer look, we see that the input to this summation is the
 #     output of a linear operation, something like
 #     ```python
-#     laplacian = sum_vmapped(linear(Z, weight)) # standard: D matvecs
+#     laplacian = sum(linear(Z, weight)) # standard: D matvecs
 #     ```
 #     *The crucial insight from our paper is that the sum can be propagated up the
 #     graph!* For our example, we can first sum, then apply the linear operation, as
 #     this is mathematically equivalent, but cheaper:
 #     ```python
-#     laplacian = linear(sum_vmapped(Z), weight) # collapsed: 1 matvec
+#     laplacian = linear(sum(Z), weight) # collapsed: 1 matvec
 #     ```
-#     In the graph perspective, we have 'pulled' the `sum_vmapped` node up the graph.
+#     In the graph perspective, we have 'pulled' the `sum` node up the graph.
 #     We can repeat this procedure until we run out of possible simplifications.
 #     Effectively, this 'collapses' the Taylor coefficients we propagate forward;
 #     hence the name 'collapsed Taylor mode'. The resulting graph is Graph 3, which
-#     used `simplify` and enabled its `pull_sum_vmapped` option. As a neat side effect,
+#     used `simplify` and enabled its `pull_sum` option. As a neat side effect,
 #     note how many of the `replicate` nodes cancel out with the up-propagated sums,
 #     and Graph 3 has less `replicate` nodes than Graph 2.
 #

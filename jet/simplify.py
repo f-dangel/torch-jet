@@ -12,16 +12,16 @@ from torch.nn import Module
 from torch.random import fork_rng
 
 from jet.rules import (
-    MergeSumVmappedConstant,
+    MergeSumConstant,
     ModuleRule,
-    PullSumVmappedLinear,
-    PullSumVmappedReplicateMultiplication,
-    PullSumVmappedScalarMultiplication,
-    PullSumVmappedTensorAddition,
+    PullSumLinear,
+    PullSumReplicateMultiplication,
+    PullSumScalarMultiplication,
+    PullSumTensorAddition,
     PushReplicateElementwise,
     PushReplicateLinear,
     PushReplicateScalarArithmetic,
-    PushReplicateSumVmapped,
+    PushReplicateSum,
     PushReplicateTensorArithmetic,
     Rule,
 )
@@ -263,7 +263,7 @@ def simplify(  # noqa: C901
     mod: GraphModule | Module | Callable,
     push_replicate: bool = True,
     remove_unused: bool = True,
-    pull_sum_vmapped: bool = True,
+    pull_sum: bool = True,
     eliminate_common_subexpressions: bool = True,
     eliminate_tensor_constants: bool = True,
     verbose: bool = False,
@@ -283,7 +283,7 @@ def simplify(  # noqa: C901
 
     - Eliminating tensor constants which contain the same tensors.
 
-    - Pulling of `sum_vmapped` nodes up the graph as much as possible.
+    - Pulling of ``sum`` nodes up the graph as much as possible.
       This avoids redundant computations on summed tensors.
 
     Args:
@@ -291,7 +291,7 @@ def simplify(  # noqa: C901
         push_replicate: Whether to push `replicate` nodes down the graph.
             Default: `True`.
         remove_unused: Whether to remove unused nodes from the graph. Default: `True`.
-        pull_sum_vmapped: Whether to pull `sum_vmapped` nodes up the graph.
+        pull_sum: Whether to pull ``sum`` nodes up the graph.
             Default: `True`.
         eliminate_common_subexpressions: Whether to eliminate common subexpressions.
             Default: `True`.
@@ -322,15 +322,15 @@ def simplify(  # noqa: C901
         PushReplicateScalarArithmetic(),
         PushReplicateTensorArithmetic(),
         PushReplicateLinear(),
-        PushReplicateSumVmapped(),
+        PushReplicateSum(),
     ]
-    # Initialize PullSumVmapped* rules
+    # Initialize PullSum* rules
     sum_rules = [
-        PullSumVmappedTensorAddition(),
-        PullSumVmappedScalarMultiplication(),
-        PullSumVmappedReplicateMultiplication(),
-        PullSumVmappedLinear(),
-        MergeSumVmappedConstant(),
+        PullSumTensorAddition(),
+        PullSumScalarMultiplication(),
+        PullSumReplicateMultiplication(),
+        PullSumLinear(),
+        MergeSumConstant(),
     ]
 
     strategies = {
@@ -342,7 +342,7 @@ def simplify(  # noqa: C901
             common_tensor_constant_elimination, mod, verbose=verbose
         ),
         "push_replicate": lambda: apply_once(replicate_rules, mod, verbose=verbose),
-        "pull_sum_vmapped": lambda: apply_once(sum_rules, mod, verbose=verbose),
+        "pull_sum": lambda: apply_once(sum_rules, mod, verbose=verbose),
     }
 
     # round 1 of simplifications: remove redundancies in the graph
@@ -357,10 +357,10 @@ def simplify(  # noqa: C901
         round_two.append("push_replicate")
     _exhaust_incrementally({s: strategies[s] for s in round_two}, mod, test_x, verbose)
 
-    # round 3 of simplifications: pull sum_vmapped nodes up
+    # round 3 of simplifications: pull sum nodes up
     round_three = []
-    if pull_sum_vmapped:
-        round_three.append("pull_sum_vmapped")
+    if pull_sum:
+        round_three.append("pull_sum")
     if eliminate_common_subexpressions:
         round_three.append("common_subexpression_elimination")
     _exhaust_incrementally(

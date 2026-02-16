@@ -135,7 +135,7 @@ class Laplacian(Module):
             # Monte Carlo averaging: scale by 1 / number of samples
             monte_carlo_scaling = 1.0 / self.randomization[1]
             F2 = F2 * monte_carlo_scaling
-        return F0, F1, jet.utils.sum_vmapped(F2)
+        return F0, F1, F2.sum(0)
 
     def _set_up_first_taylor_coefficient(self, x: Tensor) -> Tensor:
         """Create the first Taylor coefficients for the Laplacian computation.

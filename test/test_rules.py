@@ -12,12 +12,12 @@ from torch.nn import Module
 
 import jet.utils
 from jet.rules import (
-    PullSumVmappedReplicateMultiplication,
-    PullSumVmappedScalarMultiplication,
-    PullSumVmappedTensorAddition,
+    PullSumReplicateMultiplication,
+    PullSumScalarMultiplication,
+    PullSumTensorAddition,
     PushReplicateElementwise,
     PushReplicateScalarArithmetic,
-    PushReplicateSumVmapped,
+    PushReplicateSum,
     PushReplicateTensorArithmetic,
 )
 from jet.simplify import apply_once
@@ -210,24 +210,24 @@ CASES.extend(
 # )
 
 
-# Pushing a replicate node through a sum_vmapped node
-class ReplicateSumVmapped(Module):  # noqa: D101
+# Pushing a replicate node through a sum node
+class ReplicateSum(Module):  # noqa: D101
     def __init__(self, pos1: int, pos2: int, times: int) -> None:  # noqa: D107
         super().__init__()
         self.pos1, self.pos2, self.times = pos1, pos2, times
 
     def forward(self, x):  # noqa: D102
         x_rep = jet.utils.replicate(x, self.times, pos=self.pos1)
-        return jet.utils.sum_vmapped(x_rep, self.pos2)
+        return x_rep.sum(self.pos2)
 
 
-class SimpleReplicateSumVmapped(ReplicateSumVmapped):  # noqa: D101
+class SimpleReplicateSum(ReplicateSum):  # noqa: D101
     def forward(self, x):  # noqa: D102
         if self.pos1 == self.pos2:
             return x * self.times
 
         new_sum_pos = self.pos2 if self.pos1 > self.pos2 else self.pos2 - 1
-        x_sum = jet.utils.sum_vmapped(x, new_sum_pos)
+        x_sum = x.sum(new_sum_pos)
 
         new_rep_pos = self.pos1 - 1 if self.pos1 > self.pos2 else self.pos1
         return jet.utils.replicate(x_sum, self.times, pos=new_rep_pos)
@@ -236,19 +236,19 @@ class SimpleReplicateSumVmapped(ReplicateSumVmapped):  # noqa: D101
 CASES.extend(
     [
         {
-            "f": ReplicateSumVmapped(pos1, pos2, times=5),
-            "f_simple": SimpleReplicateSumVmapped(pos1, pos2, times=5),
-            "rules": lambda: [PushReplicateSumVmapped()],
+            "f": ReplicateSum(pos1, pos2, times=5),
+            "f_simple": SimpleReplicateSum(pos1, pos2, times=5),
+            "rules": lambda: [PushReplicateSum()],
             "shape": (4, 3),
-            "id": f"replicate{pos1}-sum_vmapped{pos2}",
+            "id": f"replicate{pos1}-sum{pos2}",
         }
         for pos1, pos2 in [(2, 2), (2, 0), (0, 2)]
     ]
 )
 
 
-# Pulling a sum_vmapped node through an arithmetic operation with an integer/float
-class SumVmappedScalarMultiplication(Module):  # noqa: D101
+# Pulling a sum node through an arithmetic operation with an integer/float
+class SumScalarMultiplication(Module):  # noqa: D101
     def __init__(  # noqa: D107
         self,
         op: Callable[[float | int | Tensor, float | int | Tensor], Tensor],
@@ -264,12 +264,12 @@ class SumVmappedScalarMultiplication(Module):  # noqa: D101
 
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         res = self.op(self.scalar, x) if self.scalar_first else self.op(x, self.scalar)
-        return jet.utils.sum_vmapped(res, self.pos)
+        return res.sum(self.pos)
 
 
-class SimpleSumVmappedScalarMultiplication(SumVmappedScalarMultiplication):  # noqa: D101
+class SimpleSumScalarMultiplication(SumScalarMultiplication):  # noqa: D101
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        x_sum = jet.utils.sum_vmapped(x, self.pos)
+        x_sum = x.sum(self.pos)
         return (
             self.op(self.scalar, x_sum)
             if self.scalar_first
@@ -280,69 +280,58 @@ class SimpleSumVmappedScalarMultiplication(SumVmappedScalarMultiplication):  # n
 CASES.extend(
     [
         {
-            "f": SumVmappedScalarMultiplication(
+            "f": SumScalarMultiplication(op, pos=0, scalar=3.0, scalar_first=first),
+            "f_simple": SimpleSumScalarMultiplication(
                 op, pos=0, scalar=3.0, scalar_first=first
             ),
-            "f_simple": SimpleSumVmappedScalarMultiplication(
-                op, pos=0, scalar=3.0, scalar_first=first
-            ),
-            "rules": lambda: [PullSumVmappedScalarMultiplication()],
+            "rules": lambda: [PullSumScalarMultiplication()],
             "shape": (4,),
-            "id": f"sum_vmapped-{op.__module__}.{op.__name__}-scalar-{first=}",
+            "id": f"sum-{op.__module__}.{op.__name__}-scalar-{first=}",
         }
         for op, first in product(_MULTIPLICATION_OPS, [False, True])
     ]
 )
 
 
-# pulling a sum_vmapped node through addition/subtraction of two tensors
-class SumVmappedTensorAddition(Module):  # noqa: D101
+# pulling a sum node through addition/subtraction of two tensors
+class SumTensorAddition(Module):  # noqa: D101
     def __init__(self, op: Callable[[Tensor, Tensor], Tensor], pos: int):  # noqa: D107
         super().__init__()
         self.op, self.pos = op, pos
 
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         y = x + 1
-        return jet.utils.sum_vmapped(self.op(x, y), self.pos)
+        return self.op(x, y).sum(self.pos)
 
 
-class SimpleSumVmappedTensorAddition(SumVmappedTensorAddition):  # noqa: D101
+class SimpleSumTensorAddition(SumTensorAddition):  # noqa: D101
     def forward(self, x):  # noqa: D102
         return self.op(
-            jet.utils.sum_vmapped(x, self.pos),
-            jet.utils.sum_vmapped(x + 1, self.pos),
+            x.sum(self.pos),
+            (x + 1).sum(self.pos),
         )
 
 
 CASES.extend(
     [
         {
-            "f": SumVmappedTensorAddition(op, pos=0),
-            "f_simple": SimpleSumVmappedTensorAddition(op, pos=0),
-            "rules": lambda: [PullSumVmappedTensorAddition()],
+            "f": SumTensorAddition(op, pos=0),
+            "f_simple": SimpleSumTensorAddition(op, pos=0),
+            "rules": lambda: [PullSumTensorAddition()],
             "shape": (4,),
-            "id": f"sum_vmapped-{op.__module__}.{op.__name__}-two-tensors",
+            "id": f"sum-{op.__module__}.{op.__name__}-two-tensors",
         }
         for op in _ADDITION_OPS
     ]
 )
 
-# Pull a sum_vmapped node through a linear layer
+# Pull a sum node through a linear layer
 # NOTE: Skipped because make_fx decomposes `linear` into lower-level ops
-# (mm, addmm, t, view), so PullSumVmappedLinear cannot match.
-# CASES.append(
-#     {
-#         "f": lambda x: jet.utils.sum_vmapped(
-#             linear(x, linspace(-2.0, 10, 12).reshape(3, 4)),
-#             pos=0,
-#         ),
-#         ...
-#     }
-# )
+# (mm, addmm, t, view), so PullSumLinear cannot match.
 
 
-# Pull a sum_vmapped through a multiplication, one of whose arguments is a replicate
-class SumVmappedReplicateMultiplication(Module):  # noqa: D101
+# Pull a sum through a multiplication, one of whose arguments is a replicate
+class SumReplicateMultiplication(Module):  # noqa: D101
     def __init__(  # noqa: D107
         self, times: int, shape: tuple[int, ...], pos: int, replicate_first: bool
     ):
@@ -361,32 +350,32 @@ class SumVmappedReplicateMultiplication(Module):  # noqa: D101
             if self.replicate_first
             else mul(self.y, jet.utils.replicate(x, self.times, pos=0))
         )
-        return jet.utils.sum_vmapped(res, self.pos)
+        return res.sum(self.pos)
 
 
-class SimpleSumVmappedReplicateMultiplication(SumVmappedReplicateMultiplication):  # noqa: D101
+class SimpleSumReplicateMultiplication(SumReplicateMultiplication):  # noqa: D101
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         return (
-            x * jet.utils.sum_vmapped(self.y, self.pos)
+            x * self.y.sum(self.pos)
             if self.replicate_first
-            else mul(jet.utils.sum_vmapped(self.y, self.pos), x)
+            else mul(self.y.sum(self.pos), x)
         )
 
 
 CASES.extend(
     [
         {
-            "f": SumVmappedReplicateMultiplication(
+            "f": SumReplicateMultiplication(
                 times=5, shape=(4,), pos=0, replicate_first=first
             ),
-            "f_simple": SimpleSumVmappedReplicateMultiplication(
+            "f_simple": SimpleSumReplicateMultiplication(
                 times=5, shape=(4,), pos=0, replicate_first=first
             ),
             "rules": lambda: [
-                PullSumVmappedReplicateMultiplication(),
+                PullSumReplicateMultiplication(),
             ],
             "shape": (4,),
-            "id": f"sum_vmapped-replicate-multiplication-{first=}",
+            "id": f"sum-replicate-multiplication-{first=}",
         }
         for first in [True, False]
     ]

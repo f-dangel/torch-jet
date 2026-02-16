@@ -145,7 +145,7 @@ class Bilaplacian(Module):
             jet_f = self._get_multijet(num_samples)
             _, _, _, _, F4 = jet_f(X0, X1, X2, X3, X4)
             # need to divide the Laplacian by number of MC samples
-            return jet.utils.sum_vmapped(F4) / (3 * num_samples)
+            return F4.sum(0) / (3 * num_samples)
 
         # three lists of 4-jet coefficients, one for each term
         C1, C2, C3 = self._set_up_taylor_coefficients(x)
@@ -158,7 +158,7 @@ class Bilaplacian(Module):
         jet_f = self._get_multijet(D)
         _, _, _, _, F4_1 = jet_f(*C1)
         factor1 = (gamma_4_4 + 2 * (D - 1) * gamma_4_0) / 24
-        term1 = factor1 * jet.utils.sum_vmapped(F4_1)
+        term1 = factor1 * F4_1.sum(0)
 
         # there are no off-diagonal terms if the dimension is 1
         if D == 1:
@@ -169,14 +169,14 @@ class Bilaplacian(Module):
         jet_f = self._get_multijet(D * (D - 1))
         _, _, _, _, F4_2 = jet_f(*C2)
         factor2 = 2 * gamma_3_1 / 24
-        term2 = factor2 * jet.utils.sum_vmapped(F4_2)
+        term2 = factor2 * F4_2.sum(0)
 
         # third term
         gamma_2_2 = float(gammas[(2, 2)])
         jet_f = self._get_multijet(D * (D - 1) // 2)
         _, _, _, _, F4_3 = jet_f(*C3)
         factor3 = 2 * gamma_2_2 / 24
-        term3 = factor3 * jet.utils.sum_vmapped(F4_3)
+        term3 = factor3 * F4_3.sum(0)
 
         return term1 + term2 + term3
 

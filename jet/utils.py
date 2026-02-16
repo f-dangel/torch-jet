@@ -97,42 +97,6 @@ def _replicate_backward(ctx, grad_output):
 replicate.register_autograd(_replicate_backward, setup_context=_replicate_setup_context)
 
 
-@torch.library.custom_op("jet::sum_vmapped", mutates_args=())
-def sum_vmapped(x: Tensor, pos: int = 0) -> Tensor:
-    """Sum out a vmap-ed axis.
-
-    Args:
-        x: Vmap-ed tensor.
-        pos: Position of the vmap-ed axis to sum out. Default: `0`.
-
-    Returns:
-        Sum of the vmap-ed tensor.
-    """
-    return x.sum(pos)
-
-
-@sum_vmapped.register_fake
-def _sum_vmapped_fake(x: Tensor, pos: int = 0) -> Tensor:
-    new_shape = list(x.shape)
-    del new_shape[pos]
-    return x.new_empty(new_shape)
-
-
-def _sum_vmapped_setup_context(ctx, inputs, output):
-    x, pos = inputs
-    ctx.pos = pos
-    ctx.x_shape = x.shape
-
-
-def _sum_vmapped_backward(ctx, grad_output):
-    return grad_output.unsqueeze(ctx.pos).expand(ctx.x_shape), None
-
-
-sum_vmapped.register_autograd(
-    _sum_vmapped_backward, setup_context=_sum_vmapped_setup_context
-)
-
-
 def rademacher(*shape: int, dtype: dtype | None = None, device: device | None = None):
     """Sample from Rademacher distribution.
 

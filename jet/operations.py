@@ -499,38 +499,6 @@ def jet_sum(
     )
 
 
-def jet_sum_vmapped(
-    self_and_taylor_coefficients: PrimalAndCoefficients,
-    pos: int = 0,
-    *,
-    _jet_info: JetInfo,
-) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for the sum_vmapped operation.
-
-    Args:
-        self_and_taylor_coefficients: The primal and its Taylor coefficients.
-        pos: The position of the vmap-ed axis to sum out. Default: ``0``.
-        _jet_info: Indicating which arguments are Taylor coefficients (`True`)
-            and which are constants (`False`).
-
-    Returns:
-        The value and its Taylor coefficients.
-
-    Raises:
-        NotImplementedError: If `is_taylor` is not supported.
-    """
-    is_args, is_kwargs = _jet_info["is_taylor"]
-    if is_args[0] is not True or any(is_args[1:]) or any(is_kwargs.values()):
-        raise NotImplementedError(
-            f"Got {_jet_info['is_taylor']=}. Only supports tensor as Taylor."
-        )
-
-    return tuple(
-        self_and_taylor_coefficients[k].sum(pos)
-        for k in range(_jet_info["derivative_order"] + 1)
-    )
-
-
 def jet_view(
     self_and_taylor_coefficients: PrimalAndCoefficients,
     shape: list[int],
@@ -789,5 +757,4 @@ MAPPING = {
     torch.ops.aten.sum.dim_IntList: jet_sum,
     # Custom ops
     torch.ops.jet.replicate.default: jet_replicate,
-    torch.ops.jet.sum_vmapped.default: jet_sum_vmapped,
 }

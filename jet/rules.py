@@ -17,7 +17,7 @@ _jet_ops = torch.ops.jet
 
 # Op targets for pattern matching
 _replicate_target = _jet_ops.replicate.default
-_sum_vmapped_target = _jet_ops.sum_vmapped.default
+_sum_target = _aten.sum.dim_IntList
 
 
 def is_replicate(arg: Any) -> bool:
@@ -36,19 +36,19 @@ def is_replicate(arg: Any) -> bool:
     )
 
 
-def is_sum_vmapped(arg: Any) -> bool:
-    """Check if an argument is a ``sum_vmapped`` node.
+def is_sum(arg: Any) -> bool:
+    """Check if an argument is a ``sum`` node (``aten.sum.dim_IntList``).
 
     Args:
         arg: An entry from a ``Node.arg`` tuple.
 
     Returns:
-        Whether the argument is a sum_vmapped node.
+        Whether the argument is a sum node.
     """
     return (
         isinstance(arg, Node)
         and arg.op == "call_function"
-        and arg.target == _sum_vmapped_target
+        and arg.target == _sum_target
     )
 
 
@@ -80,23 +80,22 @@ def _get_replicate_times(node: Node) -> int:
     return node.args[1]
 
 
-def _get_sum_vmapped_pos(node: Node) -> int:
-    """Extract ``pos`` from a ``sum_vmapped`` node.
+def _get_sum_pos(node: Node) -> int:
+    """Extract the summation dimension from a ``sum`` node (``aten.sum.dim_IntList``).
 
-    With make_fx, ``sum_vmapped(x)`` has ``args=(x,)`` when pos=0 (default),
-    and ``sum_vmapped(x, pos)`` has ``args=(x, pos)`` when pos != 0.
+    With ``aten.sum.dim_IntList``, ``args=(x, [dim])`` or ``args=(x, [dim], keepdim)``.
 
     Args:
-        node: A sum_vmapped node.
+        node: A sum node.
 
     Returns:
         The position along which the sum is performed.
     """
-    return node.args[1] if len(node.args) > 1 else 0
+    return node.args[1][0]
 
 
-def _make_sum_vmapped_args(x: Any, pos: int) -> tuple[tuple, dict]:
-    """Create args and kwargs for a new ``sum_vmapped`` node.
+def _make_sum_args(x: Any, pos: int) -> tuple[tuple, dict]:
+    """Create args and kwargs for a new ``sum`` node (``aten.sum.dim_IntList``).
 
     Args:
         x: The input tensor node.
@@ -105,9 +104,7 @@ def _make_sum_vmapped_args(x: Any, pos: int) -> tuple[tuple, dict]:
     Returns:
         Tuple of (args, kwargs) for graph.call_function.
     """
-    if pos != 0:
-        return (x, pos), {}
-    return (x,), {}
+    return (x, [pos]), {}
 
 
 def _make_replicate_args(x: Any, times: int, pos: int) -> tuple[tuple, dict]:
@@ -464,31 +461,31 @@ class PushReplicateLinear(Rule):
         linear_node.replace_all_uses_with(new_rep_node)
 
 
-class PushReplicateSumVmapped(Rule):
-    """Rule for simplifying ``sum_vmapped(replicate(x, times, pos1), pos2)``.
+class PushReplicateSum(Rule):
+    """Rule for simplifying ``sum(replicate(x, times, pos1), [pos2])``.
 
-    Consider ``sum_vmapped(replicate(x, times, pos1), pos2)``.
+    Consider ``sum(replicate(x, times, pos1), [pos2])``.
     There are three different scenarios how to simplify this:
 
     1. ``pos1 == pos2``: ``times * x``
-    2. ``pos1 > pos2``: ``replicate(sum_vmapped(x, pos2), times, pos1 - 1)``
-    3. ``pos1 < pos2``: ``replicate(sum_vmapped(x, pos2 - 1), times, pos1)``
+    2. ``pos1 > pos2``: ``replicate(sum(x, [pos2]), times, pos1 - 1)``
+    3. ``pos1 < pos2``: ``replicate(sum(x, [pos2 - 1]), times, pos1)``
     """
 
     def match(self, node: Node) -> bool:
-        """Match for a ``sum_vmapped`` node that consumes a ``replicate`` node.
+        """Match for a ``sum`` node that consumes a ``replicate`` node.
 
         Args:
             node: A node in a computation graph.
 
         Returns:
             True if the node matches the pattern
-            ``sum_vmapped(replicate(x, times, pos1), pos2)``, False otherwise.
+            ``sum(replicate(x, times, pos1), [pos2])``, False otherwise.
         """
         return (
             node.op == "call_function"
             and node.users
-            and node.target == _sum_vmapped_target
+            and node.target == _sum_target
             and node.all_input_nodes
             and is_replicate(node.all_input_nodes[0])
         )
@@ -497,13 +494,13 @@ class PushReplicateSumVmapped(Rule):
         """Apply the simplification rule.
 
         Args:
-            sum_node: The ``sum_vmapped`` node that consumes a ``replicate`` node.
+            sum_node: The ``sum`` node that consumes a ``replicate`` node.
             graph: The computation graph to which the rule is applied.
         """
         (rep_node,) = sum_node.all_input_nodes
         (x,) = rep_node.all_input_nodes
         pos_rep = _get_replicate_pos(rep_node)
-        pos_sum = _get_sum_vmapped_pos(sum_node)
+        pos_sum = _get_sum_pos(sum_node)
         times = _get_replicate_times(rep_node)
 
         if pos_sum == pos_rep:
@@ -513,12 +510,12 @@ class PushReplicateSumVmapped(Rule):
             sum_node.replace_all_uses_with(mul_node)
 
         else:
-            # Insert a new sum_vmapped node before the sum node
+            # Insert a new sum node before the sum node
             new_sum_pos = pos_sum if pos_rep > pos_sum else pos_sum - 1
             with graph.inserting_before(sum_node):
-                sum_args, sum_kwargs = _make_sum_vmapped_args(x, new_sum_pos)
+                sum_args, sum_kwargs = _make_sum_args(x, new_sum_pos)
                 new_sum_node = graph.call_function(
-                    _sum_vmapped_target, args=sum_args, kwargs=sum_kwargs
+                    _sum_target, args=sum_args, kwargs=sum_kwargs
                 )
             # Insert a new replicate node after the new sum node
             new_rep_pos = pos_rep - 1 if pos_rep > pos_sum else pos_rep
@@ -534,13 +531,13 @@ class PushReplicateSumVmapped(Rule):
             sum_node.replace_all_uses_with(new_rep_node)
 
 
-class PullSumVmappedScalarMultiplication(Rule):
-    """Rule for simplifying ``sum_vmapped(x * y)`` with one scalar argument.
+class PullSumScalarMultiplication(Rule):
+    """Rule for simplifying ``sum(x * y)`` with one scalar argument.
 
     The following two cases simplify to the same result:
 
-    1. ``x`` scalar: ``sum_vmapped(x * y)`` -> ``x * sum_vmapped(y)``.
-    2. ``y`` scalar: ``sum_vmapped(x * y)`` -> ``sum_vmapped(x) * y``.
+    1. ``x`` scalar: ``sum(x * y)`` -> ``x * sum(y)``.
+    2. ``y`` scalar: ``sum(x * y)`` -> ``sum(x) * y``.
 
     Attributes:
         OPERATIONS: List of operations that can be simplified.
@@ -551,16 +548,16 @@ class PullSumVmappedScalarMultiplication(Rule):
     ]
 
     def match(self, node: Node) -> bool:
-        """Match for sum_vmapped nodes that consume multiplications with a scalar.
+        """Match for sum nodes that consume multiplications with a scalar.
 
         Args:
             node: A node in a computation graph.
 
         Returns:
-            True if the node matches the pattern ``sum_vmapped(x * y)``, where ``*`` is
+            True if the node matches the pattern ``sum(x * y)``, where ``*`` is
             multiplication and either ``x`` or ``y`` a scalar, False otherwise.
         """
-        if not is_sum_vmapped(node) or not node.users:
+        if not is_sum(node) or not node.users:
             return False
 
         (in_node,) = node.all_input_nodes
@@ -576,7 +573,7 @@ class PullSumVmappedScalarMultiplication(Rule):
         """Apply the simplification rule to the node, modifying the graph.
 
         Args:
-            sum_node: A ``sum_vmapped`` node that consumes a node representing
+            sum_node: A ``sum`` node that consumes a node representing
                 multiplication with a scalar/float. Must satisfy the match condition.
             graph: The computation graph to which the rule is applied.
         """
@@ -585,12 +582,12 @@ class PullSumVmappedScalarMultiplication(Rule):
         (x,) = mul_node.all_input_nodes
         x_pos = mul_node.args.index(x)
 
-        # swap the order of the `sum_vmapped` and the arithmetic operation
-        pos = _get_sum_vmapped_pos(sum_node)
+        # swap the order of the `sum` and the arithmetic operation
+        pos = _get_sum_pos(sum_node)
         with graph.inserting_after(sum_node):
-            sum_args, sum_kwargs = _make_sum_vmapped_args(x, pos)
+            sum_args, sum_kwargs = _make_sum_args(x, pos)
             new_sum_node = graph.call_function(
-                _sum_vmapped_target, args=sum_args, kwargs=sum_kwargs
+                _sum_target, args=sum_args, kwargs=sum_kwargs
             )
         # Insert a new multiplication node after the new sum node
         with graph.inserting_after(new_sum_node):
@@ -604,10 +601,10 @@ class PullSumVmappedScalarMultiplication(Rule):
         sum_node.replace_all_uses_with(new_mul_node)
 
 
-class PullSumVmappedTensorAddition(Rule):
-    """Rule for simplifying ``sum_vmapped(x + y)`` where x and y are tensors.
+class PullSumTensorAddition(Rule):
+    """Rule for simplifying ``sum(x + y)`` where x and y are tensors.
 
-    The simplified result is ``sum_vmapped(x) + sum_vmapped(y)``.
+    The simplified result is ``sum(x) + sum(y)``.
     Same for subtraction.
 
     Warning:
@@ -624,16 +621,16 @@ class PullSumVmappedTensorAddition(Rule):
     ]
 
     def match(self, node: Node) -> bool:
-        """Match for sum_vmapped nodes that consume a summation/subtraction node.
+        """Match for sum nodes that consume a summation/subtraction node.
 
         Args:
             node: A node in a computation graph.
 
         Returns:
-            True if the node matches the pattern ``sum_vmapped(x + y)`` (or -), where
+            True if the node matches the pattern ``sum(x + y)`` (or -), where
             ``x`` and ``y`` are tensors, False otherwise.
         """
-        if not is_sum_vmapped(node) or not node.users:
+        if not is_sum(node) or not node.users:
             return False
 
         (in_node,) = node.all_input_nodes
@@ -649,21 +646,21 @@ class PullSumVmappedTensorAddition(Rule):
         """Apply the simplification rule to the node, modifying the graph.
 
         Args:
-            sum_node: A ``sum_vmapped`` node that consumes a node representing addition/
+            sum_node: A ``sum`` node that consumes a node representing addition/
                 subtraction of two tensors. Must satisfy the match condition.
             graph: The computation graph to which the rule is applied.
         """
         # find the addition/subtraction node and its input tensor
         (add_node,) = sum_node.all_input_nodes
-        pos = _get_sum_vmapped_pos(sum_node)
+        pos = _get_sum_pos(sum_node)
 
         mapping = {}
-        # swap the order of the `sum_vmapped` and the addition/subtraction operation
+        # swap the order of the ``sum`` and the addition/subtraction operation
         for x in add_node.all_input_nodes:
             with graph.inserting_after(x):
-                sum_args, sum_kwargs = _make_sum_vmapped_args(x, pos)
+                sum_args, sum_kwargs = _make_sum_args(x, pos)
                 new_sum_node = graph.call_function(
-                    _sum_vmapped_target, args=sum_args, kwargs=sum_kwargs
+                    _sum_target, args=sum_args, kwargs=sum_kwargs
                 )
             mapping[x] = new_sum_node
 
@@ -676,8 +673,8 @@ class PullSumVmappedTensorAddition(Rule):
         sum_node.replace_all_uses_with(new_add_node)
 
 
-class PullSumVmappedLinear(Rule):
-    """Simplify ``sum_vmapped(linear(x, W, 0))`` into ``linear(sum_vmapped(x), W, 0)``.
+class PullSumLinear(Rule):
+    """Simplify ``sum(linear(x, W, 0))`` into ``linear(sum(x), W, 0)``.
 
     Note:
         With ``make_fx`` tracing, ``linear`` decomposes into lower-level ops
@@ -686,16 +683,16 @@ class PullSumVmappedLinear(Rule):
     """
 
     def match(self, node: Node) -> bool:
-        """Match for sum_vmapped nodes that consume a linear operation.
+        """Match for sum nodes that consume a linear operation.
 
         Args:
             node: A node in a computation graph.
 
         Returns:
-            True if the node matches the pattern ``sum_vmapped(linear(x, W, b))``,
+            True if the node matches the pattern ``sum(linear(x, W, b))``,
             False otherwise.
         """
-        if not is_sum_vmapped(node) or not node.users:
+        if not is_sum(node) or not node.users:
             return False
 
         (in_node,) = node.all_input_nodes
@@ -714,25 +711,25 @@ class PullSumVmappedLinear(Rule):
         """Apply the simplification rule to the node, modifying the graph.
 
         Args:
-            sum_node: A ``sum_vmapped`` node that consumes a ``linear`` node. Must
+            sum_node: A ``sum`` node that consumes a ``linear`` node. Must
                 satisfy the match condition.
             graph: The computation graph to which the rule is applied.
         """
         (linear_node,) = sum_node.all_input_nodes
         x = linear_node.args[0]
-        pos = _get_sum_vmapped_pos(sum_node)
+        pos = _get_sum_pos(sum_node)
 
         warn(
-            "The `PullSumVmappedLinear` rule assumes that the summed axis is not "
+            "The `PullSumLinear` rule assumes that the summed axis is not "
             f"the last axis. If it is, the rule will fail. Got {pos=}.",
             stacklevel=2,
         )
 
-        # swap the order of the `sum_vmapped` and the linear operation
+        # swap the order of the ``sum`` and the linear operation
         with graph.inserting_after(x):
-            sum_args, sum_kwargs = _make_sum_vmapped_args(x, pos)
+            sum_args, sum_kwargs = _make_sum_args(x, pos)
             new_sum_node = graph.call_function(
-                _sum_vmapped_target, args=sum_args, kwargs=sum_kwargs
+                _sum_target, args=sum_args, kwargs=sum_kwargs
             )
         with graph.inserting_after(linear_node):
             new_linear_node = graph.call_function(
@@ -745,11 +742,11 @@ class PullSumVmappedLinear(Rule):
         sum_node.replace_all_uses_with(new_linear_node)
 
 
-class PullSumVmappedReplicateMultiplication(Rule):
-    """Simplify ``sum_vmapped(y * replicate(x, times, pos1), pos2)``.
+class PullSumReplicateMultiplication(Rule):
+    """Simplify ``sum(y * replicate(x, times, pos1), [pos2])``.
 
     This rule applies when ``pos1 == pos2`` and simplifies the expression into
-    ``sum_vmapped(y, pos2) * x``.
+    ``sum(y, [pos2]) * x``.
     It also assumes that both tensors that are being multiplied have the same shape.
 
     Attributes:
@@ -759,17 +756,17 @@ class PullSumVmappedReplicateMultiplication(Rule):
     OPERATIONS = [_aten.mul.Tensor]
 
     def match(self, node: Node) -> bool:
-        """Detect a match with ``sum_vmapped(y * replicate(x, times, pos), pos)``.
+        """Detect a match with ``sum(y * replicate(x, times, pos), [pos])``.
 
         Args:
             node: A node in a computation graph.
 
         Returns:
             True if the node matches the pattern
-            ``sum_vmapped(y * replicate(x, times, pos1), pos2)`` with
+            ``sum(y * replicate(x, times, pos1), [pos2])`` with
             ``pos1 == pos2``, False otherwise.
         """
-        if not is_sum_vmapped(node) or not node.users:
+        if not is_sum(node) or not node.users:
             return False
 
         (in_node,) = node.all_input_nodes
@@ -782,7 +779,7 @@ class PullSumVmappedReplicateMultiplication(Rule):
             and sum(isinstance(arg, Node) for arg in in_node.args) == 2
         ):
             (rep_node,) = [arg for arg in in_node.args if is_replicate(arg)]
-            sum_pos = _get_sum_vmapped_pos(node)
+            sum_pos = _get_sum_pos(node)
             rep_pos = _get_replicate_pos(rep_node)
             return sum_pos == rep_pos
 
@@ -792,7 +789,7 @@ class PullSumVmappedReplicateMultiplication(Rule):
         """Apply the simplification rule.
 
         Args:
-            sum_node: The ``sum_vmapped`` node that consumes a multiplication node.
+            sum_node: The ``sum`` node that consumes a multiplication node.
             graph: The computation graph to which the rule is applied.
         """
         (mul_node,) = sum_node.all_input_nodes
@@ -800,16 +797,16 @@ class PullSumVmappedReplicateMultiplication(Rule):
         (x_node,) = rep_node.all_input_nodes
         (other_node,) = [n for n in mul_node.all_input_nodes if not is_replicate(n)]
 
-        pos = _get_sum_vmapped_pos(sum_node)
+        pos = _get_sum_pos(sum_node)
 
-        # Create a new sum_vmapped node
+        # Create a new sum node
         with graph.inserting_before(sum_node):
-            sum_args, sum_kwargs = _make_sum_vmapped_args(other_node, pos)
+            sum_args, sum_kwargs = _make_sum_args(other_node, pos)
             new_sum_node = graph.call_function(
-                _sum_vmapped_target, args=sum_args, kwargs=sum_kwargs
+                _sum_target, args=sum_args, kwargs=sum_kwargs
             )
 
-        # Create a new multiplication node for `sum_vmapped(y) * x`
+        # Create a new multiplication node for ``sum(y) * x``
         with graph.inserting_after(new_sum_node):
             mapping = {rep_node: x_node, other_node: new_sum_node}
             new_mul_node = graph.call_function(
@@ -820,10 +817,10 @@ class PullSumVmappedReplicateMultiplication(Rule):
         sum_node.replace_all_uses_with(new_mul_node)
 
 
-class MergeSumVmappedConstant(ModuleRule):
-    """Simplify ``sum_vmapped(constant_tensor, pos)`` by precomputing the sum.
+class MergeSumConstant(ModuleRule):
+    """Simplify ``sum(constant_tensor, [pos])`` by precomputing the sum.
 
-    This rule applies when the input to ``sum_vmapped`` is a constant tensor.
+    This rule applies when the input to ``sum`` is a constant tensor.
     """
 
     def match(self, node: Node) -> bool:
@@ -834,23 +831,19 @@ class MergeSumVmappedConstant(ModuleRule):
 
         Returns:
             True if the node matches the pattern
-            ``sum_vmapped(constant_tensor, pos)``, False otherwise.
+            ``sum(constant_tensor, [pos])``, False otherwise.
         """
-        return (
-            is_sum_vmapped(node)
-            and node.users
-            and node.all_input_nodes[0].op == "get_attr"
-        )
+        return is_sum(node) and node.users and node.all_input_nodes[0].op == "get_attr"
 
     def apply(self, sum_node: Node, mod: GraphModule) -> None:
         """Apply the simplification rule.
 
         Args:
-            sum_node: The ``sum_vmapped`` node that consumes a constant tensor.
+            sum_node: The ``sum`` node that consumes a constant tensor.
             mod: A GraphModule representing the computation graph.
         """
         (const_node,) = sum_node.all_input_nodes
-        sum_pos = _get_sum_vmapped_pos(sum_node)
+        sum_pos = _get_sum_pos(sum_node)
 
         const = jet.utils.recursive_getattr(mod, const_node.target)
         prefix = ".".join(const_node.target.split(".")[:-1])

@@ -104,9 +104,7 @@ class Bilaplacian(Module):
             ValueError: If the input shape does not match the expected shape.
         """
         if x.shape != self.in_shape:
-            raise ValueError(
-                f"Expected input shape {self.in_shape}, got {x.shape}."
-            )
+            raise ValueError(f"Expected input shape {self.in_shape}, got {x.shape}.")
         if self.randomization is not None:
             distribution, num_samples = self.randomization
             in_meta = {"dtype": x.dtype, "device": x.device}

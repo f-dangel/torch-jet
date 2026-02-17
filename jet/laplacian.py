@@ -118,9 +118,7 @@ class Laplacian(Module):
                 randomized Jacobian and Laplacian.
         """
         if x.shape != self.in_shape:
-            raise ValueError(
-                f"Expected input shape {self.in_shape}, got {x.shape}."
-            )
+            raise ValueError(f"Expected input shape {self.in_shape}, got {x.shape}.")
         X0 = jet.utils.replicate(x, self.num_jets)
         X1 = self._set_up_first_taylor_coefficient(x)
         in_meta = {"dtype": x.dtype, "device": x.device}

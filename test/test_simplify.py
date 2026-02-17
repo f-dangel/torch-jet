@@ -183,7 +183,6 @@ def get_output_args(graph: Graph) -> tuple[Node, ...]:
 def _assert_bilaplacian_structure(
     traced: GraphModule,
     simple_mod: GraphModule,
-    simpler_mod: GraphModule,
     x: Tensor,
     config: dict[str, Any],
     randomized: bool,
@@ -248,14 +247,14 @@ def _assert_bilaplacian_structure(
     # Exact node counts: detect regressions if simplification rules stop firing
     if not randomized:
         expected_nodes = {
-            "sin": 33 if D == 1 else 123,
-            "sin-sin": 225,
-            "tanh-tanh": 271,
-            "tanh-linear": 240,
-            "two-layer-tanh-mlp": 836,
-            "sigmoid-sigmoid": 343,
+            "sin": 33 if D == 1 else 129,
+            "sin-sin": 231,
+            "tanh-tanh": 277,
+            "tanh-linear": 270,
+            "two-layer-tanh-mlp": 950,
+            "sigmoid-sigmoid": 373,
         }
-        n_nodes = len(list(simpler_mod.graph.nodes))
+        n_nodes = len(list(simple_mod.graph.nodes))
         expected = expected_nodes[config["id"]]
         assert n_nodes == expected, (
             f"Expected {expected} nodes for {config['id']} (D={D}), got {n_nodes}"
@@ -426,7 +425,6 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
         bilap_mod,
         x,
         verbose=True,
-        eliminate_tensor_constants=False,
         test_x=x,
     )
 
@@ -436,31 +434,12 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
     bilap_simple = simple_mod(x)
     report_nonclose(bilap, bilap_simple, name="Bi-Laplacians")
 
-    # also remove duplicate tensor_constants
-    simpler_mod = simplify(
-        simple_mod,
-        x,
-        verbose=True,
-        eliminate_tensor_constants=True,
-        test_x=x,
-    )
-
-    # verify the further-simplified module still produces correct results
-    if randomized:
-        manual_seed(seed)
-    bilap_simpler = simpler_mod(x)
-    report_nonclose(
-        bilap, bilap_simpler, name="Bi-Laplacians (after tensor constant elimination)"
-    )
-
     # Structural assertions: verify simplification rules actually fired
     if randomized:
         manual_seed(seed)
     traced = capture_graph(bilap_mod, x)
 
-    _assert_bilaplacian_structure(
-        traced, simple_mod, simpler_mod, x, config, randomized
-    )
+    _assert_bilaplacian_structure(traced, simple_mod, x, config, randomized)
 
 
 def test_common_subexpression_elimination():
@@ -535,7 +514,6 @@ def test_push_replicate_structural(config: dict[str, Any]):
         push_replicate=True,
         pull_sum_vmapped=False,
         eliminate_common_subexpressions=False,
-        eliminate_tensor_constants=False,
     )
 
     rep_depth_after = get_min_depth_from_input(simplified.graph, is_replicate)
@@ -578,7 +556,6 @@ def test_pull_sum_vmapped_structural(config: dict[str, Any]):
         push_replicate=True,
         pull_sum_vmapped=False,
         eliminate_common_subexpressions=False,
-        eliminate_tensor_constants=False,
     )
 
     sum_depth_before = get_max_depth_from_output(after_push.graph, is_sum_vmapped)
@@ -589,7 +566,6 @@ def test_pull_sum_vmapped_structural(config: dict[str, Any]):
         push_replicate=False,
         pull_sum_vmapped=True,
         eliminate_common_subexpressions=True,
-        eliminate_tensor_constants=False,
     )
 
     sum_depth_after = get_max_depth_from_output(after_pull.graph, is_sum_vmapped)

@@ -1,11 +1,9 @@
 """Utility functions for computing jets."""
 
 from math import factorial, prod
-from typing import Any
 
 import torch
 from torch import Tensor, device, dtype, empty, randn
-from torch.nn import Module
 
 # type annotation for arguments and Taylor coefficients in input and output space
 Primal = Tensor
@@ -160,92 +158,3 @@ def sample(x_meta: Tensor, distribution: str, shape: tuple[int, ...]) -> Tensor:
     """
     sample_func = {"normal": randn, "rademacher": rademacher}[distribution]
     return sample_func(*shape, dtype=x_meta.dtype, device=x_meta.device)
-
-
-def recursive_getattr(obj: Any, attr: str) -> Any:
-    """Recursively retrieve a nested attribute from an object.
-
-    This function allows access to attributes that are nested within submodules or
-    objects, using a dot-separated string (e.g., 'foo.bar.baz'). It is useful for
-    retrieving parameters or buffers from submodules in a torch.fx.GraphModule, where
-    attribute names may refer to nested modules (e.g., 'layer1.0.weight').
-
-    Args:
-        obj: The root object from which to retrieve the attribute.
-        attr: Dot-separated string specifying the attribute path.
-
-    Returns:
-        The value of the nested attribute.
-    """
-    for part in attr.split("."):
-        obj = getattr(obj, part)
-    return obj
-
-
-def recursive_setattr(obj: Any, attr: str, value: Any) -> None:
-    """Recursively set a nested attribute on an object.
-
-    This function allows setting attributes that are nested within submodules or
-    objects, using a dot-separated string (e.g., 'foo.bar.baz').
-
-    If the object is an `nn.Module` and the attribute is a `Tensor`, it registers the
-    tensor as a buffer.
-
-    Args:
-        obj: The root object on which to set the attribute.
-        attr: Dot-separated string specifying the attribute path.
-        value: The value to set for the nested attribute.
-
-    Raises:
-        RuntimeError: If the attribute already exists.
-    """
-    parts = attr.split(".")
-    for part in parts[:-1]:
-        obj = getattr(obj, part)
-
-    if hasattr(obj, parts[-1]):
-        raise RuntimeError(
-            f"Attribute {parts[-1]!r} already exists in {'.'.join(parts[:-1])!r}. "
-        )
-    if isinstance(obj, Module) and isinstance(value, Tensor):
-        obj.register_buffer(parts[-1], value)
-    else:
-        setattr(obj, parts[-1], value)
-
-
-def recursive_delattr(obj: Any, attr: str) -> None:
-    """Recursively delete a nested attribute from an object.
-
-    This function allows deleting attributes that are nested within submodules or
-    objects, using a dot-separated string (e.g., 'foo.bar.baz').
-
-    Args:
-        obj: The root object from which to delete the attribute.
-        attr: Dot-separated string specifying the attribute path.
-    """
-    parts = attr.split(".")
-    for part in parts[:-1]:
-        obj = getattr(obj, part)
-
-    delattr(obj, parts[-1])
-
-
-def recursive_hasattr(obj: Any, attr: str) -> bool:
-    """Recursively check if a nested attribute exists in an object.
-
-    This function allows checking for attributes that are nested within submodules or
-    objects, using a dot-separated string (e.g., 'foo.bar.baz').
-
-    Args:
-        obj: The root object to check for the attribute.
-        attr: Dot-separated string specifying the attribute path.
-
-    Returns:
-        True if the nested attribute exists, False otherwise.
-    """
-    try:
-        for part in attr.split("."):
-            obj = getattr(obj, part)
-        return True
-    except AttributeError:
-        return False

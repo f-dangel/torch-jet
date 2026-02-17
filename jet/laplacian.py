@@ -116,6 +116,10 @@ class Laplacian(Module):
         Returns:
             Tuple containing the replicated function value, the weighted and/or
                 randomized Jacobian and Laplacian.
+
+        Raises:
+            ValueError: If the input shape does not match the mock input shape
+                passed in the constructor.
         """
         if x.shape != self.in_shape:
             raise ValueError(f"Expected input shape {self.in_shape}, got {x.shape}.")

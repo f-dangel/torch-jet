@@ -11,8 +11,6 @@ from torch.nn import Module
 from torch.random import fork_rng
 
 from jet.rules import (
-    MergeSumVmappedConstant,
-    ModuleRule,
     PullSumVmappedLinear,
     PullSumVmappedReplicateMultiplication,
     PullSumVmappedScalarMultiplication,
@@ -70,9 +68,7 @@ def common_subexpression_elimination(graph: Graph, verbose: bool = False) -> boo
     return replaced
 
 
-def apply_once(
-    rules: list[Rule | ModuleRule], mod: GraphModule, verbose: bool = False
-) -> bool:
+def apply_once(rules: list[Rule], mod: GraphModule, verbose: bool = False) -> bool:
     """Apply one of the supplied rules once to a module.
 
     Args:
@@ -82,21 +78,13 @@ def apply_once(
 
     Returns:
         True if any rule was applied, False otherwise.
-
-    Raises:
-        TypeError: If a rule is not an instance of `Rule` or `ModuleRule`.
     """
     for node, rule in product(mod.graph.nodes, rules):
         if rule.match(node):
             if verbose:
                 print(f"Applying rule {rule.__class__.__name__} to {node=}.")
 
-            if isinstance(rule, Rule):
-                rule.apply(node, mod.graph)
-            elif isinstance(rule, ModuleRule):
-                rule.apply(node, mod)
-            else:
-                raise TypeError(f"Unknown rule type: {type(rule)}.")
+            rule.apply(node, mod.graph)
             return True
 
     return False
@@ -237,7 +225,6 @@ def simplify(  # noqa: C901
         PullSumVmappedScalarMultiplication(),
         PullSumVmappedReplicateMultiplication(),
         PullSumVmappedLinear(),
-        MergeSumVmappedConstant(),
     ]
 
     strategies = {

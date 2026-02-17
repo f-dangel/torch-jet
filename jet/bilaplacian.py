@@ -4,7 +4,6 @@ from typing import Callable
 
 from torch import Tensor, eye, zeros
 from torch.func import vmap
-from torch.fx.experimental.proxy_tensor import make_fx
 from torch.nn import Module
 
 import jet
@@ -43,8 +42,8 @@ class Bilaplacian(Module):
 
         Args:
             f: The function whose Bi-Laplacian is computed.
-            mock_x: A mock input tensor for tracing. Does not need to be the actual
-                input; only the shape and dtype matter.
+            mock_x: A mock input tensor for tracing. Only the shape matters, not
+                the actual values.
             randomization: Optional tuple containing the distribution type and number
                 of samples for randomized Bi-Laplacian. If provided, the Bi-Laplacian
                 will be computed using Monte-Carlo sampling. The first element is the
@@ -74,10 +73,7 @@ class Bilaplacian(Module):
         """
         super().__init__()
 
-        # data that needs to be inferred explicitly from the mock input
-        # because `torch.fx` cannot do this.
         self.in_shape = mock_x.shape
-        self.in_meta = {"dtype": mock_x.dtype, "device": mock_x.device}
         self.in_dim = mock_x.numel()
 
         if randomization is not None:
@@ -92,39 +88,7 @@ class Bilaplacian(Module):
 
         derivative_order = 4
         jet_f = jet.jet(f, derivative_order, mock_x)
-        D = self.in_dim
-        num_jets = (
-            {self.randomization[1]}
-            if self.randomization
-            else {D, D * (D - 1), D * (D - 1) // 2}
-        )
-        num_jets = {n for n in num_jets if n > 0}
-        for n in num_jets:
-            # Create batched version using native vmap + make_fx tracing
-            vmapped = vmap(jet_f, randomness="different")
-            num_coefficients = derivative_order + 1
-            example_args = tuple(
-                zeros(n, *self.in_shape, **self.in_meta)
-                for _ in range(num_coefficients)
-            )
-            multijet_f = make_fx(vmapped)(*example_args)
-            setattr(self, f"jets_f_{n}", multijet_f)
-
-    def _get_multijet(
-        self, multi: int
-    ) -> Callable[
-        [Tensor, Tensor, Tensor, Tensor, Tensor],
-        tuple[Tensor, Tensor, Tensor, Tensor, Tensor],
-    ]:
-        """Get the multi-jet function for a given number of jets.
-
-        Args:
-            multi: The number of jets to retrieve.
-
-        Returns:
-            The multi-jet function for the specified number of jets.
-        """
-        return getattr(self, f"jets_f_{multi}")
+        self.jet_f = vmap(jet_f, randomness="different")
 
     def forward(self, x: Tensor) -> Tensor:
         """Compute the Bi-Laplacian of the function at the input tensor.
@@ -135,17 +99,24 @@ class Bilaplacian(Module):
 
         Returns:
             The Bi-Laplacian. Has the same shape as f(x).
+
+        Raises:
+            ValueError: If the input shape does not match the expected shape.
         """
+        if x.shape != self.in_shape:
+            raise ValueError(
+                f"Expected input shape {self.in_shape}, got {x.shape}."
+            )
         if self.randomization is not None:
             distribution, num_samples = self.randomization
+            in_meta = {"dtype": x.dtype, "device": x.device}
             X0 = jet.utils.replicate(x, num_samples)
             X1 = jet.utils.sample(x, distribution, (num_samples, *self.in_shape))
-            X2 = zeros(num_samples, *self.in_shape, **self.in_meta)
-            X3 = zeros(num_samples, *self.in_shape, **self.in_meta)
-            X4 = zeros(num_samples, *self.in_shape, **self.in_meta)
+            X2 = zeros(num_samples, *self.in_shape, **in_meta)
+            X3 = zeros(num_samples, *self.in_shape, **in_meta)
+            X4 = zeros(num_samples, *self.in_shape, **in_meta)
 
-            jet_f = self._get_multijet(num_samples)
-            _, _, _, _, F4 = jet_f(X0, X1, X2, X3, X4)
+            _, _, _, _, F4 = self.jet_f(X0, X1, X2, X3, X4)
             # need to divide the Laplacian by number of MC samples
             return jet.utils.sum_vmapped(F4) / (3 * num_samples)
 
@@ -157,8 +128,7 @@ class Bilaplacian(Module):
         gammas = compute_all_gammas((2, 2))
         gamma_4_0 = float(gammas[(4, 0)])
         # first summand
-        jet_f = self._get_multijet(D)
-        _, _, _, _, F4_1 = jet_f(*C1)
+        _, _, _, _, F4_1 = self.jet_f(*C1)
         factor1 = (gamma_4_4 + 2 * (D - 1) * gamma_4_0) / 24
         term1 = factor1 * jet.utils.sum_vmapped(F4_1)
 
@@ -168,15 +138,13 @@ class Bilaplacian(Module):
 
         # second summand
         gamma_3_1 = float(gammas[(3, 1)])
-        jet_f = self._get_multijet(D * (D - 1))
-        _, _, _, _, F4_2 = jet_f(*C2)
+        _, _, _, _, F4_2 = self.jet_f(*C2)
         factor2 = 2 * gamma_3_1 / 24
         term2 = factor2 * jet.utils.sum_vmapped(F4_2)
 
         # third term
         gamma_2_2 = float(gammas[(2, 2)])
-        jet_f = self._get_multijet(D * (D - 1) // 2)
-        _, _, _, _, F4_3 = jet_f(*C3)
+        _, _, _, _, F4_3 = self.jet_f(*C3)
         factor3 = 2 * gamma_2_2 / 24
         term3 = factor3 * jet.utils.sum_vmapped(F4_3)
 
@@ -199,24 +167,25 @@ class Bilaplacian(Module):
             A tuple containing the inputs to the three 4-jets.
         """
         D = self.in_dim
+        in_meta = {"dtype": x.dtype, "device": x.device}
 
         # first 4-jet
         X1_0 = jet.utils.replicate(x, D)
-        X1_2 = zeros(D, *self.in_shape, **self.in_meta)
-        X1_3 = zeros(D, *self.in_shape, **self.in_meta)
-        X1_4 = zeros(D, *self.in_shape, **self.in_meta)
+        X1_2 = zeros(D, *self.in_shape, **in_meta)
+        X1_3 = zeros(D, *self.in_shape, **in_meta)
+        X1_4 = zeros(D, *self.in_shape, **in_meta)
 
-        X1_1 = 4 * eye(D, **self.in_meta).reshape(D, *self.in_shape)
+        X1_1 = 4 * eye(D, **in_meta).reshape(D, *self.in_shape)
 
         C1 = (X1_0, X1_1, X1_2, X1_3, X1_4)
 
         # second 4-jet
         X2_0 = jet.utils.replicate(x, D * (D - 1))
-        X2_2 = zeros(D * (D - 1), *self.in_shape, **self.in_meta)
-        X2_3 = zeros(D * (D - 1), *self.in_shape, **self.in_meta)
-        X2_4 = zeros(D * (D - 1), *self.in_shape, **self.in_meta)
+        X2_2 = zeros(D * (D - 1), *self.in_shape, **in_meta)
+        X2_3 = zeros(D * (D - 1), *self.in_shape, **in_meta)
+        X2_4 = zeros(D * (D - 1), *self.in_shape, **in_meta)
 
-        X2_1 = zeros(D, D - 1, D, **self.in_meta)
+        X2_1 = zeros(D, D - 1, D, **in_meta)
         for i in range(D):
             not_i = [j for j in range(D) if i != j]
             for j_idx, j in enumerate(not_i):
@@ -228,11 +197,11 @@ class Bilaplacian(Module):
 
         # third 4-jet
         X3_0 = jet.utils.replicate(x, D * (D - 1) // 2)
-        X3_2 = zeros(D * (D - 1) // 2, *self.in_shape, **self.in_meta)
-        X3_3 = zeros(D * (D - 1) // 2, *self.in_shape, **self.in_meta)
-        X3_4 = zeros(D * (D - 1) // 2, *self.in_shape, **self.in_meta)
+        X3_2 = zeros(D * (D - 1) // 2, *self.in_shape, **in_meta)
+        X3_3 = zeros(D * (D - 1) // 2, *self.in_shape, **in_meta)
+        X3_4 = zeros(D * (D - 1) // 2, *self.in_shape, **in_meta)
 
-        X3_1 = zeros(D * (D - 1) // 2, D, **self.in_meta)
+        X3_1 = zeros(D * (D - 1) // 2, D, **in_meta)
         counter = 0
         for i in range(D - 1):
             for j in range(i + 1, D):

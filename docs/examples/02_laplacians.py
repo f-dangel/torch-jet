@@ -14,15 +14,14 @@ from time import perf_counter
 from typing import Callable
 
 import matplotlib.pyplot as plt
-from torch import Tensor, eye, manual_seed, rand, stack, vmap, zeros, zeros_like
-from torch.func import hessian
+from torch import Tensor, eye, manual_seed, rand, stack, zeros, zeros_like
+from torch.func import hessian, vmap
 from torch.fx import GraphModule
-from torch.fx.experimental.proxy_tensor import make_fx
 from torch.fx.passes.graph_drawer import FxGraphDrawer
 from torch.nn import Linear, Module, Sequential, Tanh
 from tueplots import bundles
 
-from jet import jet, utils
+import jet
 from jet.simplify import simplify
 from jet.tracing import capture_graph
 
@@ -114,7 +113,7 @@ print(hessian_trace_laplacian)
 # Let's set up the jet function:
 
 k = 2
-f_jet = jet(f, k, x)
+f_jet = jet.jet(f, k, x)
 
 # %%
 #
@@ -215,16 +214,18 @@ else:
 class Laplacian(Module):
     """Module that computes the Laplacian of a function using jets."""
 
-    def __init__(self):
-        """Initialize the Laplacian module."""
+    def __init__(self, f: Callable[[Tensor], Tensor], mock_x: Tensor):
+        """Initialize the Laplacian module.
+
+        Args:
+            f: The function whose Laplacian is computed.
+            mock_x: A mock input tensor for tracing. Only the shape matters.
+        """
         super().__init__()
-        # We use make_fx(vmap(f_jet)) to trace the vmapped jet function into a
-        # GraphModule. This gives us a graph we can inspect and simplify.
-        vmapped = vmap(f_jet, randomness="different")
-        # NOTE: make_fx requires separate tensor objects for each argument;
-        # passing the same object multiple times causes input aliasing.
-        ex0, ex1, ex2 = zeros(D, D), zeros(D, D), zeros(D, D)
-        self.vmap_f_jet = make_fx(vmapped)(ex0, ex1, ex2)
+        self.in_shape = mock_x.shape
+        self.in_dim = mock_x.numel()
+        jet_f = jet.jet(f, 2, mock_x)
+        self.jet_f = vmap(jet_f, randomness="different")
 
     def forward(self, x: Tensor) -> Tensor:
         """Compute the Laplacian.
@@ -235,12 +236,15 @@ class Laplacian(Module):
         Returns:
             The Laplacian of shape [1].
         """
-        X0, X1, X2 = utils.replicate(x, D), eye(D), zeros(D, D)
-        _, _, F2 = self.vmap_f_jet(X0, X1, X2)
-        return utils.sum_vmapped(F2)
+        in_meta = {"dtype": x.dtype, "device": x.device}
+        X0 = jet.utils.replicate(x, self.in_dim)
+        X1 = eye(self.in_dim, **in_meta).reshape(self.in_dim, *self.in_shape)
+        X2 = zeros(self.in_dim, *self.in_shape, **in_meta)
+        _, _, F2 = self.jet_f(X0, X1, X2)
+        return jet.utils.sum_vmapped(F2)
 
 
-mod = Laplacian()
+mod = Laplacian(f, x)
 
 # %%
 #

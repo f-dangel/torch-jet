@@ -57,8 +57,8 @@ def jet(
     Args:
         f: Function to overload. Maps a tensor to another tensor.
         derivative_order: The order of the Taylor expansion.
-        mock_x: A mock input tensor for tracing. Does not need to be the actual
-            input; only the shape and dtype matter.
+        mock_x: A mock input tensor for tracing. Only the shape matters, not
+            the actual values.
         verbose: Whether to print the traced graphs before and after overloading.
             Default: `False`.
 

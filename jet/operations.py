@@ -715,30 +715,6 @@ def jet_addmm(
     return tuple(mm_result)
 
 
-def jet_expand(
-    self_and_taylor_coefficients: PrimalAndCoefficients,
-    shape: list[int],
-    *,
-    _jet_info: JetInfo,
-) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for ``aten.expand``.
-
-    Args:
-        self_and_taylor_coefficients: The primal and its Taylor coefficients.
-        shape: The target shape for expansion.
-        _jet_info: Indicating which arguments are Taylor coefficients.
-
-    Returns:
-        The value and its Taylor coefficients, each expanded.
-    """
-    if _jet_info["is_taylor"] != ((True, False), {}):
-        raise NotImplementedError(f"Not implemented for {_jet_info['is_taylor']=}.")
-
-    return tuple(
-        ops.aten.expand.default(self_and_taylor_coefficients[k], shape)
-        for k in range(_jet_info["derivative_order"] + 1)
-    )
-
 
 def jet_to_copy(
     self_and_taylor_coefficients: PrimalAndCoefficients,
@@ -784,8 +760,6 @@ MAPPING = {
     ops.aten.view.default: jet_view,
     ops.aten.unsqueeze.default: jet_unsqueeze,
     ops.aten.squeeze.dim: jet_squeeze,
-    # Expand
-    ops.aten.expand.default: jet_expand,
     # Type conversion
     ops.aten._to_copy.default: jet_to_copy,
     # Sum (dim reduction)

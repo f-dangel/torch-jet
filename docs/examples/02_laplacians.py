@@ -288,13 +288,13 @@ visualize_graph(mod_traced, path.join(GALLERYDIR, "02_laplacian_module.png"))
 assert hessian_trace_laplacian.allclose(mod_traced(x))
 
 # Graph 2: Simplify the module by removing replicate computations
-mod_standard = simplify(mod_traced, pull_sum_vmapped=False)
+mod_standard = simplify(mod_traced, x, pull_sum_vmapped=False)
 visualize_graph(mod_standard, path.join(GALLERYDIR, "02_laplacian_standard.png"))
 assert hessian_trace_laplacian.allclose(mod_standard(x))
 
 # Graph 3: Simplify the module by removing replicate computations and pulling up the
 # summations to directly propagate sums of Taylor coefficients
-mod_collapsed = simplify(mod_traced, pull_sum_vmapped=True)
+mod_collapsed = simplify(mod_traced, x, pull_sum_vmapped=True)
 visualize_graph(mod_collapsed, path.join(GALLERYDIR, "02_laplacian_collapsed.png"))
 assert hessian_trace_laplacian.allclose(mod_collapsed(x))
 

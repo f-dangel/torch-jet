@@ -154,7 +154,7 @@ def check_unaltered(
 
 def simplify(  # noqa: C901
     mod: GraphModule | Module | Callable,
-    mock_x: Tensor | None = None,
+    mock_x: Tensor,
     push_replicate: bool = True,
     remove_unused: bool = True,
     pull_sum_vmapped: bool = True,
@@ -178,8 +178,7 @@ def simplify(  # noqa: C901
 
     Args:
         mod: A (graph) module or function whose computation graph will be simplified.
-        mock_x: A mock input tensor for tracing with ``make_fx``. Required when
-            ``mod`` is not already a ``GraphModule``. Default: `None`.
+        mock_x: A mock input tensor for tracing with ``make_fx``.
         push_replicate: Whether to push `replicate` nodes down the graph.
             Default: `True`.
         remove_unused: Whether to remove unused nodes from the graph. Default: `True`.
@@ -195,15 +194,8 @@ def simplify(  # noqa: C901
 
     Returns:
         The simplified graph module.
-
-    Raises:
-        ValueError: If ``mod`` is not a ``GraphModule`` and ``mock_x``
-            is not provided.
     """
-    if not isinstance(mod, GraphModule):
-        if mock_x is None:
-            raise ValueError("mock_x is required when mod is not a GraphModule.")
-        mod = capture_graph(mod, mock_x)
+    mod = capture_graph(mod, mock_x)
 
     nodes_before = len(list(mod.graph.nodes))
     if verbose:

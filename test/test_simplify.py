@@ -563,6 +563,7 @@ def test_pull_sum_vmapped_structural(config: dict[str, Any]):
     # Now apply pull_sum_vmapped on the push_replicate result
     after_pull = simplify(
         after_push,
+        x,
         push_replicate=False,
         pull_sum_vmapped=True,
         eliminate_common_subexpressions=True,

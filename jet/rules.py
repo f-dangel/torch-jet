@@ -2,12 +2,10 @@
 
 from abc import ABC, abstractmethod
 from typing import Any, Callable
-from warnings import warn
 
 import torch
 from torch import Tensor
 from torch.fx import Graph, Node
-from torch.nn.functional import linear
 
 # ATen and custom op references used by rules
 _aten = torch.ops.aten
@@ -368,72 +366,111 @@ class PushReplicateTensorArithmetic(Rule):
 
 
 class PushReplicateLinear(Rule):
-    """Rule to simplify ``linear(replicate(x), W, b)`` to ``replicate(linear(x, W, b))``.
+    """Push ``replicate`` through ``mm`` and ``addmm``.
 
-    Note:
-        With ``make_fx`` tracing, ``linear`` decomposes into lower-level ops
-        (``mm``, ``addmm``, ``t``, ``view``), so this rule will not match.
-        It is kept for backward compatibility.
+    Matches when exactly one matrix argument is a ``replicate`` node and the
+    replicated dimension is an outer (non-contracted) dimension of the matmul:
+
+    - ``mm(replicate(x, times, 0), W)``
+      → ``replicate(squeeze(mm(unsqueeze(x, 0), W), 0), times, 0)``
+    - ``addmm(bias, replicate(x, times, 0), W)``
+      → ``replicate(squeeze(addmm(bias, unsqueeze(x, 0), W), 0), times, 0)``
+
+    Attributes:
+        OPERATIONS: Supported ATen matrix-multiply operations.
     """
 
+    OPERATIONS = [_aten.mm.default, _aten.addmm.default]
+
+    @staticmethod
+    def _matrix_arg_indices(node: Node) -> tuple[int, int]:
+        """Return the argument indices of the two matrix operands.
+
+        Args:
+            node: An ``mm`` or ``addmm`` node.
+
+        Returns:
+            Tuple of ``(mat1_index, mat2_index)``.
+        """
+        if node.target == _aten.mm.default:
+            return (0, 1)
+        return (1, 2)
+
     def match(self, node: Node) -> bool:
-        """Detect a linear operation that consumes a replicated input.
+        """Detect ``mm`` or ``addmm`` where exactly one matrix arg is replicated.
+
+        The replicate dimension must be an outer (non-contracted) dimension:
+        ``pos == 0`` for mat1 and ``pos == 1`` for mat2.
 
         Args:
             node: A node in a computation graph.
 
         Returns:
-            True if the node matches the pattern ``torch.nn.linear(replicate(x), W, b)``,
-            False otherwise.
+            True if the node matches, False otherwise.
         """
-        return (
-            node.op == "call_function"
-            and node.users
-            and node.target == linear
-            and is_replicate(node.args[0])  # x must be a replicate node
-        )
+        if (
+            node.op != "call_function"
+            or not node.users
+            or node.target not in self.OPERATIONS
+        ):
+            return False
 
-    def apply(self, linear_node: Node, graph: Graph) -> None:
+        i1, i2 = self._matrix_arg_indices(node)
+        rep_flags = [is_replicate(node.args[i]) for i in (i1, i2)]
+        if sum(rep_flags) != 1:
+            return False
+
+        # mat1: replicate pos must be 0 (row dim, not contracted)
+        # mat2: replicate pos must be 1 (col dim, not contracted)
+        if rep_flags[0]:
+            return _get_replicate_pos(node.args[i1]) == 0
+        return _get_replicate_pos(node.args[i2]) == 1
+
+    def apply(self, matmul_node: Node, graph: Graph) -> None:
         """Apply the simplification rule.
 
-        Warning:
-            This simplification rule will fail if the replication happens along the
-            last axis. The current implementation has no means to figure out if the
-            replicated axis represents the last; it always assumes it is not.
+        Replaces ``op(..., replicate(x, times, pos), ...)`` with
+        ``replicate(squeeze(op(..., unsqueeze(x, pos), ...), pos), times, pos)``.
 
         Args:
-            linear_node: A node in a computation graph that represents the linear
-                operation consuming a replicate node.
+            matmul_node: The ``mm`` or ``addmm`` node.
             graph: The computation graph to which the rule is applied.
         """
-        # find the tensors that are being replicated
-        rep_node = linear_node.args[0]
+        i1, i2 = self._matrix_arg_indices(matmul_node)
+        rep_idx = i1 if is_replicate(matmul_node.args[i1]) else i2
+        rep_node = matmul_node.args[rep_idx]
         (x,) = rep_node.all_input_nodes
         times = _get_replicate_times(rep_node)
         pos = _get_replicate_pos(rep_node)
 
-        if pos > 0:
-            warn(
-                "The `PushReplicateLinear` rule assumes that the replicated axis is"
-                f" not the last axis. If it is, the rule will fail. Got {pos=}.",
-                stacklevel=2,
+        # unsqueeze x to restore the 2D shape that mm/addmm expects
+        with graph.inserting_before(matmul_node):
+            unsqueeze_node = graph.call_function(_aten.unsqueeze.default, args=(x, pos))
+
+        # new mm/addmm with unsqueeze replacing replicate
+        with graph.inserting_after(unsqueeze_node):
+            new_args = tuple(
+                unsqueeze_node if i == rep_idx else arg
+                for i, arg in enumerate(matmul_node.args)
+            )
+            new_matmul = graph.call_function(
+                matmul_node.target, args=new_args, kwargs=matmul_node.kwargs
             )
 
-        # Create a new linear node
-        with graph.inserting_after(linear_node):
-            new_linear_node = graph.call_function(
-                linear, args=(x, *linear_node.args[1:]), kwargs=linear_node.kwargs
+        # squeeze the replicate dimension from the result
+        with graph.inserting_after(new_matmul):
+            squeeze_node = graph.call_function(
+                _aten.squeeze.dim, args=(new_matmul, pos)
             )
 
-        # Create a new replicate node
-        with graph.inserting_after(new_linear_node):
-            rep_args, rep_kwargs = _make_replicate_args(new_linear_node, times, pos)
+        # replicate the squeezed result
+        with graph.inserting_after(squeeze_node):
+            rep_args, rep_kwargs = _make_replicate_args(squeeze_node, times, pos)
             new_rep_node = graph.call_function(
                 _replicate_target, args=rep_args, kwargs=rep_kwargs
             )
 
-        # Replace the old node with its simplified node in the entire graph
-        linear_node.replace_all_uses_with(new_rep_node)
+        matmul_node.replace_all_uses_with(new_rep_node)
 
 
 class PushReplicateSumVmapped(Rule):
@@ -649,72 +686,83 @@ class PullSumVmappedTensorAddition(Rule):
 
 
 class PullSumVmappedLinear(Rule):
-    """Simplify ``sum_vmapped(linear(x, W, 0))`` into ``linear(sum_vmapped(x), W, 0)``.
+    """Pull ``sum_vmapped`` through ``mm``.
 
-    Note:
-        With ``make_fx`` tracing, ``linear`` decomposes into lower-level ops
-        (``mm``, ``addmm``, ``t``, ``view``), so this rule will not match.
-        It is kept for backward compatibility.
+    Matches ``sum_vmapped(mm(mat1, mat2), pos)`` where ``pos`` identifies
+    a non-contracted dimension, and moves the summation to the corresponding
+    matrix argument:
+
+    - ``pos == 0``: ``sum_vmapped(mm(X, W), 0)``
+      → ``squeeze(mm(unsqueeze(sum_vmapped(X, 0), 0), W), 0)``
+    - ``pos == 1``: ``sum_vmapped(mm(X, W), 1)``
+      → ``squeeze(mm(X, unsqueeze(sum_vmapped(W, 1), 1)), 1)``
     """
 
     def match(self, node: Node) -> bool:
-        """Match for sum_vmapped nodes that consume a linear operation.
+        """Detect ``sum_vmapped(mm(...), pos)`` with ``pos`` in {0, 1}.
 
         Args:
             node: A node in a computation graph.
 
         Returns:
-            True if the node matches the pattern ``sum_vmapped(linear(x, W, b))``,
-            False otherwise.
+            True if the node matches, False otherwise.
         """
         if not is_sum_vmapped(node) or not node.users:
             return False
 
         (in_node,) = node.all_input_nodes
-        is_linear = in_node.op == "call_function" and in_node.target == linear
-
-        if not is_linear:
+        if in_node.op != "call_function" or in_node.target != _aten.mm.default:
             return False
 
-        # check that the linear node has no bias (b = 0)
-        if len(in_node.args) < 3:
-            return in_node.kwargs.get("bias", None) is None
-
-        return in_node.args[2] is None
+        pos = _get_sum_vmapped_pos(node)
+        # pos must be 0 (mat1's row dim) or 1 (mat2's col dim)
+        return pos in (0, 1)
 
     def apply(self, sum_node: Node, graph: Graph) -> None:
-        """Apply the simplification rule to the node, modifying the graph.
+        """Apply the simplification rule.
+
+        Replaces ``sum_vmapped(mm(mat1, mat2), pos)`` with
+        ``squeeze(mm(..., unsqueeze(sum_vmapped(arg, pos), pos), ...), pos)``.
 
         Args:
-            sum_node: A ``sum_vmapped`` node that consumes a ``linear`` node. Must
-                satisfy the match condition.
+            sum_node: The ``sum_vmapped`` node that consumes an ``mm`` node.
             graph: The computation graph to which the rule is applied.
         """
-        (linear_node,) = sum_node.all_input_nodes
-        x = linear_node.args[0]
+        (mm_node,) = sum_node.all_input_nodes
         pos = _get_sum_vmapped_pos(sum_node)
+        # pos=0 → pull sum_vmapped to mat1 (arg 0)
+        # pos=1 → pull sum_vmapped to mat2 (arg 1)
+        target_idx = pos
+        target_arg = mm_node.args[target_idx]
 
-        warn(
-            "The `PullSumVmappedLinear` rule assumes that the summed axis is not "
-            f"the last axis. If it is, the rule will fail. Got {pos=}.",
-            stacklevel=2,
-        )
-
-        # swap the order of the `sum_vmapped` and the linear operation
-        with graph.inserting_after(x):
-            sum_args, sum_kwargs = _make_sum_vmapped_args(x, pos)
-            new_sum_node = graph.call_function(
-                _sum_vmapped_target, args=sum_args, kwargs=sum_kwargs
-            )
-        with graph.inserting_after(linear_node):
-            new_linear_node = graph.call_function(
-                linear,
-                args=(new_sum_node, *linear_node.args[1:]),
-                kwargs=linear_node.kwargs,
+        # sum_vmapped on the target argument
+        with graph.inserting_before(mm_node):
+            sv_args, sv_kwargs = _make_sum_vmapped_args(target_arg, pos)
+            new_sv = graph.call_function(
+                _sum_vmapped_target, args=sv_args, kwargs=sv_kwargs
             )
 
-        # replace the old node with its simplified node in the entire graph
-        sum_node.replace_all_uses_with(new_linear_node)
+        # unsqueeze to restore 2D shape for mm
+        with graph.inserting_after(new_sv):
+            unsqueeze_node = graph.call_function(
+                _aten.unsqueeze.default, args=(new_sv, pos)
+            )
+
+        # new mm with sum_vmapped+unsqueeze replacing the original arg
+        with graph.inserting_after(unsqueeze_node):
+            new_args = tuple(
+                unsqueeze_node if i == target_idx else arg
+                for i, arg in enumerate(mm_node.args)
+            )
+            new_mm = graph.call_function(
+                _aten.mm.default, args=new_args, kwargs=mm_node.kwargs
+            )
+
+        # squeeze the summed dimension from the result
+        with graph.inserting_after(new_mm):
+            squeeze_node = graph.call_function(_aten.squeeze.dim, args=(new_mm, pos))
+
+        sum_node.replace_all_uses_with(squeeze_node)
 
 
 class PullSumVmappedReplicateMultiplication(Rule):

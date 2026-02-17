@@ -9,13 +9,16 @@ from pytest import mark
 from torch import Size, Tensor, linspace, manual_seed, mul, rand
 from torch.fx import Graph, Node
 from torch.nn import Module
+from torch.nn.functional import linear
 
 import jet.utils
 from jet.rules import (
+    PullSumVmappedLinear,
     PullSumVmappedReplicateMultiplication,
     PullSumVmappedScalarMultiplication,
     PullSumVmappedTensorAddition,
     PushReplicateElementwise,
+    PushReplicateLinear,
     PushReplicateScalarArithmetic,
     PushReplicateSumVmapped,
     PushReplicateTensorArithmetic,
@@ -195,19 +198,74 @@ CASES.extend(
 )
 
 
-# Simplify linear operation with replicated input
-# NOTE: Skipped because make_fx decomposes `linear` into lower-level ops
-# (mm, addmm, t, view), so PushReplicateLinear cannot match.
-# CASES.append(
-#     {
-#         "f": lambda x: linear(
-#             jet.utils.replicate(x, 5, pos=0),
-#             linspace(-2.0, 10, 12).reshape(3, 4),
-#             linspace(-1.0, 2.0, 3),
-#         ),
-#         ...
-#     }
-# )
+# Simplify replicate through mm (linear without bias) and addmm (linear with bias).
+_aten = torch.ops.aten
+
+
+class ReplicateAddmm(Module):  # noqa: D101
+    def __init__(self, times: int):  # noqa: D107
+        super().__init__()
+        self.times = times
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        return linear(
+            jet.utils.replicate(x, self.times),
+            linspace(-2.0, 10, 12).reshape(3, 4),
+            linspace(-1.0, 2.0, 3),
+        )
+
+
+class SimpleReplicateAddmm(ReplicateAddmm):  # noqa: D101
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        W = linspace(-2.0, 10, 12).reshape(3, 4)
+        b = linspace(-1.0, 2.0, 3)
+        Wt = _aten.t.default(W)
+        out = _aten.addmm.default(b, _aten.unsqueeze.default(x, 0), Wt)
+        out = _aten.squeeze.dim(out, 0)
+        return jet.utils.replicate(out, self.times)
+
+
+CASES.append(
+    {
+        "f": ReplicateAddmm(times=5),
+        "f_simple": SimpleReplicateAddmm(times=5),
+        "rules": lambda: [PushReplicateLinear()],
+        "shape": (4,),
+        "id": "replicate-addmm",
+    }
+)
+
+
+class ReplicateMM(Module):  # noqa: D101
+    def __init__(self, times: int):  # noqa: D107
+        super().__init__()
+        self.times = times
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        return linear(
+            jet.utils.replicate(x, self.times),
+            linspace(-2.0, 10, 12).reshape(3, 4),
+        )
+
+
+class SimpleReplicateMM(ReplicateMM):  # noqa: D101
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        W = linspace(-2.0, 10, 12).reshape(3, 4)
+        Wt = _aten.t.default(W)
+        out = _aten.mm.default(_aten.unsqueeze.default(x, 0), Wt)
+        out = _aten.squeeze.dim(out, 0)
+        return jet.utils.replicate(out, self.times)
+
+
+CASES.append(
+    {
+        "f": ReplicateMM(times=5),
+        "f_simple": SimpleReplicateMM(times=5),
+        "rules": lambda: [PushReplicateLinear()],
+        "shape": (4,),
+        "id": "replicate-mm",
+    }
+)
 
 
 # Pushing a replicate node through a sum_vmapped node
@@ -327,18 +385,33 @@ CASES.extend(
     ]
 )
 
-# Pull a sum_vmapped node through a linear layer
-# NOTE: Skipped because make_fx decomposes `linear` into lower-level ops
-# (mm, addmm, t, view), so PullSumVmappedLinear cannot match.
-# CASES.append(
-#     {
-#         "f": lambda x: jet.utils.sum_vmapped(
-#             linear(x, linspace(-2.0, 10, 12).reshape(3, 4)),
-#             pos=0,
-#         ),
-#         ...
-#     }
-# )
+
+# Pull a sum_vmapped node through mm (linear without bias).
+class SumVmappedMM(Module):  # noqa: D101
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        return jet.utils.sum_vmapped(
+            linear(x, linspace(-2.0, 10, 12).reshape(3, 4)),
+        )
+
+
+class SimpleSumVmappedMM(SumVmappedMM):  # noqa: D101
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        W = linspace(-2.0, 10, 12).reshape(3, 4)
+        Wt = _aten.t.default(W)
+        sv = jet.utils.sum_vmapped(x)
+        out = _aten.mm.default(_aten.unsqueeze.default(sv, 0), Wt)
+        return _aten.squeeze.dim(out, 0)
+
+
+CASES.append(
+    {
+        "f": SumVmappedMM(),
+        "f_simple": SimpleSumVmappedMM(),
+        "rules": lambda: [PullSumVmappedLinear()],
+        "shape": (5, 4),
+        "id": "sum_vmapped-mm",
+    }
+)
 
 
 # Pull a sum_vmapped through a multiplication, one of whose arguments is a replicate

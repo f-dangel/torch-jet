@@ -49,7 +49,7 @@ def analyze_dependencies(graph: Graph) -> tuple[set[str], set[str]]:
 def jet(
     f: Callable[[Primal], Value],
     derivative_order: int,
-    example_input: Tensor,
+    mock_x: Tensor,
     verbose: bool = False,
 ) -> Callable[[PrimalAndCoefficients], ValueAndCoefficients]:
     """Overload a function with its Taylor-mode equivalent.
@@ -57,8 +57,8 @@ def jet(
     Args:
         f: Function to overload. Maps a tensor to another tensor.
         derivative_order: The order of the Taylor expansion.
-        example_input: A concrete example input tensor for tracing. Does not need to
-            be the actual input; only the shape and dtype matter.
+        mock_x: A mock input tensor for tracing. Does not need to be the actual
+            input; only the shape and dtype matter.
         verbose: Whether to print the traced graphs before and after overloading.
             Default: `False`.
 
@@ -70,7 +70,7 @@ def jet(
         >>> from torch import sin, cos, zeros, Tensor
         >>> from jet import jet
         >>> f = sin
-        >>> jet2_f = jet(f, 2, example_input=zeros(1))
+        >>> jet2_f = jet(f, 2, zeros(1))
         >>> # Set up the Taylor coefficients
         >>> x0, x1, x2 = Tensor([0.123]), Tensor([-0.456]), Tensor([0.789])
         >>> # Compute the function value and its Taylor coefficients
@@ -81,7 +81,7 @@ def jet(
         >>> assert f1.allclose(df * x1)
         >>> assert f2.allclose(df * x2 + d2f * x1 ** 2)
     """
-    mod = capture_graph(f, example_input)
+    mod = capture_graph(f, mock_x)
 
     if verbose:
         print(f"Traced graph before jet overloading:\n{mod.graph}")

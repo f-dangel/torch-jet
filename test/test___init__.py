@@ -33,7 +33,7 @@ def check_jet(f: Callable[[Primal], Value], arg: PrimalAndCoefficients):  # noqa
     rev_jet_f = rev_jet(f)
     rev_jet_out = rev_jet_f(x, *vs)
 
-    jet_f = jet.jet(f, derivative_order=len(vs), example_input=x, verbose=True)
+    jet_f = jet.jet(f, len(vs), x, verbose=True)
     jet_out = jet_f(x, *vs)
 
     compare_jet_results(jet_out, rev_jet_out)
@@ -200,7 +200,7 @@ def test_symbolic_trace_jet(config: dict[str, Any], k: int):
     """
     f, x, vs = setup_case(config, derivative_order=k)
     # generate the jet's compute graph
-    jet_f = jet.jet(f, k, example_input=x)
+    jet_f = jet.jet(f, k, x)
 
     # try tracing it with example inputs (primal + coefficients)
     make_fx(jet_f)(x, *vs)

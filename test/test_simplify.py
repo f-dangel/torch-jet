@@ -310,7 +310,7 @@ def test_simplify_laplacian(
     # draw random vectors and stores them as tensor constants
     if randomization is not None:
         manual_seed(seed)
-    fast = simplify(mod, verbose=True, test_x=x, example_input=x)
+    fast = simplify(mod, x, verbose=True, test_x=x)
 
     # make sure the simplified module still behaves the same
     # With make_fx, random ops (aten.randn) are in the graph, so we must set the
@@ -324,7 +324,7 @@ def test_simplify_laplacian(
     # Structural assertions: verify simplification rules actually fired
     if randomization is not None:
         manual_seed(seed)
-    traced = capture_graph(mod, example_input=x)
+    traced = capture_graph(mod, x)
 
     # The output should be a 3-tuple (F0, F1, F2) for a 2-jet Laplacian
     out_args_before = get_output_args(traced.graph)
@@ -424,10 +424,10 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
         manual_seed(seed)
     simple_mod = simplify(
         bilap_mod,
+        x,
         verbose=True,
         eliminate_tensor_constants=False,
         test_x=x,
-        example_input=x,
     )
 
     # make sure the simplified module still behaves the same
@@ -439,10 +439,10 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
     # also remove duplicate tensor_constants
     simpler_mod = simplify(
         simple_mod,
+        x,
         verbose=True,
         eliminate_tensor_constants=True,
         test_x=x,
-        example_input=x,
     )
 
     # verify the further-simplified module still produces correct results
@@ -456,7 +456,7 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
     # Structural assertions: verify simplification rules actually fired
     if randomized:
         manual_seed(seed)
-    traced = capture_graph(bilap_mod, example_input=x)
+    traced = capture_graph(bilap_mod, x)
 
     _assert_bilaplacian_structure(
         traced, simple_mod, simpler_mod, x, config, randomized
@@ -478,7 +478,7 @@ def test_common_subexpression_elimination():
 
     x = arange(10)
 
-    f_traced = capture_graph(f, example_input=x)
+    f_traced = capture_graph(f, x)
     f_x = f_traced(x)
     nodes_before = len(list(f_traced.graph.nodes))
     # make_fx produces ATen-level nodes; verify duplicate subexpressions exist
@@ -517,7 +517,7 @@ def test_push_replicate_structural(config: dict[str, Any]):
     f, x, _ = setup_case(config)
     mod = Laplacian(f, x)
 
-    traced = capture_graph(mod, example_input=x)
+    traced = capture_graph(mod, x)
 
     # Precondition: the highest Taylor coefficient (F2) should be a direct
     # sum_vmapped at the output before any simplification
@@ -531,11 +531,11 @@ def test_push_replicate_structural(config: dict[str, Any]):
     # Apply only push_replicate (disable other simplifications)
     simplified = simplify(
         mod,
+        x,
         push_replicate=True,
         pull_sum_vmapped=False,
         eliminate_common_subexpressions=False,
         eliminate_tensor_constants=False,
-        example_input=x,
     )
 
     rep_depth_after = get_min_depth_from_input(simplified.graph, is_replicate)
@@ -565,7 +565,7 @@ def test_pull_sum_vmapped_structural(config: dict[str, Any]):
 
     # Precondition: the highest Taylor coefficient (F2) should be a direct
     # sum_vmapped at the output before any simplification
-    traced = capture_graph(mod, example_input=x)
+    traced = capture_graph(mod, x)
     out_args_traced = get_output_args(traced.graph)
     assert is_sum_vmapped(out_args_traced[2]), (
         "Before simplification, out[2] should be a sum_vmapped node"
@@ -574,11 +574,11 @@ def test_pull_sum_vmapped_structural(config: dict[str, Any]):
     # Apply push_replicate first (as the full simplify pipeline does)
     after_push = simplify(
         mod,
+        x,
         push_replicate=True,
         pull_sum_vmapped=False,
         eliminate_common_subexpressions=False,
         eliminate_tensor_constants=False,
-        example_input=x,
     )
 
     sum_depth_before = get_max_depth_from_output(after_push.graph, is_sum_vmapped)
@@ -626,8 +626,8 @@ def test_full_simplification_structural(config: dict[str, Any]):
     f, x, _ = setup_case(config)
     mod = Laplacian(f, x)
 
-    traced = capture_graph(mod, example_input=x)
-    simplified = simplify(mod, example_input=x)
+    traced = capture_graph(mod, x)
+    simplified = simplify(mod, x)
 
     # Precondition: the highest Taylor coefficient (F2) should be a direct
     # sum_vmapped at the output before any simplification

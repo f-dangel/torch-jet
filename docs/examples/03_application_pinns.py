@@ -194,7 +194,7 @@ X_boundary = sample_boundary()
 
 # Function that computes three numbers, the last is the neural networks Laplacian
 lap_f = Laplacian(f, zeros(2, dtype=DTYPE))  # uses Taylor mode
-lap_f = simplify(lap_f, example_input=zeros(2, dtype=DTYPE))  # collapses Taylor mode
+lap_f = simplify(lap_f, zeros(2, dtype=DTYPE))  # collapses Taylor mode
 lap_f = vmap(lap_f)  # parallelized over data points
 
 

@@ -36,15 +36,15 @@ class Bilaplacian(Module):
     def __init__(
         self,
         f: Callable[[Tensor], Tensor],
-        example_input: Tensor,
+        mock_x: Tensor,
         randomization: tuple[str, int] | None = None,
     ):
         """Initialize the Bi-Laplacian module.
 
         Args:
             f: The function whose Bi-Laplacian is computed.
-            example_input: A concrete example input tensor for tracing. Does not need to
-                be the actual input; only the shape and dtype matter.
+            mock_x: A mock input tensor for tracing. Does not need to be the actual
+                input; only the shape and dtype matter.
             randomization: Optional tuple containing the distribution type and number
                 of samples for randomized Bi-Laplacian. If provided, the Bi-Laplacian
                 will be computed using Monte-Carlo sampling. The first element is the
@@ -64,7 +64,7 @@ class Bilaplacian(Module):
             >>> f = Sequential(Linear(3, 1), Tanh())
             >>> x0 = rand(3)
             >>> # Compute the Bilaplacian via Taylor mode
-            >>> bilaplacian = Bilaplacian(f, example_input=zeros(3))(x0)
+            >>> bilaplacian = Bilaplacian(f, zeros(3))(x0)
             >>> assert bilaplacian.shape == f(x0).shape
             >>> # Compute the Bilaplacian with PyTorch's autodiff
             >>> laplacian_pt = lambda x: hessian(f)(x).squeeze(0).trace().unsqueeze(0)
@@ -74,11 +74,11 @@ class Bilaplacian(Module):
         """
         super().__init__()
 
-        # data that needs to be inferred explicitly from the example input
+        # data that needs to be inferred explicitly from the mock input
         # because `torch.fx` cannot do this.
-        self.in_shape = example_input.shape
-        self.in_meta = {"dtype": example_input.dtype, "device": example_input.device}
-        self.in_dim = example_input.numel()
+        self.in_shape = mock_x.shape
+        self.in_meta = {"dtype": mock_x.dtype, "device": mock_x.device}
+        self.in_dim = mock_x.numel()
 
         if randomization is not None:
             (distribution, num_samples) = randomization
@@ -91,7 +91,7 @@ class Bilaplacian(Module):
         self.randomization = randomization
 
         derivative_order = 4
-        jet_f = jet.jet(f, derivative_order, example_input=example_input)
+        jet_f = jet.jet(f, derivative_order, mock_x)
         D = self.in_dim
         num_jets = (
             {self.randomization[1]}
@@ -130,7 +130,7 @@ class Bilaplacian(Module):
         """Compute the Bi-Laplacian of the function at the input tensor.
 
         Args:
-            x: Input tensor. Must have same shape as the example input that was
+            x: Input tensor. Must have same shape as the mock input that was
                 passed in the constructor.
 
         Returns:
@@ -192,7 +192,7 @@ class Bilaplacian(Module):
         """Create the Taylor coefficients for the Bi-Laplacian computation.
 
         Args:
-            x: Input tensor. Must have same shape as the example input that was
+            x: Input tensor. Must have same shape as the mock input that was
                 passed in the constructor.
 
         Returns:

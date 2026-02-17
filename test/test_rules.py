@@ -406,7 +406,7 @@ def test_simplification_rules(config: dict[str, Any]):
     rules = config["rules"]()
 
     # simplify the function
-    f_simplified = capture_graph(f, example_input=x)
+    f_simplified = capture_graph(f, x)
 
     do_simplify = True
     while do_simplify:
@@ -420,5 +420,5 @@ def test_simplification_rules(config: dict[str, Any]):
     assert f_x.allclose(f_simplified(x))
 
     # compare the graphs of f_simplified and f_simple
-    f_simple_mod = capture_graph(f_simple, example_input=x)
+    f_simple_mod = capture_graph(f_simple, x)
     compare_graphs(f_simple_mod.graph, f_simplified.graph)

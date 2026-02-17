@@ -261,6 +261,7 @@ def check_unaltered(
 
 def simplify(  # noqa: C901
     mod: GraphModule | Module | Callable,
+    mock_x: Tensor | None = None,
     push_replicate: bool = True,
     remove_unused: bool = True,
     pull_sum_vmapped: bool = True,
@@ -268,7 +269,6 @@ def simplify(  # noqa: C901
     eliminate_tensor_constants: bool = True,
     verbose: bool = False,
     test_x: Tensor | None = None,
-    example_input: Tensor | None = None,
 ) -> GraphModule:
     """Simplify a compute graph.
 
@@ -288,6 +288,8 @@ def simplify(  # noqa: C901
 
     Args:
         mod: A (graph) module or function whose computation graph will be simplified.
+        mock_x: A mock input tensor for tracing with ``make_fx``. Required when
+            ``mod`` is not already a ``GraphModule``. Default: `None`.
         push_replicate: Whether to push `replicate` nodes down the graph.
             Default: `True`.
         remove_unused: Whether to remove unused nodes from the graph. Default: `True`.
@@ -302,20 +304,18 @@ def simplify(  # noqa: C901
             simplification to make sure it does not change the correctness.
             This is expensive and should be considered for debugging purposes only.
             If `None`, the verification step will be skipped. Default: `None`.
-        example_input: A concrete example input tensor for tracing with ``make_fx``.
-            Required when ``mod`` is not already a ``GraphModule``. Default: `None`.
 
     Returns:
         The simplified graph module.
 
     Raises:
-        ValueError: If ``mod`` is not a ``GraphModule`` and ``example_input``
+        ValueError: If ``mod`` is not a ``GraphModule`` and ``mock_x``
             is not provided.
     """
     if not isinstance(mod, GraphModule):
-        if example_input is None:
-            raise ValueError("example_input is required when mod is not a GraphModule.")
-        mod = capture_graph(mod, example_input=example_input)
+        if mock_x is None:
+            raise ValueError("mock_x is required when mod is not a GraphModule.")
+        mod = capture_graph(mod, mock_x)
 
     nodes_before = len(list(mod.graph.nodes))
     if verbose:

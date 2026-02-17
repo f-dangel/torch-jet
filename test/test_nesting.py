@@ -65,7 +65,7 @@ class JetModule(Module):
         f: Callable[[Tensor], Tensor],
         vs: tuple[Tensor, ...],
         k: int,
-        example_input: Tensor | None = None,
+        mock_x: Tensor | None = None,
     ) -> None:
         """Initialize the JetModule.
 
@@ -73,10 +73,10 @@ class JetModule(Module):
             f: The function to compute the jet of.
             vs: The Taylor coefficients for the jet.
             k: The order of the jet.
-            example_input: Example input for tracing.
+            mock_x: Mock input for tracing.
         """
         super().__init__()
-        self.jet_f = jet.jet(f, derivative_order=k, example_input=example_input)
+        self.jet_f = jet.jet(f, k, mock_x)
         self.k = k
         self.vs = vs
 
@@ -119,11 +119,11 @@ def test_nested_jet(config: dict[str, Any], k1: int, k2: int):
 
     # Compute the nested jet with the `jet` function
     # Compute the first jet and evaluate it at the first set of vectors
-    jet_f = JetModule(f, vs1, k1, example_input=x)
+    jet_f = JetModule(f, vs1, k1, x)
     print(f"Jet: {capture_graph(jet_f, x)}")
 
     # Compute the second jet and evaluate it at the second set of vectors
-    nested_jet_f = JetModule(jet_f, vs2, k2, example_input=x)
+    nested_jet_f = JetModule(jet_f, vs2, k2, x)
     print(f"Nested Jet: {capture_graph(nested_jet_f, x)}")
 
     # Compare

@@ -127,7 +127,7 @@ _ = manual_seed(0)  # make deterministic
 f = sin  # propagates x₀ ↦ f(x₀)
 k = 2  # jet degree
 x = rand(1)
-f_jet = jet(f, k, example_input=x)  # propagates (x₀, x₁, x₂) ↦ (f₀, f₁, f₂)
+f_jet = jet(f, k, x)  # propagates (x₀, x₁, x₂) ↦ (f₀, f₁, f₂)
 
 # Set up the Taylor coefficients to compute the second derivative
 
@@ -200,7 +200,7 @@ else:
 D = 3
 f = Sequential(Linear(D, 1), Tanh())
 x = rand(D)
-f_jet = jet(f, 2, example_input=x)
+f_jet = jet(f, 2, x)
 
 # constant Taylor coefficients
 x0 = x
@@ -278,7 +278,7 @@ def visualize_graph(mod: GraphModule, savefile: str, name: str = ""):
 # Let's visualize two compute graphs: The original function $f$, and its 2-jet function
 # $f_{2\text{-jet}}$:
 
-visualize_graph(capture_graph(f, example_input=x), path.join(GALLERYDIR, "01_f.png"))
+visualize_graph(capture_graph(f, x), path.join(GALLERYDIR, "01_f.png"))
 visualize_graph(f_jet, path.join(GALLERYDIR, "01_f_jet.png"))
 
 # %%
@@ -384,7 +384,7 @@ def f(x: Tensor, y: Tensor) -> Tensor:
 
 
 with raises(RuntimeError):
-    jet(f, 2, example_input=rand(3))
+    jet(f, 2, rand(3))
 
 # %%
 #
@@ -399,7 +399,7 @@ with raises(RuntimeError):
 
 
 with raises(NotImplementedError):
-    jet(lambda x: relu(x), 2, example_input=rand(3))
+    jet(lambda x: relu(x), 2, rand(3))
 
 # %%
 #
@@ -414,7 +414,7 @@ with raises(NotImplementedError):
 # For example, the following works
 
 f = sin
-_ = jet(f, 2, example_input=rand(3))  # works because sin traces to aten.sin
+_ = jet(f, 2, rand(3))  # works because sin traces to aten.sin
 
 # %%
 #
@@ -434,7 +434,7 @@ def f(x: Tensor) -> Tensor:
     return x.sin()
 
 
-_ = jet(f, 2, example_input=rand(3))  # also works with make_fx tracing
+_ = jet(f, 2, rand(3))  # also works with make_fx tracing
 
 # %%
 #
@@ -465,7 +465,7 @@ def f(x: Tensor):
 
 
 with raises(RuntimeError):
-    jet(f, 2, example_input=rand(3))  # crashes because f cannot be traced
+    jet(f, 2, rand(3))  # crashes because f cannot be traced
 
 # %%
 #

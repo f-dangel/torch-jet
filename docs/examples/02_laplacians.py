@@ -114,7 +114,7 @@ print(hessian_trace_laplacian)
 # Let's set up the jet function:
 
 k = 2
-f_jet = jet(f, k, example_input=x)
+f_jet = jet(f, k, x)
 
 # %%
 #
@@ -279,7 +279,7 @@ def visualize_graph(mod: GraphModule, savefile: str, name: str = ""):
 # (we evaluated approaches 2 and 3 in our paper).
 
 # Graph 1: Simply capture the module that computes the Laplacian
-mod_traced = capture_graph(mod, example_input=x)
+mod_traced = capture_graph(mod, x)
 visualize_graph(mod_traced, path.join(GALLERYDIR, "02_laplacian_module.png"))
 assert hessian_trace_laplacian.allclose(mod_traced(x))
 

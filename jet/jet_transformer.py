@@ -8,7 +8,7 @@ inputs from those that depend only on constants and substitutes the
 corresponding jet operations from `jet.operations.MAPPING`.
 """
 
-import torch
+from torch import device, dtype, memory_format
 from torch.fx import GraphModule, Proxy, Transformer
 from torch.fx.node import Argument, Target
 from torch.fx.traceback import get_current_meta
@@ -113,7 +113,7 @@ class JetTransformer(Transformer):
         elif isinstance(arg, (int, float, bool, str, list)) or arg is None:
             return False
 
-        elif isinstance(arg, (torch.dtype, torch.device, torch.memory_format)):
+        elif isinstance(arg, (dtype, device, memory_format)):
             return False
 
         else:

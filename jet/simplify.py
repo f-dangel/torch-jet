@@ -307,8 +307,15 @@ def simplify(  # noqa: C901
 
     Returns:
         The simplified graph module.
+
+    Raises:
+        ValueError: If ``mod`` is not a ``GraphModule`` and ``example_input``
+            is not provided.
     """
-    mod = capture_graph(mod, example_input=example_input)
+    if not isinstance(mod, GraphModule):
+        if example_input is None:
+            raise ValueError("example_input is required when mod is not a GraphModule.")
+        mod = capture_graph(mod, example_input=example_input)
 
     nodes_before = len(list(mod.graph.nodes))
     if verbose:

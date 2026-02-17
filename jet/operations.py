@@ -2,9 +2,8 @@
 
 from typing import TypedDict
 
-import torch
 from scipy.special import comb, factorial, stirling2
-from torch import cos, mul, sigmoid, sin, tanh
+from torch import cos, mm, mul, ops, sigmoid, sin, tanh
 
 import jet.utils
 from jet.utils import (
@@ -86,7 +85,7 @@ def _faa_di_bruno(
 def jet_sin(
     self_and_taylor_coefficients: PrimalAndCoefficients, *, _jet_info: JetInfo
 ) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for the sine function.
+    """Taylor-mode arithmetic for ``aten.sin``.
 
     Args:
         self_and_taylor_coefficients: The primal and its Taylor coefficients.
@@ -120,7 +119,7 @@ def jet_sin(
 def jet_cos(
     self_and_taylor_coefficients: PrimalAndCoefficients, *, _jet_info: JetInfo
 ) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for the cosine function.
+    """Taylor-mode arithmetic for ``aten.cos``.
 
     Args:
         self_and_taylor_coefficients: The primal and its Taylor coefficients.
@@ -154,7 +153,7 @@ def jet_cos(
 def jet_tanh(
     self_and_taylor_coefficients: PrimalAndCoefficients, *, _jet_info: JetInfo
 ) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for the hyperbolic tangent function.
+    """Taylor-mode arithmetic for ``aten.tanh``.
 
     Args:
         self_and_taylor_coefficients: The primal and its Taylor coefficients.
@@ -208,7 +207,7 @@ def jet_tanh(
 def jet_sigmoid(
     self_and_taylor_coefficients: PrimalAndCoefficients, *, _jet_info: JetInfo
 ) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for the sigmoid function.
+    """Taylor-mode arithmetic for ``aten.sigmoid``.
 
     Args:
         self_and_taylor_coefficients: The primal and its Taylor coefficients.
@@ -261,7 +260,7 @@ def jet_pow(
     *,
     _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for the power function with integer exponent.
+    """Taylor-mode arithmetic for ``aten.pow.Tensor_Scalar``.
 
     Args:
         base_and_taylor_coefficients: The primal and its Taylor coefficients.
@@ -309,7 +308,7 @@ def jet_add(
     *,
     _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for addition.
+    """Taylor-mode arithmetic for ``aten.add.Tensor``.
 
     Args:
         a_and_taylor_coefficients: The first primal and its Taylor coefficients, or a scalar.
@@ -348,7 +347,7 @@ def jet_sub(
     *,
     _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for subtraction.
+    """Taylor-mode arithmetic for ``aten.sub.Tensor``.
 
     Args:
         a_and_taylor_coefficients: The first primal and its Taylor coefficients, or a scalar.
@@ -387,7 +386,7 @@ def jet_mul(
     *,
     _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for multiplication of two variables.
+    """Taylor-mode arithmetic for ``aten.mul.Tensor``.
 
     Args:
         a_and_taylor_coefficients: The first primal and its Taylor coefficients.
@@ -437,7 +436,7 @@ def jet_replicate(
     *,
     _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for the replicate function.
+    """Taylor-mode arithmetic for ``jet.replicate``.
 
     Args:
         self_and_taylor_coefficients: The primal and its Taylor coefficients.
@@ -470,7 +469,7 @@ def jet_sum(
     *,
     _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for the sum (dim reduction) operation.
+    """Taylor-mode arithmetic for ``aten.sum.dim_IntList``.
 
     Args:
         self_and_taylor_coefficients: The primal and its Taylor coefficients.
@@ -485,6 +484,9 @@ def jet_sum(
     Raises:
         NotImplementedError: If `is_taylor` is not supported or keepdim is True.
     """
+    if keepdim:
+        raise NotImplementedError("keepdim=True is not supported.")
+
     is_args, is_kwargs = _jet_info["is_taylor"]
     # First arg (tensor) must be Taylor, rest (dim, keepdim) must be constant
     if is_args[0] is not True or any(is_args[1:]) or any(is_kwargs.values()):
@@ -505,7 +507,7 @@ def jet_sum_vmapped(
     *,
     _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for the sum_vmapped operation.
+    """Taylor-mode arithmetic for ``jet.sum_vmapped``.
 
     Args:
         self_and_taylor_coefficients: The primal and its Taylor coefficients.
@@ -537,7 +539,7 @@ def jet_view(
     *,
     _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for the view (reshape) operation.
+    """Taylor-mode arithmetic for ``aten.view``.
 
     Args:
         self_and_taylor_coefficients: The primal and its Taylor coefficients.
@@ -551,7 +553,7 @@ def jet_view(
         raise NotImplementedError(f"Not implemented for {_jet_info['is_taylor']=}.")
 
     return tuple(
-        torch.ops.aten.view.default(self_and_taylor_coefficients[k], shape)
+        ops.aten.view.default(self_and_taylor_coefficients[k], shape)
         for k in range(_jet_info["derivative_order"] + 1)
     )
 
@@ -561,7 +563,7 @@ def jet_t(
     *,
     _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for the transpose operation.
+    """Taylor-mode arithmetic for ``aten.t``.
 
     Args:
         self_and_taylor_coefficients: The primal and its Taylor coefficients.
@@ -574,7 +576,7 @@ def jet_t(
         raise NotImplementedError(f"Not implemented for {_jet_info['is_taylor']=}.")
 
     return tuple(
-        torch.ops.aten.t.default(self_and_taylor_coefficients[k])
+        ops.aten.t.default(self_and_taylor_coefficients[k])
         for k in range(_jet_info["derivative_order"] + 1)
     )
 
@@ -585,7 +587,7 @@ def jet_unsqueeze(
     *,
     _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for the unsqueeze operation.
+    """Taylor-mode arithmetic for ``aten.unsqueeze``.
 
     Args:
         self_and_taylor_coefficients: The primal and its Taylor coefficients.
@@ -599,7 +601,7 @@ def jet_unsqueeze(
         raise NotImplementedError(f"Not implemented for {_jet_info['is_taylor']=}.")
 
     return tuple(
-        torch.ops.aten.unsqueeze.default(self_and_taylor_coefficients[k], dim)
+        ops.aten.unsqueeze.default(self_and_taylor_coefficients[k], dim)
         for k in range(_jet_info["derivative_order"] + 1)
     )
 
@@ -610,7 +612,7 @@ def jet_squeeze(
     *,
     _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for the squeeze operation.
+    """Taylor-mode arithmetic for ``aten.squeeze.dim``.
 
     Args:
         self_and_taylor_coefficients: The primal and its Taylor coefficients.
@@ -624,7 +626,7 @@ def jet_squeeze(
         raise NotImplementedError(f"Not implemented for {_jet_info['is_taylor']=}.")
 
     return tuple(
-        torch.ops.aten.squeeze.dim(self_and_taylor_coefficients[k], dim)
+        ops.aten.squeeze.dim(self_and_taylor_coefficients[k], dim)
         for k in range(_jet_info["derivative_order"] + 1)
     )
 
@@ -635,7 +637,7 @@ def jet_mm(
     *,
     _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for matrix multiplication.
+    """Taylor-mode arithmetic for ``aten.mm``.
 
     Args:
         a_and_taylor_coefficients: The first matrix and its Taylor coefficients.
@@ -655,7 +657,7 @@ def jet_mm(
         for k in range(_jet_info["derivative_order"] + 1):
             term = None
             for j in range(k + 1):
-                term_j = comb(k, j, exact=True) * torch.mm(
+                term_j = comb(k, j, exact=True) * mm(
                     a_and_taylor_coefficients[j],
                     b_and_taylor_coefficients[k - j],
                 )
@@ -665,14 +667,16 @@ def jet_mm(
 
     elif (coeff1, coeff2) == (True, False):
         return tuple(
-            torch.mm(a_and_taylor_coefficients[k], b_and_taylor_coefficients)
+            mm(a_and_taylor_coefficients[k], b_and_taylor_coefficients)
             for k in range(_jet_info["derivative_order"] + 1)
         )
     elif (coeff1, coeff2) == (False, True):
         return tuple(
-            torch.mm(a_and_taylor_coefficients, b_and_taylor_coefficients[k])
+            mm(a_and_taylor_coefficients, b_and_taylor_coefficients[k])
             for k in range(_jet_info["derivative_order"] + 1)
         )
+    else:
+        raise NotImplementedError(f"Not implemented for {_jet_info['is_taylor']=}.")
 
 
 def jet_addmm(
@@ -682,7 +686,7 @@ def jet_addmm(
     *,
     _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for addmm (bias + A @ B).
+    """Taylor-mode arithmetic for ``aten.addmm``.
 
     Args:
         bias: The bias tensor (constant).
@@ -717,7 +721,7 @@ def jet_expand(
     *,
     _jet_info: JetInfo,
 ) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for the expand operation.
+    """Taylor-mode arithmetic for ``aten.expand``.
 
     Args:
         self_and_taylor_coefficients: The primal and its Taylor coefficients.
@@ -731,7 +735,7 @@ def jet_expand(
         raise NotImplementedError(f"Not implemented for {_jet_info['is_taylor']=}.")
 
     return tuple(
-        torch.ops.aten.expand.default(self_and_taylor_coefficients[k], shape)
+        ops.aten.expand.default(self_and_taylor_coefficients[k], shape)
         for k in range(_jet_info["derivative_order"] + 1)
     )
 
@@ -742,7 +746,7 @@ def jet_to_copy(
     _jet_info: JetInfo,
     **copy_kwargs,
 ) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for the _to_copy (type conversion) operation.
+    """Taylor-mode arithmetic for ``aten._to_copy``.
 
     Args:
         self_and_taylor_coefficients: The primal and its Taylor coefficients.
@@ -756,38 +760,37 @@ def jet_to_copy(
         raise NotImplementedError(f"Not implemented for {_jet_info['is_taylor']=}.")
 
     return tuple(
-        torch.ops.aten._to_copy.default(self_and_taylor_coefficients[k], **copy_kwargs)
+        ops.aten._to_copy.default(self_and_taylor_coefficients[k], **copy_kwargs)
         for k in range(_jet_info["derivative_order"] + 1)
     )
 
 
 MAPPING = {
     # Elementwise unary
-    torch.ops.aten.sin.default: jet_sin,
-    torch.ops.aten.cos.default: jet_cos,
-    torch.ops.aten.tanh.default: jet_tanh,
-    torch.ops.aten.sigmoid.default: jet_sigmoid,
+    ops.aten.sin.default: jet_sin,
+    ops.aten.cos.default: jet_cos,
+    ops.aten.tanh.default: jet_tanh,
+    ops.aten.sigmoid.default: jet_sigmoid,
     # Power
-    torch.ops.aten.pow.Tensor_Scalar: jet_pow,
+    ops.aten.pow.Tensor_Scalar: jet_pow,
     # Arithmetic
-    torch.ops.aten.add.Tensor: jet_add,
-    torch.ops.aten.sub.Tensor: jet_sub,
-    torch.ops.aten.mul.Tensor: jet_mul,
+    ops.aten.add.Tensor: jet_add,
+    ops.aten.sub.Tensor: jet_sub,
+    ops.aten.mul.Tensor: jet_mul,
     # Linear decomposition
-    torch.ops.aten.mm.default: jet_mm,
-    torch.ops.aten.addmm.default: jet_addmm,
-    torch.ops.aten.t.default: jet_t,
-    torch.ops.aten.view.default: jet_view,
-    torch.ops.aten.unsqueeze.default: jet_unsqueeze,
-    torch.ops.aten.squeeze.dim: jet_squeeze,
-    torch.ops.aten.squeeze_.dim: jet_squeeze,
+    ops.aten.mm.default: jet_mm,
+    ops.aten.addmm.default: jet_addmm,
+    ops.aten.t.default: jet_t,
+    ops.aten.view.default: jet_view,
+    ops.aten.unsqueeze.default: jet_unsqueeze,
+    ops.aten.squeeze.dim: jet_squeeze,
     # Expand
-    torch.ops.aten.expand.default: jet_expand,
+    ops.aten.expand.default: jet_expand,
     # Type conversion
-    torch.ops.aten._to_copy.default: jet_to_copy,
+    ops.aten._to_copy.default: jet_to_copy,
     # Sum (dim reduction)
-    torch.ops.aten.sum.dim_IntList: jet_sum,
+    ops.aten.sum.dim_IntList: jet_sum,
     # Custom ops
-    torch.ops.jet.replicate.default: jet_replicate,
-    torch.ops.jet.sum_vmapped.default: jet_sum_vmapped,
+    ops.jet.replicate.default: jet_replicate,
+    ops.jet.sum_vmapped.default: jet_sum_vmapped,
 }

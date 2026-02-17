@@ -35,7 +35,7 @@ class Laplacian(Module):
     def __init__(
         self,
         f: Callable[[Tensor], Tensor],
-        dummy_x: Tensor,
+        example_input: Tensor,
         randomization: tuple[str, int] | None = None,
         weighting: tuple[Callable[[Tensor, Tensor], Tensor], int] | None = None,
     ):
@@ -43,9 +43,8 @@ class Laplacian(Module):
 
         Args:
             f: The function whose Laplacian is computed.
-            dummy_x: The input on which the Laplacian is computed. It is only used to
-                infer meta-data of the function input that `torch.fx` is not capable
-                of determining at the moment.
+            example_input: A concrete example input tensor for tracing. Does not need to
+                be the actual input; only the shape and dtype matter.
             randomization: Optional tuple containing the distribution type and number
                 of samples for randomized Laplacian. If provided, the Laplacian will
                 be computed using Monte-Carlo sampling. The first element is the
@@ -73,7 +72,7 @@ class Laplacian(Module):
             >>> f = Sequential(Linear(3, 1), Tanh())
             >>> x0 = rand(3)
             >>> # Compute the Laplacian via Taylor mode
-            >>> _, _, laplacian = Laplacian(f, dummy_x=zeros(3))(x0)
+            >>> _, _, laplacian = Laplacian(f, example_input=zeros(3))(x0)
             >>> assert laplacian.shape == f(x0).shape
             >>> # Compute the Laplacian with PyTorch's autodiff (Hessian trace)
             >>> laplacian_pt = hessian(f)(x0).squeeze(0).trace().unsqueeze(0)
@@ -82,11 +81,11 @@ class Laplacian(Module):
         """
         super().__init__()
 
-        # data that needs to be inferred explicitly from a dummy input
+        # data that needs to be inferred explicitly from the example input
         # because `torch.fx` cannot do this.
-        self.in_shape = dummy_x.shape
-        self.in_meta = {"dtype": dummy_x.dtype, "device": dummy_x.device}
-        self.in_dim = dummy_x.numel()
+        self.in_shape = example_input.shape
+        self.in_meta = {"dtype": example_input.dtype, "device": example_input.device}
+        self.in_dim = example_input.numel()
 
         (self.apply_weightings, self.rank_weightings) = (
             (lambda x, V: V.reshape(self.num_jets, *self.in_shape), self.in_dim)
@@ -105,7 +104,7 @@ class Laplacian(Module):
                 raise ValueError(f"{num_samples=} must be positive.")
         self.randomization = randomization
 
-        jet_f = jet.jet(f, 2, example_input=dummy_x)
+        jet_f = jet.jet(f, 2, example_input=example_input)
         self.num_jets = (
             self.rank_weightings if randomization is None else randomization[1]
         )
@@ -120,7 +119,7 @@ class Laplacian(Module):
         """Compute the (weighted and/or randomized) Laplacian of f at x.
 
         Args:
-            x: Input tensor. Must have same shape as the dummy input tensor that was
+            x: Input tensor. Must have same shape as the example input that was
                 passed in the constructor.
 
         Returns:
@@ -141,7 +140,7 @@ class Laplacian(Module):
         """Create the first Taylor coefficients for the Laplacian computation.
 
         Args:
-            x: Input tensor. Must have same shape as the dummy input tensor that was
+            x: Input tensor. Must have same shape as the example input that was
                 passed in the constructor.
 
         Returns:

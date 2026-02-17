@@ -43,11 +43,11 @@ if __name__ == "__main__":
             print(f"\n{20 * '-'} {op=}, {randomization=} {20 * '-'}")
 
             # print number of computation graph nodes
-            f_before = capture_graph(lap)  # noqa: B023
+            f_before = capture_graph(lap, dummy_x)  # noqa: B023
             print("Before simplification:", len(list(f_before.graph.nodes)))
-            f_simple1 = simplify(lap, pull_sum_vmapped=False)
+            f_simple1 = simplify(lap, example_input=dummy_x, pull_sum_vmapped=False)
             print("Naive after simplification:", len(list(f_simple1.graph.nodes)))
-            f_simple2 = simplify(lap, pull_sum_vmapped=True)
+            f_simple2 = simplify(lap, example_input=dummy_x, pull_sum_vmapped=True)
             print("Collapsed after simplification:", len(list(f_simple2.graph.nodes)))
 
             print("\n--")

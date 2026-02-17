@@ -4,13 +4,13 @@ from typing import Any, Callable
 
 from pytest import mark
 from torch import Tensor, cos, manual_seed, rand, sigmoid, sin, tanh, tensor
+from torch.fx.experimental.proxy_tensor import make_fx
 from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
 
 import jet
 import jet.utils
 from jet import rev_jet
-from jet.tracing import capture_graph
 from jet.utils import Primal, PrimalAndCoefficients, Value, ValueAndCoefficients
 from test.utils import report_nonclose
 
@@ -203,4 +203,4 @@ def test_symbolic_trace_jet(config: dict[str, Any], k: int):
     jet_f = jet.jet(f, k, example_input=x)
 
     # try tracing it with example inputs (primal + coefficients)
-    capture_graph(jet_f, x if not vs else vs[0])
+    make_fx(jet_f)(x, *vs)

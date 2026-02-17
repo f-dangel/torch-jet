@@ -36,16 +36,15 @@ class Bilaplacian(Module):
     def __init__(
         self,
         f: Callable[[Tensor], Tensor],
-        dummy_x: Tensor,
+        example_input: Tensor,
         randomization: tuple[str, int] | None = None,
     ):
         """Initialize the Bi-Laplacian module.
 
         Args:
             f: The function whose Bi-Laplacian is computed.
-            dummy_x: The input on which the Bi-Laplacian is computed. It is only used to
-                infer meta-data of the function input that `torch.fx` is not capable
-                of determining at the moment.
+            example_input: A concrete example input tensor for tracing. Does not need to
+                be the actual input; only the shape and dtype matter.
             randomization: Optional tuple containing the distribution type and number
                 of samples for randomized Bi-Laplacian. If provided, the Bi-Laplacian
                 will be computed using Monte-Carlo sampling. The first element is the
@@ -65,7 +64,7 @@ class Bilaplacian(Module):
             >>> f = Sequential(Linear(3, 1), Tanh())
             >>> x0 = rand(3)
             >>> # Compute the Bilaplacian via Taylor mode
-            >>> bilaplacian = Bilaplacian(f, dummy_x=zeros(3))(x0)
+            >>> bilaplacian = Bilaplacian(f, example_input=zeros(3))(x0)
             >>> assert bilaplacian.shape == f(x0).shape
             >>> # Compute the Bilaplacian with PyTorch's autodiff
             >>> laplacian_pt = lambda x: hessian(f)(x).squeeze(0).trace().unsqueeze(0)
@@ -75,11 +74,11 @@ class Bilaplacian(Module):
         """
         super().__init__()
 
-        # data that needs to be inferred explicitly from a dummy input
+        # data that needs to be inferred explicitly from the example input
         # because `torch.fx` cannot do this.
-        self.in_shape = dummy_x.shape
-        self.in_meta = {"dtype": dummy_x.dtype, "device": dummy_x.device}
-        self.in_dim = dummy_x.numel()
+        self.in_shape = example_input.shape
+        self.in_meta = {"dtype": example_input.dtype, "device": example_input.device}
+        self.in_dim = example_input.numel()
 
         if randomization is not None:
             (distribution, num_samples) = randomization
@@ -91,7 +90,8 @@ class Bilaplacian(Module):
                 raise ValueError(f"{num_samples=} must be positive.")
         self.randomization = randomization
 
-        jet_f = jet.jet(f, 4, example_input=dummy_x)
+        derivative_order = 4
+        jet_f = jet.jet(f, derivative_order, example_input=example_input)
         D = self.in_dim
         num_jets = (
             {self.randomization[1]}
@@ -102,8 +102,10 @@ class Bilaplacian(Module):
         for n in num_jets:
             # Create batched version using native vmap + make_fx tracing
             vmapped = vmap(jet_f, randomness="different")
+            num_coefficients = derivative_order + 1
             example_args = tuple(
-                zeros(n, *self.in_shape, **self.in_meta) for _ in range(5)
+                zeros(n, *self.in_shape, **self.in_meta)
+                for _ in range(num_coefficients)
             )
             multijet_f = make_fx(vmapped)(*example_args)
             setattr(self, f"jets_f_{n}", multijet_f)
@@ -128,7 +130,7 @@ class Bilaplacian(Module):
         """Compute the Bi-Laplacian of the function at the input tensor.
 
         Args:
-            x: Input tensor. Must have same shape as the dummy input tensor that was
+            x: Input tensor. Must have same shape as the example input that was
                 passed in the constructor.
 
         Returns:
@@ -190,7 +192,7 @@ class Bilaplacian(Module):
         """Create the Taylor coefficients for the Bi-Laplacian computation.
 
         Args:
-            x: Input tensor. Must have same shape as the dummy input tensor that was
+            x: Input tensor. Must have same shape as the example input that was
                 passed in the constructor.
 
         Returns:

@@ -13,6 +13,7 @@ from pytest import raises
 from torch import Tensor, cos, manual_seed, ones_like, rand, sin, zeros_like
 from torch.func import hessian
 from torch.fx import GraphModule
+from torch.fx.experimental.proxy_tensor import make_fx
 from torch.fx.passes.graph_drawer import FxGraphDrawer
 from torch.nn import Linear, Sequential, Tanh
 from torch.nn.functional import relu
@@ -307,7 +308,9 @@ visualize_graph(f_jet, path.join(GALLERYDIR, "01_f_jet.png"))
 # We can take an even 'deeper' look into this graph by tracing it again, which will
 # 'unroll' the operations of the `jet.operations.*` functions:
 
-visualize_graph(capture_graph(f_jet), path.join(GALLERYDIR, "01_f_jet_unrolled.png"))
+visualize_graph(
+    make_fx(f_jet)(x0, x1, x2), path.join(GALLERYDIR, "01_f_jet_unrolled.png")
+)
 
 # %%
 #
@@ -395,12 +398,8 @@ with raises(RuntimeError):
 # the ReLU function is currently not supported:
 
 
-def f(x):  # noqa: D103
-    return relu(x)
-
-
 with raises(NotImplementedError):
-    jet(f, 2, example_input=rand(3))
+    jet(lambda x: relu(x), 2, example_input=rand(3))
 
 # %%
 #

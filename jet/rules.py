@@ -686,20 +686,42 @@ class PullSumVmappedTensorAddition(Rule):
 
 
 class PullSumVmappedLinear(Rule):
-    """Pull ``sum_vmapped`` through ``mm``.
+    """Pull ``sum_vmapped`` through ``mm`` and ``addmm``.
 
-    Matches ``sum_vmapped(mm(mat1, mat2), pos)`` where ``pos`` identifies
-    a non-contracted dimension, and moves the summation to the corresponding
-    matrix argument:
+    Matches ``sum_vmapped(op(…), pos)`` where ``op`` is ``mm`` or ``addmm``
+    and ``pos`` identifies a non-contracted dimension. Moves the summation to
+    the corresponding matrix argument:
 
-    - ``pos == 0``: ``sum_vmapped(mm(X, W), 0)``
-      → ``squeeze(mm(unsqueeze(sum_vmapped(X, 0), 0), W), 0)``
-    - ``pos == 1``: ``sum_vmapped(mm(X, W), 1)``
-      → ``squeeze(mm(X, unsqueeze(sum_vmapped(W, 1), 1)), 1)``
+    For ``mm(X, W)``:
+
+    - ``pos == 0``: → ``squeeze(mm(unsqueeze(sum_vmapped(X, 0), 0), W), 0)``
+    - ``pos == 1``: → ``squeeze(mm(X, unsqueeze(sum_vmapped(W, 1), 1)), 1)``
+
+    For ``addmm(b, X, W)`` the matrix part is handled identically, plus a
+    bias correction (``V * b`` for pos=0, ``sum(b)`` for pos=1).
+
+    Attributes:
+        OPERATIONS: Supported ATen matrix-multiply operations.
     """
 
+    OPERATIONS = [_aten.mm.default, _aten.addmm.default]
+
+    @staticmethod
+    def _matrix_arg_indices(node: Node) -> tuple[int, int]:
+        """Return the argument indices of the two matrix operands.
+
+        Args:
+            node: An ``mm`` or ``addmm`` node.
+
+        Returns:
+            Tuple of ``(mat1_index, mat2_index)``.
+        """
+        if node.target == _aten.mm.default:
+            return (0, 1)
+        return (1, 2)
+
     def match(self, node: Node) -> bool:
-        """Detect ``sum_vmapped(mm(...), pos)`` with ``pos`` in {0, 1}.
+        """Detect ``sum_vmapped(mm/addmm(…), pos)`` with ``pos`` in {0, 1}.
 
         Args:
             node: A node in a computation graph.
@@ -711,7 +733,10 @@ class PullSumVmappedLinear(Rule):
             return False
 
         (in_node,) = node.all_input_nodes
-        if in_node.op != "call_function" or in_node.target != _aten.mm.default:
+        if (
+            in_node.op != "call_function"
+            or in_node.target not in self.OPERATIONS
+        ):
             return False
 
         pos = _get_sum_vmapped_pos(node)
@@ -721,22 +746,26 @@ class PullSumVmappedLinear(Rule):
     def apply(self, sum_node: Node, graph: Graph) -> None:
         """Apply the simplification rule.
 
-        Replaces ``sum_vmapped(mm(mat1, mat2), pos)`` with
-        ``squeeze(mm(..., unsqueeze(sum_vmapped(arg, pos), pos), ...), pos)``.
+        For ``mm``, replaces ``sum_vmapped(mm(…), pos)`` with
+        ``squeeze(mm(…, unsqueeze(sum_vmapped(arg, pos), pos), …), pos)``.
+
+        For ``addmm``, the same matrix rewrite is applied (using ``mm``),
+        and the bias is corrected: ``V * b`` when ``pos == 0`` (the bias was
+        broadcast across ``V`` rows), or ``sum(b)`` when ``pos == 1``.
 
         Args:
-            sum_node: The ``sum_vmapped`` node that consumes an ``mm`` node.
+            sum_node: The ``sum_vmapped`` node.
             graph: The computation graph to which the rule is applied.
         """
-        (mm_node,) = sum_node.all_input_nodes
+        (matmul_node,) = sum_node.all_input_nodes
         pos = _get_sum_vmapped_pos(sum_node)
-        # pos=0 → pull sum_vmapped to mat1 (arg 0)
-        # pos=1 → pull sum_vmapped to mat2 (arg 1)
-        target_idx = pos
-        target_arg = mm_node.args[target_idx]
+        i1, i2 = self._matrix_arg_indices(matmul_node)
+        # pos=0 → pull sum_vmapped to mat1, pos=1 → pull to mat2
+        target_idx = i1 if pos == 0 else i2
+        target_arg = matmul_node.args[target_idx]
 
         # sum_vmapped on the target argument
-        with graph.inserting_before(mm_node):
+        with graph.inserting_before(matmul_node):
             sv_args, sv_kwargs = _make_sum_vmapped_args(target_arg, pos)
             new_sv = graph.call_function(
                 _sum_vmapped_target, args=sv_args, kwargs=sv_kwargs
@@ -750,19 +779,46 @@ class PullSumVmappedLinear(Rule):
 
         # new mm with sum_vmapped+unsqueeze replacing the original arg
         with graph.inserting_after(unsqueeze_node):
-            new_args = tuple(
-                unsqueeze_node if i == target_idx else arg
-                for i, arg in enumerate(mm_node.args)
+            mm_args = tuple(
+                unsqueeze_node if i == target_idx else matmul_node.args[i]
+                for i in (i1, i2)
             )
-            new_mm = graph.call_function(
-                _aten.mm.default, args=new_args, kwargs=mm_node.kwargs
-            )
+            new_mm = graph.call_function(_aten.mm.default, args=mm_args)
 
         # squeeze the summed dimension from the result
         with graph.inserting_after(new_mm):
-            squeeze_node = graph.call_function(_aten.squeeze.dim, args=(new_mm, pos))
+            squeeze_node = graph.call_function(
+                _aten.squeeze.dim, args=(new_mm, pos)
+            )
 
-        sum_node.replace_all_uses_with(squeeze_node)
+        if matmul_node.target == _aten.addmm.default:
+            bias = matmul_node.args[0]
+            if pos == 0:
+                # Bias b was broadcast from (n,) to (V, n); summing V rows
+                # gives V * b. Extract V from the traced tensor metadata.
+                V = target_arg.meta["val"].shape[0]
+                with graph.inserting_after(squeeze_node):
+                    scaled_b = graph.call_function(
+                        _aten.mul.Tensor, args=(bias, V)
+                    )
+                with graph.inserting_after(scaled_b):
+                    result = graph.call_function(
+                        _aten.add.Tensor, args=(squeeze_node, scaled_b)
+                    )
+            else:
+                # pos == 1: each row had b added; summing over n columns
+                # contributes sum(b) to every row.
+                with graph.inserting_after(squeeze_node):
+                    sum_b = graph.call_function(
+                        _aten.sum.default, args=(bias,)
+                    )
+                with graph.inserting_after(sum_b):
+                    result = graph.call_function(
+                        _aten.add.Tensor, args=(squeeze_node, sum_b)
+                    )
+            sum_node.replace_all_uses_with(result)
+        else:
+            sum_node.replace_all_uses_with(squeeze_node)
 
 
 class PullSumVmappedReplicateMultiplication(Rule):

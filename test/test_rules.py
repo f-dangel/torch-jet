@@ -414,6 +414,37 @@ CASES.append(
 )
 
 
+# Pull a sum_vmapped node through addmm (linear with bias).
+class SumVmappedAddmm(Module):  # noqa: D101
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        return jet.utils.sum_vmapped(
+            linear(x, linspace(-2.0, 10, 12).reshape(3, 4), linspace(-1.0, 2.0, 3)),
+        )
+
+
+class SimpleSumVmappedAddmm(SumVmappedAddmm):  # noqa: D101
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        W = linspace(-2.0, 10, 12).reshape(3, 4)
+        b = linspace(-1.0, 2.0, 3)
+        Wt = _aten.t.default(W)
+        sv = jet.utils.sum_vmapped(x)
+        out = _aten.mm.default(_aten.unsqueeze.default(sv, 0), Wt)
+        out = _aten.squeeze.dim(out, 0)
+        scaled_b = _aten.mul.Tensor(b, x.shape[0])
+        return _aten.add.Tensor(out, scaled_b)
+
+
+CASES.append(
+    {
+        "f": SumVmappedAddmm(),
+        "f_simple": SimpleSumVmappedAddmm(),
+        "rules": lambda: [PullSumVmappedLinear()],
+        "shape": (5, 4),
+        "id": "sum_vmapped-addmm",
+    }
+)
+
+
 # Pull a sum_vmapped through a multiplication, one of whose arguments is a replicate
 class SumVmappedReplicateMultiplication(Module):  # noqa: D101
     def __init__(  # noqa: D107

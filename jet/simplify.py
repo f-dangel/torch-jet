@@ -5,9 +5,8 @@ from functools import partial
 from itertools import product
 from typing import Callable
 
-import torch
 from torch import Tensor, manual_seed
-from torch.fx import Graph, GraphModule, Node
+from torch.fx import Graph, GraphModule
 from torch.fx.passes.shape_prop import ShapeProp
 from torch.nn import Module
 from torch.random import fork_rng
@@ -23,17 +22,6 @@ from jet.rules import (
     Rule,
 )
 from jet.tracing import capture_graph
-
-_aten = torch.ops.aten
-
-# Shape-only operations: these only manipulate tensor shape/strides, not data.
-_RESHAPE_OPS = {
-    _aten.squeeze.dim,
-    _aten.squeeze.dims,
-    _aten.unsqueeze.default,
-    _aten.view.default,
-    _aten._unsafe_view.default,
-}
 
 
 def common_subexpression_elimination(graph: Graph, verbose: bool = False) -> bool:
@@ -75,77 +63,6 @@ def common_subexpression_elimination(graph: Graph, verbose: bool = False) -> boo
 
     if verbose:
         print(f"Replacements: {num_replacements}")
-
-    return replaced
-
-
-def _get_shape(node: Node) -> tuple[int, ...] | None:
-    """Extract the tensor shape from a node's metadata.
-
-    Args:
-        node: A graph node.
-
-    Returns:
-        The shape as a tuple, or ``None`` if unavailable.
-    """
-    val = node.meta.get("val")
-    return tuple(val.shape) if val is not None and hasattr(val, "shape") else None
-
-
-def eliminate_noop_reshapes(graph: Graph, verbose: bool = False) -> bool:
-    """Eliminate adjacent pairs of reshape operations that compose to identity.
-
-    Detects nodes ``op2(op1(x))`` where both ``op1`` and ``op2`` are shape-only
-    operations (squeeze, unsqueeze, view, _unsafe_view) and the output shape of
-    ``op2`` equals the input shape of ``op1`` (i.e. ``x``'s shape). In that case
-    the pair is a no-op and ``op2`` is replaced with ``x``.
-
-    Args:
-        graph: The graph to be optimized.
-        verbose: Whether to print debug information. Default: ``False``.
-
-    Returns:
-        Whether any replacement was made.
-    """
-    replaced = False
-    num_replacements = 0
-
-    for node in list(graph.nodes):
-        if node.op != "call_function" or node.target not in _RESHAPE_OPS:
-            continue
-
-        input_nodes = node.all_input_nodes
-        if len(input_nodes) != 1:
-            continue
-
-        inner = input_nodes[0]
-        if inner.op != "call_function" or inner.target not in _RESHAPE_OPS:
-            continue
-
-        inner_inputs = inner.all_input_nodes
-        if len(inner_inputs) != 1:
-            continue
-
-        grandparent = inner_inputs[0]
-        gp_shape = _get_shape(grandparent)
-        out_shape = _get_shape(node)
-
-        if gp_shape is not None and gp_shape == out_shape:
-            if verbose:
-                print(
-                    f"Eliminating no-op reshape pair: "
-                    f"{inner.name} ({inner.target}) → "
-                    f"{node.name} ({node.target})"
-                )
-            node.replace_all_uses_with(grandparent)
-            replaced = True
-            num_replacements += 1
-
-    if replaced:
-        graph.eliminate_dead_code()
-
-    if verbose:
-        print(f"No-op reshape eliminations: {num_replacements}")
 
     return replaced
 
@@ -239,7 +156,6 @@ def simplify(  # noqa: C901
     mock_x: Tensor,
     remove_unused: bool = True,
     pull_sum: bool = True,
-    fuse_reshapes: bool = True,
     eliminate_common_subexpressions: bool = True,
     verbose: bool = False,
     test_x: Tensor | None = None,
@@ -255,17 +171,12 @@ def simplify(  # noqa: C901
     - Pulling of ``sum`` nodes up the graph as much as possible.
       This avoids redundant computations on summed tensors.
 
-    - Elimination of no-op reshape pairs (e.g. ``unsqueeze`` followed by
-      ``squeeze`` on the same axis).
-
     Args:
         mod: A (graph) module or function whose computation graph will be simplified.
         mock_x: A mock input tensor for tracing with ``make_fx``.
         remove_unused: Whether to remove unused nodes from the graph. Default: `True`.
         pull_sum: Whether to pull ``sum`` nodes up the graph.
             Default: `True`.
-        fuse_reshapes: Whether to eliminate adjacent pairs of reshape operations
-            (squeeze, unsqueeze, view) that compose to identity. Default: `True`.
         eliminate_common_subexpressions: Whether to eliminate common subexpressions.
             Default: `True`.
         verbose: Whether to print debug information. Default: `False`.
@@ -299,10 +210,6 @@ def simplify(  # noqa: C901
     strategies = {}
     if remove_unused:
         strategies["remove_unused"] = graph.eliminate_dead_code
-    if fuse_reshapes:
-        strategies["fuse_reshapes"] = partial(
-            eliminate_noop_reshapes, mod.graph, verbose=verbose
-        )
     if pull_sum:
         strategies["pull_sum"] = lambda: apply_once(sum_rules, mod, verbose=verbose)
     if eliminate_common_subexpressions:

@@ -178,8 +178,6 @@ class Bilaplacian(Module):
         # third 4-jet: all unordered pairs (i, j) with i < j.
         # Each row is 2*e_i + 2*e_j, giving D*(D-1)/2 directions.
         i_idx, j_idx = triu_indices(D, D, offset=1)
-        C3 = (2 * E[i_idx] + 2 * E[j_idx]).reshape(
-            D * (D - 1) // 2, *self.in_shape
-        )
+        C3 = (2 * E[i_idx] + 2 * E[j_idx]).reshape(D * (D - 1) // 2, *self.in_shape)
 
         return C1, C2, C3

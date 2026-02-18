@@ -4,8 +4,8 @@ from typing import Any
 
 from pytest import mark
 from torch import Tensor, manual_seed, sigmoid, vmap
-from torch.random import fork_rng
 from torch.nn import Linear, Sequential, Tanh
+from torch.random import fork_rng
 
 from jet.bilaplacian import Bilaplacian
 from jet.exp.exp01_benchmark_laplacian.execute import (

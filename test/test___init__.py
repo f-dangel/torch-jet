@@ -183,5 +183,3 @@ def test_jet(config: dict[str, Any], k: int):
     """
     f, x, vs = setup_case(config, derivative_order=k)
     check_jet(f, (x, vs))
-
-

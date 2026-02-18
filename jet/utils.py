@@ -116,7 +116,9 @@ class _CustomDrawer(FxGraphDrawer):
         style = super()._get_node_style(node)
         if node.op == "call_function":
             target_name = node._pretty_print_target(node.target)
-            style["fillcolor"] = "OrangeRed" if target_name in self._SUM_TARGETS else "white"
+            style["fillcolor"] = (
+                "OrangeRed" if target_name in self._SUM_TARGETS else "white"
+            )
         return style
 
 

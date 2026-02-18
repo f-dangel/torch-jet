@@ -3,7 +3,7 @@
 from typing import TypedDict
 
 from scipy.special import comb, factorial, stirling2
-from torch import cos, mm, mul, ops, sigmoid, sin, tanh
+from torch import addmm, cos, mm, mul, ops, sigmoid, sin, tanh
 
 from jet.utils import (
     Primal,
@@ -613,17 +613,38 @@ def jet_addmm(
     if len(is_taylor_args) != 3 or is_taylor_args[0]:
         raise NotImplementedError(f"Not implemented for {_jet_info['is_taylor']=}.")
 
-    # Compute mm part with adjusted is_taylor (skip bias flag)
-    mm_info = JetInfo(
-        derivative_order=_jet_info["derivative_order"],
-        is_taylor=((is_taylor_args[1], is_taylor_args[2]), {}),
-    )
-    mm_result = list(
-        jet_mm(a_and_taylor_coefficients, b_and_taylor_coefficients, _jet_info=mm_info)
-    )
-    # Bias only contributes to the 0th coefficient
-    mm_result[0] = mm_result[0] + bias
-    return tuple(mm_result)
+    (_, coeff1, coeff2) = is_taylor_args
+
+    if (coeff1, coeff2) == (True, False):
+        return (
+            addmm(bias, a_and_taylor_coefficients[0], b_and_taylor_coefficients),
+            *(
+                mm(a_and_taylor_coefficients[k], b_and_taylor_coefficients)
+                for k in range(1, _jet_info["derivative_order"] + 1)
+            ),
+        )
+    elif (coeff1, coeff2) == (False, True):
+        return (
+            addmm(bias, a_and_taylor_coefficients, b_and_taylor_coefficients[0]),
+            *(
+                mm(a_and_taylor_coefficients, b_and_taylor_coefficients[k])
+                for k in range(1, _jet_info["derivative_order"] + 1)
+            ),
+        )
+    elif (coeff1, coeff2) == (True, True):
+        s_out = (addmm(bias, a_and_taylor_coefficients[0], b_and_taylor_coefficients[0]),)
+        for k in range(1, _jet_info["derivative_order"] + 1):
+            term = None
+            for j in range(k + 1):
+                term_j = comb(k, j, exact=True) * mm(
+                    a_and_taylor_coefficients[j],
+                    b_and_taylor_coefficients[k - j],
+                )
+                term = term_j if term is None else term + term_j
+            s_out = s_out + (term,)
+        return s_out
+    else:
+        raise NotImplementedError(f"Not implemented for {_jet_info['is_taylor']=}.")
 
 
 def jet_to_copy(

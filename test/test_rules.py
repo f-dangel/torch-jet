@@ -1,7 +1,6 @@
 """Test individual simplification rules."""
 
 import operator
-from itertools import product
 from typing import Callable
 
 import torch
@@ -79,10 +78,10 @@ def compare_graphs(graph1: Graph, graph2: Graph):
 CASES: list[RuleTestCase] = []
 
 
-
 # Pulling a sum node through an arithmetic operation with an integer/float
 class SumScalarMultiplication(RuleTestCase):  # noqa: D101
     """Test case for ``sum(5 * x) = 5 * sum(x)``."""
+
     shape = (4,)
 
     def __init__(  # noqa: D107
@@ -101,11 +100,8 @@ class SumScalarMultiplication(RuleTestCase):  # noqa: D101
 
     def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
         x_sum = x.sum(self.pos)
-        return (
-            self.scalar * x_sum
-            if self.scalar_first
-            else x_sum * self.scalar
-        )
+        return self.scalar * x_sum if self.scalar_first else x_sum * self.scalar
+
 
 _POS, _SCALAR = 0, 3.0
 CASES.extend(
@@ -114,6 +110,7 @@ CASES.extend(
 )
 
 _ADDITION_OPS = [operator.add, operator.sub]
+
 
 # Pulling a sum node through addition/subtraction of two tensors
 class SumTensorAddition(RuleTestCase):  # noqa: D101
@@ -134,6 +131,7 @@ class SumTensorAddition(RuleTestCase):  # noqa: D101
             x.sum(self.pos),
             (x + 1).sum(self.pos),
         )
+
 
 CASES.extend(SumTensorAddition(op, pos=0) for op in _ADDITION_OPS)
 
@@ -156,6 +154,7 @@ class SumBroadcastedMul(RuleTestCase):  # noqa: D101
         b = linspace(1.0, 5.0, 4)
         return x.sum(self.pos) * b
 
+
 CASES.append(SumBroadcastedMul(pos=0))
 
 
@@ -174,6 +173,7 @@ class SumMM(RuleTestCase):  # noqa: D101
         sv = x.sum(0)
         out = _aten.mm.default(_aten.unsqueeze.default(sv, 0), Wt)
         return _aten.squeeze.dim(out, 0)
+
 
 CASES.append(SumMM())
 
@@ -199,6 +199,7 @@ class SumAddmm(RuleTestCase):  # noqa: D101
         scaled_b = _aten.mul.Tensor(b, x.shape[0])
         return _aten.add.Tensor(out, scaled_b)
 
+
 CASES.append(SumAddmm())
 
 
@@ -213,6 +214,7 @@ class SumSqueeze(RuleTestCase):  # noqa: D101
 
     def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
         return _aten.squeeze.dim(x.sum(0), 0)
+
 
 CASES.append(SumSqueeze())
 
@@ -229,6 +231,7 @@ class SumUnsqueezeNoop(RuleTestCase):  # noqa: D101
     def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
         return x
 
+
 CASES.append(SumUnsqueezeNoop())
 
 
@@ -244,6 +247,7 @@ class SumUnsqueezeSwap(RuleTestCase):  # noqa: D101
     def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
         return _aten.unsqueeze.default(x.sum(0), 0)
 
+
 CASES.append(SumUnsqueezeSwap())
 
 
@@ -258,6 +262,7 @@ class SumView(RuleTestCase):  # noqa: D101
 
     def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
         return _aten.view.default(x.sum(0), [2, 2])
+
 
 CASES.append(SumView())
 

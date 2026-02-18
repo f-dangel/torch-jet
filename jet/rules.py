@@ -46,7 +46,7 @@ def _get_sum_pos(node: Node) -> int:
     return node.args[1][0]
 
 
-def _make_sum_args(x: Any, pos: int) -> tuple[tuple, dict]:
+def _make_sum_args(x: Node, pos: int) -> tuple[tuple, dict]:
     """Create args and kwargs for a new ``aten.sum.dim_IntList`` node.
 
     Args:

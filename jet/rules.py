@@ -226,7 +226,7 @@ class PullSumMul(Rule):
         return new_mul
 
 
-class PullSumAdd(Rule):
+class PullSumAddOrSub(Rule):
     """Pull ``sum`` through addition/subtraction of two tensors.
 
     Handles both same-shape and broadcast cases:
@@ -254,7 +254,7 @@ class PullSumAdd(Rule):
         return (
             len(inner_node.args) == 2
             and inner_node.kwargs == {}
-            and all(isinstance(a, Node) for a in inner_node.args)
+            and any(isinstance(a, Node) for a in inner_node.args)
         )
 
     def _rewrite(self, sum_node: Node, add_node: Node, pos: int, graph: Graph) -> Node:
@@ -275,22 +275,26 @@ class PullSumAdd(Rule):
         out_ndim = len(add_node.meta["tensor_meta"].shape)
 
         new_args = []
+        K = add_node.meta["tensor_meta"].shape[pos]
         for arg in add_node.args:
-            arg_ndim = len(arg.meta["tensor_meta"].shape)
-            if pos >= out_ndim - arg_ndim:
-                # Varies along pos → sum with adjusted dim
-                adjusted_pos = pos - (out_ndim - arg_ndim)
-                with graph.inserting_after(arg):
-                    sum_args, sum_kwargs = _make_sum_args(arg, adjusted_pos)
-                    new_arg = graph.call_function(
-                        _sum_target, args=sum_args, kwargs=sum_kwargs
-                    )
+            if isinstance(arg, (float, int)):
+                # Scalar: invariant along all dims
+                new_args.append(arg * K)
             else:
-                # Invariant along pos → multiply by K
-                K = add_node.meta["tensor_meta"].shape[pos]
-                with graph.inserting_after(arg):
-                    new_arg = graph.call_function(_aten.mul.Tensor, args=(arg, K))
-            new_args.append(new_arg)
+                arg_ndim = len(arg.meta["tensor_meta"].shape)
+                if pos >= out_ndim - arg_ndim:
+                    # Varies along pos → sum with adjusted dim
+                    adjusted_pos = pos - (out_ndim - arg_ndim)
+                    with graph.inserting_after(arg):
+                        sum_args, sum_kwargs = _make_sum_args(arg, adjusted_pos)
+                        new_arg = graph.call_function(
+                            _sum_target, args=sum_args, kwargs=sum_kwargs
+                        )
+                else:
+                    # Invariant along pos → multiply by K
+                    with graph.inserting_after(arg):
+                        new_arg = graph.call_function(_aten.mul.Tensor, args=(arg, K))
+                new_args.append(new_arg)
 
         with graph.inserting_after(add_node):
             result = graph.call_function(add_node.target, args=tuple(new_args))

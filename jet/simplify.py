@@ -10,8 +10,8 @@ from torch.fx.passes.shape_prop import ShapeProp
 from torch.nn import Module
 
 from jet.rules import (
-    PullSumAdd,
     PullSumAddMM,
+    PullSumAddOrSub,
     PullSumMM,
     PullSumMul,
     PullSumSqueeze,
@@ -208,7 +208,7 @@ def simplify(
         PullSumSqueeze(),
         PullSumUnsqueeze(),
         PullSumView(),
-        PullSumAdd(),
+        PullSumAddOrSub(),
         PullSumMul(),
         PullSumMM(),
         PullSumAddMM(),

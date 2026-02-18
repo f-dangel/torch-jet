@@ -3,7 +3,6 @@
 import operator
 from typing import Callable
 
-import torch
 from pytest import mark
 from torch import Tensor, linspace, manual_seed, rand
 from torch.fx import Graph, Node
@@ -11,8 +10,8 @@ from torch.nn import Module
 from torch.nn.functional import linear
 
 from jet.rules import (
-    PullSumAdd,
     PullSumAddMM,
+    PullSumAddOrSub,
     PullSumMM,
     PullSumMul,
     PullSumSqueeze,
@@ -21,8 +20,6 @@ from jet.rules import (
 )
 from jet.simplify import apply_all
 from jet.tracing import capture_graph
-
-_aten = torch.ops.aten
 
 
 class RuleTestCase(Module):
@@ -103,15 +100,16 @@ class SumScalarMul(RuleTestCase):  # noqa: D101
         return self.scalar * x_sum if self.scalar_first else x_sum * self.scalar
 
 
-_POS, _SCALAR = 0, 3.0
+_SUM_DIM, _SCALE_FACTOR = 0, 3.0
 CASES.extend(
-    SumScalarMul(_POS, _SCALAR, scalar_first) for scalar_first in [False, True]
+    SumScalarMul(_SUM_DIM, _SCALE_FACTOR, scalar_first)
+    for scalar_first in [False, True]
 )
 
 _ADDITION_OPS = [operator.add, operator.sub]
 
 
-# Pulling a sum node through addition/subtraction of two tensors
+# Pulling a sum node through addition/subtraction of two same-shape tensors
 class SumTensorAdd(RuleTestCase):  # noqa: D101
     shape = (4,)
 
@@ -119,65 +117,89 @@ class SumTensorAdd(RuleTestCase):  # noqa: D101
         super().__init__()
         self.op, self.pos = op, pos
         self.id = f"sum-{op.__module__}.{op.__name__}-two-tensors"
-        self.rules = [PullSumAdd()]
+        self.rules = [PullSumAddOrSub()]
 
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         y = x + 1
         return self.op(x, y).sum(self.pos)
 
     def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
-        return self.op(
-            x.sum(self.pos),
-            (x + 1).sum(self.pos),
-        )
+        # Two separate sum nodes: one for each operand of the outer op
+        x_sum_1 = x.sum(self.pos)
+        x_sum_2 = x.sum(self.pos)
+        # sum(x + 1, pos) is also simplified: sum(x, pos) + 1 * K
+        return self.op(x_sum_1, x_sum_2 + 1 * x.shape[self.pos])
 
 
-CASES.extend(SumTensorAdd(op, pos=0) for op in _ADDITION_OPS)
+CASES.extend(SumTensorAdd(op, _SUM_DIM) for op in _ADDITION_OPS)
 
 
 # Pulling a sum node through a broadcasted tensor multiplication
 class SumBroadcastedMul(RuleTestCase):  # noqa: D101
     shape = (5, 4)
-    id = "sum-broadcasted-mul"
     rules = [PullSumMul()]
 
-    def __init__(self, pos: int):  # noqa: D107
+    def __init__(self, pos: int, invariant_first: bool):  # noqa: D107
         super().__init__()
         self.pos = pos
+        self.invariant_first = invariant_first
+        self.id = f"sum-broadcasted-mul-{invariant_first=}"
 
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         b = linspace(1.0, 5.0, 4)
-        return (x * b).sum(self.pos)
+        return (b * x if self.invariant_first else x * b).sum(self.pos)
 
     def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
         b = linspace(1.0, 5.0, 4)
-        return x.sum(self.pos) * b
+        s = x.sum(self.pos)
+        return b * s if self.invariant_first else s * b
 
 
-CASES.append(SumBroadcastedMul(pos=0))
+CASES.extend(SumBroadcastedMul(_SUM_DIM, inv) for inv in [False, True])
 
 
-# Pulling a sum node through a broadcasted tensor addition
+# Pulling a sum node through a broadcasted tensor addition/subtraction
 class SumAddBroadcasted(RuleTestCase):  # noqa: D101
     shape = (3, 4)
-    id = "sum-add-broadcasted"
-    rules = [PullSumAdd()]
+    rules = [PullSumAddOrSub()]
 
-    def __init__(self, pos: int):  # noqa: D107
+    def __init__(  # noqa: D107
+        self,
+        op: Callable[[Tensor, Tensor], Tensor],
+        pos: int,
+        invariant_first: bool,
+    ):
         super().__init__()
+        self.op = op
         self.pos = pos
+        self.invariant_first = invariant_first
+        self.id = f"sum-{op.__name__}-broadcasted-{pos=}-{invariant_first=}"
 
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         y = linspace(1.0, 4.0, 4)
-        return (x + y).sum(self.pos)
+        return (
+            self.op(y, x).sum(self.pos)
+            if self.invariant_first
+            else self.op(x, y).sum(self.pos)
+        )
 
     def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
         x_sum = x.sum(self.pos)
         y = linspace(1.0, 4.0, 4)
-        return _aten.add.Tensor(x_sum, _aten.mul.Tensor(y, 3))
+        # pos=0: y invariant along dim 0 → mul(y, K=3)
+        # pos=1: y varies (adjusted_pos=0) → sum(y, 0)
+        y_result = y * 3 if self.pos == 0 else y.sum(0)
+        if self.invariant_first:
+            return self.op(y_result, x_sum)
+        return self.op(x_sum, y_result)
 
 
-CASES.append(SumAddBroadcasted(pos=0))
+CASES.extend(
+    SumAddBroadcasted(op, pos, inv)
+    for op in _ADDITION_OPS
+    for pos in [0, 1]
+    for inv in [False, True]
+)
 
 
 # Pull a sum node through mm (linear without bias).
@@ -191,10 +213,9 @@ class SumMM(RuleTestCase):  # noqa: D101
 
     def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
         W = linspace(-2.0, 10, 12).reshape(3, 4)
-        Wt = _aten.t.default(W)
+        Wt = W.t()
         sv = x.sum(0)
-        out = _aten.mm.default(_aten.unsqueeze.default(sv, 0), Wt)
-        return _aten.squeeze.dim(out, 0)
+        return sv.unsqueeze(0).mm(Wt).squeeze(0)
 
 
 CASES.append(SumMM())
@@ -211,10 +232,8 @@ class SumMMLastDim(RuleTestCase):  # noqa: D101
 
     def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
         W = linspace(-2.0, 10, 12).reshape(3, 4)
-        Wt = _aten.t.default(W)
-        sv = Wt.sum(1)
-        out = _aten.mm.default(x, _aten.unsqueeze.default(sv, 1))
-        return _aten.squeeze.dim(out, 1)
+        sv = W.t().sum(1)
+        return x.mm(sv.unsqueeze(1)).squeeze(1)
 
 
 CASES.append(SumMMLastDim())
@@ -234,12 +253,10 @@ class SumAddmm(RuleTestCase):  # noqa: D101
     def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
         W = linspace(-2.0, 10, 12).reshape(3, 4)
         b = linspace(-1.0, 2.0, 3)
-        Wt = _aten.t.default(W)
+        Wt = W.t()
         sv = x.sum(0)
-        out = _aten.mm.default(_aten.unsqueeze.default(sv, 0), Wt)
-        out = _aten.squeeze.dim(out, 0)
-        scaled_b = _aten.mul.Tensor(b, x.shape[0])
-        return _aten.add.Tensor(out, scaled_b)
+        out = sv.unsqueeze(0).mm(Wt).squeeze(0)
+        return out + b * x.shape[0]
 
 
 CASES.append(SumAddmm())
@@ -259,12 +276,9 @@ class SumAddmmLastDim(RuleTestCase):  # noqa: D101
     def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
         W = linspace(-2.0, 10, 12).reshape(3, 4)
         b = linspace(-1.0, 2.0, 3)
-        Wt = _aten.t.default(W)
-        sv = Wt.sum(1)
-        out = _aten.mm.default(x, _aten.unsqueeze.default(sv, 1))
-        out = _aten.squeeze.dim(out, 1)
-        sum_b = _aten.sum.default(b)
-        return _aten.add.Tensor(out, sum_b)
+        sv = W.t().sum(1)
+        out = x.mm(sv.unsqueeze(1)).squeeze(1)
+        return out + b.sum()
 
 
 CASES.append(SumAddmmLastDim())
@@ -272,18 +286,32 @@ CASES.append(SumAddmmLastDim())
 
 # Pull a sum node through squeeze.
 class SumSqueeze(RuleTestCase):  # noqa: D101
-    shape = (5, 1, 4)
-    id = "sum-squeeze"
     rules = [PullSumSqueeze()]
 
+    def __init__(self, shape: tuple[int, ...], sq_d: int, pos: int):  # noqa: D107
+        super().__init__()
+        self.shape = shape
+        self.sq_d = sq_d
+        self.pos = pos
+        self.id = f"sum-squeeze-{sq_d=}-{pos=}"
+
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        return x.squeeze(1).sum(0)
+        return x.squeeze(self.sq_d).sum(self.pos)
 
     def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
-        return _aten.squeeze.dim(x.sum(0), 0)
+        new_s_d = self.pos + 1 if self.sq_d <= self.pos else self.pos
+        new_sq_d = self.sq_d - 1 if new_s_d < self.sq_d else self.sq_d
+        return x.sum(new_s_d).squeeze(new_sq_d)
 
 
-CASES.append(SumSqueeze())
+CASES.extend(
+    SumSqueeze(shape, sq_d, pos)
+    for shape, sq_d, pos in [
+        ((5, 1, 4), 1, 0),  # sq_d > pos
+        ((1, 5, 4), 0, 1),  # sq_d < pos
+        ((5, 1, 4), 1, 1),  # sq_d == pos
+    ]
+)
 
 
 # Pull a sum node through unsqueeze (no-op: sum dim == unsqueeze dim).
@@ -305,17 +333,30 @@ CASES.append(SumUnsqueezeNoop())
 # Pull a sum node through unsqueeze (swap: dims differ).
 class SumUnsqueezeSwap(RuleTestCase):  # noqa: D101
     shape = (5, 4)
-    id = "sum-unsqueeze-swap"
     rules = [PullSumUnsqueeze()]
 
+    def __init__(self, uq_d: int, pos: int):  # noqa: D107
+        super().__init__()
+        self.uq_d = uq_d
+        self.pos = pos
+        self.id = f"sum-unsqueeze-swap-{uq_d=}-{pos=}"
+
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        return x.unsqueeze(0).sum(1)
+        return x.unsqueeze(self.uq_d).sum(self.pos)
 
     def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
-        return _aten.unsqueeze.default(x.sum(0), 0)
+        new_s_d = self.pos - 1 if self.uq_d <= self.pos else self.pos
+        new_uq_d = self.uq_d - 1 if new_s_d < self.uq_d else self.uq_d
+        return x.sum(new_s_d).unsqueeze(new_uq_d)
 
 
-CASES.append(SumUnsqueezeSwap())
+CASES.extend(
+    SumUnsqueezeSwap(uq_d, pos)
+    for uq_d, pos in [
+        (0, 1),  # uq_d < pos
+        (2, 0),  # uq_d > pos
+    ]
+)
 
 
 # Pull a sum node through view.
@@ -328,7 +369,7 @@ class SumView(RuleTestCase):  # noqa: D101
         return x.view(5, 2, 2).sum(0)
 
     def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
-        return _aten.view.default(x.sum(0), [2, 2])
+        return x.sum(0).view(2, 2)
 
 
 CASES.append(SumView())
@@ -362,50 +403,42 @@ def test_simplification_rules(case: RuleTestCase):
     compare_graphs(f_simple_mod.graph, f_simplified.graph)
 
 
+# Pulling a sum node through addition with a scalar
+class SumAddScalar(RuleTestCase):  # noqa: D101
+    shape = (3, 4)
+    id = "sum-add-scalar"
+    rules = [PullSumAddOrSub()]
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        return (x + 5.0).sum(0)
+
+    def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
+        return x.sum(0) + 5.0 * 3
+
+
+CASES.append(SumAddScalar())
+
+
 # === Negative test cases: rules should NOT trigger ===
 
 NEGATIVE_CASES: list[RuleTestCase] = []
 
 
-# sum(x + scalar) where the second arg is a Python float, not a Node
-class SumAddScalar(RuleTestCase):  # noqa: D101
-    shape = (3, 4)
-    id = "neg-sum-add-scalar"
-    rules = [PullSumAdd()]
-
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        return (x + 5.0).sum(0)
-
-
-NEGATIVE_CASES.append(SumAddScalar())
-
-
-# sum(x * y) where both args are tensors (no scalar)
-class SumMulTwoTensors(RuleTestCase):  # noqa: D101
-    shape = (4,)
-    id = "neg-sum-mul-two-tensors"
-    rules = [PullSumMul()]
-
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        y = x + 1
-        return (x * y).sum(0)
-
-
-NEGATIVE_CASES.append(SumMulTwoTensors())
-
-
-# sum(x * y) where both tensors have the same shape (neither broadcasted)
+# sum(x * y) where both tensors have the same shape (neither scalar nor broadcasted)
 class SumMulSameShape(RuleTestCase):  # noqa: D101
-    shape = (5, 4)
-    id = "neg-sum-mul-same-shape"
     rules = [PullSumMul()]
+
+    def __init__(self, shape: tuple[int, ...]):  # noqa: D107
+        super().__init__()
+        self.shape = shape
+        self.id = f"neg-sum-mul-same-shape-{'x'.join(map(str, shape))}"
 
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         y = x + 1
         return (x * y).sum(0)
 
 
-NEGATIVE_CASES.append(SumMulSameShape())
+NEGATIVE_CASES.extend(SumMulSameShape(s) for s in [(4,), (5, 4)])
 
 
 # sum(view(x, ...), 0) where the dim doesn't map cleanly (split dim)

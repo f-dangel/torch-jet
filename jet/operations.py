@@ -632,7 +632,9 @@ def jet_addmm(
             ),
         )
     elif (coeff1, coeff2) == (True, True):
-        s_out = (addmm(bias, a_and_taylor_coefficients[0], b_and_taylor_coefficients[0]),)
+        s_out = (
+            addmm(bias, a_and_taylor_coefficients[0], b_and_taylor_coefficients[0]),
+        )
         for k in range(1, _jet_info["derivative_order"] + 1):
             term = None
             for j in range(k + 1):

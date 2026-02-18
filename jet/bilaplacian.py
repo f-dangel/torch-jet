@@ -106,9 +106,7 @@ class Bilaplacian(Module):
         if x.shape != self.in_shape:
             raise ValueError(f"Expected input shape {self.in_shape}, got {x.shape}.")
         vmapped = vmap(
-            lambda x1: self.jet_f(
-                x, x1, zeros_like(x), zeros_like(x), zeros_like(x)
-            ),
+            lambda x1: self.jet_f(x, x1, zeros_like(x), zeros_like(x), zeros_like(x)),
             randomness="different",
         )
 
@@ -150,9 +148,7 @@ class Bilaplacian(Module):
 
         return term1 + term2 + term3
 
-    def _set_up_taylor_coefficients(
-        self, x: Tensor
-    ) -> tuple[Tensor, Tensor, Tensor]:
+    def _set_up_taylor_coefficients(self, x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         """Create the first Taylor coefficients for the Bi-Laplacian computation.
 
         The higher coefficients (X2, X3, X4) are always zero and curried into

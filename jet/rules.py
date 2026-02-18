@@ -170,9 +170,7 @@ class PullSumScalarMultiplication(Rule):
             and sum(isinstance(a, (float, int)) for a in inner_node.args) == 1
         )
 
-    def _rewrite(
-        self, sum_node: Node, mul_node: Node, pos: int, graph: Graph
-    ) -> Node:
+    def _rewrite(self, sum_node: Node, mul_node: Node, pos: int, graph: Graph) -> Node:
         """Swap sum and scalar multiplication: ``sum(x * s)`` → ``sum(x) * s``.
 
         Args:
@@ -252,9 +250,7 @@ class PullSumBroadcastedMultiplication(Rule):
 
         return False
 
-    def _rewrite(
-        self, sum_node: Node, mul_node: Node, pos: int, graph: Graph
-    ) -> Node:
+    def _rewrite(self, sum_node: Node, mul_node: Node, pos: int, graph: Graph) -> Node:
         """Pull sum through to the non-broadcasted factor.
 
         ``sum(x * y, d)`` → ``sum(x, d) * y`` when ``y`` is invariant along ``d``.
@@ -284,9 +280,7 @@ class PullSumBroadcastedMultiplication(Rule):
 
         with graph.inserting_after(sum_node):
             sum_args, sum_kwargs = _make_sum_args(varying, pos)
-            new_sum = graph.call_function(
-                _sum_target, args=sum_args, kwargs=sum_kwargs
-            )
+            new_sum = graph.call_function(_sum_target, args=sum_args, kwargs=sum_kwargs)
         with graph.inserting_after(new_sum):
             new_args = [None, None]
             new_args[varying_idx] = new_sum
@@ -331,9 +325,7 @@ class PullSumTensorAddition(Rule):
             and sum(isinstance(a, Node) for a in inner_node.args) == 2
         )
 
-    def _rewrite(
-        self, sum_node: Node, add_node: Node, pos: int, graph: Graph
-    ) -> Node:
+    def _rewrite(self, sum_node: Node, add_node: Node, pos: int, graph: Graph) -> Node:
         """Swap sum and addition: ``sum(x + y)`` → ``sum(x) + sum(y)``.
 
         Args:
@@ -673,9 +665,7 @@ class PullSumView(Rule):
         s_d = _get_sum_pos(sum_node)
         return self._find_orig_dim(orig_shape, new_shape, s_d) is not None
 
-    def _rewrite(
-        self, sum_node: Node, view_node: Node, pos: int, graph: Graph
-    ) -> Node:
+    def _rewrite(self, sum_node: Node, view_node: Node, pos: int, graph: Graph) -> Node:
         """Swap the sum and view, adjusting the shape.
 
         Args:

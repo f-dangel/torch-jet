@@ -22,8 +22,6 @@ from torch import (
 from torch import compile as torch_compile
 from torch.func import hessian, jacrev, jvp, vmap
 from torch.nn import Linear, Sequential, Tanh
-from torch.random import fork_rng
-
 from jet.bilaplacian import Bilaplacian
 from jet.exp.utils import measure_peak_memory, measure_time, to_string
 from jet.laplacian import Laplacian
@@ -609,7 +607,6 @@ if __name__ == "__main__":
     is_batched = True
     X = setup_input(args.batch_size, args.dim, dev, dt)
 
-    manual_seed(2)  # this allows making the randomized methods deterministic
     start = perf_counter()
     func, func_no, description = get_function_and_description(
         args.operator,
@@ -651,11 +648,9 @@ if __name__ == "__main__":
     # Check is carried out for deterministic, and un-compiled stochastic computations.
     if not is_stochastic or not args.compiled:
         print("Checking correctness against baseline.")
-        with no_grad(), fork_rng():
-            manual_seed(3)
-            result = func()
+        with no_grad():
+            result = run_seeded(func, 3)
 
-        manual_seed(2)  # make sure that the baseline is deterministic
         _, baseline_func_no, _ = get_function_and_description(
             args.operator,
             BASELINE,

@@ -50,7 +50,7 @@ VMAP_CASES = [
     {"f": lambda x: jet.utils.replicate(x, 5), "shape": (2,), "id": "replicate-5"},
     # sum_vmapped
     {
-        "f": lambda x: jet.utils.sum_vmapped(x),
+        "f": lambda x: jet.utils.sum_vmapped(x),  # noqa: PLW0108
         "shape": (6, 2),
         "id": "sum_vmapped_pos0",
     },

@@ -223,7 +223,7 @@ def _assert_bilaplacian_structure(
             "sin": 33 if D == 1 else 137,
             "sin-sin": 216,
             "tanh-tanh": 262,
-            "tanh-linear": 268,
+            "tanh-linear": 286,
             "two-layer-tanh-mlp": 814,
             "sigmoid-sigmoid": 358,
         }
@@ -547,7 +547,7 @@ def test_full_simplification_structural(config: dict[str, Any]):
         "sin": 16,
         "sin-sin": 24,
         "tanh-tanh": 40,
-        "tanh-linear": 46,
+        "tanh-linear": 49,
         "two-layer-tanh-mlp": 72,
         "sigmoid-sigmoid": 36,
     }

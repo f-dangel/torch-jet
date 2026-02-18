@@ -13,7 +13,10 @@ from torch.random import fork_rng
 from jet.rules import (
     PullSumLinear,
     PullSumScalarMultiplication,
+    PullSumSqueeze,
     PullSumTensorAddition,
+    PullSumUnsqueeze,
+    PullSumView,
     Rule,
 )
 from jet.tracing import capture_graph
@@ -193,6 +196,9 @@ def simplify(  # noqa: C901
 
     # Initialize PullSum* rules
     sum_rules = [
+        PullSumSqueeze(),
+        PullSumUnsqueeze(),
+        PullSumView(),
         PullSumTensorAddition(),
         PullSumScalarMultiplication(),
         PullSumLinear(),

@@ -2,7 +2,7 @@
 
 from typing import Callable
 
-from torch import Tensor, eye, zeros
+from torch import Tensor, eye, zeros_like
 from torch.func import vmap
 from torch.nn import Module
 
@@ -123,10 +123,10 @@ class Laplacian(Module):
         if x.shape != self.in_shape:
             raise ValueError(f"Expected input shape {self.in_shape}, got {x.shape}.")
         X1 = self._set_up_first_taylor_coefficient(x)
-        in_meta = {"dtype": x.dtype, "device": x.device}
-        X2 = zeros(self.num_jets, *self.in_shape, **in_meta)
-        vmapped = vmap(lambda x1, x2: self.jet_f(x, x1, x2), randomness="different")
-        F0, F1, F2 = vmapped(X1, X2)
+        vmapped = vmap(
+            lambda x1: self.jet_f(x, x1, zeros_like(x1)), randomness="different"
+        )
+        F0, F1, F2 = vmapped(X1)
         if self.randomization is not None:
             # Monte Carlo averaging: scale by 1 / number of samples
             monte_carlo_scaling = 1.0 / self.randomization[1]

@@ -220,12 +220,12 @@ def _assert_bilaplacian_structure(
     # Exact node counts: detect regressions if simplification rules stop firing
     if not randomized:
         expected_nodes = {
-            "sin": 33 if D == 1 else 129,
-            "sin-sin": 210,
-            "tanh-tanh": 256,
-            "tanh-linear": 262,
-            "two-layer-tanh-mlp": 813,
-            "sigmoid-sigmoid": 352,
+            "sin": 33 if D == 1 else 137,
+            "sin-sin": 216,
+            "tanh-tanh": 262,
+            "tanh-linear": 268,
+            "two-layer-tanh-mlp": 814,
+            "sigmoid-sigmoid": 358,
         }
         n_nodes = len(list(simple_mod.graph.nodes))
         expected = expected_nodes[config["id"]]

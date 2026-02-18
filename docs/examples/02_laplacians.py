@@ -14,7 +14,7 @@ from time import perf_counter
 from typing import Callable
 
 import matplotlib.pyplot as plt
-from torch import Tensor, eye, manual_seed, rand, stack, zeros, zeros_like
+from torch import Tensor, eye, manual_seed, rand, stack, zeros_like
 from torch.func import hessian, vmap
 from torch.fx import GraphModule
 from torch.fx.passes.graph_drawer import FxGraphDrawer
@@ -236,9 +236,10 @@ class Laplacian(Module):
         """
         in_meta = {"dtype": x.dtype, "device": x.device}
         X1 = eye(self.in_dim, **in_meta).reshape(self.in_dim, *self.in_shape)
-        X2 = zeros(self.in_dim, *self.in_shape, **in_meta)
-        vmapped = vmap(lambda x1, x2: self.jet_f(x, x1, x2), randomness="different")
-        _, _, F2 = vmapped(X1, X2)
+        vmapped = vmap(
+            lambda x1: self.jet_f(x, x1, zeros_like(x1)), randomness="different"
+        )
+        _, _, F2 = vmapped(X1)
         return F2.sum(0)
 
 

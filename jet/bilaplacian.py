@@ -107,7 +107,7 @@ class Bilaplacian(Module):
             raise ValueError(f"Expected input shape {self.in_shape}, got {x.shape}.")
         vmapped = vmap(
             lambda x1: self.jet_f(
-                x, x1, zeros_like(x1), zeros_like(x1), zeros_like(x1)
+                x, x1, zeros_like(x), zeros_like(x), zeros_like(x)
             ),
             randomness="different",
         )

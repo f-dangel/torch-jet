@@ -237,7 +237,7 @@ class Laplacian(Module):
         in_meta = {"dtype": x.dtype, "device": x.device}
         X1 = eye(self.in_dim, **in_meta).reshape(self.in_dim, *self.in_shape)
         vmapped = vmap(
-            lambda x1: self.jet_f(x, x1, zeros_like(x1)), randomness="different"
+            lambda x1: self.jet_f(x, x1, zeros_like(x)), randomness="different"
         )
         _, _, F2 = vmapped(X1)
         return F2.sum(0)

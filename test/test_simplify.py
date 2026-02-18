@@ -223,8 +223,8 @@ def _assert_bilaplacian_structure(
             "sin": 33 if D == 1 else 137,
             "sin-sin": 216,
             "tanh-tanh": 262,
-            "tanh-linear": 286,
-            "two-layer-tanh-mlp": 814,
+            "tanh-linear": 274,
+            "two-layer-tanh-mlp": 742,
             "sigmoid-sigmoid": 358,
         }
         n_nodes = len(list(simple_mod.graph.nodes))
@@ -547,8 +547,8 @@ def test_full_simplification_structural(config: dict[str, Any]):
         "sin": 16,
         "sin-sin": 24,
         "tanh-tanh": 40,
-        "tanh-linear": 49,
-        "two-layer-tanh-mlp": 72,
+        "tanh-linear": 41,
+        "two-layer-tanh-mlp": 56,
         "sigmoid-sigmoid": 36,
     }
     n_nodes = len(list(simplified.graph.nodes))

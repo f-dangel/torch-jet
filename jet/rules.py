@@ -86,6 +86,11 @@ class Rule(ABC):
         if not is_sum(node) or not node.users:
             return False
 
+        # Only handle single-dimension sums; multi-axis sums (e.g. [0, 1])
+        # cannot be decomposed by any current rule.
+        if len(node.args[1]) != 1:
+            return False
+
         (in_node,) = node.all_input_nodes
         if in_node.op != "call_function" or in_node.target not in self.OPERATIONS:
             return False
@@ -138,117 +143,51 @@ class Rule(ABC):
         ...
 
 
-class PullSumScalarMultiplication(Rule):
-    """Rule for simplifying ``sum(x * y)`` with one scalar argument.
+class PullSumMultiplication(Rule):
+    """Pull ``sum`` through multiplication when one factor is invariant.
 
-    The following two cases simplify to the same result:
+    Handles both scalar factors (``float``/``int``) and broadcast-invariant
+    tensor factors (fewer leading dimensions than the output).
 
-    1. ``x`` scalar: ``sum(x * y)`` -> ``x * sum(y)``.
-    2. ``y`` scalar: ``sum(x * y)`` -> ``sum(x) * y``.
+    ``sum(x * c, d)`` → ``sum(x, d) * c``  when ``c`` is invariant along ``d``.
 
     Attributes:
-        OPERATIONS: List of operations that can be simplified.
+        OPERATIONS: Supported multiplication operations.
     """
 
-    OPERATIONS: list[Callable[[Tensor | float | int, Tensor | float | int], Tensor]] = [
-        _aten.mul.Tensor,
-    ]
+    OPERATIONS: list[Callable] = [_aten.mul.Tensor]
 
     def _extra_match(self, sum_node: Node, inner_node: Node) -> bool:
-        """Check that the multiplication has exactly one scalar argument.
+        """Check that at least one factor is invariant along the sum dim.
+
+        A factor is invariant if it is a scalar or if the sum dimension
+        falls outside its shape (broadcast-invariant).
 
         Args:
             sum_node: The ``sum`` node.
             inner_node: The multiplication node.
 
         Returns:
-            True if the multiplication has 2 args with exactly 1 scalar.
-        """
-        return (
-            len(inner_node.args) == 2
-            and inner_node.kwargs == {}
-            and sum(isinstance(a, (float, int)) for a in inner_node.args) == 1
-        )
-
-    def _rewrite(self, sum_node: Node, mul_node: Node, pos: int, graph: Graph) -> Node:
-        """Swap sum and scalar multiplication: ``sum(x * s)`` → ``sum(x) * s``.
-
-        Args:
-            sum_node: The ``sum`` node.
-            mul_node: The multiplication node.
-            pos: The dimension along which the sum is performed.
-            graph: The computation graph.
-
-        Returns:
-            The new multiplication node.
-        """
-        (x,) = mul_node.all_input_nodes
-        x_pos = mul_node.args.index(x)
-
-        with graph.inserting_after(sum_node):
-            sum_args, sum_kwargs = _make_sum_args(x, pos)
-            new_sum_node = graph.call_function(
-                _sum_target, args=sum_args, kwargs=sum_kwargs
-            )
-        with graph.inserting_after(new_sum_node):
-            new_args = tuple(
-                new_sum_node if idx == x_pos else arg
-                for idx, arg in enumerate(mul_node.args)
-            )
-            new_mul_node = graph.call_function(mul_node.target, args=new_args)
-
-        return new_mul_node
-
-
-class PullSumBroadcastedMultiplication(Rule):
-    """Rule for simplifying ``sum(x * y, d)`` when one factor is broadcasted.
-
-    When one multiplicand doesn't vary along the summed dimension (its shape
-    has fewer leading dimensions, so the summed dim falls outside its range),
-    the sum can be pulled through to the other factor:
-
-    ``sum(x * y, d)`` → ``sum(x, d) * y``  (when ``y`` is invariant along ``d``).
-
-    This arises naturally from curried + vmapped jet computations where a
-    matrix result ``(K, M)`` is element-wise multiplied by a vector ``(M,)``
-    and then summed over the leading vmap dimension.
-
-    Attributes:
-        OPERATIONS: List of operations that can be simplified.
-    """
-
-    OPERATIONS: list[Callable[[Tensor, Tensor], Tensor]] = [_aten.mul.Tensor]
-
-    def _extra_match(self, sum_node: Node, inner_node: Node) -> bool:
-        """Check that both args are tensors and one is broadcasted along the sum dim.
-
-        Args:
-            sum_node: The ``sum`` node.
-            inner_node: The multiplication node.
-
-        Returns:
-            True if the multiplication has 2 tensor args and one is invariant
-            along the summed dimension.
+            True if one factor is invariant.
         """
         if len(inner_node.args) != 2 or inner_node.kwargs != {}:
-            return False
-        if not all(isinstance(a, Node) for a in inner_node.args):
             return False
 
         pos = _get_sum_pos(sum_node)
         out_ndim = len(inner_node.meta["tensor_meta"].shape)
 
         for arg in inner_node.args:
-            arg_ndim = len(arg.meta["tensor_meta"].shape)
-            if pos < out_ndim - arg_ndim:
+            if isinstance(arg, (float, int)):
                 return True
+            if isinstance(arg, Node):
+                arg_ndim = len(arg.meta["tensor_meta"].shape)
+                if pos < out_ndim - arg_ndim:
+                    return True
 
         return False
 
     def _rewrite(self, sum_node: Node, mul_node: Node, pos: int, graph: Graph) -> Node:
-        """Pull sum through to the non-broadcasted factor.
-
-        ``sum(x * y, d)`` → ``sum(x, d) * y`` when ``y`` is invariant along ``d``.
+        """Pull sum through to the varying factor.
 
         Args:
             sum_node: The ``sum`` node.
@@ -260,16 +199,19 @@ class PullSumBroadcastedMultiplication(Rule):
             The new multiplication node.
         """
         out_ndim = len(mul_node.meta["tensor_meta"].shape)
-        arg0, arg1 = mul_node.args
 
-        _ = len(arg0.meta["tensor_meta"].shape)
-        arg1_ndim = len(arg1.meta["tensor_meta"].shape)
+        # Find the invariant factor
+        invariant_idx = None
+        for idx, arg in enumerate(mul_node.args):
+            if isinstance(arg, (float, int)):
+                invariant_idx = idx
+                break
+            arg_ndim = len(arg.meta["tensor_meta"].shape)
+            if pos < out_ndim - arg_ndim:
+                invariant_idx = idx
+                break
 
-        if pos < out_ndim - arg1_ndim:
-            varying_idx, invariant_idx = 0, 1
-        else:
-            varying_idx, invariant_idx = 1, 0
-
+        varying_idx = 1 - invariant_idx
         varying = mul_node.args[varying_idx]
         invariant = mul_node.args[invariant_idx]
 
@@ -285,46 +227,42 @@ class PullSumBroadcastedMultiplication(Rule):
         return new_mul
 
 
-class PullSumTensorAddition(Rule):
-    """Rule for simplifying ``sum(x + y)`` where x and y are tensors.
+class PullSumAddition(Rule):
+    """Pull ``sum`` through addition/subtraction of two tensors.
 
-    The simplified result is ``sum(x) + sum(y)``.
-    Same for subtraction.
+    Handles both same-shape and broadcast cases:
 
-    Warning:
-        This rule assumes no broadcasting, i.e. ``x`` and ``y`` must have the same shape.
+    - Same shape: ``sum(x ± y, d)`` → ``sum(x, d) ± sum(y, d)``
+    - Broadcast (``y`` invariant along ``d``):
+      ``sum(x ± y, d)`` → ``sum(x, d) ± K * y`` where ``K = shape[d]``
 
     Attributes:
-        OPERATIONS: List of operations that can be simplified.
-            Includes addition and subtraction.
+        OPERATIONS: Supported addition/subtraction operations.
     """
 
-    OPERATIONS: list[Callable[[Tensor | float | int, Tensor | float | int], Tensor]] = [
-        _aten.add.Tensor,
-        _aten.sub.Tensor,
-    ]
+    OPERATIONS: list[Callable] = [_aten.add.Tensor, _aten.sub.Tensor]
 
     def _extra_match(self, sum_node: Node, inner_node: Node) -> bool:
-        """Check that both arguments are tensors with the same shape (no broadcasting).
+        """Check that both arguments are tensor nodes.
 
         Args:
             sum_node: The ``sum`` node.
             inner_node: The addition/subtraction node.
 
         Returns:
-            True if the operation has 2 tensor arguments with matching shapes.
+            True if the operation has 2 tensor arguments.
         """
-        if (
-            len(inner_node.args) != 2
-            or inner_node.kwargs != {}
-            or not all(isinstance(a, Node) for a in inner_node.args)
-        ):
-            return False
-        a, b = inner_node.args
-        return a.meta["tensor_meta"].shape == b.meta["tensor_meta"].shape
+        return (
+            len(inner_node.args) == 2
+            and inner_node.kwargs == {}
+            and all(isinstance(a, Node) for a in inner_node.args)
+        )
 
     def _rewrite(self, sum_node: Node, add_node: Node, pos: int, graph: Graph) -> Node:
-        """Swap sum and addition: ``sum(x + y)`` → ``sum(x) + sum(y)``.
+        """Pull sum through addition, handling broadcasting.
+
+        For each operand, either sums it (if it varies along ``pos``) or
+        multiplies by ``K = shape[pos]`` (if it is broadcast-invariant).
 
         Args:
             sum_node: The ``sum`` node.
@@ -335,20 +273,32 @@ class PullSumTensorAddition(Rule):
         Returns:
             The new addition/subtraction node.
         """
-        mapping = {}
-        for x in add_node.all_input_nodes:
-            with graph.inserting_after(x):
-                sum_args, sum_kwargs = _make_sum_args(x, pos)
-                new_sum_node = graph.call_function(
-                    _sum_target, args=sum_args, kwargs=sum_kwargs
-                )
-            mapping[x] = new_sum_node
+        out_ndim = len(add_node.meta["tensor_meta"].shape)
+
+        new_args = []
+        for arg in add_node.args:
+            arg_ndim = len(arg.meta["tensor_meta"].shape)
+            if pos >= out_ndim - arg_ndim:
+                # Varies along pos → sum with adjusted dim
+                adjusted_pos = pos - (out_ndim - arg_ndim)
+                with graph.inserting_after(arg):
+                    sum_args, sum_kwargs = _make_sum_args(arg, adjusted_pos)
+                    new_arg = graph.call_function(
+                        _sum_target, args=sum_args, kwargs=sum_kwargs
+                    )
+            else:
+                # Invariant along pos → multiply by K
+                K = add_node.meta["tensor_meta"].shape[pos]
+                with graph.inserting_after(arg):
+                    new_arg = graph.call_function(
+                        _aten.mul.Tensor, args=(arg, K)
+                    )
+            new_args.append(new_arg)
 
         with graph.inserting_after(add_node):
-            new_args = tuple(mapping[x] for x in add_node.args)
-            new_add_node = graph.call_function(add_node.target, args=new_args)
+            result = graph.call_function(add_node.target, args=tuple(new_args))
 
-        return new_add_node
+        return result
 
 
 class PullSumMM(Rule):

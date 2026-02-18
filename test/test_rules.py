@@ -12,11 +12,10 @@ from torch.nn.functional import linear
 
 from jet.rules import (
     PullSumAddMM,
-    PullSumBroadcastedMultiplication,
+    PullSumAddition,
     PullSumMM,
-    PullSumScalarMultiplication,
+    PullSumMultiplication,
     PullSumSqueeze,
-    PullSumTensorAddition,
     PullSumUnsqueeze,
     PullSumView,
 )
@@ -93,7 +92,7 @@ class SumScalarMultiplication(RuleTestCase):  # noqa: D101
         self.scalar = scalar
         self.scalar_first = scalar_first
         self.id = f"sum-scalar-{scalar_first=}"
-        self.rules = [PullSumScalarMultiplication()]
+        self.rules = [PullSumMultiplication()]
 
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         res = self.scalar * x if self.scalar_first else x * self.scalar
@@ -121,7 +120,7 @@ class SumTensorAddition(RuleTestCase):  # noqa: D101
         super().__init__()
         self.op, self.pos = op, pos
         self.id = f"sum-{op.__module__}.{op.__name__}-two-tensors"
-        self.rules = [PullSumTensorAddition()]
+        self.rules = [PullSumAddition()]
 
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         y = x + 1
@@ -141,7 +140,7 @@ CASES.extend(SumTensorAddition(op, pos=0) for op in _ADDITION_OPS)
 class SumBroadcastedMul(RuleTestCase):  # noqa: D101
     shape = (5, 4)
     id = "sum-broadcasted-mul"
-    rules = [PullSumBroadcastedMultiplication()]
+    rules = [PullSumMultiplication()]
 
     def __init__(self, pos: int):  # noqa: D107
         super().__init__()
@@ -157,6 +156,29 @@ class SumBroadcastedMul(RuleTestCase):  # noqa: D101
 
 
 CASES.append(SumBroadcastedMul(pos=0))
+
+
+# Pulling a sum node through a broadcasted tensor addition
+class SumAddBroadcasted(RuleTestCase):  # noqa: D101
+    shape = (3, 4)
+    id = "sum-add-broadcasted"
+    rules = [PullSumAddition()]
+
+    def __init__(self, pos: int):  # noqa: D107
+        super().__init__()
+        self.pos = pos
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        y = linspace(1.0, 4.0, 4)
+        return (x + y).sum(self.pos)
+
+    def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
+        x_sum = x.sum(self.pos)
+        y = linspace(1.0, 4.0, 4)
+        return _aten.add.Tensor(x_sum, _aten.mul.Tensor(y, 3))
+
+
+CASES.append(SumAddBroadcasted(pos=0))
 
 
 # Pull a sum node through mm (linear without bias).
@@ -346,25 +368,11 @@ def test_simplification_rules(case: RuleTestCase):
 NEGATIVE_CASES: list[RuleTestCase] = []
 
 
-# sum(x + y) where x and y have different shapes (broadcasted addition)
-class SumAddBroadcasted(RuleTestCase):  # noqa: D101
-    shape = (3, 4)
-    id = "neg-sum-add-broadcasted"
-    rules = [PullSumTensorAddition()]
-
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        y = linspace(1.0, 4.0, 4)
-        return (x + y).sum(0)
-
-
-NEGATIVE_CASES.append(SumAddBroadcasted())
-
-
 # sum(x + scalar) where the second arg is a Python float, not a Node
 class SumAddScalar(RuleTestCase):  # noqa: D101
     shape = (3, 4)
     id = "neg-sum-add-scalar"
-    rules = [PullSumTensorAddition()]
+    rules = [PullSumAddition()]
 
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         return (x + 5.0).sum(0)
@@ -377,7 +385,7 @@ NEGATIVE_CASES.append(SumAddScalar())
 class SumMulTwoTensors(RuleTestCase):  # noqa: D101
     shape = (4,)
     id = "neg-sum-mul-two-tensors"
-    rules = [PullSumScalarMultiplication()]
+    rules = [PullSumMultiplication()]
 
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         y = x + 1
@@ -391,7 +399,7 @@ NEGATIVE_CASES.append(SumMulTwoTensors())
 class SumMulSameShape(RuleTestCase):  # noqa: D101
     shape = (5, 4)
     id = "neg-sum-mul-same-shape"
-    rules = [PullSumBroadcastedMultiplication()]
+    rules = [PullSumMultiplication()]
 
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         y = x + 1

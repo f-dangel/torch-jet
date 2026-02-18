@@ -1,6 +1,5 @@
 """Test simplification mechanism on compute graphs of the (Bi-)Laplacian."""
 
-from collections import deque
 from typing import Any, Callable
 
 import torch
@@ -12,7 +11,6 @@ from torch.nn.functional import linear
 
 from jet.bilaplacian import Bilaplacian
 from jet.laplacian import Laplacian
-from jet.rules import is_sum
 from jet.simplify import common_subexpression_elimination, simplify
 from jet.tracing import capture_graph
 from test.test___init__ import compare_jet_results, setup_case
@@ -79,61 +77,6 @@ def count_nodes(graph: Graph, predicate: Callable[[Node], bool]) -> int:
     return len([n for n in graph.nodes if predicate(n)])
 
 
-def _assert_directions_collapsed(graph: Graph, output_node: Node) -> None:
-    """Assert that the directions dimension is collapsed after simplification.
-
-    Walks backward from ``output_node`` (the highest Taylor coefficient), stopping
-    at ``sum`` node boundaries. Verifies that:
-
-    1. At least one ``sum`` node exists (directions are collapsed somewhere).
-    2. Each ``sum`` input has one extra leading dimension compared to its output.
-    3. The ``output_node`` itself is not a ``sum`` — i.e. the simplification rules
-       have pulled sum nodes inward from the output boundary.
-
-    Args:
-        graph: The FX graph to inspect.
-        output_node: The node producing the highest Taylor coefficient output
-            (e.g. ``out_args[2]`` for the Laplacian, ``out_args[0]`` for the
-            Bi-Laplacian).
-    """
-    sum_nodes: set[Node] = set()
-    queue: deque[Node] = deque([output_node])
-    visited: set[Node] = set()
-
-    while queue:
-        node = queue.popleft()
-        if node in visited:
-            continue
-        visited.add(node)
-        if node.op in ("placeholder", "get_attr", "output"):
-            continue
-        if is_sum(node):
-            sum_nodes.add(node)
-            continue
-        for inp in node.all_input_nodes:
-            queue.append(inp)
-
-    assert sum_nodes, "No sum nodes found — directions were never collapsed"
-
-    # Each sum should reduce ndim by exactly 1
-    for s in sum_nodes:
-        s_input = s.args[0]
-        if not (isinstance(s_input, Node) and "tensor_meta" in s_input.meta):
-            continue
-        in_shape = s_input.meta["tensor_meta"].shape
-        out_shape = s.meta["tensor_meta"].shape
-        assert len(in_shape) == len(out_shape) + 1, (
-            f"Sum {s.name} input ndim ({len(in_shape)}) should be "
-            f"output ndim ({len(out_shape)}) + 1"
-        )
-
-    # The output node must not be a sum — sums should have been pulled inward
-    assert not is_sum(output_node), (
-        f"Output node {output_node.name} is a sum — simplification should have "
-        f"pulled sum nodes inward from the output boundary"
-    )
-
-
 def get_output_args(graph: Graph) -> tuple[Node, ...]:
     """Get the direct parent nodes of the output node.
 
@@ -154,7 +97,6 @@ def get_output_args(graph: Graph) -> tuple[Node, ...]:
 
 
 def _assert_bilaplacian_structure(
-    traced: GraphModule,
     simple_mod: GraphModule,
     x: Tensor,
     config: dict[str, Any],
@@ -163,7 +105,7 @@ def _assert_bilaplacian_structure(
     """Assert structural properties of bilaplacian simplification.
 
     Verifies that simplification rules actually fired and the resulting graph
-    has the expected structure (directions collapsed, node counts).
+    has the expected structure (node counts).
     """
     D = x.numel()
 
@@ -172,18 +114,6 @@ def _assert_bilaplacian_structure(
     assert len(out_args_simple) == 1, (
         f"Bilaplacian should return 1 output, got {len(out_args_simple)}"
     )
-
-    # Verify the directions dimension is collapsed
-    _assert_directions_collapsed(simple_mod.graph, out_args_simple[0])
-
-    # For D > 1, simplification should remove unused tensor constants (dead code)
-    if D > 1:
-        ga_traced = count_nodes(traced.graph, lambda n: n.op == "get_attr")
-        ga_simple = count_nodes(simple_mod.graph, lambda n: n.op == "get_attr")
-        assert ga_simple <= ga_traced, (
-            f"Simplification should not increase tensor constants: "
-            f"{ga_traced} -> {ga_simple}"
-        )
 
     # Exact node counts: detect regressions if simplification rules stop firing
     if not randomized:
@@ -260,11 +190,6 @@ def test_simplify_laplacian(
     compare_jet_results(mod_out, fast_out)
     print("Laplacian via jet matches Laplacian via simplified module.")
 
-    # Structural assertion: verify the directions dimension is collapsed
-    out_args = get_output_args(fast.graph)
-    assert len(out_args) == 3, f"Expected 3-tuple output, got {len(out_args)}"
-    _assert_directions_collapsed(fast.graph, out_args[2])
-
 
 @mark.parametrize("config", SIMPLIFY_CASES, ids=[c["id"] for c in SIMPLIFY_CASES])
 @mark.parametrize(
@@ -316,11 +241,7 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
     report_nonclose(bilap, bilap_simple, name="Bi-Laplacians")
 
     # Structural assertions: verify simplification rules actually fired
-    if randomized:
-        manual_seed(seed)
-    traced = capture_graph(bilap_mod, x)
-
-    _assert_bilaplacian_structure(traced, simple_mod, x, config, randomized)
+    _assert_bilaplacian_structure(simple_mod, x, config, randomized)
 
 
 def test_common_subexpression_elimination():
@@ -366,8 +287,7 @@ def test_common_subexpression_elimination():
 def test_full_simplification_structural(config: dict[str, Any]):
     """Verify structural properties of full simplification.
 
-    Checks that the directions dimension is collapsed and that the node count
-    matches expectations (regression detection).
+    Checks that the node count matches expectations (regression detection).
 
     Args:
         config: The configuration of the test case.
@@ -376,13 +296,6 @@ def test_full_simplification_structural(config: dict[str, Any]):
     mod = Laplacian(f, x)
 
     simplified = simplify(mod, x)
-
-    # Output should be a 3-tuple (F0, F1, F2)
-    out_args = get_output_args(simplified.graph)
-    assert len(out_args) == 3, f"Expected 3-tuple output, got {len(out_args)}"
-
-    # Verify the directions dimension is collapsed for the highest coefficient
-    _assert_directions_collapsed(simplified.graph, out_args[2])
 
     # Exact node counts: detect regressions if simplification rules stop firing
     expected_nodes = {

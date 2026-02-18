@@ -11,11 +11,10 @@ from torch.nn import Module
 
 from jet.rules import (
     PullSumAddMM,
-    PullSumBroadcastedMultiplication,
+    PullSumAddition,
     PullSumMM,
-    PullSumScalarMultiplication,
+    PullSumMultiplication,
     PullSumSqueeze,
-    PullSumTensorAddition,
     PullSumUnsqueeze,
     PullSumView,
     Rule,
@@ -153,7 +152,7 @@ def check_unaltered(
         yield
 
 
-def simplify(  # noqa: C901
+def simplify(
     mod: GraphModule | Module | Callable,
     mock_x: Tensor,
     remove_unused: bool = True,
@@ -203,9 +202,8 @@ def simplify(  # noqa: C901
         PullSumSqueeze(),
         PullSumUnsqueeze(),
         PullSumView(),
-        PullSumTensorAddition(),
-        PullSumScalarMultiplication(),
-        PullSumBroadcastedMultiplication(),
+        PullSumAddition(),
+        PullSumMultiplication(),
         PullSumMM(),
         PullSumAddMM(),
     ]

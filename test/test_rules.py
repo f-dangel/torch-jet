@@ -12,6 +12,7 @@ from torch.nn import Module
 from torch.nn.functional import linear
 
 from jet.rules import (
+    PullSumBroadcastedMultiplication,
     PullSumLinear,
     PullSumScalarMultiplication,
     PullSumTensorAddition,
@@ -137,6 +138,34 @@ CASES.extend(
         }
         for op in _ADDITION_OPS
     ]
+)
+
+
+# Pulling a sum node through a broadcasted tensor multiplication
+class SumBroadcastedMul(Module):  # noqa: D101
+    def __init__(self, pos: int):  # noqa: D107
+        super().__init__()
+        self.pos = pos
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        b = linspace(1.0, 5.0, 4)
+        return (x * b).sum(self.pos)
+
+
+class SimpleSumBroadcastedMul(SumBroadcastedMul):  # noqa: D101
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        b = linspace(1.0, 5.0, 4)
+        return x.sum(self.pos) * b
+
+
+CASES.append(
+    {
+        "f": SumBroadcastedMul(pos=0),
+        "f_simple": SimpleSumBroadcastedMul(pos=0),
+        "rules": lambda: [PullSumBroadcastedMultiplication()],
+        "shape": (5, 4),
+        "id": "sum-broadcasted-mul",
+    }
 )
 
 

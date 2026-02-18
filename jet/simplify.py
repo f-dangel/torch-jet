@@ -24,6 +24,7 @@ _RESHAPE_OPS = {
 }
 
 from jet.rules import (
+    PullSumBroadcastedMultiplication,
     PullSumLinear,
     PullSumScalarMultiplication,
     PullSumSqueeze,
@@ -291,6 +292,7 @@ def simplify(  # noqa: C901
         PullSumView(),
         PullSumTensorAddition(),
         PullSumScalarMultiplication(),
+        PullSumBroadcastedMultiplication(),
         PullSumLinear(),
     ]
 

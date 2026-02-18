@@ -1,6 +1,7 @@
 """Utility functions for computing jets."""
 
 from math import factorial, prod
+from pathlib import Path
 from typing import Callable
 
 from torch import Tensor, device, dtype, empty, manual_seed, randn
@@ -144,7 +145,9 @@ class _CustomDrawer(FxGraphDrawer):
 def visualize_graph(
     mod: GraphModule, savefile: str, name: str = "", use_custom: bool = False
 ):
-    """Visualize the compute graph of a module and store it as .png.
+    """Visualize the compute graph of a module.
+
+    Supported formats: ``.png``, ``.pdf``, ``.svg`` (inferred from *savefile*).
 
     Args:
         mod: The module whose compute graph to visualize.
@@ -152,9 +155,25 @@ def visualize_graph(
         name: A name for the graph, used in the visualization.
         use_custom: If ``True``, highlight sum nodes in orange-red and use white
             for other operations. Defaults to ``False``.
+
+    Raises:
+        ValueError: If *savefile* has an unsupported extension.
     """
     cls = _CustomDrawer if use_custom else FxGraphDrawer
     drawer = cls(mod, name)
     dot_graph = drawer.get_dot_graph()
+
+    creators = {
+        ".png": dot_graph.create_png,
+        ".pdf": dot_graph.create_pdf,
+        ".svg": dot_graph.create_svg,
+    }
+
+    suffix = Path(savefile).suffix.lower()
+    creator = creators.get(suffix)
+    if creator is None:
+        supported = ", ".join(sorted(creators))
+        raise ValueError(f"Unsupported file format {suffix!r}. Use one of: {supported}")
+
     with open(savefile, "wb") as f:
-        f.write(dot_graph.create_png())
+        f.write(creator())

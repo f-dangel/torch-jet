@@ -285,5 +285,5 @@ def test_simplification_rules(case: RuleTestCase):
     assert f_x.allclose(f_simplified(x))
 
     # compare the graphs of f_simplified and f_simple
-    f_simple_mod = capture_graph(lambda x: case.forward_simple(x), x)
+    f_simple_mod = capture_graph(lambda x: case.forward_simple(x), x) # noqa: PLW0108
     compare_graphs(f_simple_mod.graph, f_simplified.graph)

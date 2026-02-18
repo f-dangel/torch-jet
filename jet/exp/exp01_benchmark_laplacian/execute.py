@@ -262,8 +262,8 @@ def laplacian_function(
         lap_mod = Laplacian(
             f, dummy_x, randomization=randomization, weighting=weighting
         )
-        pull_sum_vmapped = strategy == "jet_simplified"
-        lap_mod = simplify(lap_mod, dummy_x, pull_sum_vmapped=pull_sum_vmapped)
+        pull_sum = strategy == "jet_simplified"
+        lap_mod = simplify(lap_mod, dummy_x, pull_sum=pull_sum)
         laplacian = lambda x: lap_mod(x)[2]  # noqa: E731
 
     else:
@@ -366,8 +366,8 @@ def bilaplacian_function(
 
     elif strategy in {"jet_naive", "jet_simplified"}:
         bilaplacian = Bilaplacian(f, dummy_x, randomization=randomization)
-        pull_sum_vmapped = strategy == "jet_simplified"
-        bilaplacian = simplify(bilaplacian, dummy_x, pull_sum_vmapped=pull_sum_vmapped)
+        pull_sum = strategy == "jet_simplified"
+        bilaplacian = simplify(bilaplacian, dummy_x, pull_sum=pull_sum)
 
     else:
         raise ValueError(f"Unsupported strategy: {strategy}.")

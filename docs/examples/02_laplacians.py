@@ -23,7 +23,6 @@ from tueplots import bundles
 
 import jet
 from jet.simplify import simplify
-from jet.tracing import capture_graph
 
 HEREDIR = path.dirname(path.abspath(__name__))
 # We need to store figures here so they will be picked up in the built doc
@@ -224,8 +223,7 @@ class Laplacian(Module):
         super().__init__()
         self.in_shape = mock_x.shape
         self.in_dim = mock_x.numel()
-        jet_f = jet.jet(f, 2, mock_x)
-        self.jet_f = vmap(jet_f, randomness="different")
+        self.jet_f = jet.jet(f, 2, mock_x)
 
     def forward(self, x: Tensor) -> Tensor:
         """Compute the Laplacian.
@@ -237,11 +235,11 @@ class Laplacian(Module):
             The Laplacian of shape [1].
         """
         in_meta = {"dtype": x.dtype, "device": x.device}
-        X0 = jet.utils.replicate(x, self.in_dim)
         X1 = eye(self.in_dim, **in_meta).reshape(self.in_dim, *self.in_shape)
         X2 = zeros(self.in_dim, *self.in_shape, **in_meta)
-        _, _, F2 = self.jet_f(X0, X1, X2)
-        return jet.utils.sum_vmapped(F2)
+        vmapped = vmap(lambda x1, x2: self.jet_f(x, x1, x2), randomness="different")
+        _, _, F2 = vmapped(X1, X2)
+        return F2.sum(0)
 
 
 mod = Laplacian(f, x)
@@ -282,19 +280,21 @@ def visualize_graph(mod: GraphModule, savefile: str, name: str = ""):
 # Now, let's look at three different graphs which will become clear in a moment
 # (we evaluated approaches 2 and 3 in our paper).
 
+from jet.tracing import capture_graph  # noqa: E402
+
 # Graph 1: Simply capture the module that computes the Laplacian
 mod_traced = capture_graph(mod, x)
 visualize_graph(mod_traced, path.join(GALLERYDIR, "02_laplacian_module.png"))
 assert hessian_trace_laplacian.allclose(mod_traced(x))
 
-# Graph 2: Simplify the module by removing replicate computations
-mod_standard = simplify(mod_traced, x, pull_sum_vmapped=False)
+# Graph 2: Standard simplifications (dead code elimination, CSE, but no collapsing)
+mod_standard = simplify(mod, x, pull_sum=False)
 visualize_graph(mod_standard, path.join(GALLERYDIR, "02_laplacian_standard.png"))
 assert hessian_trace_laplacian.allclose(mod_standard(x))
 
-# Graph 3: Simplify the module by removing replicate computations and pulling up the
-# summations to directly propagate sums of Taylor coefficients
-mod_collapsed = simplify(mod_traced, x, pull_sum_vmapped=True)
+# Graph 3: Collapsing simplifications — pull summations up the graph to directly
+# propagate sums of Taylor coefficients
+mod_collapsed = simplify(mod, x, pull_sum=True)
 visualize_graph(mod_collapsed, path.join(GALLERYDIR, "02_laplacian_collapsed.png"))
 assert hessian_trace_laplacian.allclose(mod_collapsed(x))
 
@@ -316,50 +316,36 @@ print(f"3) Collapsing simplifications: {len(mod_collapsed.graph.nodes)} nodes")
 
 # %%
 #
-# Next, let's have a look at the computation graphs. Don't try to understand all the
-# details here, instead let's focus on two kinds of operations:
-# `jet.utils.replicate` (dark orange), and `jet.utils.sum_vmapped` (brown,
-# second-to-last node in Graphs 1 and 2).
+# Next, let's have a look at the computation graphs.
 #
 # | Captured | Standard simplifications | Collapsing simplifications |
 # |:--------:|:------------------------:|:---------------------------|
 # | ![](02_laplacian_module.png) | ![](02_laplacian_standard.png) | ![](02_laplacian_collapsed.png) |
 #
-# - Graph 1 (**Captured**) contains a `jet.utils.replicate` node at the beginning, which
-#   takes `x` and copies it $D$ times for each 2-jet we want to compute. This leads to
-#   repeated computations: e.g. if we compute `sin(replicate(x))`, we might instead
-#   compute `replicate(sin(x))`. We can remove this redundancy and thereby share
-#   information that depends on `x` and is used by all jets by 'pushing' the `replicate`
-#   operation down the graph.
+# - Graph 1 (**Captured**) is the raw traced graph. It has a `Tensor.sum`
+#   node at the end, which sums the Hessian diagonal elements to obtain the Laplacian.
 #
-# - Graph 2 (**Standard simplifications**) does exactly that: If you look for the dark
-#   orange nodes that represent `replicate` operations, you can see that they moved down
-#   the graph. To carry out this simplification, you used our `simplify` function which
-#   carries out graph rewrites based on mathematical properties of `replicate`.
+# - Graph 2 (**Standard simplifications**) applies dead code elimination and common
+#   subexpression elimination (CSE), but does not collapse Taylor mode.
 #
-# - Graph 3 (**Collapsing simplifications**) goes one step further than Graph 2 and
+# - Graph 3 (**Collapsing simplifications**) goes one step further and
 #   performs the 'collapsing' of Taylor mode we present in our paper.
 #
-#     Let's note one more thing: Graphs 1 and 2 both have a `jet.utils.sum_vmapped`
-#     node at the end, which sums the Hessian diagonal elements to obtain the Laplacian.
-#     If we take an even closer look, we see that the input to this summation is the
-#     output of a linear operation, something like
+#     The input to the summation at the end is the output of a linear operation,
+#     something like
 #     ```python
-#     laplacian = sum_vmapped(linear(Z, weight)) # standard: D matvecs
+#     laplacian = sum(linear(Z, weight)) # standard: D matvecs
 #     ```
 #     *The crucial insight from our paper is that the sum can be propagated up the
 #     graph!* For our example, we can first sum, then apply the linear operation, as
 #     this is mathematically equivalent, but cheaper:
 #     ```python
-#     laplacian = linear(sum_vmapped(Z), weight) # collapsed: 1 matvec
+#     laplacian = linear(sum(Z), weight) # collapsed: 1 matvec
 #     ```
-#     In the graph perspective, we have 'pulled' the `sum_vmapped` node up the graph.
+#     In the graph perspective, we have 'pulled' the `sum` node up the graph.
 #     We can repeat this procedure until we run out of possible simplifications.
 #     Effectively, this 'collapses' the Taylor coefficients we propagate forward;
-#     hence the name 'collapsed Taylor mode'. The resulting graph is Graph 3, which
-#     used `simplify` and enabled its `pull_sum_vmapped` option. As a neat side effect,
-#     note how many of the `replicate` nodes cancel out with the up-propagated sums,
-#     and Graph 3 has less `replicate` nodes than Graph 2.
+#     hence the name 'collapsed Taylor mode'.
 #
 # We can verify successful collapsing by looking at the tensor constants of the graph
 # which represent the forward-propagated coefficients:
@@ -470,12 +456,11 @@ print(f"Collapsed Taylor: {ms_collapsed:.2f}ms ({ms_collapsed / ms_nested:.2f}x)
 
 # %%
 #
-# We see that collapsed Taylor mode is faster than standard Taylor mode.
+# We see that collapsed Taylor mode is faster than nested first-order AD.
 # Of course, we use a relatively small neural net and a CPU in this example, but our
 # paper also confirms this performance benefits on bigger nets and on GPU (also in
-# terms of memory consumption). Intuitively, this improvement over standard Taylor mode
-# also makes sense, as the collapsed propagation uses less operations and smaller
-# tensors.
+# terms of memory consumption). Intuitively, this makes sense, as the collapsed
+# propagation uses less operations and smaller tensors.
 #
 # Here is a quick summary of the performance results in a single diagram:
 

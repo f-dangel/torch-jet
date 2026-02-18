@@ -45,9 +45,9 @@ if __name__ == "__main__":
             # print number of computation graph nodes
             f_before = capture_graph(lap, dummy_x)  # noqa: B023
             print("Before simplification:", len(list(f_before.graph.nodes)))
-            f_simple1 = simplify(lap, dummy_x, pull_sum_vmapped=False)
+            f_simple1 = simplify(lap, dummy_x, pull_sum=False)
             print("Naive after simplification:", len(list(f_simple1.graph.nodes)))
-            f_simple2 = simplify(lap, dummy_x, pull_sum_vmapped=True)
+            f_simple2 = simplify(lap, dummy_x, pull_sum=True)
             print("Collapsed after simplification:", len(list(f_simple2.graph.nodes)))
 
             print("\n--")

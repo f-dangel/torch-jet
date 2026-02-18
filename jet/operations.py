@@ -5,7 +5,6 @@ from typing import TypedDict
 from scipy.special import comb, factorial, stirling2
 from torch import cos, mm, mul, ops, sigmoid, sin, tanh
 
-import jet.utils
 from jet.utils import (
     Primal,
     PrimalAndCoefficients,
@@ -429,39 +428,6 @@ def jet_mul(
         )
 
 
-def jet_replicate(
-    self_and_taylor_coefficients: PrimalAndCoefficients,
-    times: int,
-    pos: int = 0,
-    *,
-    _jet_info: JetInfo,
-) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for ``jet.replicate``.
-
-    Args:
-        self_and_taylor_coefficients: The primal and its Taylor coefficients.
-        times: The number of times to replicate the tensor.
-        pos: The position along which to replicate.
-        _jet_info: Indicating which arguments are Taylor coefficients (`True`)
-            and which are constants (`False`).
-
-    Returns:
-        The value and its Taylor coefficients.
-
-    Raises:
-        NotImplementedError: If `is_taylor` is not one of the supported configurations.
-    """
-    is_args, is_kwargs = _jet_info["is_taylor"]
-    # First arg (tensor) must be Taylor, rest (times, pos) must be constant
-    if is_args[0] is not True or any(is_args[1:]) or any(is_kwargs.values()):
-        raise NotImplementedError(f"{_jet_info['is_taylor']=} is not implemented.")
-
-    return tuple(
-        jet.utils.replicate(self_and_taylor_coefficients[k], times, pos=pos)
-        for k in range(_jet_info["derivative_order"] + 1)
-    )
-
-
 def jet_sum(
     self_and_taylor_coefficients: PrimalAndCoefficients,
     dim: list[int],
@@ -501,38 +467,6 @@ def jet_sum(
     )
 
 
-def jet_sum_vmapped(
-    self_and_taylor_coefficients: PrimalAndCoefficients,
-    pos: int = 0,
-    *,
-    _jet_info: JetInfo,
-) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for ``jet.sum_vmapped``.
-
-    Args:
-        self_and_taylor_coefficients: The primal and its Taylor coefficients.
-        pos: The position of the vmap-ed axis to sum out. Default: ``0``.
-        _jet_info: Indicating which arguments are Taylor coefficients (`True`)
-            and which are constants (`False`).
-
-    Returns:
-        The value and its Taylor coefficients.
-
-    Raises:
-        NotImplementedError: If `is_taylor` is not supported.
-    """
-    is_args, is_kwargs = _jet_info["is_taylor"]
-    if is_args[0] is not True or any(is_args[1:]) or any(is_kwargs.values()):
-        raise NotImplementedError(
-            f"Got {_jet_info['is_taylor']=}. Only supports tensor as Taylor."
-        )
-
-    return tuple(
-        self_and_taylor_coefficients[k].sum(pos)
-        for k in range(_jet_info["derivative_order"] + 1)
-    )
-
-
 def jet_view(
     self_and_taylor_coefficients: PrimalAndCoefficients,
     shape: list[int],
@@ -554,29 +488,6 @@ def jet_view(
 
     return tuple(
         ops.aten.view.default(self_and_taylor_coefficients[k], shape)
-        for k in range(_jet_info["derivative_order"] + 1)
-    )
-
-
-def jet_t(
-    self_and_taylor_coefficients: PrimalAndCoefficients,
-    *,
-    _jet_info: JetInfo,
-) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for ``aten.t``.
-
-    Args:
-        self_and_taylor_coefficients: The primal and its Taylor coefficients.
-        _jet_info: Indicating which arguments are Taylor coefficients.
-
-    Returns:
-        The value and its Taylor coefficients, each transposed.
-    """
-    if _jet_info["is_taylor"] != ((True,), {}):
-        raise NotImplementedError(f"Not implemented for {_jet_info['is_taylor']=}.")
-
-    return tuple(
-        ops.aten.t.default(self_and_taylor_coefficients[k])
         for k in range(_jet_info["derivative_order"] + 1)
     )
 
@@ -715,7 +626,6 @@ def jet_addmm(
     return tuple(mm_result)
 
 
-
 def jet_to_copy(
     self_and_taylor_coefficients: PrimalAndCoefficients,
     *,
@@ -756,7 +666,6 @@ MAPPING = {
     # Linear decomposition
     ops.aten.mm.default: jet_mm,
     ops.aten.addmm.default: jet_addmm,
-    ops.aten.t.default: jet_t,
     ops.aten.view.default: jet_view,
     ops.aten.unsqueeze.default: jet_unsqueeze,
     ops.aten.squeeze.dim: jet_squeeze,
@@ -764,7 +673,4 @@ MAPPING = {
     ops.aten._to_copy.default: jet_to_copy,
     # Sum (dim reduction)
     ops.aten.sum.dim_IntList: jet_sum,
-    # Custom ops
-    ops.jet.replicate.default: jet_replicate,
-    ops.jet.sum_vmapped.default: jet_sum_vmapped,
 }

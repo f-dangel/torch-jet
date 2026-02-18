@@ -100,11 +100,10 @@ class Laplacian(Module):
                 raise ValueError(f"{num_samples=} must be positive.")
         self.randomization = randomization
 
-        jet_f = jet.jet(f, 2, mock_x)
         self.num_jets = (
             self.rank_weightings if randomization is None else randomization[1]
         )
-        self.jet_f = vmap(jet_f, randomness="different")
+        self.jet_f = jet.jet(f, 2, mock_x)
 
     def forward(self, x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         """Compute the (weighted and/or randomized) Laplacian of f at x.
@@ -114,8 +113,8 @@ class Laplacian(Module):
                 passed in the constructor.
 
         Returns:
-            Tuple containing the replicated function value, the weighted and/or
-                randomized Jacobian and Laplacian.
+            Tuple containing the function value, the weighted and/or
+                randomized Jacobian, and the Laplacian.
 
         Raises:
             ValueError: If the input shape does not match the mock input shape
@@ -123,16 +122,16 @@ class Laplacian(Module):
         """
         if x.shape != self.in_shape:
             raise ValueError(f"Expected input shape {self.in_shape}, got {x.shape}.")
-        X0 = jet.utils.replicate(x, self.num_jets)
         X1 = self._set_up_first_taylor_coefficient(x)
         in_meta = {"dtype": x.dtype, "device": x.device}
         X2 = zeros(self.num_jets, *self.in_shape, **in_meta)
-        F0, F1, F2 = self.jet_f(X0, X1, X2)
+        vmapped = vmap(lambda x1, x2: self.jet_f(x, x1, x2), randomness="different")
+        F0, F1, F2 = vmapped(X1, X2)
         if self.randomization is not None:
             # Monte Carlo averaging: scale by 1 / number of samples
             monte_carlo_scaling = 1.0 / self.randomization[1]
             F2 = F2 * monte_carlo_scaling
-        return F0, F1, jet.utils.sum_vmapped(F2)
+        return F0, F1, F2.sum(0)
 
     def _set_up_first_taylor_coefficient(self, x: Tensor) -> Tensor:
         """Create the first Taylor coefficients for the Laplacian computation.

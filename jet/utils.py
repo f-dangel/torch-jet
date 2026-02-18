@@ -2,7 +2,6 @@
 
 from math import factorial, prod
 
-import torch
 from torch import Tensor, device, dtype, empty, randn
 
 # type annotation for arguments and Taylor coefficients in input and output space
@@ -55,78 +54,6 @@ def multiplicity(sigma: tuple[int, ...]) -> float:
     if not multiplicity.is_integer():
         raise ValueError(f"Multiplicity should be an integer, but got {multiplicity}.")
     return multiplicity
-
-
-@torch.library.custom_op("jet::replicate", mutates_args=())
-def replicate(x: Tensor, times: int, pos: int = 0) -> Tensor:
-    """Repeat a tensor along a new axis.
-
-    Args:
-        x: Tensor to repeat.
-        times: Number of times to repeat the tensor.
-        pos: Position of the new axis. Default: `0`.
-
-    Returns:
-        Tensor with a new axis repeated `times` times.
-    """
-    repeat = x.ndim * [-1]
-    repeat = repeat[:pos] + [times] + repeat[pos:]
-    return x.unsqueeze(pos).expand(*repeat).clone()
-
-
-@replicate.register_fake
-def _replicate_fake(x: Tensor, times: int, pos: int = 0) -> Tensor:
-    new_shape = list(x.shape)
-    new_shape.insert(pos, times)
-    return x.new_empty(new_shape)
-
-
-def _replicate_setup_context(ctx, inputs, output):
-    _, _, pos = inputs
-    ctx.pos = pos
-
-
-def _replicate_backward(ctx, grad_output):
-    return grad_output.sum(ctx.pos), None, None
-
-
-replicate.register_autograd(_replicate_backward, setup_context=_replicate_setup_context)
-
-
-@torch.library.custom_op("jet::sum_vmapped", mutates_args=())
-def sum_vmapped(x: Tensor, pos: int = 0) -> Tensor:
-    """Sum out a vmap-ed axis.
-
-    Args:
-        x: Vmap-ed tensor.
-        pos: Position of the vmap-ed axis to sum out. Default: `0`.
-
-    Returns:
-        Sum of the vmap-ed tensor.
-    """
-    return x.sum(pos)
-
-
-@sum_vmapped.register_fake
-def _sum_vmapped_fake(x: Tensor, pos: int = 0) -> Tensor:
-    new_shape = list(x.shape)
-    del new_shape[pos]
-    return x.new_empty(new_shape)
-
-
-def _sum_vmapped_setup_context(ctx, inputs, output):
-    x, pos = inputs
-    ctx.pos = pos
-    ctx.x_shape = x.shape
-
-
-def _sum_vmapped_backward(ctx, grad_output):
-    return grad_output.unsqueeze(ctx.pos).expand(ctx.x_shape), None
-
-
-sum_vmapped.register_autograd(
-    _sum_vmapped_backward, setup_context=_sum_vmapped_setup_context
-)
 
 
 def rademacher(*shape: int, dtype: dtype | None = None, device: device | None = None):

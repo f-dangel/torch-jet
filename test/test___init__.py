@@ -9,7 +9,6 @@ from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
 
 import jet
-import jet.utils
 from jet import rev_jet
 from jet.utils import Primal, PrimalAndCoefficients, Value, ValueAndCoefficients
 from test.utils import report_nonclose
@@ -87,7 +86,6 @@ JET_CASES = [
     {"f": lambda x: x * 3.0, "shape": (5,), "id": "mul-3.0"},
     # multiplication of x with itself
     {"f": lambda x: x * x, "shape": (5,), "id": "mul-x-x_"},
-    {"f": lambda x: jet.utils.replicate(x, 6), "shape": (5,), "id": "replicate-6"},
     # 2d sin(sin) function
     {"f": lambda x: sin(sin(x)), "shape": (2,), "id": "sin-sin"},
     # 2d tanh(tanh) function

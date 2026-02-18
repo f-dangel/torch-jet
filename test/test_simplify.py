@@ -12,7 +12,7 @@ from torch.nn.functional import linear
 
 from jet.bilaplacian import Bilaplacian
 from jet.laplacian import Laplacian
-from jet.rules import is_replicate, is_sum_vmapped
+from jet.rules import is_sum
 from jet.simplify import common_subexpression_elimination, simplify
 from jet.tracing import capture_graph
 from test.test___init__ import compare_jet_results, setup_case
@@ -141,26 +141,6 @@ def get_max_depth_from_output(graph: Graph, predicate: Callable[[Node], bool]) -
     return max(visited.get(n, 0) for n in matching)
 
 
-def get_min_depth_from_input(graph: Graph, predicate: Callable[[Node], bool]) -> int:
-    """Get the minimum distance from input placeholders among matching nodes.
-
-    A higher depth means a node is farther from the input (more computation
-    happens before it).
-
-    Args:
-        graph: The FX graph to inspect.
-        predicate: Function that returns True for nodes of interest.
-
-    Returns:
-        Minimum depth from any placeholder, or 0 if no matching nodes exist.
-    """
-    visited = _bfs_depths_from_input(graph)
-    matching = [n for n in graph.nodes if predicate(n)]
-    if not matching:
-        return 0
-    return min(visited.get(n, 0) for n in matching)
-
-
 def get_output_args(graph: Graph) -> tuple[Node, ...]:
     """Get the direct parent nodes of the output node.
 
@@ -190,22 +170,21 @@ def _assert_bilaplacian_structure(
     """Assert structural properties of bilaplacian simplification.
 
     Verifies that simplification rules actually fired and the resulting graph
-    has the expected structure (sum_vmapped counts, output shape, node counts).
+    has the expected structure (sum counts, output shape, node counts).
     """
     D = x.numel()
 
-    # The captured graph should contain replicate and sum_vmapped nodes
-    assert count_nodes(traced.graph, is_replicate) >= 1
-    assert count_nodes(traced.graph, is_sum_vmapped) >= 1
+    # The captured graph should contain sum nodes
+    assert count_nodes(traced.graph, is_sum) >= 1
 
     # Precondition: each highest Taylor coefficient should feed directly into a
-    # sum_vmapped node. For D=1 there is 1 jet term, for D>1 there are 3.
+    # sum node. For D=1 there is 1 jet term, for D>1 there are 3.
     if not randomized:
         expected_sums_traced = 1 if D == 1 else 3
-        num_sums_traced = count_nodes(traced.graph, is_sum_vmapped)
+        num_sums_traced = count_nodes(traced.graph, is_sum)
         assert num_sums_traced == expected_sums_traced, (
             f"Traced bilaplacian (D={D}) should have {expected_sums_traced} "
-            f"sum_vmapped nodes, got {num_sums_traced}"
+            f"sum nodes, got {num_sums_traced}"
         )
 
     # The bilaplacian output should be a single tensor (not a tuple)
@@ -218,21 +197,15 @@ def _assert_bilaplacian_structure(
         f"Bilaplacian should return 1 output, got {len(out_args_simple)}"
     )
 
-    # The bilaplacian output should NOT be a replicate node (it's fully collapsed)
-    assert not is_replicate(out_args_simple[0]), (
-        "Bilaplacian output should not be a replicate node"
-    )
-
-    # sum_vmapped nodes should still exist after simplification (pull_sum_vmapped
+    # sum nodes should still exist after simplification (pull_sum
     # distributes sums but doesn't eliminate them entirely)
-    assert count_nodes(simple_mod.graph, is_sum_vmapped) >= 1
+    assert count_nodes(simple_mod.graph, is_sum) >= 1
 
-    # For exact bilaplacian with D > 1, there are 3 terms each with a sum_vmapped
+    # For exact bilaplacian with D > 1, there are 3 terms each with a sum
     if not randomized and D > 1:
-        num_sum = count_nodes(simple_mod.graph, is_sum_vmapped)
+        num_sum = count_nodes(simple_mod.graph, is_sum)
         assert num_sum >= 3, (
-            f"Exact bilaplacian (D={D}) should have >= 3 "
-            f"sum_vmapped nodes, got {num_sum}"
+            f"Exact bilaplacian (D={D}) should have >= 3 sum nodes, got {num_sum}"
         )
 
     # For D > 1, simplification should remove unused tensor constants (dead code)
@@ -248,11 +221,11 @@ def _assert_bilaplacian_structure(
     if not randomized:
         expected_nodes = {
             "sin": 33 if D == 1 else 129,
-            "sin-sin": 231,
-            "tanh-tanh": 277,
-            "tanh-linear": 270,
-            "two-layer-tanh-mlp": 950,
-            "sigmoid-sigmoid": 373,
+            "sin-sin": 210,
+            "tanh-tanh": 256,
+            "tanh-linear": 262,
+            "two-layer-tanh-mlp": 813,
+            "sigmoid-sigmoid": 352,
         }
         n_nodes = len(list(simple_mod.graph.nodes))
         expected = expected_nodes[config["id"]]
@@ -273,7 +246,6 @@ def test_simplify_laplacian(
 ):
     """Test the simplification of a Laplacian's compute graph.
 
-    Replicate nodes should be propagated down the graph.
     Sum nodes should be propagated up.
 
     Args:
@@ -336,51 +308,35 @@ def test_simplify_laplacian(
     )
 
     # Before simplification: the highest Taylor coefficient (F2, the Laplacian)
-    # should be a direct sum_vmapped node (the sum sits right at the output)
-    assert is_sum_vmapped(out_args_before[2]), (
-        "Before simplification, out[2] should be a sum_vmapped node"
+    # should be a direct sum node (the sum sits right at the output)
+    assert is_sum(out_args_before[2]), (
+        "Before simplification, out[2] should be a sum node"
     )
 
-    # After simplification: the highest coefficient should NOT be a replicate
-    # (the batch dimension has been collapsed by sum_vmapped)
-    assert not is_replicate(out_args_after[2]), (
-        "After simplification, out[2] should not be a replicate node"
-    )
+    # sum nodes should still exist in the simplified graph
+    assert count_nodes(fast.graph, is_sum) >= 1
 
-    # replicate and sum_vmapped nodes should still exist in the simplified graph
-    assert count_nodes(fast.graph, is_replicate) >= 1
-    assert count_nodes(fast.graph, is_sum_vmapped) >= 1
-
-    # pull_sum_vmapped distributes sums: the number of sum_vmapped nodes should
+    # pull_sum distributes sums: the number of sum nodes should
     # not decrease (one sum becomes multiple distributed sums)
-    sum_before = count_nodes(traced.graph, is_sum_vmapped)
-    sum_after = count_nodes(fast.graph, is_sum_vmapped)
+    sum_before = count_nodes(traced.graph, is_sum)
+    sum_after = count_nodes(fast.graph, is_sum)
     assert sum_after >= sum_before, (
-        f"pull_sum_vmapped should distribute sums: count {sum_before} -> {sum_after}"
+        f"pull_sum should distribute sums: count {sum_before} -> {sum_after}"
     )
 
-    # When pull_sum_vmapped distributed the sum (increased count), the highest
-    # coefficient should no longer be a direct sum_vmapped at the output
+    # When pull_sum distributed the sum (increased count), the highest
+    # coefficient should no longer be a direct sum at the output
     if sum_after > sum_before:
-        assert not is_sum_vmapped(out_args_after[2]), (
-            "When sum was distributed, out[2] should not be a direct sum_vmapped"
+        assert not is_sum(out_args_after[2]), (
+            "When sum was distributed, out[2] should not be a direct sum"
         )
 
-    # push_replicate: replicate should have moved farther from the input, meaning
-    # more computation now happens on unreplicated (smaller) tensors
-    rep_depth_before = get_min_depth_from_input(traced.graph, is_replicate)
-    rep_depth_after = get_min_depth_from_input(fast.graph, is_replicate)
-    assert rep_depth_after >= rep_depth_before, (
-        f"push_replicate should move replicate farther from input: "
-        f"depth {rep_depth_before} -> {rep_depth_after}"
-    )
-
-    # pull_sum_vmapped: sum_vmapped should have moved farther from output
+    # pull_sum: sum should have moved farther from output
     # (closer to input), meaning more computation uses summed (smaller) tensors
-    sum_depth_before = get_max_depth_from_output(traced.graph, is_sum_vmapped)
-    sum_depth_after = get_max_depth_from_output(fast.graph, is_sum_vmapped)
+    sum_depth_before = get_max_depth_from_output(traced.graph, is_sum)
+    sum_depth_after = get_max_depth_from_output(fast.graph, is_sum)
     assert sum_depth_after >= sum_depth_before, (
-        f"pull_sum_vmapped should move sum_vmapped farther from output: "
+        f"pull_sum should move sum farther from output: "
         f"depth {sum_depth_before} -> {sum_depth_after}"
     )
 
@@ -487,53 +443,8 @@ _STRUCTURAL_IDS = [c["id"] for c in _STRUCTURAL_CASES]
 
 
 @mark.parametrize("config", _STRUCTURAL_CASES, ids=_STRUCTURAL_IDS)
-def test_push_replicate_structural(config: dict[str, Any]):
-    """Verify that push_replicate moves replicate nodes closer to the output.
-
-    Args:
-        config: The configuration of the test case.
-    """
-    f, x, _ = setup_case(config)
-    mod = Laplacian(f, x)
-
-    traced = capture_graph(mod, x)
-
-    # Precondition: the highest Taylor coefficient (F2) should be a direct
-    # sum_vmapped at the output before any simplification
-    out_args_traced = get_output_args(traced.graph)
-    assert is_sum_vmapped(out_args_traced[2]), (
-        "Before simplification, out[2] should be a sum_vmapped node"
-    )
-
-    rep_depth_before = get_min_depth_from_input(traced.graph, is_replicate)
-
-    # Apply only push_replicate (disable other simplifications)
-    simplified = simplify(
-        mod,
-        x,
-        push_replicate=True,
-        pull_sum_vmapped=False,
-        eliminate_common_subexpressions=False,
-    )
-
-    rep_depth_after = get_min_depth_from_input(simplified.graph, is_replicate)
-
-    # push_replicate moves replicate farther from input: more computation happens
-    # on unreplicated (smaller) tensors before replication
-    assert rep_depth_after >= rep_depth_before, (
-        f"push_replicate: replicate min depth from input should increase or stay same, "
-        f"got {rep_depth_before} -> {rep_depth_after}"
-    )
-
-    # Output correctness
-    mod_out = mod(x)
-    simplified_out = simplified(x)
-    compare_jet_results(mod_out, simplified_out)
-
-
-@mark.parametrize("config", _STRUCTURAL_CASES, ids=_STRUCTURAL_IDS)
-def test_pull_sum_vmapped_structural(config: dict[str, Any]):
-    """Verify that pull_sum_vmapped moves sum_vmapped nodes farther from the output.
+def test_pull_sum_structural(config: dict[str, Any]):
+    """Verify that pull_sum moves sum nodes farther from the output.
 
     Args:
         config: The configuration of the test case.
@@ -542,46 +453,36 @@ def test_pull_sum_vmapped_structural(config: dict[str, Any]):
     mod = Laplacian(f, x)
 
     # Precondition: the highest Taylor coefficient (F2) should be a direct
-    # sum_vmapped at the output before any simplification
+    # sum at the output before any simplification
     traced = capture_graph(mod, x)
     out_args_traced = get_output_args(traced.graph)
-    assert is_sum_vmapped(out_args_traced[2]), (
-        "Before simplification, out[2] should be a sum_vmapped node"
+    assert is_sum(out_args_traced[2]), (
+        "Before simplification, out[2] should be a sum node"
     )
 
-    # Apply push_replicate first (as the full simplify pipeline does)
-    after_push = simplify(
-        mod,
-        x,
-        push_replicate=True,
-        pull_sum_vmapped=False,
-        eliminate_common_subexpressions=False,
-    )
+    sum_depth_before = get_max_depth_from_output(traced.graph, is_sum)
 
-    sum_depth_before = get_max_depth_from_output(after_push.graph, is_sum_vmapped)
-
-    # Now apply pull_sum_vmapped on the push_replicate result
+    # Apply pull_sum
     after_pull = simplify(
-        after_push,
+        mod,
         x,
-        push_replicate=False,
-        pull_sum_vmapped=True,
+        pull_sum=True,
         eliminate_common_subexpressions=True,
     )
 
-    sum_depth_after = get_max_depth_from_output(after_pull.graph, is_sum_vmapped)
+    sum_depth_after = get_max_depth_from_output(after_pull.graph, is_sum)
 
-    # sum_vmapped depth from output should not decrease (pull moves it farther)
+    # sum depth from output should not decrease (pull moves it farther)
     assert sum_depth_after >= sum_depth_before, (
-        f"pull_sum_vmapped: sum_vmapped depth from output should increase or stay same, "
+        f"pull_sum: sum depth from output should increase or stay same, "
         f"got {sum_depth_before} -> {sum_depth_after}"
     )
 
-    # pull_sum_vmapped distributes sums: count should not decrease
-    sum_count_before = count_nodes(after_push.graph, is_sum_vmapped)
-    sum_count_after = count_nodes(after_pull.graph, is_sum_vmapped)
+    # pull_sum distributes sums: count should not decrease
+    sum_count_before = count_nodes(traced.graph, is_sum)
+    sum_count_after = count_nodes(after_pull.graph, is_sum)
     assert sum_count_after >= sum_count_before, (
-        f"pull_sum_vmapped should distribute sums: count {sum_count_before} -> {sum_count_after}"
+        f"pull_sum should distribute sums: count {sum_count_before} -> {sum_count_after}"
     )
 
     # Output correctness
@@ -592,10 +493,9 @@ def test_pull_sum_vmapped_structural(config: dict[str, Any]):
 
 @mark.parametrize("config", SIMPLIFY_CASES, ids=[c["id"] for c in SIMPLIFY_CASES])
 def test_full_simplification_structural(config: dict[str, Any]):
-    """Verify that full simplification moves replicate and sum_vmapped nodes.
+    """Verify structural properties of full simplification.
 
-    Checks the combined effect: push_replicate moves replicate farther from input,
-    pull_sum_vmapped moves sum_vmapped farther from output.
+    Checks pull_sum effect: sum moves farther from output.
 
     Args:
         config: The configuration of the test case.
@@ -607,63 +507,49 @@ def test_full_simplification_structural(config: dict[str, Any]):
     simplified = simplify(mod, x)
 
     # Precondition: the highest Taylor coefficient (F2) should be a direct
-    # sum_vmapped at the output before any simplification
+    # sum at the output before any simplification
     out_args_traced = get_output_args(traced.graph)
-    assert is_sum_vmapped(out_args_traced[2]), (
-        "Before simplification, out[2] should be a sum_vmapped node"
+    assert is_sum(out_args_traced[2]), (
+        "Before simplification, out[2] should be a sum node"
     )
 
     # Output should be a 3-tuple (F0, F1, F2)
     out_args = get_output_args(simplified.graph)
     assert len(out_args) == 3, f"Expected 3-tuple output, got {len(out_args)}"
 
-    # The highest Taylor coefficient (F2) should not be a replicate
-    assert not is_replicate(out_args[2]), (
-        "After simplification, out[2] should not be a replicate node"
-    )
+    # sum nodes should still exist
+    assert count_nodes(simplified.graph, is_sum) >= 1
 
-    # replicate and sum_vmapped nodes should still exist
-    assert count_nodes(simplified.graph, is_replicate) >= 1
-    assert count_nodes(simplified.graph, is_sum_vmapped) >= 1
-
-    # pull_sum_vmapped distributes sums: count should not decrease
-    sum_before = count_nodes(traced.graph, is_sum_vmapped)
-    sum_after = count_nodes(simplified.graph, is_sum_vmapped)
+    # pull_sum distributes sums: count should not decrease
+    sum_before = count_nodes(traced.graph, is_sum)
+    sum_after = count_nodes(simplified.graph, is_sum)
     assert sum_after >= sum_before, (
-        f"pull_sum_vmapped should distribute sums: count {sum_before} -> {sum_after}"
+        f"pull_sum should distribute sums: count {sum_before} -> {sum_after}"
     )
 
     # When sum was distributed (count increased), the highest coefficient
-    # should no longer be a direct sum_vmapped at the output
+    # should no longer be a direct sum at the output
     if sum_after > sum_before:
-        assert not is_sum_vmapped(out_args[2]), (
-            "When sum was distributed, out[2] should not be a direct sum_vmapped"
+        assert not is_sum(out_args[2]), (
+            "When sum was distributed, out[2] should not be a direct sum"
         )
 
-    # push_replicate effect: replicate moved farther from input
-    rep_depth_before = get_min_depth_from_input(traced.graph, is_replicate)
-    rep_depth_after = get_min_depth_from_input(simplified.graph, is_replicate)
-    assert rep_depth_after >= rep_depth_before, (
-        f"Replicate should move farther from input: "
-        f"depth {rep_depth_before} -> {rep_depth_after}"
-    )
-
-    # pull_sum_vmapped effect: sum_vmapped moved farther from output
-    sum_depth_before = get_max_depth_from_output(traced.graph, is_sum_vmapped)
-    sum_depth_after = get_max_depth_from_output(simplified.graph, is_sum_vmapped)
+    # pull_sum effect: sum moved farther from output
+    sum_depth_before = get_max_depth_from_output(traced.graph, is_sum)
+    sum_depth_after = get_max_depth_from_output(simplified.graph, is_sum)
     assert sum_depth_after >= sum_depth_before, (
-        f"sum_vmapped should move farther from output: "
+        f"sum should move farther from output: "
         f"depth {sum_depth_before} -> {sum_depth_after}"
     )
 
     # Exact node counts: detect regressions if simplification rules stop firing
     expected_nodes = {
-        "sin": 17,
-        "sin-sin": 27,
-        "tanh-tanh": 43,
-        "tanh-linear": 50,
-        "two-layer-tanh-mlp": 76,
-        "sigmoid-sigmoid": 39,
+        "sin": 16,
+        "sin-sin": 24,
+        "tanh-tanh": 40,
+        "tanh-linear": 46,
+        "two-layer-tanh-mlp": 72,
+        "sigmoid-sigmoid": 36,
     }
     n_nodes = len(list(simplified.graph.nodes))
     expected = expected_nodes[config["id"]]

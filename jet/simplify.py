@@ -11,15 +11,9 @@ from torch.nn import Module
 from torch.random import fork_rng
 
 from jet.rules import (
-    PullSumVmappedLinear,
-    PullSumVmappedReplicateMultiplication,
-    PullSumVmappedScalarMultiplication,
-    PullSumVmappedTensorAddition,
-    PushReplicateElementwise,
-    PushReplicateLinear,
-    PushReplicateScalarArithmetic,
-    PushReplicateSumVmapped,
-    PushReplicateTensorArithmetic,
+    PullSumLinear,
+    PullSumScalarMultiplication,
+    PullSumTensorAddition,
     Rule,
 )
 from jet.tracing import capture_graph
@@ -155,9 +149,8 @@ def check_unaltered(
 def simplify(  # noqa: C901
     mod: GraphModule | Module | Callable,
     mock_x: Tensor,
-    push_replicate: bool = True,
     remove_unused: bool = True,
-    pull_sum_vmapped: bool = True,
+    pull_sum: bool = True,
     eliminate_common_subexpressions: bool = True,
     verbose: bool = False,
     test_x: Tensor | None = None,
@@ -166,23 +159,18 @@ def simplify(  # noqa: C901
 
     At the moment, the following simplifications are implemented:
 
-    - Pushing of `replicate` nodes down the graph as much as possible.
-      This avoids redundant computations on replicated tensors.
-
     - Remove nodes that do not have any users.
 
     - Common subexpression elimination (CSE) to remove duplicate computations.
 
-    - Pulling of `sum_vmapped` nodes up the graph as much as possible.
+    - Pulling of ``sum`` nodes up the graph as much as possible.
       This avoids redundant computations on summed tensors.
 
     Args:
         mod: A (graph) module or function whose computation graph will be simplified.
         mock_x: A mock input tensor for tracing with ``make_fx``.
-        push_replicate: Whether to push `replicate` nodes down the graph.
-            Default: `True`.
         remove_unused: Whether to remove unused nodes from the graph. Default: `True`.
-        pull_sum_vmapped: Whether to pull `sum_vmapped` nodes up the graph.
+        pull_sum: Whether to pull ``sum`` nodes up the graph.
             Default: `True`.
         eliminate_common_subexpressions: Whether to eliminate common subexpressions.
             Default: `True`.
@@ -203,20 +191,11 @@ def simplify(  # noqa: C901
 
     graph = mod.graph
 
-    # Initialize PushReplicate* rules
-    replicate_rules = [
-        PushReplicateElementwise(),
-        PushReplicateScalarArithmetic(),
-        PushReplicateTensorArithmetic(),
-        PushReplicateLinear(),
-        PushReplicateSumVmapped(),
-    ]
-    # Initialize PullSumVmapped* rules
+    # Initialize PullSum* rules
     sum_rules = [
-        PullSumVmappedTensorAddition(),
-        PullSumVmappedScalarMultiplication(),
-        PullSumVmappedReplicateMultiplication(),
-        PullSumVmappedLinear(),
+        PullSumTensorAddition(),
+        PullSumScalarMultiplication(),
+        PullSumLinear(),
     ]
 
     strategies = {
@@ -224,8 +203,7 @@ def simplify(  # noqa: C901
         "common_subexpression_elimination": partial(
             common_subexpression_elimination, mod.graph, verbose=verbose
         ),
-        "push_replicate": lambda: apply_once(replicate_rules, mod, verbose=verbose),
-        "pull_sum_vmapped": lambda: apply_once(sum_rules, mod, verbose=verbose),
+        "pull_sum": lambda: apply_once(sum_rules, mod, verbose=verbose),
     }
 
     # round 1 of simplifications: remove redundancies in the graph
@@ -234,29 +212,23 @@ def simplify(  # noqa: C901
         round_one.append("remove_unused")
     _exhaust_incrementally({s: strategies[s] for s in round_one}, mod, test_x, verbose)
 
-    # round 2 of simplifications: push forward replicate nodes
+    # round 2 of simplifications: pull sum nodes up
     round_two = []
-    if push_replicate:
-        round_two.append("push_replicate")
+    if pull_sum:
+        round_two.append("pull_sum")
+    if eliminate_common_subexpressions:
+        round_two.append("common_subexpression_elimination")
     _exhaust_incrementally({s: strategies[s] for s in round_two}, mod, test_x, verbose)
 
-    # round 3 of simplifications: pull sum_vmapped nodes up
+    # round 3 of simplifications: remove redundancies in the graph and clean up
     round_three = []
-    if pull_sum_vmapped:
-        round_three.append("pull_sum_vmapped")
     if eliminate_common_subexpressions:
         round_three.append("common_subexpression_elimination")
+    if remove_unused:
+        round_three.append("remove_unused")
     _exhaust_incrementally(
         {s: strategies[s] for s in round_three}, mod, test_x, verbose
     )
-
-    # round 4 of simplifications: remove redundancies in the graph and clean up
-    round_four = []
-    if eliminate_common_subexpressions:
-        round_four.append("common_subexpression_elimination")
-    if remove_unused:
-        round_four.append("remove_unused")
-    _exhaust_incrementally({s: strategies[s] for s in round_four}, mod, test_x, verbose)
 
     mod.graph.lint()
     mod.recompile()

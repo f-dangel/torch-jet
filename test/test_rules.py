@@ -6,25 +6,25 @@ from typing import Any, Callable
 
 import torch
 from pytest import mark
-from torch import Size, Tensor, linspace, manual_seed, mul, rand
+from torch import Tensor, linspace, manual_seed, rand
 from torch.fx import Graph, Node
 from torch.nn import Module
 from torch.nn.functional import linear
 
-import jet.utils
 from jet.rules import (
-    PullSumVmappedLinear,
-    PullSumVmappedReplicateMultiplication,
-    PullSumVmappedScalarMultiplication,
-    PullSumVmappedTensorAddition,
-    PushReplicateElementwise,
-    PushReplicateLinear,
-    PushReplicateScalarArithmetic,
-    PushReplicateSumVmapped,
-    PushReplicateTensorArithmetic,
+    PullSumLinear,
+    PullSumScalarMultiplication,
+    PullSumTensorAddition,
 )
 from jet.simplify import apply_once
 from jet.tracing import capture_graph
+
+_aten = torch.ops.aten
+
+CASES = []
+
+_MULTIPLICATION_OPS = [operator.mul]
+_ADDITION_OPS = [operator.add, operator.sub]
 
 
 def compare_graphs(graph1: Graph, graph2: Graph):
@@ -61,252 +61,8 @@ def compare_graphs(graph1: Graph, graph2: Graph):
         node_mapping[node1] = node2
 
 
-CASES = []
-
-# Python-level ops for constructing test computations. make_fx will trace these
-# to their ATen equivalents, which the rules then match.
-_ELEMENTWISE_OPS = [torch.cos, torch.sin, torch.tanh, torch.sigmoid, torch.cosh]
-_SCALAR_ARITHMETIC_OPS = [
-    operator.add,
-    operator.sub,
-    operator.mul,
-    operator.truediv,
-    operator.pow,
-]
-_TENSOR_ARITHMETIC_OPS = _SCALAR_ARITHMETIC_OPS
-_MULTIPLICATION_OPS = [operator.mul]
-_ADDITION_OPS = [operator.add, operator.sub]
-
-
-# swapping replicate nodes with elementwise functions
-class ReplicateElementwise(Module):  # noqa: D101
-    def __init__(self, op: Callable[[Tensor], Tensor], times: int, pos: int):  # noqa: D107
-        super().__init__()
-        self.op, self.times, self.pos = op, times, pos
-
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        return self.op(jet.utils.replicate(x, self.times, pos=self.pos))
-
-
-class SimpleReplicateElementwise(ReplicateElementwise):  # noqa: D101
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        return jet.utils.replicate(self.op(x), self.times, pos=self.pos)
-
-
-CASES.extend(
-    [
-        {
-            "f": ReplicateElementwise(op, times=2, pos=pos),
-            "f_simple": SimpleReplicateElementwise(op, times=2, pos=pos),
-            "rules": lambda: [PushReplicateElementwise()],
-            "shape": (3,),
-            "id": f"replicate{pos}-{op.__module__}.{op.__name__}",
-        }
-        for op, pos in product(_ELEMENTWISE_OPS, [0, 1])
-    ]
-)
-
-
-# swapping replicate nodes with arithmetic operations involving one integer/float
-class ReplicateScalarArithmetic(Module):  # noqa: D101
-    def __init__(  # noqa: D107
-        self,
-        op: Callable[[float | int | Tensor, float | int | Tensor], Tensor],
-        times: int,
-        pos: int,
-        scalar: int | float,
-        scalar_first: bool,
-    ):
-        super().__init__()
-        self.op = op
-        self.times = times
-        self.pos = pos
-        self.scalar = scalar
-        self.scalar_first = scalar_first
-
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        x_rep = jet.utils.replicate(x, self.times, pos=self.pos)
-        return (
-            self.op(self.scalar, x_rep)
-            if self.scalar_first
-            else self.op(x_rep, self.scalar)
-        )
-
-
-class SimpleReplicateScalarArithmetic(ReplicateScalarArithmetic):  # noqa: D101
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        res = self.op(self.scalar, x) if self.scalar_first else self.op(x, self.scalar)
-        return jet.utils.replicate(res, self.times, pos=self.pos)
-
-
-CASES.extend(
-    [
-        {
-            "f": ReplicateScalarArithmetic(
-                op, times=5, pos=0, scalar=3.0, scalar_first=first
-            ),
-            "f_simple": SimpleReplicateScalarArithmetic(
-                op, times=5, pos=0, scalar=3.0, scalar_first=first
-            ),
-            "rules": lambda: [PushReplicateScalarArithmetic()],
-            "shape": (4,),
-            "id": f"replicate-{op.__module__}.{op.__name__}-scalar-{first=}",
-        }
-        for op, first in product(_SCALAR_ARITHMETIC_OPS, [False, True])
-        # Skip scalar_first=True for truediv: it decomposes into reciprocal + mul
-        if not (first and op is operator.truediv)
-    ]
-)
-
-
-# swapping arithmetic operations that consume two replicate nodes
-class ReplicateTensorArithmetic(Module):  # noqa: D101
-    def __init__(  # noqa: D107
-        self, op: Callable[[Tensor, Tensor], Tensor], times: int, pos: int, same: bool
-    ):
-        super().__init__()
-        self.op = op
-        self.times = times
-        self.pos = pos
-        self.same = same
-
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        y = x if self.same else x + 1
-        return self.op(
-            jet.utils.replicate(x, self.times, pos=self.pos),
-            jet.utils.replicate(y, self.times, pos=self.pos),
-        )
-
-
-class SimpleReplicateTensorArithmetic(ReplicateTensorArithmetic):  # noqa: D101
-    def forward(self, x):  # noqa: D102
-        y = x if self.same else x + 1
-        return jet.utils.replicate(self.op(x, y), self.times, pos=self.pos)
-
-
-CASES.extend(
-    [
-        {
-            "f": ReplicateTensorArithmetic(op, times=5, pos=0, same=same),
-            "f_simple": SimpleReplicateTensorArithmetic(op, times=5, pos=0, same=same),
-            "rules": lambda: [PushReplicateTensorArithmetic()],
-            "shape": (4,),
-            "id": f"replicate-{op.__module__}.{op.__name__}-tensors-{same=}",
-        }
-        for op, same in product(_TENSOR_ARITHMETIC_OPS, [False, True])
-    ]
-)
-
-
-# Simplify replicate through mm (linear without bias) and addmm (linear with bias).
-_aten = torch.ops.aten
-
-
-class ReplicateAddmm(Module):  # noqa: D101
-    def __init__(self, times: int):  # noqa: D107
-        super().__init__()
-        self.times = times
-
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        return linear(
-            jet.utils.replicate(x, self.times),
-            linspace(-2.0, 10, 12).reshape(3, 4),
-            linspace(-1.0, 2.0, 3),
-        )
-
-
-class SimpleReplicateAddmm(ReplicateAddmm):  # noqa: D101
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        W = linspace(-2.0, 10, 12).reshape(3, 4)
-        b = linspace(-1.0, 2.0, 3)
-        Wt = _aten.t.default(W)
-        out = _aten.addmm.default(b, _aten.unsqueeze.default(x, 0), Wt)
-        out = _aten.squeeze.dim(out, 0)
-        return jet.utils.replicate(out, self.times)
-
-
-CASES.append(
-    {
-        "f": ReplicateAddmm(times=5),
-        "f_simple": SimpleReplicateAddmm(times=5),
-        "rules": lambda: [PushReplicateLinear()],
-        "shape": (4,),
-        "id": "replicate-addmm",
-    }
-)
-
-
-class ReplicateMM(Module):  # noqa: D101
-    def __init__(self, times: int):  # noqa: D107
-        super().__init__()
-        self.times = times
-
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        return linear(
-            jet.utils.replicate(x, self.times),
-            linspace(-2.0, 10, 12).reshape(3, 4),
-        )
-
-
-class SimpleReplicateMM(ReplicateMM):  # noqa: D101
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        W = linspace(-2.0, 10, 12).reshape(3, 4)
-        Wt = _aten.t.default(W)
-        out = _aten.mm.default(_aten.unsqueeze.default(x, 0), Wt)
-        out = _aten.squeeze.dim(out, 0)
-        return jet.utils.replicate(out, self.times)
-
-
-CASES.append(
-    {
-        "f": ReplicateMM(times=5),
-        "f_simple": SimpleReplicateMM(times=5),
-        "rules": lambda: [PushReplicateLinear()],
-        "shape": (4,),
-        "id": "replicate-mm",
-    }
-)
-
-
-# Pushing a replicate node through a sum_vmapped node
-class ReplicateSumVmapped(Module):  # noqa: D101
-    def __init__(self, pos1: int, pos2: int, times: int) -> None:  # noqa: D107
-        super().__init__()
-        self.pos1, self.pos2, self.times = pos1, pos2, times
-
-    def forward(self, x):  # noqa: D102
-        x_rep = jet.utils.replicate(x, self.times, pos=self.pos1)
-        return jet.utils.sum_vmapped(x_rep, self.pos2)
-
-
-class SimpleReplicateSumVmapped(ReplicateSumVmapped):  # noqa: D101
-    def forward(self, x):  # noqa: D102
-        if self.pos1 == self.pos2:
-            return x * self.times
-
-        new_sum_pos = self.pos2 if self.pos1 > self.pos2 else self.pos2 - 1
-        x_sum = jet.utils.sum_vmapped(x, new_sum_pos)
-
-        new_rep_pos = self.pos1 - 1 if self.pos1 > self.pos2 else self.pos1
-        return jet.utils.replicate(x_sum, self.times, pos=new_rep_pos)
-
-
-CASES.extend(
-    [
-        {
-            "f": ReplicateSumVmapped(pos1, pos2, times=5),
-            "f_simple": SimpleReplicateSumVmapped(pos1, pos2, times=5),
-            "rules": lambda: [PushReplicateSumVmapped()],
-            "shape": (4, 3),
-            "id": f"replicate{pos1}-sum_vmapped{pos2}",
-        }
-        for pos1, pos2 in [(2, 2), (2, 0), (0, 2)]
-    ]
-)
-
-
-# Pulling a sum_vmapped node through an arithmetic operation with an integer/float
-class SumVmappedScalarMultiplication(Module):  # noqa: D101
+# Pulling a sum node through an arithmetic operation with an integer/float
+class SumScalarMultiplication(Module):  # noqa: D101
     def __init__(  # noqa: D107
         self,
         op: Callable[[float | int | Tensor, float | int | Tensor], Tensor],
@@ -322,12 +78,12 @@ class SumVmappedScalarMultiplication(Module):  # noqa: D101
 
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         res = self.op(self.scalar, x) if self.scalar_first else self.op(x, self.scalar)
-        return jet.utils.sum_vmapped(res, self.pos)
+        return res.sum(self.pos)
 
 
-class SimpleSumVmappedScalarMultiplication(SumVmappedScalarMultiplication):  # noqa: D101
+class SimpleSumScalarMultiplication(SumScalarMultiplication):  # noqa: D101
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        x_sum = jet.utils.sum_vmapped(x, self.pos)
+        x_sum = x.sum(self.pos)
         return (
             self.op(self.scalar, x_sum)
             if self.scalar_first
@@ -338,96 +94,92 @@ class SimpleSumVmappedScalarMultiplication(SumVmappedScalarMultiplication):  # n
 CASES.extend(
     [
         {
-            "f": SumVmappedScalarMultiplication(
+            "f": SumScalarMultiplication(op, pos=0, scalar=3.0, scalar_first=first),
+            "f_simple": SimpleSumScalarMultiplication(
                 op, pos=0, scalar=3.0, scalar_first=first
             ),
-            "f_simple": SimpleSumVmappedScalarMultiplication(
-                op, pos=0, scalar=3.0, scalar_first=first
-            ),
-            "rules": lambda: [PullSumVmappedScalarMultiplication()],
+            "rules": lambda: [PullSumScalarMultiplication()],
             "shape": (4,),
-            "id": f"sum_vmapped-{op.__module__}.{op.__name__}-scalar-{first=}",
+            "id": f"sum-{op.__module__}.{op.__name__}-scalar-{first=}",
         }
         for op, first in product(_MULTIPLICATION_OPS, [False, True])
     ]
 )
 
 
-# pulling a sum_vmapped node through addition/subtraction of two tensors
-class SumVmappedTensorAddition(Module):  # noqa: D101
+# pulling a sum node through addition/subtraction of two tensors
+class SumTensorAddition(Module):  # noqa: D101
     def __init__(self, op: Callable[[Tensor, Tensor], Tensor], pos: int):  # noqa: D107
         super().__init__()
         self.op, self.pos = op, pos
 
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         y = x + 1
-        return jet.utils.sum_vmapped(self.op(x, y), self.pos)
+        return self.op(x, y).sum(self.pos)
 
 
-class SimpleSumVmappedTensorAddition(SumVmappedTensorAddition):  # noqa: D101
+class SimpleSumTensorAddition(SumTensorAddition):  # noqa: D101
     def forward(self, x):  # noqa: D102
         return self.op(
-            jet.utils.sum_vmapped(x, self.pos),
-            jet.utils.sum_vmapped(x + 1, self.pos),
+            x.sum(self.pos),
+            (x + 1).sum(self.pos),
         )
 
 
 CASES.extend(
     [
         {
-            "f": SumVmappedTensorAddition(op, pos=0),
-            "f_simple": SimpleSumVmappedTensorAddition(op, pos=0),
-            "rules": lambda: [PullSumVmappedTensorAddition()],
+            "f": SumTensorAddition(op, pos=0),
+            "f_simple": SimpleSumTensorAddition(op, pos=0),
+            "rules": lambda: [PullSumTensorAddition()],
             "shape": (4,),
-            "id": f"sum_vmapped-{op.__module__}.{op.__name__}-two-tensors",
+            "id": f"sum-{op.__module__}.{op.__name__}-two-tensors",
         }
         for op in _ADDITION_OPS
     ]
 )
 
 
-# Pull a sum_vmapped node through mm (linear without bias).
-class SumVmappedMM(Module):  # noqa: D101
+# Pull a sum node through mm (linear without bias).
+class SumMM(Module):  # noqa: D101
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        return jet.utils.sum_vmapped(
-            linear(x, linspace(-2.0, 10, 12).reshape(3, 4)),
-        )
+        return linear(x, linspace(-2.0, 10, 12).reshape(3, 4)).sum(0)
 
 
-class SimpleSumVmappedMM(SumVmappedMM):  # noqa: D101
+class SimpleSumMM(SumMM):  # noqa: D101
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         W = linspace(-2.0, 10, 12).reshape(3, 4)
         Wt = _aten.t.default(W)
-        sv = jet.utils.sum_vmapped(x)
+        sv = x.sum(0)
         out = _aten.mm.default(_aten.unsqueeze.default(sv, 0), Wt)
         return _aten.squeeze.dim(out, 0)
 
 
 CASES.append(
     {
-        "f": SumVmappedMM(),
-        "f_simple": SimpleSumVmappedMM(),
-        "rules": lambda: [PullSumVmappedLinear()],
+        "f": SumMM(),
+        "f_simple": SimpleSumMM(),
+        "rules": lambda: [PullSumLinear()],
         "shape": (5, 4),
-        "id": "sum_vmapped-mm",
+        "id": "sum-mm",
     }
 )
 
 
-# Pull a sum_vmapped node through addmm (linear with bias).
-class SumVmappedAddmm(Module):  # noqa: D101
+# Pull a sum node through addmm (linear with bias).
+class SumAddmm(Module):  # noqa: D101
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        return jet.utils.sum_vmapped(
-            linear(x, linspace(-2.0, 10, 12).reshape(3, 4), linspace(-1.0, 2.0, 3)),
-        )
+        return linear(
+            x, linspace(-2.0, 10, 12).reshape(3, 4), linspace(-1.0, 2.0, 3)
+        ).sum(0)
 
 
-class SimpleSumVmappedAddmm(SumVmappedAddmm):  # noqa: D101
+class SimpleSumAddmm(SumAddmm):  # noqa: D101
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         W = linspace(-2.0, 10, 12).reshape(3, 4)
         b = linspace(-1.0, 2.0, 3)
         Wt = _aten.t.default(W)
-        sv = jet.utils.sum_vmapped(x)
+        sv = x.sum(0)
         out = _aten.mm.default(_aten.unsqueeze.default(sv, 0), Wt)
         out = _aten.squeeze.dim(out, 0)
         scaled_b = _aten.mul.Tensor(b, x.shape[0])
@@ -436,64 +188,12 @@ class SimpleSumVmappedAddmm(SumVmappedAddmm):  # noqa: D101
 
 CASES.append(
     {
-        "f": SumVmappedAddmm(),
-        "f_simple": SimpleSumVmappedAddmm(),
-        "rules": lambda: [PullSumVmappedLinear()],
+        "f": SumAddmm(),
+        "f_simple": SimpleSumAddmm(),
+        "rules": lambda: [PullSumLinear()],
         "shape": (5, 4),
-        "id": "sum_vmapped-addmm",
+        "id": "sum-addmm",
     }
-)
-
-
-# Pull a sum_vmapped through a multiplication, one of whose arguments is a replicate
-class SumVmappedReplicateMultiplication(Module):  # noqa: D101
-    def __init__(  # noqa: D107
-        self, times: int, shape: tuple[int, ...], pos: int, replicate_first: bool
-    ):
-        super().__init__()
-        self.times = times
-        self.shape = Size(shape)
-        self.pos = pos
-        self.replicate_first = replicate_first
-        self.y = linspace(-2.0, 6.0, self.times * self.shape.numel()).reshape(
-            times, *shape
-        )
-
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        res = (
-            jet.utils.replicate(x, self.times, pos=0) * self.y
-            if self.replicate_first
-            else mul(self.y, jet.utils.replicate(x, self.times, pos=0))
-        )
-        return jet.utils.sum_vmapped(res, self.pos)
-
-
-class SimpleSumVmappedReplicateMultiplication(SumVmappedReplicateMultiplication):  # noqa: D101
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        return (
-            x * jet.utils.sum_vmapped(self.y, self.pos)
-            if self.replicate_first
-            else mul(jet.utils.sum_vmapped(self.y, self.pos), x)
-        )
-
-
-CASES.extend(
-    [
-        {
-            "f": SumVmappedReplicateMultiplication(
-                times=5, shape=(4,), pos=0, replicate_first=first
-            ),
-            "f_simple": SimpleSumVmappedReplicateMultiplication(
-                times=5, shape=(4,), pos=0, replicate_first=first
-            ),
-            "rules": lambda: [
-                PullSumVmappedReplicateMultiplication(),
-            ],
-            "shape": (4,),
-            "id": f"sum_vmapped-replicate-multiplication-{first=}",
-        }
-        for first in [True, False]
-    ]
 )
 
 

@@ -2,14 +2,12 @@
 
 from contextlib import contextmanager
 from functools import partial
-from itertools import product
 from typing import Callable
 
-from torch import Tensor, manual_seed
+from torch import Tensor
 from torch.fx import Graph, GraphModule
 from torch.fx.passes.shape_prop import ShapeProp
 from torch.nn import Module
-from torch.random import fork_rng
 
 from jet.rules import (
     PullSumBroadcastedMultiplication,
@@ -22,6 +20,7 @@ from jet.rules import (
     Rule,
 )
 from jet.tracing import capture_graph
+from jet.utils import run_seeded
 
 
 def common_subexpression_elimination(graph: Graph, verbose: bool = False) -> bool:
@@ -67,8 +66,12 @@ def common_subexpression_elimination(graph: Graph, verbose: bool = False) -> boo
     return replaced
 
 
-def apply_once(rules: list[Rule], mod: GraphModule, verbose: bool = False) -> bool:
-    """Apply one of the supplied rules once to a module.
+def apply_all(rules: list[Rule], mod: GraphModule, verbose: bool = False) -> bool:
+    """Apply matching rules to all sum nodes in a single pass.
+
+    Iterates over all nodes once, applying the first matching rule to each sum
+    node. New sum nodes created by rule applications are handled in subsequent
+    passes (by the caller).
 
     Args:
         rules: A list of rules to be applied.
@@ -78,15 +81,17 @@ def apply_once(rules: list[Rule], mod: GraphModule, verbose: bool = False) -> bo
     Returns:
         True if any rule was applied, False otherwise.
     """
-    for node, rule in product(mod.graph.nodes, rules):
-        if rule.match(node):
-            if verbose:
-                print(f"Applying rule {rule.__class__.__name__} to {node=}.")
+    applied = False
+    for node in list(mod.graph.nodes):
+        for rule in rules:
+            if rule.match(node):
+                if verbose:
+                    print(f"Applying rule {rule.__class__.__name__} to {node=}.")
+                rule.apply(node, mod.graph)
+                applied = True
+                break
 
-            rule.apply(node, mod.graph)
-            return True
-
-    return False
+    return applied
 
 
 @contextmanager
@@ -115,17 +120,13 @@ def check_unaltered(
     """
     if x is not None:
         before_str = str(mod.graph)
-        with fork_rng():
-            manual_seed(seed)
-            out_before = mod(x)
+        out_before = run_seeded(mod, seed, x)
         yield
 
         try:
             mod.graph.lint()
             mod.recompile()
-            with fork_rng():
-                manual_seed(seed)
-                out_after = mod(x)
+            out_after = run_seeded(mod, seed, x)
             if isinstance(out_before, tuple) and isinstance(out_after, tuple):
                 # If both outputs are tuples, compare each element
                 close = len(out_before) == len(out_after) and all(
@@ -211,7 +212,7 @@ def simplify(  # noqa: C901
     if remove_unused:
         strategies["remove_unused"] = graph.eliminate_dead_code
     if pull_sum:
-        strategies["pull_sum"] = lambda: apply_once(sum_rules, mod, verbose=verbose)
+        strategies["pull_sum"] = lambda: apply_all(sum_rules, mod, verbose=verbose)
     if eliminate_common_subexpressions:
         strategies["common_subexpression_elimination"] = partial(
             common_subexpression_elimination, mod.graph, verbose=verbose

@@ -17,7 +17,7 @@ from jet.rules import (
     PullSumScalarMultiplication,
     PullSumTensorAddition,
 )
-from jet.simplify import apply_once
+from jet.simplify import apply_all
 from jet.tracing import capture_graph
 
 _aten = torch.ops.aten
@@ -216,7 +216,7 @@ def test_simplification_rules(case: RuleTestCase):
 
     do_simplify = True
     while do_simplify:
-        do_simplify = apply_once(case.rules, f_simplified, verbose=True)
+        do_simplify = apply_all(case.rules, f_simplified, verbose=True)
     f_simplified.graph.eliminate_dead_code()
 
     # make sure all functions yield the same result

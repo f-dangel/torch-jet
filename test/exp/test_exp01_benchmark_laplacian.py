@@ -3,9 +3,8 @@
 from typing import Any
 
 from pytest import mark
-from torch import Tensor, manual_seed, sigmoid, vmap
+from torch import manual_seed, sigmoid, vmap
 from torch.nn import Linear, Sequential, Tanh
-from torch.random import fork_rng
 
 from jet.bilaplacian import Bilaplacian
 from jet.exp.exp01_benchmark_laplacian.execute import (
@@ -14,6 +13,7 @@ from jet.exp.exp01_benchmark_laplacian.execute import (
     laplacian_function,
 )
 from jet.laplacian import Laplacian
+from jet.utils import run_seeded
 from jet.weighted_laplacian import get_weighting
 from test.test___init__ import report_nonclose, setup_case
 from test.test_bilaplacian import bilaplacian
@@ -131,13 +131,23 @@ def test_randomized_laplacian_functions_identical(
         lap_fn = laplacian_function(
             f, x, is_batched, strategy, randomization=randomization, weighting=weighting
         )
-        with fork_rng():
-            manual_seed(42)
-            laps[strategy] = lap_fn()
+        laps[strategy] = run_seeded(lap_fn, 42)
 
+    # same seed must yield identical results across strategies
     first_key = list(laps.keys())[0]
     for key in laps:
         report_nonclose(laps[first_key], laps[key])
+
+    # different seed must yield a different result (skip for rademacher:
+    # v_i^2 = 1 makes the estimator exact for diagonal Hessians / rank-deficient
+    # weights, so different seeds can produce identical results)
+    if distribution != "rademacher":
+        lap_fn = laplacian_function(
+            f, x, is_batched, first_key, randomization=randomization, weighting=weighting
+        )
+        lap_seed_a = run_seeded(lap_fn, 42)
+        lap_seed_b = run_seeded(lap_fn, 999)
+        assert not lap_seed_a.allclose(lap_seed_b)
 
 
 @mark.parametrize("batch_size", BATCH_SIZES, ids=BATCH_SIZE_IDS)
@@ -195,13 +205,8 @@ def test_randomized_laplacian_functions_converge(
         f, X, is_batched, strategy, randomization=randomization, weighting=weighting
     )
 
-    def sample(idx: int) -> Tensor:
-        with fork_rng():
-            manual_seed(idx)
-            return fn()
-
     converged = _check_mc_convergence(
-        lap, sample, chunk_size, max_num_chunks, target_rel_error
+        lap, lambda idx: run_seeded(fn, idx), chunk_size, max_num_chunks, target_rel_error
     )
     assert converged, f"MC Laplacian ({strategy}, {distribution}) did not converge."
 
@@ -255,13 +260,23 @@ def test_randomized_bilaplacian_functions_identical(
         bilap_fn = bilaplacian_function(
             f, x, is_batched, strategy, randomization=randomization
         )
-        with fork_rng():
-            manual_seed(42)
-            bilaps[strategy] = bilap_fn()
+        bilaps[strategy] = run_seeded(bilap_fn, 42)
 
+    # same seed must yield identical results across strategies
     first_key = list(bilaps.keys())[0]
     for key in bilaps:
         report_nonclose(bilaps[first_key], bilaps[key])
+
+    # different seed must yield a different result (skip for rademacher:
+    # v_i^2 = 1 makes the estimator exact for diagonal Hessians / rank-deficient
+    # weights, so different seeds can produce identical results)
+    if distribution != "rademacher":
+        bilap_fn = bilaplacian_function(
+            f, x, is_batched, first_key, randomization=randomization
+        )
+        bilap_seed_a = run_seeded(bilap_fn, 42)
+        bilap_seed_b = run_seeded(bilap_fn, 999)
+        assert not bilap_seed_a.allclose(bilap_seed_b)
 
 
 @mark.parametrize("batch_size", BATCH_SIZES, ids=BATCH_SIZE_IDS)
@@ -305,12 +320,7 @@ def test_randomized_bilaplacian_functions_converge(
         f, X, is_batched, strategy, randomization=randomization
     )
 
-    def sample(idx: int) -> Tensor:
-        with fork_rng():
-            manual_seed(idx)
-            return fn()
-
     converged = _check_mc_convergence(
-        bilap, sample, chunk_size, max_num_chunks, target_rel_error
+        bilap, lambda idx: run_seeded(fn, idx), chunk_size, max_num_chunks, target_rel_error
     )
     assert converged, f"MC-Bi-Laplacian ({strategy}, {distribution}) did not converge."

@@ -1,10 +1,12 @@
 """Utility functions for computing jets."""
 
 from math import factorial, prod
+from typing import Callable
 
-from torch import Tensor, device, dtype, empty, randn
+from torch import Tensor, device, dtype, empty, manual_seed, randn
 from torch.fx import GraphModule, Node
 from torch.fx.passes.graph_drawer import FxGraphDrawer
+from torch.random import fork_rng
 
 # type annotation for arguments and Taylor coefficients in input and output space
 Primal = Tensor
@@ -12,6 +14,23 @@ Value = Tensor
 # primals and values form a tuple
 PrimalAndCoefficients = tuple[Primal, ...]
 ValueAndCoefficients = tuple[Value, ...]
+
+
+def run_seeded(f: Callable, seed: int, *args, **kwargs):
+    """Run a callable with a specific random seed, restoring the RNG state afterwards.
+
+    Args:
+        f: The callable to execute.
+        seed: The random seed to use.
+        *args: Positional arguments forwarded to ``f``.
+        **kwargs: Keyword arguments forwarded to ``f``.
+
+    Returns:
+        The return value of ``f(*args, **kwargs)``.
+    """
+    with fork_rng():
+        manual_seed(seed)
+        return f(*args, **kwargs)
 
 
 def integer_partitions(n: int, I: int = 1):  # noqa: E741

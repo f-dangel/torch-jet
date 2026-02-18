@@ -28,7 +28,7 @@ from jet.bilaplacian import Bilaplacian
 from jet.exp.utils import measure_peak_memory, measure_time, to_string
 from jet.laplacian import Laplacian
 from jet.simplify import simplify
-from jet.utils import sample
+from jet.utils import run_seeded, sample
 from jet.weighted_laplacian import get_weighting
 
 HERE = path.abspath(__file__)
@@ -667,9 +667,7 @@ if __name__ == "__main__":
             False,  # do not use compilation for ground truth
             args.rank_ratio,
         )
-        with fork_rng():
-            manual_seed(3)
-            baseline_result = baseline_func_no()
+        baseline_result = run_seeded(baseline_func_no, 3)
 
         assert baseline_result.shape == result.shape, (
             f"Shapes do not match: {baseline_result.shape} != {result.shape}."

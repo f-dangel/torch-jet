@@ -12,17 +12,6 @@ from torch.fx.passes.shape_prop import ShapeProp
 from torch.nn import Module
 from torch.random import fork_rng
 
-_aten = torch.ops.aten
-
-# Shape-only operations: these only manipulate tensor shape/strides, not data.
-_RESHAPE_OPS = {
-    _aten.squeeze.dim,
-    _aten.squeeze.dims,
-    _aten.unsqueeze.default,
-    _aten.view.default,
-    _aten._unsafe_view.default,
-}
-
 from jet.rules import (
     PullSumBroadcastedMultiplication,
     PullSumLinear,
@@ -34,6 +23,17 @@ from jet.rules import (
     Rule,
 )
 from jet.tracing import capture_graph
+
+_aten = torch.ops.aten
+
+# Shape-only operations: these only manipulate tensor shape/strides, not data.
+_RESHAPE_OPS = {
+    _aten.squeeze.dim,
+    _aten.squeeze.dims,
+    _aten.unsqueeze.default,
+    _aten.view.default,
+    _aten._unsafe_view.default,
+}
 
 
 def common_subexpression_elimination(graph: Graph, verbose: bool = False) -> bool:

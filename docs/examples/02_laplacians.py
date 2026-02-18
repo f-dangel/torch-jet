@@ -16,13 +16,12 @@ from typing import Callable
 import matplotlib.pyplot as plt
 from torch import Tensor, eye, manual_seed, rand, stack, zeros_like
 from torch.func import hessian, vmap
-from torch.fx import GraphModule
-from torch.fx.passes.graph_drawer import FxGraphDrawer
 from torch.nn import Linear, Module, Sequential, Tanh
 from tueplots import bundles
 
 import jet
 from jet.simplify import simplify
+from jet.utils import visualize_graph
 
 HEREDIR = path.dirname(path.abspath(__name__))
 # We need to store figures here so they will be picked up in the built doc
@@ -259,25 +258,6 @@ else:
 
 # %%
 #
-# To visualize graphs, we define the following helper:
-
-
-def visualize_graph(mod: GraphModule, savefile: str, name: str = ""):
-    """Visualize the compute graph of a module and store it as .png.
-
-    Args:
-        mod: The module whose compute graph to visualize.
-        savefile: The path to the file where the graph should be saved.
-        name: A name for the graph, used in the visualization.
-    """
-    drawer = FxGraphDrawer(mod, name)
-    dot_graph = drawer.get_dot_graph()
-    with open(savefile, "wb") as f:
-        f.write(dot_graph.create_png())
-
-
-# %%
-#
 # Now, let's look at three different graphs which will become clear in a moment
 # (we evaluated approaches 2 and 3 in our paper).
 
@@ -285,18 +265,24 @@ from jet.tracing import capture_graph  # noqa: E402
 
 # Graph 1: Simply capture the module that computes the Laplacian
 mod_traced = capture_graph(mod, x)
-visualize_graph(mod_traced, path.join(GALLERYDIR, "02_laplacian_module.png"))
+visualize_graph(
+    mod_traced, path.join(GALLERYDIR, "02_laplacian_module.png"), use_custom=True
+)
 assert hessian_trace_laplacian.allclose(mod_traced(x))
 
 # Graph 2: Standard simplifications (dead code elimination, CSE, but no collapsing)
 mod_standard = simplify(mod, x, pull_sum=False)
-visualize_graph(mod_standard, path.join(GALLERYDIR, "02_laplacian_standard.png"))
+visualize_graph(
+    mod_standard, path.join(GALLERYDIR, "02_laplacian_standard.png"), use_custom=True
+)
 assert hessian_trace_laplacian.allclose(mod_standard(x))
 
 # Graph 3: Collapsing simplifications — pull summations up the graph to directly
 # propagate sums of Taylor coefficients
 mod_collapsed = simplify(mod, x, pull_sum=True)
-visualize_graph(mod_collapsed, path.join(GALLERYDIR, "02_laplacian_collapsed.png"))
+visualize_graph(
+    mod_collapsed, path.join(GALLERYDIR, "02_laplacian_collapsed.png"), use_custom=True
+)
 assert hessian_trace_laplacian.allclose(mod_collapsed(x))
 
 # %%
@@ -317,36 +303,40 @@ print(f"3) Collapsing simplifications: {len(mod_collapsed.graph.nodes)} nodes")
 
 # %%
 #
-# Next, let's have a look at the computation graphs.
+# Next, let's have a look at the computation graphs. In the visualizations below,
+# `sum` nodes are highlighted in orange-red to make them easy to track across
+# the three graphs.
 #
 # | Captured | Standard simplifications | Collapsing simplifications |
 # |:--------:|:------------------------:|:---------------------------|
 # | ![](02_laplacian_module.png) | ![](02_laplacian_standard.png) | ![](02_laplacian_collapsed.png) |
 #
-# - Graph 1 (**Captured**) is the raw traced graph. It has a `Tensor.sum`
-#   node at the end, which sums the Hessian diagonal elements to obtain the Laplacian.
+# - Graph 1 (**Captured**) is the raw traced graph. It has a `sum`
+#   node (orange-red) at the end, which sums the Hessian diagonal elements to
+#   obtain the Laplacian.
 #
 # - Graph 2 (**Standard simplifications**) applies dead code elimination and common
-#   subexpression elimination (CSE), but does not collapse Taylor mode.
+#   subexpression elimination (CSE), but does not collapse Taylor mode. Note that
+#   the `sum` node remains at the bottom of the graph.
 #
 # - Graph 3 (**Collapsing simplifications**) goes one step further and
 #   performs the 'collapsing' of Taylor mode we present in our paper.
 #
-#     The input to the summation at the end is the output of a linear operation,
-#     something like
+#     The input to the `sum` node at the end of Graph 2 is the output of a linear
+#     operation, something like
 #     ```python
 #     laplacian = sum(linear(Z, weight)) # standard: D matvecs
 #     ```
-#     *The crucial insight from our paper is that the sum can be propagated up the
+#     *The crucial insight from our paper is that the `sum` can be propagated up the
 #     graph!* For our example, we can first sum, then apply the linear operation, as
 #     this is mathematically equivalent, but cheaper:
 #     ```python
 #     laplacian = linear(sum(Z), weight) # collapsed: 1 matvec
 #     ```
-#     In the graph perspective, we have 'pulled' the `sum` node up the graph.
-#     We can repeat this procedure until we run out of possible simplifications.
-#     Effectively, this 'collapses' the Taylor coefficients we propagate forward;
-#     hence the name 'collapsed Taylor mode'.
+#     In the graph perspective, we have 'pulled' the `sum` node (orange-red) up the
+#     graph. We can repeat this procedure until we run out of possible
+#     simplifications. Effectively, this 'collapses' the Taylor coefficients we
+#     propagate forward; hence the name 'collapsed Taylor mode'.
 #
 # We can verify successful collapsing by looking at the tensor constants of the graph
 # which represent the forward-propagated coefficients:

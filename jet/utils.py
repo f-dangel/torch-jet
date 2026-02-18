@@ -3,6 +3,8 @@
 from math import factorial, prod
 
 from torch import Tensor, device, dtype, empty, randn
+from torch.fx import GraphModule, Node
+from torch.fx.passes.graph_drawer import FxGraphDrawer
 
 # type annotation for arguments and Taylor coefficients in input and output space
 Primal = Tensor
@@ -85,3 +87,56 @@ def sample(x_meta: Tensor, distribution: str, shape: tuple[int, ...]) -> Tensor:
     """
     sample_func = {"normal": randn, "rademacher": rademacher}[distribution]
     return sample_func(*shape, dtype=x_meta.dtype, device=x_meta.device)
+
+
+class _CustomDrawer(FxGraphDrawer):
+    """FxGraphDrawer that highlights sum nodes and de-emphasizes other operations.
+
+    Using this custom drawer to visualize graphs is helpful to troubleshoot collapsing.
+
+    Sum nodes (``aten.sum``) are colored orange-red, other ``call_function`` nodes
+    are white. All other node types (placeholders, constants, output) keep their
+    default colors.
+    """
+
+    _SUM_TARGETS: set[str] = {
+        "torch.ops.aten.sum.dim_IntList",
+        "torch.ops.aten.sum.default",
+    }
+
+    def _get_node_style(self, node: Node) -> dict[str, str]:
+        """Return the dot attributes for a graph node.
+
+        Args:
+            node: The FX graph node to style.
+
+        Returns:
+            Dictionary of dot graph attributes for the node.
+        """
+        style = super()._get_node_style(node)
+        if node.op == "call_function":
+            target_name = node._pretty_print_target(node.target)
+            if target_name in self._SUM_TARGETS:
+                style["fillcolor"] = "OrangeRed"
+            else:
+                style["fillcolor"] = "white"
+        return style
+
+
+def visualize_graph(
+    mod: GraphModule, savefile: str, name: str = "", use_custom: bool = False
+):
+    """Visualize the compute graph of a module and store it as .png.
+
+    Args:
+        mod: The module whose compute graph to visualize.
+        savefile: The path to the file where the graph should be saved.
+        name: A name for the graph, used in the visualization.
+        use_custom: If ``True``, highlight sum nodes in orange-red and use white
+            for other operations. Defaults to ``False``.
+    """
+    cls = _CustomDrawer if use_custom else FxGraphDrawer
+    drawer = cls(mod, name)
+    dot_graph = drawer.get_dot_graph()
+    with open(savefile, "wb") as f:
+        f.write(dot_graph.create_png())

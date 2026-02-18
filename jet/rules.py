@@ -267,7 +267,7 @@ class PullSumBroadcastedMultiplication(Rule):
         out_ndim = len(mul_node.meta["val"].shape)
         arg0, arg1 = mul_node.args
 
-        arg0_ndim = len(arg0.meta["val"].shape)
+        _ = len(arg0.meta["val"].shape)
         arg1_ndim = len(arg1.meta["val"].shape)
 
         if pos < out_ndim - arg1_ndim:

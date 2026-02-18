@@ -12,14 +12,13 @@ from os import path
 from pytest import raises
 from torch import Tensor, cos, manual_seed, ones_like, rand, sin, zeros_like
 from torch.func import hessian
-from torch.fx import GraphModule
 from torch.fx.experimental.proxy_tensor import make_fx
-from torch.fx.passes.graph_drawer import FxGraphDrawer
 from torch.nn import Linear, Sequential, Tanh
 from torch.nn.functional import relu
 
 from jet import jet
 from jet.tracing import capture_graph
+from jet.utils import visualize_graph
 
 HEREDIR = path.dirname(path.abspath(__name__))
 # We need to store figures here so they will be picked up in the built doc
@@ -255,23 +254,8 @@ print(f_jet.graph)
 # %%
 #
 # While reading this string description already provides some insights into the graph's
-# structure, it is often more convenient to visualize it. For this, we define the
-# following helper:
-
-
-def visualize_graph(mod: GraphModule, savefile: str, name: str = ""):
-    """Visualize the compute graph of a module and store it as .png.
-
-    Args:
-        mod: The module whose compute graph to visualize.
-        savefile: The path to the file where the graph should be saved.
-        name: A name for the graph, used in the visualization.
-    """
-    drawer = FxGraphDrawer(mod, name)
-    dot_graph = drawer.get_dot_graph()
-    with open(savefile, "wb") as f:
-        f.write(dot_graph.create_png())
-
+# structure, it is often more convenient to visualize it. For this, we use the
+# `visualize_graph` helper from `jet.utils`.
 
 # %%
 #
@@ -399,7 +383,7 @@ with raises(RuntimeError):
 
 
 with raises(NotImplementedError):
-    jet(lambda x: relu(x), 2, rand(3))
+    jet(lambda x: relu(x), 2, rand(3))  # noqa: PLW0108
 
 # %%
 #

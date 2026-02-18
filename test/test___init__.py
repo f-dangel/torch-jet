@@ -3,7 +3,7 @@
 from typing import Any, Callable
 
 from pytest import mark
-from torch import Tensor, cos, manual_seed, rand, sigmoid, sin, tanh, tensor
+from torch import Tensor, cos, float64, manual_seed, rand, sigmoid, sin, tanh, tensor
 from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
 
@@ -93,8 +93,8 @@ JET_CASES = [
     {
         "f": lambda x: linear(
             tanh(x),
-            tensor([[0.1, -0.2, 0.3], [0.4, 0.5, -0.6]]).double(),
-            bias=tensor([0.12, -0.34]).double(),
+            tensor([[0.1, -0.2, 0.3], [0.4, 0.5, -0.6]], dtype=float64),
+            bias=tensor([0.12, -0.34], dtype=float64),
         ),
         "shape": (3,),
         "id": "tanh-linear",

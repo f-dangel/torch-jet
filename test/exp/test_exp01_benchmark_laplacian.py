@@ -4,6 +4,7 @@ from typing import Any
 
 from pytest import mark
 from torch import Tensor, manual_seed, sigmoid, vmap
+from torch.random import fork_rng
 from torch.nn import Linear, Sequential, Tanh
 
 from jet.bilaplacian import Bilaplacian
@@ -127,14 +128,12 @@ def test_randomized_laplacian_functions_identical(
 
     laps = {}
     for strategy in SUPPORTED_STRATEGIES:
-        manual_seed(1)
         lap_fn = laplacian_function(
             f, x, is_batched, strategy, randomization=randomization, weighting=weighting
         )
-        # Seed before evaluation so all strategies use the same random state
-        # (make_fx tracing consumes random state, so we re-seed after construction)
-        manual_seed(42)
-        laps[strategy] = lap_fn()
+        with fork_rng():
+            manual_seed(42)
+            laps[strategy] = lap_fn()
 
     first_key = list(laps.keys())[0]
     for key in laps:
@@ -193,10 +192,12 @@ def test_randomized_laplacian_functions_converge(
 
     # check convergence of the Monte-Carlo estimator
     def sample(idx: int) -> Tensor:
-        manual_seed(idx)
-        return laplacian_function(
+        fn = laplacian_function(
             f, X, is_batched, strategy, randomization=randomization, weighting=weighting
-        )()
+        )
+        with fork_rng():
+            manual_seed(idx)
+            return fn()
 
     converged = _check_mc_convergence(
         lap, sample, chunk_size, max_num_chunks, target_rel_error
@@ -250,14 +251,12 @@ def test_randomized_bilaplacian_functions_identical(
 
     bilaps = {}
     for strategy in SUPPORTED_STRATEGIES:
-        manual_seed(1)
         bilap_fn = bilaplacian_function(
             f, x, is_batched, strategy, randomization=randomization
         )
-        # Seed before evaluation so all strategies use the same random state
-        # (make_fx tracing consumes random state, so we re-seed after construction)
-        manual_seed(42)
-        bilaps[strategy] = bilap_fn()
+        with fork_rng():
+            manual_seed(42)
+            bilaps[strategy] = bilap_fn()
 
     first_key = list(bilaps.keys())[0]
     for key in bilaps:
@@ -302,10 +301,12 @@ def test_randomized_bilaplacian_functions_converge(
 
     # check convergence of the Monte-Carlo estimator
     def sample(idx: int) -> Tensor:
-        manual_seed(idx)
-        return bilaplacian_function(
+        fn = bilaplacian_function(
             f, X, is_batched, strategy, randomization=randomization
-        )()
+        )
+        with fork_rng():
+            manual_seed(idx)
+            return fn()
 
     converged = _check_mc_convergence(
         bilap, sample, chunk_size, max_num_chunks, target_rel_error

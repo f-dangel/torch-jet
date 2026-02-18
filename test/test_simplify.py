@@ -5,7 +5,7 @@ from typing import Any, Callable
 
 import torch
 from pytest import mark
-from torch import Tensor, arange, manual_seed, sigmoid, sin, tanh, tensor
+from torch import Tensor, arange, float64, manual_seed, sigmoid, sin, tanh, tensor
 from torch.fx import Graph, GraphModule, Node
 from torch.nn import Linear, Sequential, Tanh
 from torch.nn.functional import linear
@@ -44,8 +44,8 @@ SIMPLIFY_CASES = [
     {
         "f": lambda x: linear(
             tanh(x),
-            tensor([[0.1, -0.2, 0.3], [0.4, 0.5, -0.6]]).double(),
-            bias=tensor([0.12, -0.34]).double(),
+            tensor([[0.1, -0.2, 0.3], [0.4, 0.5, -0.6]], dtype=float64),
+            bias=tensor([0.12, -0.34], dtype=float64),
         ),
         "shape": (3,),
         "id": "tanh-linear",
@@ -223,7 +223,7 @@ def _assert_bilaplacian_structure(
             "sin": 35 if D == 1 else 101,
             "sin-sin": 198,
             "tanh-tanh": 244,
-            "tanh-linear": 150,
+            "tanh-linear": 149,
             "two-layer-tanh-mlp": 361,
             "sigmoid-sigmoid": 240,
         }
@@ -547,7 +547,7 @@ def test_full_simplification_structural(config: dict[str, Any]):
         "sin": 16,
         "sin-sin": 25,
         "tanh-tanh": 41,
-        "tanh-linear": 41,
+        "tanh-linear": 43,
         "two-layer-tanh-mlp": 61,
         "sigmoid-sigmoid": 37,
     }

@@ -649,31 +649,6 @@ def jet_addmm(
         raise NotImplementedError(f"Not implemented for {_jet_info['is_taylor']=}.")
 
 
-def jet_to_copy(
-    self_and_taylor_coefficients: PrimalAndCoefficients,
-    *,
-    _jet_info: JetInfo,
-    **copy_kwargs,
-) -> ValueAndCoefficients:
-    """Taylor-mode arithmetic for ``aten._to_copy``.
-
-    Args:
-        self_and_taylor_coefficients: The primal and its Taylor coefficients.
-        _jet_info: Indicating which arguments are Taylor coefficients.
-        **copy_kwargs: Keyword arguments for _to_copy (dtype, device, etc.).
-
-    Returns:
-        The value and its Taylor coefficients, each converted.
-    """
-    if _jet_info["is_taylor"][0] != (True,):
-        raise NotImplementedError(f"Not implemented for {_jet_info['is_taylor']=}.")
-
-    return tuple(
-        ops.aten._to_copy.default(self_and_taylor_coefficients[k], **copy_kwargs)
-        for k in range(_jet_info["derivative_order"] + 1)
-    )
-
-
 MAPPING = {
     # Elementwise unary
     ops.aten.sin.default: jet_sin,
@@ -692,8 +667,6 @@ MAPPING = {
     ops.aten.view.default: jet_view,
     ops.aten.unsqueeze.default: jet_unsqueeze,
     ops.aten.squeeze.dim: jet_squeeze,
-    # Type conversion
-    ops.aten._to_copy.default: jet_to_copy,
     # Sum (dim reduction)
     ops.aten.sum.dim_IntList: jet_sum,
 }

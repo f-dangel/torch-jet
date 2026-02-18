@@ -47,7 +47,7 @@ NEST_CASES = [
     # replicate
     {"f": lambda x: jet.utils.replicate(x, 5), "shape": (2,), "id": "replicate-5"},
     # sum_vmapped
-    {"f": lambda x: jet.utils.sum_vmapped(x), "shape": (3, 5), "id": "sum_vmapped-3"},
+    {"f": lambda x: jet.utils.sum_vmapped(x), "shape": (3, 5), "id": "sum_vmapped-3"},  # noqa: PLW0108
     # sum_vmapped(sin)
     {
         "f": lambda x: jet.utils.sum_vmapped(sin(x), pos=1),

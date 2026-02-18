@@ -128,7 +128,7 @@ JET_CASES = [
     # multiplication two variables
     {"f": f_multiply, "shape": (5,), "id": "multiply-variables"},
     # sum_vmapped
-    {"f": lambda x: jet.utils.sum_vmapped(x), "shape": (3, 5), "id": "sum_vmapped-3"},
+    {"f": lambda x: jet.utils.sum_vmapped(x), "shape": (3, 5), "id": "sum_vmapped-3"},  # noqa: PLW0108
 ]
 
 # set the `is_batched` flag for all cases

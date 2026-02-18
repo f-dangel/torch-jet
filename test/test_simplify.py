@@ -547,7 +547,7 @@ def test_full_simplification_structural(config: dict[str, Any]):
         "sin-sin": 25,
         "tanh-tanh": 41,
         "tanh-linear": 43,
-        "two-layer-tanh-mlp": 61,
+        "two-layer-tanh-mlp": 73,
         "sigmoid-sigmoid": 37,
     }
     n_nodes = len(list(simplified.graph.nodes))

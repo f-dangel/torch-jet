@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Also benchmark compiled Laplacian functions in example 02
+  ([PR](https://github.com/f-dangel/torch-jet/pull/123))
+
 ## [0.0.1] - 2025-11-14
 
 Today, we are releasing a cleaned up version of the library used in the experiments for our NeurIPS 2025 paper.

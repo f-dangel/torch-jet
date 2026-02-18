@@ -143,7 +143,12 @@ def test_randomized_laplacian_functions_identical(
     # weights, so different seeds can produce identical results)
     if distribution != "rademacher":
         lap_fn = laplacian_function(
-            f, x, is_batched, first_key, randomization=randomization, weighting=weighting
+            f,
+            x,
+            is_batched,
+            first_key,
+            randomization=randomization,
+            weighting=weighting,
         )
         lap_seed_a = run_seeded(lap_fn, 42)
         lap_seed_b = run_seeded(lap_fn, 999)
@@ -206,7 +211,11 @@ def test_randomized_laplacian_functions_converge(
     )
 
     converged = _check_mc_convergence(
-        lap, lambda idx: run_seeded(fn, idx), chunk_size, max_num_chunks, target_rel_error
+        lap,
+        lambda idx: run_seeded(fn, idx),
+        chunk_size,
+        max_num_chunks,
+        target_rel_error,
     )
     assert converged, f"MC Laplacian ({strategy}, {distribution}) did not converge."
 
@@ -316,11 +325,13 @@ def test_randomized_bilaplacian_functions_converge(
     bilap = bilap_func(X)
 
     # check convergence of the Monte-Carlo estimator
-    fn = bilaplacian_function(
-        f, X, is_batched, strategy, randomization=randomization
-    )
+    fn = bilaplacian_function(f, X, is_batched, strategy, randomization=randomization)
 
     converged = _check_mc_convergence(
-        bilap, lambda idx: run_seeded(fn, idx), chunk_size, max_num_chunks, target_rel_error
+        bilap,
+        lambda idx: run_seeded(fn, idx),
+        chunk_size,
+        max_num_chunks,
+        target_rel_error,
     )
     assert converged, f"MC-Bi-Laplacian ({strategy}, {distribution}) did not converge."

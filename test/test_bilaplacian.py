@@ -16,6 +16,7 @@ from torch.func import hessian
 from torch.nn import Linear, Sequential, Tanh
 
 from jet.bilaplacian import Bilaplacian
+from jet.utils import run_seeded
 from test.test___init__ import report_nonclose, setup_case
 from test.test_laplacian import _check_mc_convergence
 
@@ -111,11 +112,11 @@ def test_Bilaplacian_randomization(
     # check convergence of MC estimator
     bilap_fn = Bilaplacian(f, x, randomization=randomization)
 
-    def sample(idx: int) -> Tensor:
-        manual_seed(idx)
-        return bilap_fn(x)
-
     converged = _check_mc_convergence(
-        bilap, sample, chunk_size, max_num_chunks, target_rel_error
+        bilap,
+        lambda idx: run_seeded(bilap_fn, idx, x),
+        chunk_size,
+        max_num_chunks,
+        target_rel_error,
     )
     assert converged, f"Monte-Carlo Bi-Laplacian ({distribution}) did not converge."

@@ -22,6 +22,7 @@ from torch import (
 from torch import compile as torch_compile
 from torch.func import hessian, jacrev, jvp, vmap
 from torch.nn import Linear, Sequential, Tanh
+
 from jet.bilaplacian import Bilaplacian
 from jet.exp.utils import measure_peak_memory, measure_time, to_string
 from jet.laplacian import Laplacian

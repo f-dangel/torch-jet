@@ -11,10 +11,10 @@ from torch.nn import Module
 from torch.nn.functional import linear
 
 from jet.rules import (
+    PullSumAdd,
     PullSumAddMM,
-    PullSumAddition,
     PullSumMM,
-    PullSumMultiplication,
+    PullSumMul,
     PullSumSqueeze,
     PullSumUnsqueeze,
     PullSumView,
@@ -79,7 +79,7 @@ CASES: list[RuleTestCase] = []
 
 
 # Pulling a sum node through an arithmetic operation with an integer/float
-class SumScalarMultiplication(RuleTestCase):  # noqa: D101
+class SumScalarMul(RuleTestCase):  # noqa: D101
     """Test case for ``sum(5 * x) = 5 * sum(x)``."""
 
     shape = (4,)
@@ -92,7 +92,7 @@ class SumScalarMultiplication(RuleTestCase):  # noqa: D101
         self.scalar = scalar
         self.scalar_first = scalar_first
         self.id = f"sum-scalar-{scalar_first=}"
-        self.rules = [PullSumMultiplication()]
+        self.rules = [PullSumMul()]
 
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         res = self.scalar * x if self.scalar_first else x * self.scalar
@@ -105,22 +105,21 @@ class SumScalarMultiplication(RuleTestCase):  # noqa: D101
 
 _POS, _SCALAR = 0, 3.0
 CASES.extend(
-    SumScalarMultiplication(_POS, _SCALAR, scalar_first)
-    for scalar_first in [False, True]
+    SumScalarMul(_POS, _SCALAR, scalar_first) for scalar_first in [False, True]
 )
 
 _ADDITION_OPS = [operator.add, operator.sub]
 
 
 # Pulling a sum node through addition/subtraction of two tensors
-class SumTensorAddition(RuleTestCase):  # noqa: D101
+class SumTensorAdd(RuleTestCase):  # noqa: D101
     shape = (4,)
 
     def __init__(self, op: Callable[[Tensor, Tensor], Tensor], pos: int):  # noqa: D107
         super().__init__()
         self.op, self.pos = op, pos
         self.id = f"sum-{op.__module__}.{op.__name__}-two-tensors"
-        self.rules = [PullSumAddition()]
+        self.rules = [PullSumAdd()]
 
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         y = x + 1
@@ -133,14 +132,14 @@ class SumTensorAddition(RuleTestCase):  # noqa: D101
         )
 
 
-CASES.extend(SumTensorAddition(op, pos=0) for op in _ADDITION_OPS)
+CASES.extend(SumTensorAdd(op, pos=0) for op in _ADDITION_OPS)
 
 
 # Pulling a sum node through a broadcasted tensor multiplication
 class SumBroadcastedMul(RuleTestCase):  # noqa: D101
     shape = (5, 4)
     id = "sum-broadcasted-mul"
-    rules = [PullSumMultiplication()]
+    rules = [PullSumMul()]
 
     def __init__(self, pos: int):  # noqa: D107
         super().__init__()
@@ -162,7 +161,7 @@ CASES.append(SumBroadcastedMul(pos=0))
 class SumAddBroadcasted(RuleTestCase):  # noqa: D101
     shape = (3, 4)
     id = "sum-add-broadcasted"
-    rules = [PullSumAddition()]
+    rules = [PullSumAdd()]
 
     def __init__(self, pos: int):  # noqa: D107
         super().__init__()
@@ -372,7 +371,7 @@ NEGATIVE_CASES: list[RuleTestCase] = []
 class SumAddScalar(RuleTestCase):  # noqa: D101
     shape = (3, 4)
     id = "neg-sum-add-scalar"
-    rules = [PullSumAddition()]
+    rules = [PullSumAdd()]
 
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         return (x + 5.0).sum(0)
@@ -385,7 +384,7 @@ NEGATIVE_CASES.append(SumAddScalar())
 class SumMulTwoTensors(RuleTestCase):  # noqa: D101
     shape = (4,)
     id = "neg-sum-mul-two-tensors"
-    rules = [PullSumMultiplication()]
+    rules = [PullSumMul()]
 
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         y = x + 1
@@ -399,7 +398,7 @@ NEGATIVE_CASES.append(SumMulTwoTensors())
 class SumMulSameShape(RuleTestCase):  # noqa: D101
     shape = (5, 4)
     id = "neg-sum-mul-same-shape"
-    rules = [PullSumMultiplication()]
+    rules = [PullSumMul()]
 
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         y = x + 1

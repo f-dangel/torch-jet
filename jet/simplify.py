@@ -10,10 +10,10 @@ from torch.fx.passes.shape_prop import ShapeProp
 from torch.nn import Module
 
 from jet.rules import (
+    PullSumAdd,
     PullSumAddMM,
-    PullSumAddition,
     PullSumMM,
-    PullSumMultiplication,
+    PullSumMul,
     PullSumSqueeze,
     PullSumUnsqueeze,
     PullSumView,
@@ -188,6 +188,12 @@ def simplify(
 
     Returns:
         The simplified graph module.
+
+    Note:
+        If you suspect that sum nodes are not being fully collapsed (e.g. because
+        a rule for a particular operation is missing), use
+        ``utils.visualize_graph(custom=True)`` to inspect the graph and look at
+        the remaining ``sum`` nodes to understand which simplification is missing.
     """
     mod = capture_graph(mod, mock_x)
 
@@ -202,8 +208,8 @@ def simplify(
         PullSumSqueeze(),
         PullSumUnsqueeze(),
         PullSumView(),
-        PullSumAddition(),
-        PullSumMultiplication(),
+        PullSumAdd(),
+        PullSumMul(),
         PullSumMM(),
         PullSumAddMM(),
     ]

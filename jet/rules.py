@@ -5,7 +5,6 @@ from math import prod
 from typing import Any, Callable
 
 import torch
-from torch import Tensor
 from torch.fx import Graph, Node
 
 # ATen op references used by rules
@@ -143,7 +142,7 @@ class Rule(ABC):
         ...
 
 
-class PullSumMultiplication(Rule):
+class PullSumMul(Rule):
     """Pull ``sum`` through multiplication when one factor is invariant.
 
     Handles both scalar factors (``float``/``int``) and broadcast-invariant
@@ -227,7 +226,7 @@ class PullSumMultiplication(Rule):
         return new_mul
 
 
-class PullSumAddition(Rule):
+class PullSumAdd(Rule):
     """Pull ``sum`` through addition/subtraction of two tensors.
 
     Handles both same-shape and broadcast cases:
@@ -290,9 +289,7 @@ class PullSumAddition(Rule):
                 # Invariant along pos → multiply by K
                 K = add_node.meta["tensor_meta"].shape[pos]
                 with graph.inserting_after(arg):
-                    new_arg = graph.call_function(
-                        _aten.mul.Tensor, args=(arg, K)
-                    )
+                    new_arg = graph.call_function(_aten.mul.Tensor, args=(arg, K))
             new_args.append(new_arg)
 
         with graph.inserting_after(add_node):

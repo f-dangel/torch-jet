@@ -56,6 +56,9 @@ def f_multiply(x: Tensor) -> Tensor:
 # make generation of test cases deterministic
 manual_seed(1)
 
+_TANH_LINEAR_W = tensor([[0.1, -0.2, 0.3], [0.4, 0.5, -0.6]], dtype=float64)
+_TANH_LINEAR_B = tensor([0.12, -0.34], dtype=float64)
+
 JET_CASES = [
     # 1d sine function
     {"f": sin, "shape": (1,), "id": "sin"},
@@ -91,11 +94,7 @@ JET_CASES = [
     {"f": lambda x: tanh(tanh(x)), "shape": (2,), "id": "tanh-tanh"},
     # 2d linear(tanh) function
     {
-        "f": lambda x: linear(
-            tanh(x),
-            tensor([[0.1, -0.2, 0.3], [0.4, 0.5, -0.6]], dtype=float64),
-            bias=tensor([0.12, -0.34], dtype=float64),
-        ),
+        "f": lambda x: linear(tanh(x), _TANH_LINEAR_W, bias=_TANH_LINEAR_B),
         "shape": (3,),
         "id": "tanh-linear",
     },

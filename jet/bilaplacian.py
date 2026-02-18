@@ -2,7 +2,7 @@
 
 from typing import Callable
 
-from torch import Tensor, eye, zeros, zeros_like
+from torch import Tensor, eye, triu_indices, zeros_like
 from torch.func import vmap
 from torch.nn import Module
 
@@ -164,28 +164,22 @@ class Bilaplacian(Module):
         """
         D = self.in_dim
         in_meta = {"dtype": x.dtype, "device": x.device}
+        E = eye(D, **in_meta)
 
-        # first 4-jet
-        C1 = 4 * eye(D, **in_meta).reshape(D, *self.in_shape)
+        # first 4-jet: one direction per basis vector, X1 = 4*e_i
+        C1 = (4 * E).reshape(D, *self.in_shape)
 
-        # second 4-jet
-        X2_1 = zeros(D, D - 1, D, **in_meta)
-        for i in range(D):
-            not_i = [j for j in range(D) if i != j]
-            for j_idx, j in enumerate(not_i):
-                X2_1[i, j_idx, i] = 3
-                X2_1[i, j_idx, j] = 1
-        C2 = X2_1.reshape(D * (D - 1), *self.in_shape)
+        # second 4-jet: all ordered pairs (i, j) with i != j.
+        # Each row is 3*e_i + e_j, giving D*(D-1) directions.
+        mask = ~eye(D, dtype=bool, device=x.device)
+        i_idx, j_idx = mask.nonzero(as_tuple=True)
+        C2 = (3 * E[i_idx] + E[j_idx]).reshape(D * (D - 1), *self.in_shape)
 
-        # third 4-jet
-        X3_1 = zeros(D * (D - 1) // 2, D, **in_meta)
-        counter = 0
-        for i in range(D - 1):
-            for j in range(i + 1, D):
-                X3_1[counter, i] = 2
-                X3_1[counter, j] = 2
-                counter += 1
-        assert counter == D * (D - 1) // 2
-        C3 = X3_1.reshape(D * (D - 1) // 2, *self.in_shape)
+        # third 4-jet: all unordered pairs (i, j) with i < j.
+        # Each row is 2*e_i + 2*e_j, giving D*(D-1)/2 directions.
+        i_idx, j_idx = triu_indices(D, D, offset=1)
+        C3 = (2 * E[i_idx] + 2 * E[j_idx]).reshape(
+            D * (D - 1) // 2, *self.in_shape
+        )
 
         return C1, C2, C3

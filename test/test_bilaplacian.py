@@ -109,9 +109,11 @@ def test_Bilaplacian_randomization(
     randomization = (distribution, chunk_size)
 
     # check convergence of MC estimator
+    bilap_fn = Bilaplacian(f, x, randomization=randomization)
+
     def sample(idx: int) -> Tensor:
         manual_seed(idx)
-        return Bilaplacian(f, x, randomization=randomization)(x)
+        return bilap_fn(x)
 
     converged = _check_mc_convergence(
         bilap, sample, chunk_size, max_num_chunks, target_rel_error

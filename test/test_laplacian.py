@@ -172,9 +172,11 @@ def test_Laplacian_randomization(
     # check convergence of MC estimator
     weighting = get_weighting(x, weights, randomization=randomization)
 
+    lap_fn = Laplacian(f, x, randomization=randomization, weighting=weighting)
+
     def sample(idx: int) -> Tensor:
         manual_seed(idx)
-        _, _, lap = Laplacian(f, x, randomization=randomization, weighting=weighting)(x)
+        _, _, lap = lap_fn(x)
         return lap
 
     converged = _check_mc_convergence(

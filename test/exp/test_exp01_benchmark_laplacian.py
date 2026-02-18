@@ -191,10 +191,11 @@ def test_randomized_laplacian_functions_converge(
     )
 
     # check convergence of the Monte-Carlo estimator
+    fn = laplacian_function(
+        f, X, is_batched, strategy, randomization=randomization, weighting=weighting
+    )
+
     def sample(idx: int) -> Tensor:
-        fn = laplacian_function(
-            f, X, is_batched, strategy, randomization=randomization, weighting=weighting
-        )
         with fork_rng():
             manual_seed(idx)
             return fn()
@@ -300,10 +301,11 @@ def test_randomized_bilaplacian_functions_converge(
     bilap = bilap_func(X)
 
     # check convergence of the Monte-Carlo estimator
+    fn = bilaplacian_function(
+        f, X, is_batched, strategy, randomization=randomization
+    )
+
     def sample(idx: int) -> Tensor:
-        fn = bilaplacian_function(
-            f, X, is_batched, strategy, randomization=randomization
-        )
         with fork_rng():
             manual_seed(idx)
             return fn()

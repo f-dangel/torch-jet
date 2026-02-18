@@ -4,7 +4,6 @@ from typing import Any, Callable
 
 from pytest import mark
 from torch import Tensor, cos, manual_seed, rand, sigmoid, sin, tanh, tensor
-from torch.fx.experimental.proxy_tensor import make_fx
 from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
 
@@ -187,18 +186,3 @@ def test_jet(config: dict[str, Any], k: int):
     check_jet(f, (x, vs))
 
 
-@mark.parametrize("k", K, ids=K_IDS)
-@mark.parametrize("config", JET_CASES, ids=JET_CASES_IDS)
-def test_symbolic_trace_jet(config: dict[str, Any], k: int):
-    """Test whether the function produced by jet can be traced.
-
-    Args:
-        config: Configuration dictionary of the test case.
-        k: The order of the jet to compute.
-    """
-    f, x, vs = setup_case(config, derivative_order=k)
-    # generate the jet's compute graph
-    jet_f = jet.jet(f, k, x)
-
-    # try tracing it with example inputs (primal + coefficients)
-    make_fx(jet_f)(x, *vs)

@@ -13,6 +13,7 @@ from time import perf_counter
 from typing import Callable
 
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 from torch import (
     Tensor,
     arange,
@@ -533,7 +534,8 @@ with plt.rc_context(bundles.neurips2024(usetex=USETEX)):
         times_eager,
         bar_width,
         color=colors,
-        label="eager",
+        edgecolor="black",
+        linewidth=0.8,
     )
     # Compiled bars (same color, hatched)
     bars_compiled = plt.bar(
@@ -542,13 +544,27 @@ with plt.rc_context(bundles.neurips2024(usetex=USETEX)):
         bar_width,
         color=colors,
         hatch="//",
-        label="compiled",
+        edgecolor="black",
+        linewidth=0.8,
     )
 
     plt.xticks(x_pos, methods)
     plt.ylabel("Time [ms]")
     plt.title(f"Computing Batched Laplacians ($N = {batch_size}$)")
-    plt.legend()
+
+    # Legend with only eager/compiled distinction (no color)
+    plt.legend(
+        handles=[
+            Patch(facecolor="white", edgecolor="black", linewidth=0.8, label="eager"),
+            Patch(
+                facecolor="white",
+                edgecolor="black",
+                linewidth=0.8,
+                hatch="//",
+                label="compiled",
+            ),
+        ]
+    )
 
     # Add values on top of bars and relative speed-up as second label
     for bars, baseline in [

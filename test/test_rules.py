@@ -76,41 +76,44 @@ def compare_graphs(graph1: Graph, graph2: Graph):
         node_mapping[node1] = node2
 
 
-_MULTIPLICATION_OPS = [operator.mul]
-_ADDITION_OPS = [operator.add, operator.sub]
+CASES: list[RuleTestCase] = []
+
 
 
 # Pulling a sum node through an arithmetic operation with an integer/float
 class SumScalarMultiplication(RuleTestCase):  # noqa: D101
+    """Test case for ``sum(5 * x) = 5 * sum(x)``."""
     shape = (4,)
 
     def __init__(  # noqa: D107
-        self,
-        op: Callable[[float | int | Tensor, float | int | Tensor], Tensor],
-        pos: int,
-        scalar: float | int,
-        scalar_first: bool,
+        self, pos: int, scalar: float | int, scalar_first: bool
     ):
         super().__init__()
-        self.op = op
         self.pos = pos
         self.scalar = scalar
         self.scalar_first = scalar_first
-        self.id = f"sum-{op.__module__}.{op.__name__}-scalar-{scalar_first=}"
+        self.id = f"sum-scalar-{scalar_first=}"
         self.rules = [PullSumScalarMultiplication()]
 
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        res = self.op(self.scalar, x) if self.scalar_first else self.op(x, self.scalar)
+        res = self.scalar * x if self.scalar_first else x * self.scalar
         return res.sum(self.pos)
 
     def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
         x_sum = x.sum(self.pos)
         return (
-            self.op(self.scalar, x_sum)
+            self.scalar * x_sum
             if self.scalar_first
-            else self.op(x_sum, self.scalar)
+            else x_sum * self.scalar
         )
 
+_POS, _SCALAR = 0, 3.0
+CASES.extend(
+    SumScalarMultiplication(_POS, _SCALAR, scalar_first)
+    for scalar_first in [False, True]
+)
+
+_ADDITION_OPS = [operator.add, operator.sub]
 
 # Pulling a sum node through addition/subtraction of two tensors
 class SumTensorAddition(RuleTestCase):  # noqa: D101
@@ -132,6 +135,8 @@ class SumTensorAddition(RuleTestCase):  # noqa: D101
             (x + 1).sum(self.pos),
         )
 
+CASES.extend(SumTensorAddition(op, pos=0) for op in _ADDITION_OPS)
+
 
 # Pulling a sum node through a broadcasted tensor multiplication
 class SumBroadcastedMul(RuleTestCase):  # noqa: D101
@@ -151,6 +156,8 @@ class SumBroadcastedMul(RuleTestCase):  # noqa: D101
         b = linspace(1.0, 5.0, 4)
         return x.sum(self.pos) * b
 
+CASES.append(SumBroadcastedMul(pos=0))
+
 
 # Pull a sum node through mm (linear without bias).
 class SumMM(RuleTestCase):  # noqa: D101
@@ -167,6 +174,8 @@ class SumMM(RuleTestCase):  # noqa: D101
         sv = x.sum(0)
         out = _aten.mm.default(_aten.unsqueeze.default(sv, 0), Wt)
         return _aten.squeeze.dim(out, 0)
+
+CASES.append(SumMM())
 
 
 # Pull a sum node through addmm (linear with bias).
@@ -190,6 +199,8 @@ class SumAddmm(RuleTestCase):  # noqa: D101
         scaled_b = _aten.mul.Tensor(b, x.shape[0])
         return _aten.add.Tensor(out, scaled_b)
 
+CASES.append(SumAddmm())
+
 
 # Pull a sum node through squeeze.
 class SumSqueeze(RuleTestCase):  # noqa: D101
@@ -202,6 +213,8 @@ class SumSqueeze(RuleTestCase):  # noqa: D101
 
     def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
         return _aten.squeeze.dim(x.sum(0), 0)
+
+CASES.append(SumSqueeze())
 
 
 # Pull a sum node through unsqueeze (no-op: sum dim == unsqueeze dim).
@@ -216,6 +229,8 @@ class SumUnsqueezeNoop(RuleTestCase):  # noqa: D101
     def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
         return x
 
+CASES.append(SumUnsqueezeNoop())
+
 
 # Pull a sum node through unsqueeze (swap: dims differ).
 class SumUnsqueezeSwap(RuleTestCase):  # noqa: D101
@@ -228,6 +243,8 @@ class SumUnsqueezeSwap(RuleTestCase):  # noqa: D101
 
     def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
         return _aten.unsqueeze.default(x.sum(0), 0)
+
+CASES.append(SumUnsqueezeSwap())
 
 
 # Pull a sum node through view.
@@ -242,22 +259,6 @@ class SumView(RuleTestCase):  # noqa: D101
     def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
         return _aten.view.default(x.sum(0), [2, 2])
 
-
-CASES: list[RuleTestCase] = []
-
-CASES.extend(
-    SumScalarMultiplication(op, pos=0, scalar=3.0, scalar_first=first)
-    for op, first in product(_MULTIPLICATION_OPS, [False, True])
-)
-
-CASES.extend(SumTensorAddition(op, pos=0) for op in _ADDITION_OPS)
-
-CASES.append(SumBroadcastedMul(pos=0))
-CASES.append(SumMM())
-CASES.append(SumAddmm())
-CASES.append(SumSqueeze())
-CASES.append(SumUnsqueezeNoop())
-CASES.append(SumUnsqueezeSwap())
 CASES.append(SumView())
 
 
@@ -285,5 +286,5 @@ def test_simplification_rules(case: RuleTestCase):
     assert f_x.allclose(f_simplified(x))
 
     # compare the graphs of f_simplified and f_simple
-    f_simple_mod = capture_graph(lambda x: case.forward_simple(x), x) # noqa: PLW0108
+    f_simple_mod = capture_graph(lambda x: case.forward_simple(x), x)  # noqa: PLW0108
     compare_graphs(f_simple_mod.graph, f_simplified.graph)

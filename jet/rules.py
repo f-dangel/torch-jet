@@ -236,16 +236,11 @@ class PullSumBroadcastedMultiplication(Rule):
             return False
 
         pos = _get_sum_pos(sum_node)
-        out_val = inner_node.meta.get("val")
-        if out_val is None or not hasattr(out_val, "shape"):
-            return False
-        out_ndim = len(out_val.shape)
+        out_ndim = len(inner_node.meta["tensor_meta"].shape)
 
         for arg in inner_node.args:
-            arg_val = arg.meta.get("val")
-            if arg_val is None or not hasattr(arg_val, "shape"):
-                continue
-            if pos < out_ndim - len(arg_val.shape):
+            arg_ndim = len(arg.meta["tensor_meta"].shape)
+            if pos < out_ndim - arg_ndim:
                 return True
 
         return False
@@ -264,11 +259,11 @@ class PullSumBroadcastedMultiplication(Rule):
         Returns:
             The new multiplication node.
         """
-        out_ndim = len(mul_node.meta["val"].shape)
+        out_ndim = len(mul_node.meta["tensor_meta"].shape)
         arg0, arg1 = mul_node.args
 
-        _ = len(arg0.meta["val"].shape)
-        arg1_ndim = len(arg1.meta["val"].shape)
+        _ = len(arg0.meta["tensor_meta"].shape)
+        arg1_ndim = len(arg1.meta["tensor_meta"].shape)
 
         if pos < out_ndim - arg1_ndim:
             varying_idx, invariant_idx = 0, 1
@@ -310,20 +305,23 @@ class PullSumTensorAddition(Rule):
     ]
 
     def _extra_match(self, sum_node: Node, inner_node: Node) -> bool:
-        """Check that both arguments are tensors (no broadcasting).
+        """Check that both arguments are tensors with the same shape (no broadcasting).
 
         Args:
             sum_node: The ``sum`` node.
             inner_node: The addition/subtraction node.
 
         Returns:
-            True if the operation has 2 tensor arguments.
+            True if the operation has 2 tensor arguments with matching shapes.
         """
-        return (
-            len(inner_node.args) == 2
-            and inner_node.kwargs == {}
-            and sum(isinstance(a, Node) for a in inner_node.args) == 2
-        )
+        if (
+            len(inner_node.args) != 2
+            or inner_node.kwargs != {}
+            or not all(isinstance(a, Node) for a in inner_node.args)
+        ):
+            return False
+        a, b = inner_node.args
+        return a.meta["tensor_meta"].shape == b.meta["tensor_meta"].shape
 
     def _rewrite(self, sum_node: Node, add_node: Node, pos: int, graph: Graph) -> Node:
         """Swap sum and addition: ``sum(x + y)`` → ``sum(x) + sum(y)``.
@@ -353,110 +351,166 @@ class PullSumTensorAddition(Rule):
         return new_add_node
 
 
-class PullSumLinear(Rule):
-    """Pull ``sum`` through ``mm`` and ``addmm``.
+class PullSumMM(Rule):
+    """Pull ``sum`` through ``mm``.
 
-    Matches ``sum(op(…), pos)`` where ``op`` is ``mm`` or ``addmm``
-    and ``pos`` identifies a non-contracted dimension. Moves the summation to
-    the corresponding matrix argument:
-
-    For ``mm(X, W)``:
+    Matches ``sum(mm(X, W), pos)`` where ``pos`` is a non-contracted dimension
+    of the output.  For ``mm(X, W)`` with ``X = (M, K)`` and ``W = (K, N)``,
+    the contracted dimension ``K`` (dim 1 of ``X``, dim 0 of ``W``) never
+    appears in the ``(M, N)`` output.
 
     - ``pos == 0``: → ``squeeze(mm(unsqueeze(sum(X, 0), 0), W), 0)``
     - ``pos == 1``: → ``squeeze(mm(X, unsqueeze(sum(W, 1), 1)), 1)``
 
-    For ``addmm(b, X, W)`` the matrix part is handled identically, plus a
-    bias correction (``V * b`` for pos=0, ``sum(b)`` for pos=1).
-
     Attributes:
-        OPERATIONS: Supported ATen matrix-multiply operations.
+        OPERATIONS: Supported ATen operations.
     """
 
-    OPERATIONS = [_aten.mm.default, _aten.addmm.default]
-
-    @staticmethod
-    def _matrix_arg_indices(node: Node) -> tuple[int, int]:
-        """Return the argument indices of the two matrix operands.
-
-        Args:
-            node: An ``mm`` or ``addmm`` node.
-
-        Returns:
-            Tuple of ``(mat1_index, mat2_index)``.
-        """
-        if node.target == _aten.mm.default:
-            return (0, 1)
-        return (1, 2)
+    OPERATIONS = [_aten.mm.default]
 
     def _extra_match(self, sum_node: Node, inner_node: Node) -> bool:
-        """Check that the sum dimension is 0 or 1.
+        """Check that the sum dimension is non-contracted.
+
+        For ``mm(X, W)`` the output is always 2D, so ``pos`` is 0 or 1.
+        The contracted dimension ``K`` (dim 1 of ``X``, dim 0 of ``W``) does
+        not appear in the output, so neither position is contracted:
+
+        - ``pos == 0`` targets ``X`` (arg 0); its contracted dim is 1 → valid.
+        - ``pos == 1`` targets ``W`` (arg 1); its contracted dim is 0 → valid.
 
         Args:
             sum_node: The ``sum`` node.
-            inner_node: The ``mm``/``addmm`` node.
+            inner_node: The ``mm`` node.
 
         Returns:
-            True if ``pos`` is 0 (mat1's row dim) or 1 (mat2's col dim).
+            True if ``pos`` is a non-contracted output dimension.
         """
-        return _get_sum_pos(sum_node) in (0, 1)
+        pos = _get_sum_pos(sum_node)
+        contracted_dim = 1 - pos
+        return pos != contracted_dim
 
-    def _rewrite(
-        self, sum_node: Node, matmul_node: Node, pos: int, graph: Graph
-    ) -> Node:
-        """Pull sum through mm/addmm.
+    def _rewrite(self, sum_node: Node, mm_node: Node, pos: int, graph: Graph) -> Node:
+        """Pull sum through mm.
 
-        For ``mm``, replaces ``sum(mm(…), pos)`` with
+        Replaces ``sum(mm(X, W), pos)`` with
         ``squeeze(mm(…, unsqueeze(sum(arg, pos), pos), …), pos)``.
-
-        For ``addmm``, the same matrix rewrite is applied (using ``mm``),
-        and the bias is corrected: ``V * b`` when ``pos == 0``, or
-        ``sum(b)`` when ``pos == 1``.
 
         Args:
             sum_node: The ``sum`` node.
-            matmul_node: The ``mm``/``addmm`` node.
+            mm_node: The ``mm`` node.
             pos: The dimension along which the sum is performed.
             graph: The computation graph.
 
         Returns:
             The replacement node.
         """
-        i1, i2 = self._matrix_arg_indices(matmul_node)
-        # pos=0 → pull sum to mat1, pos=1 → pull to mat2
-        target_idx = i1 if pos == 0 else i2
-        target_arg = matmul_node.args[target_idx]
+        # pos=0 → pull sum into mat1 (arg 0), pos=1 → into mat2 (arg 1)
+        target_idx = 0 if pos == 0 else 1
+        target_arg = mm_node.args[target_idx]
 
-        # sum on the target argument
-        with graph.inserting_before(matmul_node):
+        with graph.inserting_before(mm_node):
             sv_args, sv_kwargs = _make_sum_args(target_arg, pos)
             new_sv = graph.call_function(_sum_target, args=sv_args, kwargs=sv_kwargs)
 
-        # unsqueeze to restore 2D shape for mm
         with graph.inserting_after(new_sv):
             unsqueeze_node = graph.call_function(
                 _aten.unsqueeze.default, args=(new_sv, pos)
             )
 
-        # new mm with sum+unsqueeze replacing the original arg
         with graph.inserting_after(unsqueeze_node):
             mm_args = tuple(
-                unsqueeze_node if i == target_idx else matmul_node.args[i]
-                for i in (i1, i2)
+                unsqueeze_node if i == target_idx else mm_node.args[i] for i in (0, 1)
             )
             new_mm = graph.call_function(_aten.mm.default, args=mm_args)
 
-        # squeeze the summed dimension from the result
         with graph.inserting_after(new_mm):
             squeeze_node = graph.call_function(_aten.squeeze.dim, args=(new_mm, pos))
 
-        if matmul_node.target != _aten.addmm.default:
-            return squeeze_node
+        return squeeze_node
 
-        bias = matmul_node.args[0]
+
+class PullSumAddMM(Rule):
+    """Pull ``sum`` through ``addmm``.
+
+    Matches ``sum(addmm(b, X, W), pos)`` where ``pos`` is a non-contracted
+    dimension.  The matrix part is rewritten using ``mm`` (not ``addmm``),
+    and the bias ``b`` is corrected separately:
+
+    - ``pos == 0``: each of ``M`` rows had ``b`` added; summing gives ``M * b``.
+    - ``pos == 1``: each row had ``b`` element-wise; summing cols gives ``sum(b)``.
+
+    Attributes:
+        OPERATIONS: Supported ATen operations.
+    """
+
+    OPERATIONS = [_aten.addmm.default]
+
+    def _extra_match(self, sum_node: Node, inner_node: Node) -> bool:
+        """Check that the sum dimension is non-contracted.
+
+        For ``addmm(b, X, W)`` the output is always 2D, so ``pos`` is 0 or 1.
+        The contracted dimension ``K`` (dim 1 of ``X``, dim 0 of ``W``) does
+        not appear in the output, so neither position is contracted:
+
+        - ``pos == 0`` targets ``X`` (arg 1); its contracted dim is 1 → valid.
+        - ``pos == 1`` targets ``W`` (arg 2); its contracted dim is 0 → valid.
+
+        Args:
+            sum_node: The ``sum`` node.
+            inner_node: The ``addmm`` node.
+
+        Returns:
+            True if ``pos`` is a non-contracted output dimension.
+        """
+        pos = _get_sum_pos(sum_node)
+        contracted_dim = 1 - pos
+        return pos != contracted_dim
+
+    def _rewrite(
+        self, sum_node: Node, addmm_node: Node, pos: int, graph: Graph
+    ) -> Node:
+        """Pull sum through addmm.
+
+        The matrix part is rewritten using ``mm``, and the bias ``b`` is
+        corrected: ``V * b`` when ``pos == 0``, or ``sum(b)`` when ``pos == 1``.
+
+        Args:
+            sum_node: The ``sum`` node.
+            addmm_node: The ``addmm`` node.
+            pos: The dimension along which the sum is performed.
+            graph: The computation graph.
+
+        Returns:
+            The replacement node.
+        """
+        # addmm args: (bias, mat1, mat2) → matrix args at indices 1, 2
+        target_idx = 1 if pos == 0 else 2
+        target_arg = addmm_node.args[target_idx]
+
+        with graph.inserting_before(addmm_node):
+            sv_args, sv_kwargs = _make_sum_args(target_arg, pos)
+            new_sv = graph.call_function(_sum_target, args=sv_args, kwargs=sv_kwargs)
+
+        with graph.inserting_after(new_sv):
+            unsqueeze_node = graph.call_function(
+                _aten.unsqueeze.default, args=(new_sv, pos)
+            )
+
+        with graph.inserting_after(unsqueeze_node):
+            mm_args = tuple(
+                unsqueeze_node if i == target_idx else addmm_node.args[i]
+                for i in (1, 2)
+            )
+            new_mm = graph.call_function(_aten.mm.default, args=mm_args)
+
+        with graph.inserting_after(new_mm):
+            squeeze_node = graph.call_function(_aten.squeeze.dim, args=(new_mm, pos))
+
+        bias = addmm_node.args[0]
         if pos == 0:
             # Bias b was broadcast from (n,) to (V, n); summing V rows
-            # gives V * b. Extract V from the traced tensor metadata.
-            V = target_arg.meta["val"].shape[0]
+            # gives V * b.
+            V = target_arg.meta["tensor_meta"].shape[0]
             with graph.inserting_after(squeeze_node):
                 scaled_b = graph.call_function(_aten.mul.Tensor, args=(bias, V))
             with graph.inserting_after(scaled_b):
@@ -657,10 +711,7 @@ class PullSumView(Rule):
             True if the dimension mapping is clean.
         """
         view_input = inner_node.args[0]
-        if not hasattr(view_input, "meta") or "val" not in view_input.meta:
-            return False
-
-        orig_shape = view_input.meta["val"].shape
+        orig_shape = view_input.meta["tensor_meta"].shape
         new_shape = inner_node.args[1]
         s_d = _get_sum_pos(sum_node)
         return self._find_orig_dim(orig_shape, new_shape, s_d) is not None
@@ -678,7 +729,7 @@ class PullSumView(Rule):
             The new view node.
         """
         view_input = view_node.args[0]
-        orig_shape = view_input.meta["val"].shape
+        orig_shape = view_input.meta["tensor_meta"].shape
         new_shape = list(view_node.args[1])
         d_prime = self._find_orig_dim(orig_shape, new_shape, pos)
 

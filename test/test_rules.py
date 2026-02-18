@@ -11,8 +11,9 @@ from torch.nn import Module
 from torch.nn.functional import linear
 
 from jet.rules import (
+    PullSumAddMM,
     PullSumBroadcastedMultiplication,
-    PullSumLinear,
+    PullSumMM,
     PullSumScalarMultiplication,
     PullSumSqueeze,
     PullSumTensorAddition,
@@ -162,7 +163,7 @@ CASES.append(SumBroadcastedMul(pos=0))
 class SumMM(RuleTestCase):  # noqa: D101
     shape = (5, 4)
     id = "sum-mm"
-    rules = [PullSumLinear()]
+    rules = [PullSumMM()]
 
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         return linear(x, linspace(-2.0, 10, 12).reshape(3, 4)).sum(0)
@@ -178,11 +179,31 @@ class SumMM(RuleTestCase):  # noqa: D101
 CASES.append(SumMM())
 
 
+# Pull a sum node through mm (linear without bias), summing over last dim.
+class SumMMLastDim(RuleTestCase):  # noqa: D101
+    shape = (5, 4)
+    id = "sum-mm-last-dim"
+    rules = [PullSumMM()]
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        return linear(x, linspace(-2.0, 10, 12).reshape(3, 4)).sum(1)
+
+    def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
+        W = linspace(-2.0, 10, 12).reshape(3, 4)
+        Wt = _aten.t.default(W)
+        sv = Wt.sum(1)
+        out = _aten.mm.default(x, _aten.unsqueeze.default(sv, 1))
+        return _aten.squeeze.dim(out, 1)
+
+
+CASES.append(SumMMLastDim())
+
+
 # Pull a sum node through addmm (linear with bias).
 class SumAddmm(RuleTestCase):  # noqa: D101
     shape = (5, 4)
     id = "sum-addmm"
-    rules = [PullSumLinear()]
+    rules = [PullSumAddMM()]
 
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         return linear(
@@ -201,6 +222,31 @@ class SumAddmm(RuleTestCase):  # noqa: D101
 
 
 CASES.append(SumAddmm())
+
+
+# Pull a sum node through addmm (linear with bias), summing over last dim.
+class SumAddmmLastDim(RuleTestCase):  # noqa: D101
+    shape = (5, 4)
+    id = "sum-addmm-last-dim"
+    rules = [PullSumAddMM()]
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        return linear(
+            x, linspace(-2.0, 10, 12).reshape(3, 4), linspace(-1.0, 2.0, 3)
+        ).sum(1)
+
+    def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
+        W = linspace(-2.0, 10, 12).reshape(3, 4)
+        b = linspace(-1.0, 2.0, 3)
+        Wt = _aten.t.default(W)
+        sv = Wt.sum(1)
+        out = _aten.mm.default(x, _aten.unsqueeze.default(sv, 1))
+        out = _aten.squeeze.dim(out, 1)
+        sum_b = _aten.sum.default(b)
+        return _aten.add.Tensor(out, sum_b)
+
+
+CASES.append(SumAddmmLastDim())
 
 
 # Pull a sum node through squeeze.
@@ -293,3 +339,92 @@ def test_simplification_rules(case: RuleTestCase):
     # compare the graphs of f_simplified and f_simple
     f_simple_mod = capture_graph(lambda x: case.forward_simple(x), x)  # noqa: PLW0108
     compare_graphs(f_simple_mod.graph, f_simplified.graph)
+
+
+# === Negative test cases: rules should NOT trigger ===
+
+NEGATIVE_CASES: list[RuleTestCase] = []
+
+
+# sum(x + y) where x and y have different shapes (broadcasted addition)
+class SumAddBroadcasted(RuleTestCase):  # noqa: D101
+    shape = (3, 4)
+    id = "neg-sum-add-broadcasted"
+    rules = [PullSumTensorAddition()]
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        y = linspace(1.0, 4.0, 4)
+        return (x + y).sum(0)
+
+
+NEGATIVE_CASES.append(SumAddBroadcasted())
+
+
+# sum(x + scalar) where the second arg is a Python float, not a Node
+class SumAddScalar(RuleTestCase):  # noqa: D101
+    shape = (3, 4)
+    id = "neg-sum-add-scalar"
+    rules = [PullSumTensorAddition()]
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        return (x + 5.0).sum(0)
+
+
+NEGATIVE_CASES.append(SumAddScalar())
+
+
+# sum(x * y) where both args are tensors (no scalar)
+class SumMulTwoTensors(RuleTestCase):  # noqa: D101
+    shape = (4,)
+    id = "neg-sum-mul-two-tensors"
+    rules = [PullSumScalarMultiplication()]
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        y = x + 1
+        return (x * y).sum(0)
+
+
+NEGATIVE_CASES.append(SumMulTwoTensors())
+
+
+# sum(x * y) where both tensors have the same shape (neither broadcasted)
+class SumMulSameShape(RuleTestCase):  # noqa: D101
+    shape = (5, 4)
+    id = "neg-sum-mul-same-shape"
+    rules = [PullSumBroadcastedMultiplication()]
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        y = x + 1
+        return (x * y).sum(0)
+
+
+NEGATIVE_CASES.append(SumMulSameShape())
+
+
+# sum(view(x, ...), 0) where the dim doesn't map cleanly (split dim)
+class SumViewSplitDim(RuleTestCase):  # noqa: D101
+    shape = (10, 4)
+    id = "neg-sum-view-split-dim"
+    rules = [PullSumView()]
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        return x.view(2, 5, 4).sum(0)
+
+
+NEGATIVE_CASES.append(SumViewSplitDim())
+
+
+@mark.parametrize("case", NEGATIVE_CASES, ids=lambda c: c.id)
+def test_rules_do_not_trigger(case: RuleTestCase):
+    """Test that rules do NOT trigger on non-matching patterns.
+
+    Args:
+        case: The test case specifying the rule to test.
+    """
+    manual_seed(0)
+    x = rand(*case.shape)
+    f = capture_graph(case, x)
+    graph_before = str(f.graph)
+    applied = apply_all(case.rules, f, verbose=True)
+    assert not applied, f"Rule unexpectedly triggered for {case.id}"
+    assert str(f.graph) == graph_before, "Graph was modified despite no rule match"

@@ -10,8 +10,9 @@ from torch.fx.passes.shape_prop import ShapeProp
 from torch.nn import Module
 
 from jet.rules import (
+    PullSumAddMM,
     PullSumBroadcastedMultiplication,
-    PullSumLinear,
+    PullSumMM,
     PullSumScalarMultiplication,
     PullSumSqueeze,
     PullSumTensorAddition,
@@ -205,7 +206,8 @@ def simplify(  # noqa: C901
         PullSumTensorAddition(),
         PullSumScalarMultiplication(),
         PullSumBroadcastedMultiplication(),
-        PullSumLinear(),
+        PullSumMM(),
+        PullSumAddMM(),
     ]
 
     strategies = {}
@@ -245,7 +247,7 @@ def _exhaust_incrementally(
     Loop through the simplification strategies until one is successful, then start
     from the beginning until we complete one round where none of the strategies is
     successful. After each successful application, shape metadata is repropagated
-    so that newly created nodes have valid ``meta["val"]``.
+    so that newly created nodes have valid ``meta["tensor_meta"]``.
 
     Args:
         strategies: A dictionary of strategies to be applied.

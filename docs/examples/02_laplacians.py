@@ -14,8 +14,24 @@ from time import perf_counter
 from typing import Callable
 
 import matplotlib.pyplot as plt
-from torch import Tensor, eye, manual_seed, rand, stack, zeros_like
-from torch.func import hessian, vmap
+from matplotlib.patches import Patch
+from torch import (
+    Tensor,
+    arange,
+    eye,
+    manual_seed,
+    rand,
+    stack,
+    vmap,
+    zeros,
+    zeros_like,
+)
+from torch import (
+    compile as torch_compile,
+)
+from torch.func import hessian
+from torch.fx import GraphModule
+from torch.fx.passes.graph_drawer import FxGraphDrawer
 from torch.nn import Linear, Module, Sequential, Tanh
 from tueplots import bundles
 
@@ -447,7 +463,29 @@ print(f"Collapsed Taylor: {ms_collapsed:.2f}ms ({ms_collapsed / ms_nested:.2f}x)
 
 # %%
 #
-# We see that collapsed Taylor mode is faster than nested first-order AD.
+# Let's also measure how much `torch.compile` can speed things up:
+
+compute_batched_nested_compiled = torch_compile(compute_batched_nested_laplacian)
+compute_batched_standard_compiled = torch_compile(compute_batched_standard_laplacian)
+compute_batched_collapsed_compiled = torch_compile(compute_batched_collapsed_laplacian)
+
+ms_nested_c = 10**3 * measure_runtime(lambda: compute_batched_nested_compiled(X))
+ms_standard_c = 10**3 * measure_runtime(lambda: compute_batched_standard_compiled(X))
+ms_collapsed_c = 10**3 * measure_runtime(lambda: compute_batched_collapsed_compiled(X))
+
+print(
+    f"Nested 1st-order AD (compiled): {ms_nested_c:.2f}ms ({ms_nested_c / ms_nested_c:.2f}x)"
+)
+print(
+    f"Standard Taylor (compiled): {ms_standard_c:.2f}ms ({ms_standard_c / ms_nested_c:.2f}x)"
+)
+print(
+    f"Collapsed Taylor (compiled): {ms_collapsed_c:.2f}ms ({ms_collapsed_c / ms_nested_c:.2f}x)"
+)
+
+# %%
+#
+# We see that collapsed Taylor mode is faster than standard Taylor mode.
 # Of course, we use a relatively small neural net and a CPU in this example, but our
 # paper also confirms this performance benefits on bigger nets and on GPU (also in
 # terms of memory consumption). Intuitively, this makes sense, as the collapsed
@@ -456,7 +494,8 @@ print(f"Collapsed Taylor: {ms_collapsed:.2f}ms ({ms_collapsed / ms_nested:.2f}x)
 # Here is a quick summary of the performance results in a single diagram:
 
 methods = ["Nested 1st-order", "Standard Taylor", "Collapsed Taylor"]
-times = [ms_nested, ms_standard, ms_collapsed]
+times_eager = [ms_nested, ms_standard, ms_collapsed]
+times_compiled = [ms_nested_c, ms_standard_c, ms_collapsed_c]
 colors = [
     (117 / 255, 112 / 255, 179 / 255),
     (217 / 255, 95 / 255, 2 / 255),
@@ -468,26 +507,67 @@ USETEX = which("latex") is not None
 
 with plt.rc_context(bundles.neurips2024(usetex=USETEX)):
     plt.figure(dpi=150)
-    bars = plt.bar(methods, times, color=colors)
 
-    # Add labels and title
+    x_pos = arange(len(methods))
+    bar_width = 0.32
+    gap = 0.02
+
+    # Eager bars (solid)
+    bars_eager = plt.bar(
+        x_pos - bar_width / 2 - gap / 2,
+        times_eager,
+        bar_width,
+        color=colors,
+        edgecolor="black",
+        linewidth=0.8,
+    )
+    # Compiled bars (same color, hatched)
+    bars_compiled = plt.bar(
+        x_pos + bar_width / 2 + gap / 2,
+        times_compiled,
+        bar_width,
+        color=colors,
+        hatch="//",
+        edgecolor="black",
+        linewidth=0.8,
+    )
+
+    plt.xticks(x_pos, methods)
     plt.ylabel("Time [ms]")
     plt.title(f"Computing Batched Laplacians ($N = {batch_size}$)")
 
+    # Legend with only eager/compiled distinction (no color)
+    plt.legend(
+        handles=[
+            Patch(facecolor="white", edgecolor="black", linewidth=0.8, label="eager"),
+            Patch(
+                facecolor="white",
+                edgecolor="black",
+                linewidth=0.8,
+                hatch="//",
+                label="compiled",
+            ),
+        ]
+    )
+
     # Add values on top of bars and relative speed-up as second label
-    for bar in bars:
-        height = bar.get_height()
-        speedup = height / times[0]  # Relative to nested AD
-        x_mid = bar.get_x() + bar.get_width() / 2.0
-        plt.text(x_mid, height, f"{height:.2f}ms", ha="center", va="bottom")
-        plt.text(
-            x_mid,
-            height / 2,
-            f"{speedup:.2f}x",
-            ha="center",
-            va="center",
-            color="white",
-        )
+    for bars, baseline in [
+        (bars_eager, times_eager[0]),
+        (bars_compiled, times_compiled[0]),
+    ]:
+        for bar in bars:
+            height = bar.get_height()
+            speedup = height / baseline
+            x_mid = bar.get_x() + bar.get_width() / 2.0
+            plt.text(x_mid, height, f"{height:.2f}ms", ha="center", va="bottom")
+            plt.text(
+                x_mid,
+                height / 2,
+                f"{speedup:.2f}x",
+                ha="center",
+                va="center",
+                color="white",
+            )
 
 # %%
 #

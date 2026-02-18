@@ -204,37 +204,16 @@ def simplify(  # noqa: C901
         PullSumLinear(),
     ]
 
-    strategies = {
-        "remove_unused": graph.eliminate_dead_code,
-        "common_subexpression_elimination": partial(
-            common_subexpression_elimination, mod.graph, verbose=verbose
-        ),
-        "pull_sum": lambda: apply_once(sum_rules, mod, verbose=verbose),
-    }
-
-    # round 1 of simplifications: remove redundancies in the graph
-    round_one = []
+    strategies = {}
     if remove_unused:
-        round_one.append("remove_unused")
-    _exhaust_incrementally({s: strategies[s] for s in round_one}, mod, test_x, verbose)
-
-    # round 2 of simplifications: pull sum nodes up
-    round_two = []
+        strategies["remove_unused"] = graph.eliminate_dead_code
     if pull_sum:
-        round_two.append("pull_sum")
+        strategies["pull_sum"] = lambda: apply_once(sum_rules, mod, verbose=verbose)
     if eliminate_common_subexpressions:
-        round_two.append("common_subexpression_elimination")
-    _exhaust_incrementally({s: strategies[s] for s in round_two}, mod, test_x, verbose)
-
-    # round 3 of simplifications: remove redundancies in the graph and clean up
-    round_three = []
-    if eliminate_common_subexpressions:
-        round_three.append("common_subexpression_elimination")
-    if remove_unused:
-        round_three.append("remove_unused")
-    _exhaust_incrementally(
-        {s: strategies[s] for s in round_three}, mod, test_x, verbose
-    )
+        strategies["common_subexpression_elimination"] = partial(
+            common_subexpression_elimination, mod.graph, verbose=verbose
+        )
+    _exhaust_incrementally(strategies, mod, test_x, verbose)
 
     mod.graph.lint()
     mod.recompile()

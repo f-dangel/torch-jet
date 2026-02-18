@@ -15,7 +15,10 @@ from jet.rules import (
     PullSumBroadcastedMultiplication,
     PullSumLinear,
     PullSumScalarMultiplication,
+    PullSumSqueeze,
     PullSumTensorAddition,
+    PullSumUnsqueeze,
+    PullSumView,
 )
 from jet.simplify import apply_all
 from jet.tracing import capture_graph
@@ -188,6 +191,58 @@ class SumAddmm(RuleTestCase):  # noqa: D101
         return _aten.add.Tensor(out, scaled_b)
 
 
+# Pull a sum node through squeeze.
+class SumSqueeze(RuleTestCase):  # noqa: D101
+    shape = (5, 1, 4)
+    id = "sum-squeeze"
+    rules = [PullSumSqueeze()]
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        return x.squeeze(1).sum(0)
+
+    def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
+        return _aten.squeeze.dim(x.sum(0), 0)
+
+
+# Pull a sum node through unsqueeze (no-op: sum dim == unsqueeze dim).
+class SumUnsqueezeNoop(RuleTestCase):  # noqa: D101
+    shape = (5, 4)
+    id = "sum-unsqueeze-noop"
+    rules = [PullSumUnsqueeze()]
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        return x.unsqueeze(1).sum(1)
+
+    def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
+        return x
+
+
+# Pull a sum node through unsqueeze (swap: dims differ).
+class SumUnsqueezeSwap(RuleTestCase):  # noqa: D101
+    shape = (5, 4)
+    id = "sum-unsqueeze-swap"
+    rules = [PullSumUnsqueeze()]
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        return x.unsqueeze(0).sum(1)
+
+    def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
+        return _aten.unsqueeze.default(x.sum(0), 0)
+
+
+# Pull a sum node through view.
+class SumView(RuleTestCase):  # noqa: D101
+    shape = (5, 4)
+    id = "sum-view"
+    rules = [PullSumView()]
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        return x.view(5, 2, 2).sum(0)
+
+    def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
+        return _aten.view.default(x.sum(0), [2, 2])
+
+
 CASES: list[RuleTestCase] = []
 
 CASES.extend(
@@ -200,6 +255,10 @@ CASES.extend(SumTensorAddition(op, pos=0) for op in _ADDITION_OPS)
 CASES.append(SumBroadcastedMul(pos=0))
 CASES.append(SumMM())
 CASES.append(SumAddmm())
+CASES.append(SumSqueeze())
+CASES.append(SumUnsqueezeNoop())
+CASES.append(SumUnsqueezeSwap())
+CASES.append(SumView())
 
 
 @mark.parametrize("case", CASES, ids=lambda c: c.id)

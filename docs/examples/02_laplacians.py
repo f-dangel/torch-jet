@@ -23,20 +23,18 @@ from torch import (
     rand,
     stack,
     vmap,
-    zeros,
     zeros_like,
 )
 from torch import (
     compile as torch_compile,
 )
 from torch.func import hessian
-from torch.fx import GraphModule
-from torch.fx.passes.graph_drawer import FxGraphDrawer
 from torch.nn import Linear, Module, Sequential, Tanh
 from tueplots import bundles
 
 import jet
 from jet.simplify import simplify
+from jet.tracing import capture_graph
 from jet.utils import visualize_graph
 
 HEREDIR = path.dirname(path.abspath(__name__))
@@ -276,8 +274,6 @@ else:
 #
 # Now, let's look at three different graphs which will become clear in a moment
 # (we evaluated approaches 2 and 3 in our paper).
-
-from jet.tracing import capture_graph  # noqa: E402
 
 # Graph 1: Simply capture the module that computes the Laplacian
 mod_traced = capture_graph(mod, x)

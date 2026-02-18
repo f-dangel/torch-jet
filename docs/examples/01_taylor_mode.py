@@ -17,7 +17,6 @@ from torch.nn import Linear, Sequential, Tanh
 from torch.nn.functional import relu
 
 from jet import jet
-from jet.tracing import capture_graph
 from jet.utils import visualize_graph
 
 HEREDIR = path.dirname(path.abspath(__name__))
@@ -262,7 +261,7 @@ print(f_jet.graph)
 # Let's visualize two compute graphs: The original function $f$, and its 2-jet function
 # $f_{2\text{-jet}}$:
 
-visualize_graph(capture_graph(f, x), path.join(GALLERYDIR, "01_f.png"))
+visualize_graph(make_fx(f)(x), path.join(GALLERYDIR, "01_f.png"))
 visualize_graph(f_jet, path.join(GALLERYDIR, "01_f_jet.png"))
 
 # %%

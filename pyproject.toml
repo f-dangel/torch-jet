@@ -56,6 +56,7 @@ exp = [
 # Dependencies needed to run the tests (semicolon/line-separated).
 test = [
     "coveralls",
+    "pydot",
     "pytest",
     "pytest-cov",
 ]

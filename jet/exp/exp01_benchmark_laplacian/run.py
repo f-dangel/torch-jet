@@ -153,9 +153,10 @@ def measure(
                 allow_missing=not is_last,
                 rank_ratios=_rank_ratios,
             )
-            filename = savepath(name, gatherdir=gatherdir)
-            print(f"Saving gathered data for experiment {name} to {filename}.")
-            df.to_csv(filename, index=False)
+            if df is not None:
+                filename = savepath(name, gatherdir=gatherdir)
+                print(f"Saving gathered data for experiment {name} to {filename}.")
+                df.to_csv(filename, index=False)
 
 
 def gather_data(

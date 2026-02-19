@@ -169,9 +169,6 @@ class PullSumMul(Rule):
         Returns:
             True if one factor is invariant.
         """
-        if len(inner_node.args) != 2:
-            return False
-
         pos = _get_sum_pos(sum_node)
         out_ndim = len(inner_node.meta["tensor_meta"].shape)
 
@@ -211,16 +208,14 @@ class PullSumMul(Rule):
                 break
 
         varying_idx = 1 - invariant_idx
-        varying = mul_node.args[varying_idx]
-        invariant = mul_node.args[invariant_idx]
+        varying, invariant = mul_node.args[varying_idx], mul_node.args[invariant_idx]
 
         with graph.inserting_after(sum_node):
             sum_args = _make_sum_args(varying, pos)
             new_sum = graph.call_function(_sum_target, args=sum_args)
         with graph.inserting_after(new_sum):
             new_args = [None, None]
-            new_args[varying_idx] = new_sum
-            new_args[invariant_idx] = invariant
+            new_args[varying_idx], new_args[invariant_idx] = new_sum, invariant
             new_mul = graph.call_function(mul_node.target, args=tuple(new_args))
 
         return new_mul
@@ -356,12 +351,12 @@ class PullSumMM(Rule):
         target_arg = mm_node.args[target_idx]
 
         with graph.inserting_before(mm_node):
-            sv_args = _make_sum_args(target_arg, pos)
-            new_sv = graph.call_function(_sum_target, args=sv_args)
+            sum_mat_args = _make_sum_args(target_arg, pos)
+            sum_mat = graph.call_function(_sum_target, args=sum_mat_args)
 
-        with graph.inserting_after(new_sv):
+        with graph.inserting_after(sum_mat):
             unsqueeze_node = graph.call_function(
-                _aten.unsqueeze.default, args=(new_sv, pos)
+                _aten.unsqueeze.default, args=(sum_mat, pos)
             )
 
         with graph.inserting_after(unsqueeze_node):
@@ -435,12 +430,12 @@ class PullSumAddMM(Rule):
         target_arg = addmm_node.args[target_idx]
 
         with graph.inserting_before(addmm_node):
-            sv_args = _make_sum_args(target_arg, pos)
-            new_sv = graph.call_function(_sum_target, args=sv_args)
+            sum_mat_args = _make_sum_args(target_arg, pos)
+            sum_mat = graph.call_function(_sum_target, args=sum_mat_args)
 
-        with graph.inserting_after(new_sv):
+        with graph.inserting_after(sum_mat):
             unsqueeze_node = graph.call_function(
-                _aten.unsqueeze.default, args=(new_sv, pos)
+                _aten.unsqueeze.default, args=(sum_mat, pos)
             )
 
         with graph.inserting_after(unsqueeze_node):
@@ -454,34 +449,30 @@ class PullSumAddMM(Rule):
             squeeze_node = graph.call_function(_aten.squeeze.dim, args=(new_mm, pos))
 
         bias = addmm_node.args[0]
-        if pos == 0:
-            # Bias b was broadcast from (n,) to (V, n); summing V rows
-            # gives V * b.
-            V = target_arg.meta["tensor_meta"].shape[0]
-            with graph.inserting_after(squeeze_node):
-                scaled_b = graph.call_function(_aten.mul.Tensor, args=(bias, V))
-            with graph.inserting_after(scaled_b):
-                result = graph.call_function(
-                    _aten.add.Tensor, args=(squeeze_node, scaled_b)
-                )
-        else:
-            # pos == 1: each row had b added; summing over n columns
-            # contributes sum(b) to every row.
-            with graph.inserting_after(squeeze_node):
-                sum_b = graph.call_function(_aten.sum.default, args=(bias,))
-            with graph.inserting_after(sum_b):
-                result = graph.call_function(
-                    _aten.add.Tensor, args=(squeeze_node, sum_b)
-                )
+        with graph.inserting_after(squeeze_node):
+            if pos == 0:
+                # Bias b was broadcast from (n,) to (V, n); summing V rows
+                # gives V * b.
+                V = target_arg.meta["tensor_meta"].shape[0]
+                bias_term = graph.call_function(_aten.mul.Tensor, args=(bias, V))
+            else:
+                # pos == 1: each row had b added; summing over n columns
+                # contributes sum(b) to every row.
+                bias_term = graph.call_function(_aten.sum.default, args=(bias,))
+
+        with graph.inserting_after(bias_term):
+            result = graph.call_function(
+                _aten.add.Tensor, args=(squeeze_node, bias_term)
+            )
         return result
 
 
 class PullSumSqueeze(Rule):
     """Pull ``sum`` through ``squeeze``.
 
-    Rewrites ``sum(squeeze(x, sq_d), [s_d])`` into
-    ``squeeze(sum(x, [adj_s_d]), adj_sq_d)``, adjusting dimensions so the
-    result is numerically identical.
+    Rewrites ``sum(squeeze(x, squeeze_dim), [sum_dim])`` into
+    ``squeeze(sum(x, [new_sum_dim]), new_squeeze_dim)``, adjusting dimensions
+    so the result is numerically identical.
 
     Handles both ``squeeze.dim`` (scalar) and ``squeeze.dims`` (list with a
     single element).
@@ -524,23 +515,21 @@ class PullSumSqueeze(Rule):
         squeeze_input = squeeze_node.args[0]
 
         # Normalise squeeze dim to a scalar
-        if squeeze_node.target == _aten.squeeze.dims:
-            sq_d = squeeze_node.args[1][0]
-        else:
-            sq_d = squeeze_node.args[1]
+        raw = squeeze_node.args[1]
+        squeeze_dim = raw[0] if squeeze_node.target == _aten.squeeze.dims else raw
 
         # Compute adjusted dims in the original (unsqueezed) tensor
-        new_s_d = pos + 1 if sq_d <= pos else pos
-        # After sum removes new_s_d, adjust squeeze dim
-        new_sq_d = sq_d - 1 if new_s_d < sq_d else sq_d
+        new_sum_dim = pos + 1 if squeeze_dim <= pos else pos
+        # After sum removes new_sum_dim, adjust squeeze dim
+        new_squeeze_dim = squeeze_dim - 1 if new_sum_dim < squeeze_dim else squeeze_dim
 
-        # Build: squeeze(sum(x, [new_s_d]), new_sq_d)
+        # Build: squeeze(sum(x, [new_sum_dim]), new_squeeze_dim)
         with graph.inserting_before(sum_node):
-            sum_args = _make_sum_args(squeeze_input, new_s_d)
+            sum_args = _make_sum_args(squeeze_input, new_sum_dim)
             new_sum = graph.call_function(_sum_target, args=sum_args)
         with graph.inserting_after(new_sum):
             new_squeeze = graph.call_function(
-                _aten.squeeze.dim, args=(new_sum, new_sq_d)
+                _aten.squeeze.dim, args=(new_sum, new_squeeze_dim)
             )
 
         return new_squeeze
@@ -553,8 +542,8 @@ class PullSumUnsqueeze(Rule):
 
     1. ``sum_dim == unsqueeze_dim``: the sum collapses the freshly inserted
        size-1 dimension → the unsqueeze/sum pair is a no-op on ``x``.
-    2. Otherwise: rewrite ``sum(unsqueeze(x, uq_d), [s_d])`` into
-       ``unsqueeze(sum(x, [adj_s_d]), adj_uq_d)``.
+    2. Otherwise: rewrite ``sum(unsqueeze(x, unsqueeze_dim), [sum_dim])``
+       into ``unsqueeze(sum(x, [new_sum_dim]), new_unsqueeze_dim)``.
 
     Attributes:
         OPERATIONS: Supported unsqueeze operations.
@@ -578,25 +567,27 @@ class PullSumUnsqueeze(Rule):
             (handled via direct ``replace_all_uses_with``).
         """
         unsqueeze_input = unsqueeze_node.args[0]
-        uq_d = unsqueeze_node.args[1]
+        unsqueeze_dim = unsqueeze_node.args[1]
 
-        if pos == uq_d:
+        if pos == unsqueeze_dim:
             # Summing over the freshly inserted size-1 dim is a no-op
             sum_node.replace_all_uses_with(unsqueeze_input)
             return None
 
         # Compute adjusted dims in the original (unsqueezed) tensor
-        new_s_d = pos - 1 if uq_d <= pos else pos
-        # After sum removes new_s_d, adjust unsqueeze dim
-        new_uq_d = uq_d - 1 if new_s_d < uq_d else uq_d
+        new_sum_dim = pos - 1 if unsqueeze_dim <= pos else pos
+        # After sum removes new_sum_dim, adjust unsqueeze dim
+        new_unsqueeze_dim = (
+            unsqueeze_dim - 1 if new_sum_dim < unsqueeze_dim else unsqueeze_dim
+        )
 
-        # Build: unsqueeze(sum(x, [new_s_d]), new_uq_d)
+        # Build: unsqueeze(sum(x, [new_sum_dim]), new_unsqueeze_dim)
         with graph.inserting_before(sum_node):
-            sum_args = _make_sum_args(unsqueeze_input, new_s_d)
+            sum_args = _make_sum_args(unsqueeze_input, new_sum_dim)
             new_sum = graph.call_function(_sum_target, args=sum_args)
         with graph.inserting_after(new_sum):
             new_unsqueeze = graph.call_function(
-                _aten.unsqueeze.default, args=(new_sum, new_uq_d)
+                _aten.unsqueeze.default, args=(new_sum, new_unsqueeze_dim)
             )
 
         return new_unsqueeze
@@ -605,14 +596,14 @@ class PullSumUnsqueeze(Rule):
 class PullSumView(Rule):
     """Pull ``sum`` through ``view`` and ``_unsafe_view``.
 
-    Rewrites ``sum(view(x, shape), [s_d])`` into
-    ``view(sum(x, [d']), shape')``, where ``d'`` is the original dimension
-    that ``s_d`` maps to and ``shape'`` is ``shape`` with element ``s_d``
-    removed.
+    Rewrites ``sum(view(x, shape), [sum_dim])`` into
+    ``view(sum(x, [original_dim]), shape')``, where ``original_dim`` is the original
+    dimension that ``sum_dim`` maps to and ``shape'`` is ``shape`` with
+    element ``sum_dim`` removed.
 
-    This only fires when dimension ``s_d`` in the viewed shape maps cleanly
-    to a single dimension ``d'`` in the original shape (no splits or merges
-    across the summed dimension boundary).
+    This only fires when dimension ``sum_dim`` in the viewed shape maps
+    cleanly to a single dimension ``original_dim`` in the original shape (no
+    splits or merges across the summed dimension boundary).
 
     Attributes:
         OPERATIONS: Supported view operations.
@@ -621,30 +612,30 @@ class PullSumView(Rule):
     OPERATIONS = [_aten.view.default, _aten._unsafe_view.default]
 
     @staticmethod
-    def _find_orig_dim(
-        orig_shape: tuple[int, ...], new_shape: list[int], s_d: int
+    def _find_original_dim(
+        orig_shape: tuple[int, ...], new_shape: list[int], sum_dim: int
     ) -> int | None:
-        """Map ``s_d`` in ``new_shape`` back to a dimension in ``orig_shape``.
+        """Map ``sum_dim`` in ``new_shape`` back to a dimension in ``orig_shape``.
 
-        Returns the index ``d'`` if the dimension boundaries align, or
+        Returns the index ``original_dim`` if the dimension boundaries align, or
         ``None`` if the sum dimension spans a split/merge.
 
         Args:
             orig_shape: Shape of the tensor before the view.
             new_shape: Shape after the view.
-            s_d: The dimension being summed in ``new_shape``.
+            sum_dim: The dimension being summed in ``new_shape``.
 
         Returns:
             The corresponding dimension index in ``orig_shape``, or ``None``.
         """
-        prefix_new = prod(new_shape[:s_d]) if s_d > 0 else 1
+        prefix_new = prod(new_shape[:sum_dim]) if sum_dim > 0 else 1
         prefix_orig = 1
-        for d_prime in range(len(orig_shape)):
+        for original_dim in range(len(orig_shape)):
             if prefix_orig == prefix_new:
-                if new_shape[s_d] == orig_shape[d_prime]:
-                    return d_prime
+                if new_shape[sum_dim] == orig_shape[original_dim]:
+                    return original_dim
                 return None
-            prefix_orig *= orig_shape[d_prime]
+            prefix_orig *= orig_shape[original_dim]
         return None
 
     def _extra_match(self, sum_node: Node, inner_node: Node) -> bool:
@@ -657,11 +648,10 @@ class PullSumView(Rule):
         Returns:
             True if the dimension mapping is clean.
         """
-        view_input = inner_node.args[0]
+        view_input, new_shape = inner_node.args
         orig_shape = view_input.meta["tensor_meta"].shape
-        new_shape = inner_node.args[1]
-        s_d = _get_sum_pos(sum_node)
-        return self._find_orig_dim(orig_shape, new_shape, s_d) is not None
+        sum_dim = _get_sum_pos(sum_node)
+        return self._find_original_dim(orig_shape, new_shape, sum_dim) is not None
 
     def _rewrite(self, sum_node: Node, view_node: Node, pos: int, graph: Graph) -> Node:
         """Swap the sum and view, adjusting the shape.
@@ -675,16 +665,16 @@ class PullSumView(Rule):
         Returns:
             The new view node.
         """
-        view_input = view_node.args[0]
+        view_input, view_shape = view_node.args
         orig_shape = view_input.meta["tensor_meta"].shape
-        new_shape = list(view_node.args[1])
-        d_prime = self._find_orig_dim(orig_shape, new_shape, pos)
+        new_shape = list(view_shape)
+        original_dim = self._find_original_dim(orig_shape, new_shape, pos)
 
         # Shape after removing the summed dimension
         result_shape = new_shape[:pos] + new_shape[pos + 1 :]
 
         with graph.inserting_before(sum_node):
-            sum_args = _make_sum_args(view_input, d_prime)
+            sum_args = _make_sum_args(view_input, original_dim)
             new_sum = graph.call_function(_sum_target, args=sum_args)
         with graph.inserting_after(new_sum):
             new_view = graph.call_function(

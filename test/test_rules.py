@@ -394,9 +394,13 @@ def test_simplification_rules(case: RuleTestCase):
 
     # make sure all functions yield the same result
     f_x = case(x)
-    assert f_x.allclose(case.forward_simple(x))
+    f_simple_x = case.forward_simple(x)
+    assert f_x.shape == f_simple_x.shape
+    assert f_x.allclose(f_simple_x)
     f_simplified.recompile()
-    assert f_x.allclose(f_simplified(x))
+    f_simplified_x = f_simplified(x)
+    assert f_x.shape == f_simplified_x.shape
+    assert f_x.allclose(f_simplified_x)
 
     # compare the graphs of f_simplified and f_simple
     f_simple_mod = capture_graph(lambda x: case.forward_simple(x), x)  # noqa: PLW0108

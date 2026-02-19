@@ -550,10 +550,7 @@ def jet_mm(
     Returns:
         The value and its Taylor coefficients.
     """
-    if _jet_info["is_taylor"][1] != {}:
-        raise NotImplementedError(f"Not implemented for {_jet_info['is_taylor']=}.")
-
-    (coeff1, coeff2) = _jet_info["is_taylor"][0]
+    (coeff1, coeff2) = _jet_info["is_taylor"]
 
     if (coeff1, coeff2) == (True, True):
         s_out = ()

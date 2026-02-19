@@ -5,7 +5,7 @@ from typing import Any, Callable
 import torch
 from pytest import mark
 from torch import Tensor, arange, float64, manual_seed, sigmoid, sin, tanh, tensor
-from torch.fx import Graph, GraphModule, Node
+from torch.fx import Graph, Node
 from torch.nn import Linear, Sequential, Tanh
 from torch.nn.functional import linear
 
@@ -13,6 +13,7 @@ from jet.bilaplacian import Bilaplacian
 from jet.laplacian import Laplacian
 from jet.simplify import common_subexpression_elimination, simplify
 from jet.tracing import capture_graph
+from jet.utils import run_seeded
 from test.test___init__ import compare_jet_results, setup_case
 from test.test_bilaplacian import bilaplacian
 from test.test_laplacian import (
@@ -96,42 +97,6 @@ def get_output_args(graph: Graph) -> tuple[Node, ...]:
     return (args,)
 
 
-def _assert_bilaplacian_structure(
-    simple_mod: GraphModule,
-    x: Tensor,
-    config: dict[str, Any],
-    randomized: bool,
-) -> None:
-    """Assert structural properties of bilaplacian simplification.
-
-    Verifies that simplification rules actually fired and the resulting graph
-    has the expected structure (node counts).
-    """
-    D = x.numel()
-
-    # The bilaplacian output should be a single tensor (not a tuple)
-    out_args_simple = get_output_args(simple_mod.graph)
-    assert len(out_args_simple) == 1, (
-        f"Bilaplacian should return 1 output, got {len(out_args_simple)}"
-    )
-
-    # Exact node counts: detect regressions if simplification rules stop firing
-    if not randomized:
-        expected_nodes = {
-            "sin": 35 if D == 1 else 103,
-            "sin-sin": 200,
-            "tanh-tanh": 246,
-            "tanh-linear": 149,
-            "two-layer-tanh-mlp": 365,
-            "sigmoid-sigmoid": 242,
-        }
-        n_nodes = len(list(simple_mod.graph.nodes))
-        expected = expected_nodes[config["id"]]
-        assert n_nodes == expected, (
-            f"Expected {expected} nodes for {config['id']} (D={D}), got {n_nodes}"
-        )
-
-
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize("config", SIMPLIFY_CASES, ids=[c["id"] for c in SIMPLIFY_CASES])
 @mark.parametrize(
@@ -162,10 +127,7 @@ def test_simplify_laplacian(
     weighting = get_weighting(x, weights, randomization=randomization)
     mod = Laplacian(f, x, randomization=randomization, weighting=weighting)
 
-    # we have to set the random seed to make sure the same random vectors are used
-    if randomization is not None:
-        manual_seed(seed)
-    mod_out = mod(x)
+    mod_out = run_seeded(mod, seed, x)
 
     if randomization is None:
         C = get_coefficients(x, weights)
@@ -173,20 +135,10 @@ def test_simplify_laplacian(
         assert lap.allclose(mod_out[2])
         print("Exact Laplacian in functorch and jet match.")
 
-    # trace and simplify the module
-
-    # we have to set the random seed because tracing executes the functions that
-    # draw random vectors and stores them as tensor constants
-    if randomization is not None:
-        manual_seed(seed)
-    fast = simplify(mod, x, verbose=True, test_x=x)
+    fast = run_seeded(simplify, seed, mod, x, verbose=True, test_x=x)
 
     # make sure the simplified module still behaves the same
-    # With make_fx, random ops (aten.randn) are in the graph, so we must set the
-    # seed before each evaluation to get deterministic results
-    if randomization is not None:
-        manual_seed(seed)
-    fast_out = fast(x)
+    fast_out = run_seeded(fast, seed, x)
     compare_jet_results(mod_out, fast_out)
     print("Laplacian via jet matches Laplacian via simplified module.")
 
@@ -211,37 +163,43 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
 
     bilap_mod = Bilaplacian(f, x, randomization=randomization)
 
-    # we have to set the random seed to make sure the same random vectors are used
-    if randomized:
-        manual_seed(seed)
-    bilap = bilap_mod(x)
+    bilap = run_seeded(bilap_mod, seed, x)
 
     if not randomized:
         bilap_true = bilaplacian(f, x)
         assert bilap_true.allclose(bilap)
         print("Exact Bi-Laplacian in functorch and jet match.")
 
-    # simplify the traced module
-
-    # we have to set the random seed because tracing executes the functions that
-    # draw random vectors and stores them as tensor constants
-    if randomized:
-        manual_seed(seed)
-    simple_mod = simplify(
-        bilap_mod,
-        x,
-        verbose=True,
-        test_x=x,
-    )
+    simple_mod = simplify(bilap_mod, x, verbose=True, test_x=x)
 
     # make sure the simplified module still behaves the same
-    if randomized:
-        manual_seed(seed)
-    bilap_simple = simple_mod(x)
+    bilap_simple = run_seeded(simple_mod, seed, x)
     report_nonclose(bilap, bilap_simple, name="Bi-Laplacians")
 
     # Structural assertions: verify simplification rules actually fired
-    _assert_bilaplacian_structure(simple_mod, x, config, randomized)
+    D = x.numel()
+
+    # The bilaplacian output should be a single tensor (not a tuple)
+    out_args_simple = get_output_args(simple_mod.graph)
+    assert len(out_args_simple) == 1, (
+        f"Bilaplacian should return 1 output, got {len(out_args_simple)}"
+    )
+
+    # Exact node counts: detect regressions if simplification rules stop firing
+    if not randomized:
+        expected_nodes = {
+            "sin": 35 if D == 1 else 103,
+            "sin-sin": 200,
+            "tanh-tanh": 246,
+            "tanh-linear": 149,
+            "two-layer-tanh-mlp": 365,
+            "sigmoid-sigmoid": 242,
+        }
+        n_nodes = len(list(simple_mod.graph.nodes))
+        expected = expected_nodes[config["id"]]
+        assert n_nodes == expected, (
+            f"Expected {expected} nodes for {config['id']} (D={D}), got {n_nodes}"
+        )
 
 
 def test_common_subexpression_elimination():

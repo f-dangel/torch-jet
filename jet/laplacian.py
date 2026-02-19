@@ -124,7 +124,9 @@ class Laplacian(Module):
             raise ValueError(f"Expected input shape {self.in_shape}, got {x.shape}.")
         X1 = self._set_up_first_taylor_coefficient(x)
         vmapped = vmap(
-            lambda x1: self.jet_f(x, x1, zeros_like(x)), randomness="different"
+            lambda x1: self.jet_f(x, x1, zeros_like(x)),
+            randomness="different",
+            out_dims=(None, 0, 0),
         )
         F0, F1, F2 = vmapped(X1)
         if self.randomization is not None:

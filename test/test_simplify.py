@@ -143,12 +143,12 @@ def test_simplify_laplacian(
     # Exact node counts: detect regressions if simplification rules stop firing
     if randomization is None and weighting is None:
         expected_nodes = {
-            "sin": 16,
-            "sin-sin": 25,
-            "tanh-tanh": 41,
-            "tanh-linear": 43,
-            "two-layer-tanh-mlp": 73,
-            "sigmoid-sigmoid": 37,
+            "sin": 15,
+            "sin-sin": 24,
+            "tanh-tanh": 40,
+            "tanh-linear": 42,
+            "two-layer-tanh-mlp": 72,
+            "sigmoid-sigmoid": 36,
         }
         n_nodes = len(list(simplified.graph.nodes))
         expected = expected_nodes[config["id"]]

@@ -108,6 +108,7 @@ class Bilaplacian(Module):
         vmapped = vmap(
             lambda x1: self.jet_f(x, x1, zeros_like(x), zeros_like(x), zeros_like(x)),
             randomness="different",
+            out_dims=(None, 0, 0, 0, 0),
         )
 
         if self.randomization is not None:

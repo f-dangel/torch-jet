@@ -119,9 +119,7 @@ class JetTransformer(Transformer):
         else:
             raise RuntimeError(f"Could not detect dependency of {arg}.")
 
-    def _constant_proxy(
-        self, target: Target, args: tuple[Argument, ...]
-    ) -> Proxy:
+    def _constant_proxy(self, target: Target, args: tuple[Argument, ...]) -> Proxy:
         """Create a proxy node representing a constant operation.
 
         For operations whose arguments depend only on constants, this method

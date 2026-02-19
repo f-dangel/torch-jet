@@ -251,9 +251,8 @@ class PullSumAddOrSub(Rule):
         Returns:
             True if the operation has 2 tensor arguments.
         """
-        return (
-            len(inner_node.args) == 2
-            and any(isinstance(a, Node) for a in inner_node.args)
+        return len(inner_node.args) == 2 and any(
+            isinstance(a, Node) for a in inner_node.args
         )
 
     def _rewrite(self, sum_node: Node, add_node: Node, pos: int, graph: Graph) -> Node:
@@ -286,9 +285,7 @@ class PullSumAddOrSub(Rule):
                     adjusted_pos = pos - (out_ndim - arg_ndim)
                     with graph.inserting_after(arg):
                         sum_args = _make_sum_args(arg, adjusted_pos)
-                        new_arg = graph.call_function(
-                            _sum_target, args=sum_args
-                        )
+                        new_arg = graph.call_function(_sum_target, args=sum_args)
                 else:
                     # Invariant along pos → multiply by K
                     with graph.inserting_after(arg):

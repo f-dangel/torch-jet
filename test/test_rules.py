@@ -134,6 +134,22 @@ class SumTensorAdd(RuleTestCase):  # noqa: D101
 CASES.extend(SumTensorAdd(op, _SUM_DIM) for op in _ADDITION_OPS)
 
 
+# Pulling a sum node through addition with a scalar
+class SumScalarAdd(RuleTestCase):  # noqa: D101
+    shape = (3, 4)
+    id = "sum-scalar-add"
+    rules = [PullSumAddOrSub()]
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        return (x + 5.0).sum(0)
+
+    def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
+        return x.sum(0) + 5.0 * 3
+
+
+CASES.append(SumScalarAdd())
+
+
 # Pulling a sum node through a broadcasted tensor multiplication
 class SumBroadcastedMul(RuleTestCase):  # noqa: D101
     shape = (5, 4)
@@ -317,17 +333,21 @@ CASES.extend(
 # Pull a sum node through unsqueeze (no-op: sum dim == unsqueeze dim).
 class SumUnsqueezeNoop(RuleTestCase):  # noqa: D101
     shape = (5, 4)
-    id = "sum-unsqueeze-noop"
     rules = [PullSumUnsqueeze()]
 
+    def __init__(self, pos: int):  # noqa: D107
+        super().__init__()
+        self.pos = pos
+        self.id = f"sum-unsqueeze-noop-{pos=}"
+
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        return x.unsqueeze(1).sum(1)
+        return x.unsqueeze(self.pos).sum(self.pos)
 
     def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
         return x
 
 
-CASES.append(SumUnsqueezeNoop())
+CASES.extend(SumUnsqueezeNoop(pos) for pos in [0, 1])
 
 
 # Pull a sum node through unsqueeze (swap: dims differ).
@@ -405,22 +425,6 @@ def test_simplification_rules(case: RuleTestCase):
     # compare the graphs of f_simplified and f_simple
     f_simple_mod = capture_graph(lambda x: case.forward_simple(x), x)  # noqa: PLW0108
     compare_graphs(f_simple_mod.graph, f_simplified.graph)
-
-
-# Pulling a sum node through addition with a scalar
-class SumAddScalar(RuleTestCase):  # noqa: D101
-    shape = (3, 4)
-    id = "sum-add-scalar"
-    rules = [PullSumAddOrSub()]
-
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        return (x + 5.0).sum(0)
-
-    def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
-        return x.sum(0) + 5.0 * 3
-
-
-CASES.append(SumAddScalar())
 
 
 # === Negative test cases: rules should NOT trigger ===

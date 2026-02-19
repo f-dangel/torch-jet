@@ -448,9 +448,7 @@ def jet_sum(
     is_taylor = _jet_info["is_taylor"]
     # First arg (tensor) must be Taylor, rest (dim, keepdim) must be constant
     if is_taylor[0] is not True or any(is_taylor[1:]):
-        raise NotImplementedError(
-            f"Got {is_taylor=}. Only supports tensor as Taylor."
-        )
+        raise NotImplementedError(f"Got {is_taylor=}. Only supports tensor as Taylor.")
 
     pos = dim[0] if isinstance(dim, list) else dim
     return tuple(

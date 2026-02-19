@@ -124,11 +124,12 @@ class SumTensorAdd(RuleTestCase):  # noqa: D101
         return self.op(x, y).sum(self.pos)
 
     def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
-        # Two separate sum nodes: one for each operand of the outer op
-        x_sum_1 = x.sum(self.pos)
-        x_sum_2 = x.sum(self.pos)
-        # sum(x + 1, pos) is also simplified: sum(x, pos) + 1 * K
-        return self.op(x_sum_1, x_sum_2 + 1 * x.shape[self.pos])
+        # sum(x + 1, pos) also simplifies: sum(x, pos) + 1 * K.
+        # The inner sum(x) is inserted first in the graph.
+        K = x.shape[self.pos]
+        x_sum_inner = x.sum(self.pos)
+        x_sum_outer = x.sum(self.pos)
+        return self.op(x_sum_outer, x_sum_inner + 1 * K)
 
 
 CASES.extend(SumTensorAdd(op, _SUM_DIM) for op in _ADDITION_OPS)

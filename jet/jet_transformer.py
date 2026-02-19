@@ -120,7 +120,7 @@ class JetTransformer(Transformer):
             raise RuntimeError(f"Could not detect dependency of {arg}.")
 
     def _constant_proxy(
-        self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Argument]
+        self, target: Target, args: tuple[Argument, ...]
     ) -> Proxy:
         """Create a proxy node representing a constant operation.
 
@@ -131,7 +131,6 @@ class JetTransformer(Transformer):
         Args:
             target: The function or operation being called.
             args: The node arguments.
-            kwargs: The keyword arguments.
 
         Returns:
             The created `torch.fx.Proxy` node corresponding to a constant operation.
@@ -144,7 +143,7 @@ class JetTransformer(Transformer):
             "call_function",
             target,
             args,
-            kwargs,
+            {},
             name=from_nodes[0].name if from_nodes else None,
         )
         self.dependent_on_constants.add(new_proxy.node.name)
@@ -154,7 +153,6 @@ class JetTransformer(Transformer):
         self,
         target: Target,
         args: tuple[Argument, ...],
-        kwargs: dict[str, Argument],
         is_taylor: IsTaylorType,
     ) -> Proxy:
         """Create a proxy node representing a jet (Taylor mode) operation.
@@ -167,8 +165,7 @@ class JetTransformer(Transformer):
         Args:
             target: The function or operation being replaced.
             args: The node arguments.
-            kwargs: The keyword arguments.
-            is_taylor: Indicating args and kwargs dependencies on placeholders.
+            is_taylor: Indicating which positional args depend on placeholders.
 
         Returns:
             The created `torch.fx.Proxy` node corresponding to a jet operation.
@@ -184,7 +181,6 @@ class JetTransformer(Transformer):
             MAPPING[target],
             args,
             {
-                **kwargs,
                 "_jet_info": JetInfo(
                     derivative_order=self.derivative_order, is_taylor=is_taylor
                 ),
@@ -210,16 +206,14 @@ class JetTransformer(Transformer):
         Returns:
             The transformed `torch.fx.Proxy` node.
         """
-        is_taylor_args = tuple(self._check_dependency(arg) for arg in args)
-        is_taylor_kwargs = {
-            key: self._check_dependency(arg) for key, arg in kwargs.items()
-        }
-        no_taylor_flag = any(is_taylor_args) or any(is_taylor_kwargs.values())
+        # make_fx always places all arguments into node.args (node.kwargs is
+        # always empty), so we only need to track positional arg dependencies.
+        is_taylor = tuple(self._check_dependency(arg) for arg in args)
 
         return (
-            self._jet_proxy(target, args, kwargs, (is_taylor_args, is_taylor_kwargs))
-            if no_taylor_flag
-            else self._constant_proxy(target, args, kwargs)
+            self._jet_proxy(target, args, is_taylor)
+            if any(is_taylor)
+            else self._constant_proxy(target, args)
         )
 
     def call_module(

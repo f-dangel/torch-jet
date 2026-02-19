@@ -45,17 +45,17 @@ def _get_sum_pos(node: Node) -> int:
     return node.args[1][0]
 
 
-def _make_sum_args(x: Node, pos: int) -> tuple[tuple, dict]:
-    """Create args and kwargs for a new ``aten.sum.dim_IntList`` node.
+def _make_sum_args(x: Node, pos: int) -> tuple:
+    """Create args for a new ``aten.sum.dim_IntList`` node.
 
     Args:
         x: The input tensor node.
         pos: The position to sum along.
 
     Returns:
-        Tuple of (args, kwargs) for graph.call_function.
+        Args tuple for ``graph.call_function``.
     """
-    return (x, [pos]), {}
+    return (x, [pos])
 
 
 class Rule(ABC):
@@ -169,7 +169,7 @@ class PullSumMul(Rule):
         Returns:
             True if one factor is invariant.
         """
-        if len(inner_node.args) != 2 or inner_node.kwargs != {}:
+        if len(inner_node.args) != 2:
             return False
 
         pos = _get_sum_pos(sum_node)
@@ -215,8 +215,8 @@ class PullSumMul(Rule):
         invariant = mul_node.args[invariant_idx]
 
         with graph.inserting_after(sum_node):
-            sum_args, sum_kwargs = _make_sum_args(varying, pos)
-            new_sum = graph.call_function(_sum_target, args=sum_args, kwargs=sum_kwargs)
+            sum_args = _make_sum_args(varying, pos)
+            new_sum = graph.call_function(_sum_target, args=sum_args)
         with graph.inserting_after(new_sum):
             new_args = [None, None]
             new_args[varying_idx] = new_sum
@@ -253,7 +253,6 @@ class PullSumAddOrSub(Rule):
         """
         return (
             len(inner_node.args) == 2
-            and inner_node.kwargs == {}
             and any(isinstance(a, Node) for a in inner_node.args)
         )
 
@@ -286,9 +285,9 @@ class PullSumAddOrSub(Rule):
                     # Varies along pos → sum with adjusted dim
                     adjusted_pos = pos - (out_ndim - arg_ndim)
                     with graph.inserting_after(arg):
-                        sum_args, sum_kwargs = _make_sum_args(arg, adjusted_pos)
+                        sum_args = _make_sum_args(arg, adjusted_pos)
                         new_arg = graph.call_function(
-                            _sum_target, args=sum_args, kwargs=sum_kwargs
+                            _sum_target, args=sum_args
                         )
                 else:
                     # Invariant along pos → multiply by K
@@ -360,8 +359,8 @@ class PullSumMM(Rule):
         target_arg = mm_node.args[target_idx]
 
         with graph.inserting_before(mm_node):
-            sv_args, sv_kwargs = _make_sum_args(target_arg, pos)
-            new_sv = graph.call_function(_sum_target, args=sv_args, kwargs=sv_kwargs)
+            sv_args = _make_sum_args(target_arg, pos)
+            new_sv = graph.call_function(_sum_target, args=sv_args)
 
         with graph.inserting_after(new_sv):
             unsqueeze_node = graph.call_function(
@@ -439,8 +438,8 @@ class PullSumAddMM(Rule):
         target_arg = addmm_node.args[target_idx]
 
         with graph.inserting_before(addmm_node):
-            sv_args, sv_kwargs = _make_sum_args(target_arg, pos)
-            new_sv = graph.call_function(_sum_target, args=sv_args, kwargs=sv_kwargs)
+            sv_args = _make_sum_args(target_arg, pos)
+            new_sv = graph.call_function(_sum_target, args=sv_args)
 
         with graph.inserting_after(new_sv):
             unsqueeze_node = graph.call_function(
@@ -540,8 +539,8 @@ class PullSumSqueeze(Rule):
 
         # Build: squeeze(sum(x, [new_s_d]), new_sq_d)
         with graph.inserting_before(sum_node):
-            sum_args, sum_kwargs = _make_sum_args(squeeze_input, new_s_d)
-            new_sum = graph.call_function(_sum_target, args=sum_args, kwargs=sum_kwargs)
+            sum_args = _make_sum_args(squeeze_input, new_s_d)
+            new_sum = graph.call_function(_sum_target, args=sum_args)
         with graph.inserting_after(new_sum):
             new_squeeze = graph.call_function(
                 _aten.squeeze.dim, args=(new_sum, new_sq_d)
@@ -596,8 +595,8 @@ class PullSumUnsqueeze(Rule):
 
         # Build: unsqueeze(sum(x, [new_s_d]), new_uq_d)
         with graph.inserting_before(sum_node):
-            sum_args, sum_kwargs = _make_sum_args(unsqueeze_input, new_s_d)
-            new_sum = graph.call_function(_sum_target, args=sum_args, kwargs=sum_kwargs)
+            sum_args = _make_sum_args(unsqueeze_input, new_s_d)
+            new_sum = graph.call_function(_sum_target, args=sum_args)
         with graph.inserting_after(new_sum):
             new_unsqueeze = graph.call_function(
                 _aten.unsqueeze.default, args=(new_sum, new_uq_d)
@@ -688,8 +687,8 @@ class PullSumView(Rule):
         result_shape = new_shape[:pos] + new_shape[pos + 1 :]
 
         with graph.inserting_before(sum_node):
-            sum_args, sum_kwargs = _make_sum_args(view_input, d_prime)
-            new_sum = graph.call_function(_sum_target, args=sum_args, kwargs=sum_kwargs)
+            sum_args = _make_sum_args(view_input, d_prime)
+            new_sum = graph.call_function(_sum_target, args=sum_args)
         with graph.inserting_after(new_sum):
             new_view = graph.call_function(
                 view_node.target, args=(new_sum, result_shape)

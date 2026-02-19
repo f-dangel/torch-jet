@@ -65,7 +65,6 @@ def compare_graphs(graph1: Graph, graph2: Graph):
                 assert node_mapping[arg1] == arg2
             else:
                 assert arg1 == arg2
-        # TODO Support comparing kwargs that contain nodes
         assert node1.kwargs == node2.kwargs
 
         # nodes match, hence add them to the mapping

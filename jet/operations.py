@@ -14,7 +14,7 @@ from jet.utils import (
     multiplicity,
 )
 
-IsTaylorType = tuple[tuple[bool, ...], dict[str, bool]]  # positional + kwargs
+IsTaylorType = tuple[bool, ...]
 
 
 class JetInfo(TypedDict, total=True):
@@ -31,13 +31,14 @@ class JetInfo(TypedDict, total=True):
             third derivative are computed.
 
         is_taylor:
-            A tuple containing a tuple and a dict flagging which inputs are Taylor coefficients.
-            Each entry of the tuple (dict) corresponds to an arg (kwarg) of the primitive:
+            A tuple of bools flagging which positional args are Taylor coefficients:
               - `True` means the argument is treated as a Taylor-expanded input.
               - `False` means the argument is treated as a constant.
+            Keyword args are not tracked because ``make_fx`` always places all
+            operation arguments into ``node.args`` (``node.kwargs`` is always empty).
 
     Example:
-        >>> info: JetInfo = {"derivative_order": 2, "is_taylor": ((True, False), {"bias": False})}
+        >>> info: JetInfo = {"derivative_order": 2, "is_taylor": (True, False)}
         >>> # This means: expand to 2nd order, first arg is Taylor, second is constant.
     """
 
@@ -94,7 +95,7 @@ def jet_sin(
     Returns:
         The value and its Taylor coefficients.
     """
-    if _jet_info["is_taylor"] != ((True,), {}):
+    if _jet_info["is_taylor"] != (True,):
         raise NotImplementedError(f"Not implemented for {_jet_info["is_taylor"]=}.")
 
     x, vs = self_and_taylor_coefficients[0], self_and_taylor_coefficients[1:]
@@ -128,7 +129,7 @@ def jet_cos(
     Returns:
         The value and its Taylor coefficients.
     """
-    if _jet_info["is_taylor"] != ((True,), {}):
+    if _jet_info["is_taylor"] != (True,):
         raise NotImplementedError(f"Not implemented for {_jet_info["is_taylor"]=}.")
 
     x, vs = self_and_taylor_coefficients[0], self_and_taylor_coefficients[1:]
@@ -162,7 +163,7 @@ def jet_tanh(
     Returns:
         The value and its Taylor coefficients.
     """
-    if _jet_info["is_taylor"] != ((True,), {}):
+    if _jet_info["is_taylor"] != (True,):
         raise NotImplementedError(f"Not implemented for {_jet_info["is_taylor"]=}.")
 
     x, vs = self_and_taylor_coefficients[0], self_and_taylor_coefficients[1:]
@@ -216,7 +217,7 @@ def jet_sigmoid(
     Returns:
         The value and its Taylor coefficients.
     """
-    if _jet_info["is_taylor"] != ((True,), {}):
+    if _jet_info["is_taylor"] != (True,):
         raise NotImplementedError(f"Not implemented for {_jet_info["is_taylor"]=}.")
     x, vs = self_and_taylor_coefficients[0], self_and_taylor_coefficients[1:]
 
@@ -274,7 +275,7 @@ def jet_pow(
         NotImplementedError: If a Taylor coefficient is passed as exponent.
     """
     assert isinstance(exponent, (float, int))
-    if _jet_info["is_taylor"] != ((True, False), {}):
+    if _jet_info["is_taylor"] != (True, False):
         raise NotImplementedError(f"Not implemented for {_jet_info["is_taylor"]=}.")
 
     x, vs = base_and_taylor_coefficients[0], base_and_taylor_coefficients[1:]
@@ -318,10 +319,7 @@ def jet_add(
     Returns:
         The value and its Taylor coefficients.
     """
-    if _jet_info["is_taylor"][1] != {}:
-        raise NotImplementedError(f"Not implemented for {_jet_info["is_taylor"]=}.")
-
-    (coeff1, coeff2) = _jet_info["is_taylor"][0]
+    (coeff1, coeff2) = _jet_info["is_taylor"]
 
     if (coeff1, coeff2) == (True, True):
         return tuple(
@@ -357,10 +355,7 @@ def jet_sub(
     Returns:
         The value and its Taylor coefficients.
     """
-    if _jet_info["is_taylor"][1] != {}:
-        raise NotImplementedError(f"Not implemented for {_jet_info["is_taylor"]=}.")
-
-    (coeff1, coeff2) = _jet_info["is_taylor"][0]
+    (coeff1, coeff2) = _jet_info["is_taylor"]
 
     if (coeff1, coeff2) == (True, True):
         return tuple(
@@ -396,10 +391,7 @@ def jet_mul(
     Returns:
         The value and its Taylor coefficients.
     """
-    if _jet_info["is_taylor"][1] != {}:
-        raise NotImplementedError(f"Not implemented for {_jet_info["is_taylor"]=}.")
-
-    (coeff1, coeff2) = _jet_info["is_taylor"][0]
+    (coeff1, coeff2) = _jet_info["is_taylor"]
 
     if (coeff1, coeff2) == (True, True):
         s_out = ()
@@ -453,11 +445,11 @@ def jet_sum(
     if keepdim:
         raise NotImplementedError("keepdim=True is not supported.")
 
-    is_args, is_kwargs = _jet_info["is_taylor"]
+    is_taylor = _jet_info["is_taylor"]
     # First arg (tensor) must be Taylor, rest (dim, keepdim) must be constant
-    if is_args[0] is not True or any(is_args[1:]) or any(is_kwargs.values()):
+    if is_taylor[0] is not True or any(is_taylor[1:]):
         raise NotImplementedError(
-            f"Got {_jet_info['is_taylor']=}. Only supports tensor as Taylor."
+            f"Got {is_taylor=}. Only supports tensor as Taylor."
         )
 
     pos = dim[0] if isinstance(dim, list) else dim
@@ -483,7 +475,7 @@ def jet_view(
     Returns:
         The value and its Taylor coefficients, each reshaped.
     """
-    if _jet_info["is_taylor"] != ((True, False), {}):
+    if _jet_info["is_taylor"] != (True, False):
         raise NotImplementedError(f"Not implemented for {_jet_info['is_taylor']=}.")
 
     return tuple(
@@ -508,7 +500,7 @@ def jet_unsqueeze(
     Returns:
         The value and its Taylor coefficients, each unsqueezed.
     """
-    if _jet_info["is_taylor"] != ((True, False), {}):
+    if _jet_info["is_taylor"] != (True, False):
         raise NotImplementedError(f"Not implemented for {_jet_info['is_taylor']=}.")
 
     return tuple(
@@ -533,7 +525,7 @@ def jet_squeeze(
     Returns:
         The value and its Taylor coefficients, each squeezed.
     """
-    if _jet_info["is_taylor"] != ((True, False), {}):
+    if _jet_info["is_taylor"] != (True, False):
         raise NotImplementedError(f"Not implemented for {_jet_info['is_taylor']=}.")
 
     return tuple(
@@ -609,11 +601,11 @@ def jet_addmm(
         The value and its Taylor coefficients.
     """
     # bias is always constant; the bilinear part follows mm rules
-    is_taylor_args = _jet_info["is_taylor"][0]
-    if len(is_taylor_args) != 3 or is_taylor_args[0]:
-        raise NotImplementedError(f"Not implemented for {_jet_info['is_taylor']=}.")
+    is_taylor = _jet_info["is_taylor"]
+    if len(is_taylor) != 3 or is_taylor[0]:
+        raise NotImplementedError(f"Not implemented for {is_taylor=}.")
 
-    (_, coeff1, coeff2) = is_taylor_args
+    (_, coeff1, coeff2) = is_taylor
 
     if (coeff1, coeff2) == (True, False):
         return (

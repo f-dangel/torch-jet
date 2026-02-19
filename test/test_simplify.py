@@ -126,7 +126,6 @@ def test_simplify_laplacian(
 
     weighting = get_weighting(x, weights, randomization=randomization)
     mod = Laplacian(f, x, randomization=randomization, weighting=weighting)
-
     mod_out = run_seeded(mod, seed, x)
 
     if randomization is None:
@@ -135,12 +134,27 @@ def test_simplify_laplacian(
         assert lap.allclose(mod_out[2])
         print("Exact Laplacian in functorch and jet match.")
 
-    fast = run_seeded(simplify, seed, mod, x, verbose=True, test_x=x)
+    simplified = simplify(mod, x, verbose=True, test_x=x)
 
-    # make sure the simplified module still behaves the same
-    fast_out = run_seeded(fast, seed, x)
-    compare_jet_results(mod_out, fast_out)
-    print("Laplacian via jet matches Laplacian via simplified module.")
+    # Verify output correctness
+    simplified_out = run_seeded(simplified, seed, x)
+    compare_jet_results(mod_out, simplified_out)
+
+    # Exact node counts: detect regressions if simplification rules stop firing
+    if randomization is None and weighting is None:
+        expected_nodes = {
+            "sin": 16,
+            "sin-sin": 25,
+            "tanh-tanh": 41,
+            "tanh-linear": 43,
+            "two-layer-tanh-mlp": 73,
+            "sigmoid-sigmoid": 37,
+        }
+        n_nodes = len(list(simplified.graph.nodes))
+        expected = expected_nodes[config["id"]]
+        assert n_nodes == expected, (
+            f"Expected {expected} nodes for {config['id']}, got {n_nodes}"
+        )
 
 
 @mark.parametrize("config", SIMPLIFY_CASES, ids=[c["id"] for c in SIMPLIFY_CASES])
@@ -155,17 +169,15 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
         distribution: The distribution from which to draw random vectors.
             If `None`, the exact Bi-Laplacian is computed.
     """
-    randomized = distribution is not None
     num_samples, seed = 42, 1  # only relevant with randomization
     f, x, _ = setup_case(config)
 
-    randomization = (distribution, num_samples) if randomized else None
+    randomization = (distribution, num_samples) if distribution is not None else None
 
     bilap_mod = Bilaplacian(f, x, randomization=randomization)
-
     bilap = run_seeded(bilap_mod, seed, x)
 
-    if not randomized:
+    if randomization is None:
         bilap_true = bilaplacian(f, x)
         assert bilap_true.allclose(bilap)
         print("Exact Bi-Laplacian in functorch and jet match.")
@@ -186,7 +198,7 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
     )
 
     # Exact node counts: detect regressions if simplification rules stop firing
-    if not randomized:
+    if randomization is None:
         expected_nodes = {
             "sin": 35 if D == 1 else 103,
             "sin-sin": 200,
@@ -239,38 +251,3 @@ def test_common_subexpression_elimination():
     )
 
     report_nonclose(f_x, f_traced(x), name="f(x)")
-
-
-@mark.parametrize("config", SIMPLIFY_CASES, ids=[c["id"] for c in SIMPLIFY_CASES])
-def test_full_simplification_structural(config: dict[str, Any]):
-    """Verify structural properties of full simplification.
-
-    Checks that the node count matches expectations (regression detection).
-
-    Args:
-        config: The configuration of the test case.
-    """
-    f, x, _ = setup_case(config)
-    mod = Laplacian(f, x)
-
-    simplified = simplify(mod, x)
-
-    # Exact node counts: detect regressions if simplification rules stop firing
-    expected_nodes = {
-        "sin": 16,
-        "sin-sin": 25,
-        "tanh-tanh": 41,
-        "tanh-linear": 43,
-        "two-layer-tanh-mlp": 73,
-        "sigmoid-sigmoid": 37,
-    }
-    n_nodes = len(list(simplified.graph.nodes))
-    expected = expected_nodes[config["id"]]
-    assert n_nodes == expected, (
-        f"Expected {expected} nodes for {config['id']}, got {n_nodes}"
-    )
-
-    # Verify output correctness
-    mod_out = mod(x)
-    simplified_out = simplified(x)
-    compare_jet_results(mod_out, simplified_out)

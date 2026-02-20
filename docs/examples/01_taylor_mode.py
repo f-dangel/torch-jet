@@ -17,6 +17,7 @@ from torch.nn import Linear, Sequential, Tanh
 from torch.nn.functional import relu
 
 from jet import jet
+from jet.tracing import capture_graph
 from jet.utils import visualize_graph
 
 HEREDIR = path.dirname(path.abspath(__name__))
@@ -238,64 +239,28 @@ else:
 #
 ### How It Works
 #
-# Let's have a look at the return type of `jet`:
+# `jet` uses `make_fx` to capture the function's ATen-level compute graph, then wraps
+# it in an interpreter that dispatches jet operations at runtime.
+#
+# When `f_jet` is called, the interpreter walks through the captured graph node by
+# node. For each `call_function` node, it checks whether any argument is a
+# Taylor-expanded value (a `JetTuple`). If so, it dispatches to the corresponding jet
+# operation (e.g. `jet_linear`, `jet_tanh`) instead of the original ATen op.
+#
+# Let's visualize both the original function's compute graph and the unrolled jet
+# function (obtained by tracing `f_jet` with `make_fx`):
 
-tp = type(f_jet)
-print(f"{tp.__module__}.{tp.__name__}")
-
-# %%
-#
-# We can see that `jet` produces a `torch.fx.GraphModule`, which is an object that
-# represents a compute graph. We can inspect this compute graph by `print`ing it:
-
-print(f_jet.graph)
-
-# %%
-#
-# While reading this string description already provides some insights into the graph's
-# structure, it is often more convenient to visualize it. For this, we use the
-# `visualize_graph` helper from `jet.utils`.
-
-# %%
-#
-# Let's visualize two compute graphs: The original function $f$, and its 2-jet function
-# $f_{2\text{-jet}}$:
-
-visualize_graph(make_fx(f)(x), path.join(GALLERYDIR, "01_f.png"))
-visualize_graph(f_jet, path.join(GALLERYDIR, "01_f_jet.png"))
-
-# %%
-#
-# | Original function $f$ | 2-jet function $f_{2\text{-jet}}$ |
-# |:---------------------:|:---------------------------------:|
-# | ![f graph](01_f.png)  | ![f-jet graph](01_f_jet.png)      |
-#
-# The way `jet` works is that is overwrites the original function's compute graph
-# that leads to the following differences:
-#
-# 1. The original function $f$ takes a single tensor argument (one node with
-#    `op_code="placeholder"`), while the 2-jet function $f_{2\text{-jet}}$ takes three
-#    arguments, the Taylor coefficients $\mathbf{x}_0$, $\mathbf{x}_1$, $\mathbf{x}_2$.
-#
-# 2. `jet` replaces each function call (nodes with `op_code="call_function"`) with a new
-#    function that propagates the 2-jet rather than the function value. These functions
-#    are defined in the `jet` library, and they take additional arguments (e.g. the jet
-#    degree) to take care of special situations we won't discuss here.
-#
-#     You can see that the following substitutions were performed by `jet`:
-#
-#     - `torch._C.nn.linear` $\leftrightarrow$ `jet.operations.jet_linear`
-#
-#     - `torch.tanh` $\leftrightarrow$ `jet.operations.jet_tanh`
-#
-# We can take an even 'deeper' look into this graph by tracing it again, which will
-# 'unroll' the operations of the `jet.operations.*` functions:
-
+mod = capture_graph(f, x)
+visualize_graph(mod, path.join(GALLERYDIR, "01_f.png"))
 visualize_graph(
     make_fx(f_jet)(x0, x1, x2), path.join(GALLERYDIR, "01_f_jet_unrolled.png")
 )
 
 # %%
+#
+# | Original function $f$ | Unrolled 2-jet function $f_{2\text{-jet}}$  |
+# |:---------------------:|:-------------------------------------------:|
+# | ![f graph](01_f.png)  | ![f-jet graph](01_f_jet_unrolled.png)       |
 #
 # The unrolled graph is, unsurprisingly, much larger. However, you should be able to
 # recognize all functions that are being called. We can regard this process as a
@@ -303,10 +268,6 @@ visualize_graph(
 # with a function $f_{k\text{-jet}}$ that also uses PyTorch operations.
 # This is a desirable property as it enables composability (e.g. taking the `jet` of
 # a `jet`).
-#
-# | Unrolled 2-jet function $f_{2\text{-jet}}$ |
-# |:------------------------------------------:|
-# | ![f-jet traced graph](01_f_jet_unrolled.png) |
 
 
 # %%
@@ -381,8 +342,9 @@ with raises(RuntimeError):
 # the ReLU function is currently not supported:
 
 
+f_relu = jet(lambda x: relu(x), 2, rand(3))  # noqa: PLW0108
 with raises(NotImplementedError):
-    jet(lambda x: relu(x), 2, rand(3))  # noqa: PLW0108
+    f_relu(rand(3), rand(3), rand(3))  # error is raised at call time
 
 # %%
 #

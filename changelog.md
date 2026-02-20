@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Replace `JetTransformer` (graph rewriting via `torch.fx.Transformer`) with
+  `JetInterpreter` (execution-time dispatch via `torch.fx.Interpreter`).
+  `jet()` now returns a plain closure instead of a `GraphModule`. Removes
+  `analyze_dependencies`, `_replace_operations_with_taylor`, and
+  `jet_transformer.py` (~250 lines). No changes to `laplacian()`,
+  `bilaplacian()`, or `simplify()`
+
 - **Backward-incompatible.** Rewrite tracing and simplification to operate on
   ATen-level ops. Remove `jet/vmap.py` (custom `traceable_vmap`),
   `jet/signature_parser.py`, and related utilities (`replicate`, `sum_vmapped`,

@@ -9,8 +9,8 @@ from torch.fx import Graph, Node
 from torch.nn import Linear, Sequential, Tanh
 from torch.nn.functional import linear
 
-from jet.bilaplacian import Bilaplacian
-from jet.laplacian import Laplacian
+from jet.bilaplacian import bilaplacian as jet_bilaplacian
+from jet.laplacian import laplacian as jet_laplacian
 from jet.simplify import common_subexpression_elimination, simplify
 from jet.tracing import capture_graph
 from jet.utils import run_seeded
@@ -125,20 +125,20 @@ def test_simplify_laplacian(
     f, x, _ = setup_case(config)
 
     weighting = get_weighting(x, weights, randomization=randomization)
-    mod = Laplacian(f, x, randomization=randomization, weighting=weighting)
-    mod_out = run_seeded(mod, seed, x)
+    lap_fn = jet_laplacian(f, x, randomization=randomization, weighting=weighting)
+    lap_fn_out = run_seeded(lap_fn, seed, x)
 
     if randomization is None:
         C = get_coefficients(x, weights)
         lap = laplacian(f, x, C)
-        assert lap.allclose(mod_out[2])
+        assert lap.allclose(lap_fn_out[2])
         print("Exact Laplacian in functorch and jet match.")
 
-    simplified = simplify(mod, x, verbose=True, test_x=x)
+    simplified = simplify(lap_fn, x, verbose=True, test_x=x)
 
     # Verify output correctness
     simplified_out = run_seeded(simplified, seed, x)
-    compare_jet_results(mod_out, simplified_out)
+    compare_jet_results(lap_fn_out, simplified_out)
 
     # Exact node counts: detect regressions if simplification rules stop firing
     if randomization is None and weighting is None:
@@ -174,25 +174,25 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
 
     randomization = (distribution, num_samples) if distribution is not None else None
 
-    bilap_mod = Bilaplacian(f, x, randomization=randomization)
-    bilap = run_seeded(bilap_mod, seed, x)
+    bilap_fn = jet_bilaplacian(f, x, randomization=randomization)
+    bilap = run_seeded(bilap_fn, seed, x)
 
     if randomization is None:
         bilap_true = bilaplacian(f, x)
         assert bilap_true.allclose(bilap)
         print("Exact Bi-Laplacian in functorch and jet match.")
 
-    simple_mod = simplify(bilap_mod, x, verbose=True, test_x=x)
+    simple_fn = simplify(bilap_fn, x, verbose=True, test_x=x)
 
-    # make sure the simplified module still behaves the same
-    bilap_simple = run_seeded(simple_mod, seed, x)
+    # make sure the simplified function still behaves the same
+    bilap_simple = run_seeded(simple_fn, seed, x)
     report_nonclose(bilap, bilap_simple, name="Bi-Laplacians")
 
     # Structural assertions: verify simplification rules actually fired
     D = x.numel()
 
     # The bilaplacian output should be a single tensor (not a tuple)
-    out_args_simple = get_output_args(simple_mod.graph)
+    out_args_simple = get_output_args(simple_fn.graph)
     assert len(out_args_simple) == 1, (
         f"Bilaplacian should return 1 output, got {len(out_args_simple)}"
     )
@@ -207,7 +207,7 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
             "two-layer-tanh-mlp": 365,
             "sigmoid-sigmoid": 242,
         }
-        n_nodes = len(list(simple_mod.graph.nodes))
+        n_nodes = len(list(simple_fn.graph.nodes))
         expected = expected_nodes[config["id"]]
         assert n_nodes == expected, (
             f"Expected {expected} nodes for {config['id']} (D={D}), got {n_nodes}"

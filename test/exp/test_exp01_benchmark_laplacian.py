@@ -6,13 +6,15 @@ from pytest import mark
 from torch import manual_seed, sigmoid, vmap
 from torch.nn import Linear, Sequential, Tanh
 
-from jet.bilaplacian import Bilaplacian
+from jet.bilaplacian import (
+    SUPPORTED_DISTRIBUTIONS as BILAPLACIAN_SUPPORTED_DISTRIBUTIONS,
+)
 from jet.exp.exp01_benchmark_laplacian.execute import (
     SUPPORTED_STRATEGIES,
     bilaplacian_function,
     laplacian_function,
 )
-from jet.laplacian import Laplacian
+from jet.laplacian import SUPPORTED_DISTRIBUTIONS as LAPLACIAN_SUPPORTED_DISTRIBUTIONS
 from jet.utils import run_seeded
 from jet.weighted_laplacian import get_weighting
 from test.test___init__ import report_nonclose, setup_case
@@ -27,10 +29,10 @@ from test.test_laplacian import (
 
 STRATEGY_IDS = [f"strategy={s}" for s in SUPPORTED_STRATEGIES]
 LAPLACIAN_DISTRIBUTION_IDS = [
-    f"distribution={d}" for d in Laplacian.SUPPORTED_DISTRIBUTIONS
+    f"distribution={d}" for d in LAPLACIAN_SUPPORTED_DISTRIBUTIONS
 ]
 BILAPLACIAN_DISTRIBUTION_IDS = [
-    f"distribution={d}" for d in Bilaplacian.SUPPORTED_DISTRIBUTIONS
+    f"distribution={d}" for d in BILAPLACIAN_SUPPORTED_DISTRIBUTIONS
 ]
 
 # make generation of test cases deterministic
@@ -97,7 +99,7 @@ def test_laplacian_functions(
 @mark.parametrize("batch_size", BATCH_SIZES, ids=BATCH_SIZE_IDS)
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize(
-    "distribution", Laplacian.SUPPORTED_DISTRIBUTIONS, ids=LAPLACIAN_DISTRIBUTION_IDS
+    "distribution", LAPLACIAN_SUPPORTED_DISTRIBUTIONS, ids=LAPLACIAN_DISTRIBUTION_IDS
 )
 @mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
 def test_randomized_laplacian_functions_identical(
@@ -160,7 +162,7 @@ def test_randomized_laplacian_functions_identical(
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
 @mark.parametrize(
     "distribution",
-    Laplacian.SUPPORTED_DISTRIBUTIONS,
+    LAPLACIAN_SUPPORTED_DISTRIBUTIONS,
     ids=LAPLACIAN_DISTRIBUTION_IDS,
 )
 @mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
@@ -245,7 +247,7 @@ def test_bilaplacian_functions(config: dict[str, Any], strategy: str, batch_size
 @mark.parametrize("batch_size", BATCH_SIZES, ids=BATCH_SIZE_IDS)
 @mark.parametrize(
     "distribution",
-    Bilaplacian.SUPPORTED_DISTRIBUTIONS,
+    BILAPLACIAN_SUPPORTED_DISTRIBUTIONS,
     ids=BILAPLACIAN_DISTRIBUTION_IDS,
 )
 @mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
@@ -292,7 +294,7 @@ def test_randomized_bilaplacian_functions_identical(
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
 @mark.parametrize(
     "distribution",
-    Bilaplacian.SUPPORTED_DISTRIBUTIONS,
+    BILAPLACIAN_SUPPORTED_DISTRIBUTIONS,
     ids=BILAPLACIAN_DISTRIBUTION_IDS,
 )
 @mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)

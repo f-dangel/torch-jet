@@ -29,7 +29,7 @@ from torch import (
     compile as torch_compile,
 )
 from torch.func import hessian
-from torch.nn import Linear, Module, Sequential, Tanh
+from torch.nn import Linear, Sequential, Tanh
 from tueplots import bundles
 
 import jet
@@ -216,29 +216,30 @@ else:
 # mode.
 #
 # To give a high-level intuition how this works, we will look at the computational
-# graph for computing a Laplacian. For that, we will write a `torch.nn.Module` which
-# performs the Laplacian computation in its `forward` pass. We can then trace this
-# module and look at its graph.
+# graph for computing a Laplacian. For that, we will write a function factory
+# `make_laplacian` that takes a function and a mock input, and returns a new function
+# computing the Laplacian. We can then trace this function and look at its graph.
 #
-# Here is the module:
+# Here is the function factory:
 
 
-class Laplacian(Module):
-    """Module that computes the Laplacian of a function using jets."""
+def make_laplacian(
+    f: Callable[[Tensor], Tensor], mock_x: Tensor
+) -> Callable[[Tensor], Tensor]:
+    """Create a function that computes the Laplacian of f using jets.
 
-    def __init__(self, f: Callable[[Tensor], Tensor], mock_x: Tensor):
-        """Initialize the Laplacian module.
+    Args:
+        f: The function whose Laplacian is computed.
+        mock_x: A mock input tensor for tracing. Only the shape matters.
 
-        Args:
-            f: The function whose Laplacian is computed.
-            mock_x: A mock input tensor for tracing. Only the shape matters.
-        """
-        super().__init__()
-        self.in_shape = mock_x.shape
-        self.in_dim = mock_x.numel()
-        self.jet_f = jet.jet(f, 2, mock_x)
+    Returns:
+        A function that computes the Laplacian of f at a given input.
+    """
+    in_shape = mock_x.shape
+    in_dim = mock_x.numel()
+    jet_f = jet.jet(f, 2, mock_x)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def lap_f(x: Tensor) -> Tensor:
         """Compute the Laplacian.
 
         Args:
@@ -248,54 +249,56 @@ class Laplacian(Module):
             The Laplacian of shape [1].
         """
         in_meta = {"dtype": x.dtype, "device": x.device}
-        X1 = eye(self.in_dim, **in_meta).reshape(self.in_dim, *self.in_shape)
-        vmapped = vmap(
-            lambda x1: self.jet_f(x, x1, zeros_like(x)), randomness="different"
-        )
+        X1 = eye(in_dim, **in_meta).reshape(in_dim, *in_shape)
+        vmapped = vmap(lambda x1: jet_f(x, x1, zeros_like(x)), randomness="different")
         _, _, F2 = vmapped(X1)
         return F2.sum(0)
 
+    return lap_f
 
-mod = Laplacian(f, x)
+
+lap_fn = make_laplacian(f, x)
 
 # %%
 #
 # We can verify that this indeed computes the correct Laplacian:
 
-mod_laplacian = mod(x)
-print(mod_laplacian)
+fn_laplacian = lap_fn(x)
+print(fn_laplacian)
 
-if mod_laplacian.allclose(hessian_trace_laplacian):
-    print("Taylor mode Laplacian via module matches Hessian trace!")
+if fn_laplacian.allclose(hessian_trace_laplacian):
+    print("Taylor mode Laplacian via function factory matches Hessian trace!")
 else:
-    raise ValueError("Taylor mode Laplacian via module does not match Hessian trace!")
+    raise ValueError(
+        "Taylor mode Laplacian via function factory does not match Hessian trace!"
+    )
 
 # %%
 #
 # Now, let's look at three different graphs which will become clear in a moment
 # (we evaluated approaches 2 and 3 in our paper).
 
-# Graph 1: Simply capture the module that computes the Laplacian
-mod_traced = capture_graph(mod, x)
+# Graph 1: Simply capture the function that computes the Laplacian
+lap_traced = capture_graph(lap_fn, x)
 visualize_graph(
-    mod_traced, path.join(GALLERYDIR, "02_laplacian_module.png"), use_custom=True
+    lap_traced, path.join(GALLERYDIR, "02_laplacian_module.png"), use_custom=True
 )
-assert hessian_trace_laplacian.allclose(mod_traced(x))
+assert hessian_trace_laplacian.allclose(lap_traced(x))
 
 # Graph 2: Standard simplifications (dead code elimination, CSE, but no collapsing)
-mod_standard = simplify(mod, x, pull_sum=False)
+lap_standard = simplify(lap_fn, x, pull_sum=False)
 visualize_graph(
-    mod_standard, path.join(GALLERYDIR, "02_laplacian_standard.png"), use_custom=True
+    lap_standard, path.join(GALLERYDIR, "02_laplacian_standard.png"), use_custom=True
 )
-assert hessian_trace_laplacian.allclose(mod_standard(x))
+assert hessian_trace_laplacian.allclose(lap_standard(x))
 
 # Graph 3: Collapsing simplifications — pull summations up the graph to directly
 # propagate sums of Taylor coefficients
-mod_collapsed = simplify(mod, x, pull_sum=True)
+lap_collapsed = simplify(lap_fn, x, pull_sum=True)
 visualize_graph(
-    mod_collapsed, path.join(GALLERYDIR, "02_laplacian_collapsed.png"), use_custom=True
+    lap_collapsed, path.join(GALLERYDIR, "02_laplacian_collapsed.png"), use_custom=True
 )
-assert hessian_trace_laplacian.allclose(mod_collapsed(x))
+assert hessian_trace_laplacian.allclose(lap_collapsed(x))
 
 # %%
 #
@@ -304,9 +307,9 @@ assert hessian_trace_laplacian.allclose(mod_collapsed(x))
 #
 # First, we can look at the graph sizes:
 
-print(f"1) Captured: {len(mod_traced.graph.nodes)} nodes")
-print(f"2) Standard simplifications: {len(mod_standard.graph.nodes)} nodes")
-print(f"3) Collapsing simplifications: {len(mod_collapsed.graph.nodes)} nodes")
+print(f"1) Captured: {len(lap_traced.graph.nodes)} nodes")
+print(f"2) Standard simplifications: {len(lap_standard.graph.nodes)} nodes")
+print(f"3) Collapsing simplifications: {len(lap_collapsed.graph.nodes)} nodes")
 
 # %%
 #
@@ -354,11 +357,11 @@ print(f"3) Collapsing simplifications: {len(mod_collapsed.graph.nodes)} nodes")
 # which represent the forward-propagated coefficients:
 
 print("2) Standard simplifications tensor constants:")
-for name, buf in mod_standard.named_buffers():
+for name, buf in lap_standard.named_buffers():
     print(f"\t{name}: {buf.shape}")
 
 print("3) Collapsing simplifications tensor constants:")
-for name, buf in mod_collapsed.named_buffers():
+for name, buf in lap_collapsed.named_buffers():
     print(f"\t{name}: {buf.shape}")
 
 # %%
@@ -386,8 +389,8 @@ for name, buf in mod_collapsed.named_buffers():
 # 3. **Collapsed Taylor mode:** Same as 2, but collapses the 2-jets.
 
 compute_batched_nested_laplacian = vmap(compute_hessian_trace_laplacian)
-compute_batched_standard_laplacian = vmap(mod_standard.forward)
-compute_batched_collapsed_laplacian = vmap(mod_collapsed.forward)
+compute_batched_standard_laplacian = vmap(lap_standard)
+compute_batched_collapsed_laplacian = vmap(lap_collapsed)
 
 # %%
 #

@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- **Backward-incompatible.** Replace `Laplacian` and `Bilaplacian` `nn.Module`
+  classes with `laplacian()` and `bilaplacian()` function transforms that return
+  plain callables
+  ([PR](https://github.com/f-dangel/torch-jet/pull/123))
+
 - **Backward-incompatible.** Switch FX tracing from `symbolic_trace` to `make_fx`.
   `jet()` and `simplify()` now require a `mock_x` tensor argument for concrete
   tracing. Laplacians use PyTorch's built-in `torch.func.vmap` instead of a custom

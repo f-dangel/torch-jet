@@ -15,11 +15,13 @@ from torch import Tensor, manual_seed, sigmoid
 from torch.func import hessian
 from torch.nn import Linear, Sequential, Tanh
 
-from jet.bilaplacian import Bilaplacian
+from jet.bilaplacian import SUPPORTED_DISTRIBUTIONS
+from jet.bilaplacian import bilaplacian as jet_bilaplacian
+from jet.utils import run_seeded
 from test.test___init__ import report_nonclose, setup_case
 from test.test_laplacian import _check_mc_convergence
 
-DISTRIBUTIONS = Bilaplacian.SUPPORTED_DISTRIBUTIONS
+DISTRIBUTIONS = SUPPORTED_DISTRIBUTIONS
 DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]
 
 # make generation of test cases deterministic
@@ -78,8 +80,8 @@ def test_bilaplacian(config: dict[str, Any]):
     bilap_func = bilaplacian(f, x)
 
     # using jets
-    bilap_mod = Bilaplacian(f, x)
-    bilap_jet = bilap_mod(x)
+    bilap_fn = jet_bilaplacian(f, x)
+    bilap_jet = bilap_fn(x)
     report_nonclose(bilap_func, bilap_jet, name="functorch and jet Bi-Laplacians")
 
 
@@ -109,11 +111,13 @@ def test_Bilaplacian_randomization(
     randomization = (distribution, chunk_size)
 
     # check convergence of MC estimator
-    def sample(idx: int) -> Tensor:
-        manual_seed(idx)
-        return Bilaplacian(f, x, randomization=randomization)(x)
+    bilap_fn = jet_bilaplacian(f, x, randomization=randomization)
 
     converged = _check_mc_convergence(
-        bilap, sample, chunk_size, max_num_chunks, target_rel_error
+        bilap,
+        lambda idx: run_seeded(bilap_fn, idx, x),
+        chunk_size,
+        max_num_chunks,
+        target_rel_error,
     )
     assert converged, f"Monte-Carlo Bi-Laplacian ({distribution}) did not converge."

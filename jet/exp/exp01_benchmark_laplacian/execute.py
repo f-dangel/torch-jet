@@ -22,13 +22,12 @@ from torch import (
 from torch import compile as torch_compile
 from torch.func import hessian, jacrev, jvp, vmap
 from torch.nn import Linear, Sequential, Tanh
-from torch.random import fork_rng
 
-from jet.bilaplacian import Bilaplacian
+from jet.bilaplacian import bilaplacian as jet_bilaplacian
 from jet.exp.utils import measure_peak_memory, measure_time, to_string
-from jet.laplacian import Laplacian
+from jet.laplacian import laplacian as jet_laplacian
 from jet.simplify import simplify
-from jet.utils import sample
+from jet.utils import run_seeded, sample
 from jet.weighted_laplacian import get_weighting
 
 HERE = path.abspath(__file__)
@@ -259,12 +258,12 @@ def laplacian_function(
             )
 
     elif strategy in {"jet_naive", "jet_simplified"}:
-        lap_mod = Laplacian(
+        lap_fn = jet_laplacian(
             f, dummy_x, randomization=randomization, weighting=weighting
         )
-        pull_sum_vmapped = strategy == "jet_simplified"
-        lap_mod = simplify(lap_mod, pull_sum_vmapped=pull_sum_vmapped)
-        laplacian = lambda x: lap_mod(x)[2]  # noqa: E731
+        pull_sum = strategy == "jet_simplified"
+        lap_fn = simplify(lap_fn, dummy_x, pull_sum=pull_sum)
+        laplacian = lambda x: lap_fn(x)[2]  # noqa: E731
 
     else:
         raise ValueError(f"Unsupported {strategy=}. {SUPPORTED_STRATEGIES=}.")
@@ -358,26 +357,26 @@ def bilaplacian_function(
     if strategy == "hessian_trace":
         if randomization is None:
             laplacian = hessian_trace_laplacian(f, dummy_x)
-            bilaplacian = hessian_trace_laplacian(laplacian, dummy_x)
+            bilap_fn = hessian_trace_laplacian(laplacian, dummy_x)
         else:
-            bilaplacian = vector_hessian_vector_product_bilaplacian(
+            bilap_fn = vector_hessian_vector_product_bilaplacian(
                 f, dummy_x, randomization
             )
 
     elif strategy in {"jet_naive", "jet_simplified"}:
-        bilaplacian = Bilaplacian(f, dummy_x, randomization=randomization)
-        pull_sum_vmapped = strategy == "jet_simplified"
-        bilaplacian = simplify(bilaplacian, pull_sum_vmapped=pull_sum_vmapped)
+        bilap_fn = jet_bilaplacian(f, dummy_x, randomization=randomization)
+        pull_sum = strategy == "jet_simplified"
+        bilap_fn = simplify(bilap_fn, dummy_x, pull_sum=pull_sum)
 
     else:
         raise ValueError(f"Unsupported strategy: {strategy}.")
 
     if is_batched:
-        bilaplacian = vmap(
-            bilaplacian, randomness="error" if randomization is None else "different"
+        bilap_fn = vmap(
+            bilap_fn, randomness="error" if randomization is None else "different"
         )
 
-    return partial(bilaplacian, X)
+    return partial(bilap_fn, X)
 
 
 def setup_architecture(
@@ -609,7 +608,6 @@ if __name__ == "__main__":
     is_batched = True
     X = setup_input(args.batch_size, args.dim, dev, dt)
 
-    manual_seed(2)  # this allows making the randomized methods deterministic
     start = perf_counter()
     func, func_no, description = get_function_and_description(
         args.operator,
@@ -651,11 +649,9 @@ if __name__ == "__main__":
     # Check is carried out for deterministic, and un-compiled stochastic computations.
     if not is_stochastic or not args.compiled:
         print("Checking correctness against baseline.")
-        with no_grad(), fork_rng():
-            manual_seed(3)
-            result = func()
+        with no_grad():
+            result = run_seeded(func, 3)
 
-        manual_seed(2)  # make sure that the baseline is deterministic
         _, baseline_func_no, _ = get_function_and_description(
             args.operator,
             BASELINE,
@@ -667,9 +663,7 @@ if __name__ == "__main__":
             False,  # do not use compilation for ground truth
             args.rank_ratio,
         )
-        with fork_rng():
-            manual_seed(3)
-            baseline_result = baseline_func_no()
+        baseline_result = run_seeded(baseline_func_no, 3)
 
         assert baseline_result.shape == result.shape, (
             f"Shapes do not match: {baseline_result.shape} != {result.shape}."

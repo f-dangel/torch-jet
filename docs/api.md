@@ -2,12 +2,8 @@
 
 ### ::: jet.jet
 
-### ::: jet.vmap.traceable_vmap
-
 ### ::: jet.simplify.simplify
 
-## PDE Operators
+### ::: jet.laplacian.laplacian
 
-#### ::: jet.laplacian.Laplacian
-
-#### ::: jet.bilaplacian.Bilaplacian
+### ::: jet.bilaplacian.bilaplacian

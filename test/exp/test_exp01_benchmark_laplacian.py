@@ -3,16 +3,19 @@
 from typing import Any
 
 from pytest import mark
-from torch import Tensor, manual_seed, sigmoid, vmap
+from torch import manual_seed, sigmoid, vmap
 from torch.nn import Linear, Sequential, Tanh
 
-from jet.bilaplacian import Bilaplacian
+from jet.bilaplacian import (
+    SUPPORTED_DISTRIBUTIONS as BILAPLACIAN_SUPPORTED_DISTRIBUTIONS,
+)
 from jet.exp.exp01_benchmark_laplacian.execute import (
     SUPPORTED_STRATEGIES,
     bilaplacian_function,
     laplacian_function,
 )
-from jet.laplacian import Laplacian
+from jet.laplacian import SUPPORTED_DISTRIBUTIONS as LAPLACIAN_SUPPORTED_DISTRIBUTIONS
+from jet.utils import run_seeded
 from jet.weighted_laplacian import get_weighting
 from test.test___init__ import report_nonclose, setup_case
 from test.test_bilaplacian import bilaplacian
@@ -26,10 +29,10 @@ from test.test_laplacian import (
 
 STRATEGY_IDS = [f"strategy={s}" for s in SUPPORTED_STRATEGIES]
 LAPLACIAN_DISTRIBUTION_IDS = [
-    f"distribution={d}" for d in Laplacian.SUPPORTED_DISTRIBUTIONS
+    f"distribution={d}" for d in LAPLACIAN_SUPPORTED_DISTRIBUTIONS
 ]
 BILAPLACIAN_DISTRIBUTION_IDS = [
-    f"distribution={d}" for d in Bilaplacian.SUPPORTED_DISTRIBUTIONS
+    f"distribution={d}" for d in BILAPLACIAN_SUPPORTED_DISTRIBUTIONS
 ]
 
 # make generation of test cases deterministic
@@ -96,7 +99,7 @@ def test_laplacian_functions(
 @mark.parametrize("batch_size", BATCH_SIZES, ids=BATCH_SIZE_IDS)
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize(
-    "distribution", Laplacian.SUPPORTED_DISTRIBUTIONS, ids=LAPLACIAN_DISTRIBUTION_IDS
+    "distribution", LAPLACIAN_SUPPORTED_DISTRIBUTIONS, ids=LAPLACIAN_DISTRIBUTION_IDS
 )
 @mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
 def test_randomized_laplacian_functions_identical(
@@ -127,14 +130,31 @@ def test_randomized_laplacian_functions_identical(
 
     laps = {}
     for strategy in SUPPORTED_STRATEGIES:
-        manual_seed(1)
-        laps[strategy] = laplacian_function(
+        lap_fn = laplacian_function(
             f, x, is_batched, strategy, randomization=randomization, weighting=weighting
-        )()
+        )
+        laps[strategy] = run_seeded(lap_fn, 42)
 
+    # same seed must yield identical results across strategies
     first_key = list(laps.keys())[0]
     for key in laps:
         report_nonclose(laps[first_key], laps[key])
+
+    # different seed must yield a different result (skip for rademacher:
+    # v_i^2 = 1 makes the estimator exact for diagonal Hessians / rank-deficient
+    # weights, so different seeds can produce identical results)
+    if distribution != "rademacher":
+        lap_fn = laplacian_function(
+            f,
+            x,
+            is_batched,
+            first_key,
+            randomization=randomization,
+            weighting=weighting,
+        )
+        lap_seed_a = run_seeded(lap_fn, 42)
+        lap_seed_b = run_seeded(lap_fn, 999)
+        assert not lap_seed_a.allclose(lap_seed_b)
 
 
 @mark.parametrize("batch_size", BATCH_SIZES, ids=BATCH_SIZE_IDS)
@@ -142,7 +162,7 @@ def test_randomized_laplacian_functions_identical(
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
 @mark.parametrize(
     "distribution",
-    Laplacian.SUPPORTED_DISTRIBUTIONS,
+    LAPLACIAN_SUPPORTED_DISTRIBUTIONS,
     ids=LAPLACIAN_DISTRIBUTION_IDS,
 )
 @mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
@@ -188,14 +208,16 @@ def test_randomized_laplacian_functions_converge(
     )
 
     # check convergence of the Monte-Carlo estimator
-    def sample(idx: int) -> Tensor:
-        manual_seed(idx)
-        return laplacian_function(
-            f, X, is_batched, strategy, randomization=randomization, weighting=weighting
-        )()
+    fn = laplacian_function(
+        f, X, is_batched, strategy, randomization=randomization, weighting=weighting
+    )
 
     converged = _check_mc_convergence(
-        lap, sample, chunk_size, max_num_chunks, target_rel_error
+        lap,
+        lambda idx: run_seeded(fn, idx),
+        chunk_size,
+        max_num_chunks,
+        target_rel_error,
     )
     assert converged, f"MC Laplacian ({strategy}, {distribution}) did not converge."
 
@@ -225,7 +247,7 @@ def test_bilaplacian_functions(config: dict[str, Any], strategy: str, batch_size
 @mark.parametrize("batch_size", BATCH_SIZES, ids=BATCH_SIZE_IDS)
 @mark.parametrize(
     "distribution",
-    Bilaplacian.SUPPORTED_DISTRIBUTIONS,
+    BILAPLACIAN_SUPPORTED_DISTRIBUTIONS,
     ids=BILAPLACIAN_DISTRIBUTION_IDS,
 )
 @mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
@@ -246,21 +268,33 @@ def test_randomized_bilaplacian_functions_identical(
 
     bilaps = {}
     for strategy in SUPPORTED_STRATEGIES:
-        manual_seed(1)
-        bilaps[strategy] = bilaplacian_function(
+        bilap_fn = bilaplacian_function(
             f, x, is_batched, strategy, randomization=randomization
-        )()
+        )
+        bilaps[strategy] = run_seeded(bilap_fn, 42)
 
+    # same seed must yield identical results across strategies
     first_key = list(bilaps.keys())[0]
     for key in bilaps:
         report_nonclose(bilaps[first_key], bilaps[key])
+
+    # different seed must yield a different result (skip for rademacher:
+    # v_i^2 = 1 makes the estimator exact for diagonal Hessians / rank-deficient
+    # weights, so different seeds can produce identical results)
+    if distribution != "rademacher":
+        bilap_fn = bilaplacian_function(
+            f, x, is_batched, first_key, randomization=randomization
+        )
+        bilap_seed_a = run_seeded(bilap_fn, 42)
+        bilap_seed_b = run_seeded(bilap_fn, 999)
+        assert not bilap_seed_a.allclose(bilap_seed_b)
 
 
 @mark.parametrize("batch_size", BATCH_SIZES, ids=BATCH_SIZE_IDS)
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
 @mark.parametrize(
     "distribution",
-    Bilaplacian.SUPPORTED_DISTRIBUTIONS,
+    BILAPLACIAN_SUPPORTED_DISTRIBUTIONS,
     ids=BILAPLACIAN_DISTRIBUTION_IDS,
 )
 @mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
@@ -293,13 +327,13 @@ def test_randomized_bilaplacian_functions_converge(
     bilap = bilap_func(X)
 
     # check convergence of the Monte-Carlo estimator
-    def sample(idx: int) -> Tensor:
-        manual_seed(idx)
-        return bilaplacian_function(
-            f, X, is_batched, strategy, randomization=randomization
-        )()
+    fn = bilaplacian_function(f, X, is_batched, strategy, randomization=randomization)
 
     converged = _check_mc_convergence(
-        bilap, sample, chunk_size, max_num_chunks, target_rel_error
+        bilap,
+        lambda idx: run_seeded(fn, idx),
+        chunk_size,
+        max_num_chunks,
+        target_rel_error,
     )
     assert converged, f"MC-Bi-Laplacian ({strategy}, {distribution}) did not converge."

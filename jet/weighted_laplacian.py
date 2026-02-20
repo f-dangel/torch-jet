@@ -6,8 +6,6 @@ from typing import Callable
 from torch import Tensor, arange, zeros
 from torch.nn.functional import pad
 
-import jet.utils
-
 
 def apply_S_func_diagonal_increments(x: Tensor, V: Tensor, fx_info: dict) -> Tensor:
     """Apply a synthetic coefficient factor S(x).T for weighting the Laplacian to V.
@@ -26,8 +24,7 @@ def apply_S_func_diagonal_increments(x: Tensor, V: Tensor, fx_info: dict) -> Ten
     """
     rank_C = fx_info["rank_C"]
     S = (arange(rank_C, device=fx_info["device"], dtype=fx_info["dtype"]) + 1).sqrt()
-    S = jet.utils.replicate(S, fx_info["num_jets"])
-    SV = S * V
+    SV = S.unsqueeze(0) * V
 
     # if rank_C < D, we have to add zero padding to satisfy the output dimension
     D = fx_info["in_shape"].numel()

@@ -8,7 +8,8 @@ mode and (ii) how to collapse it to get better performance.
 Let's get the imports out of our way.
 """
 
-from os import getenv, path
+from os import path
+from shutil import which
 from time import perf_counter
 from typing import Callable
 
@@ -22,22 +23,19 @@ from torch import (
     rand,
     stack,
     vmap,
-    zeros,
     zeros_like,
 )
 from torch import (
     compile as torch_compile,
 )
 from torch.func import hessian
-from torch.fx import GraphModule
-from torch.fx.passes.graph_drawer import FxGraphDrawer
-from torch.nn import Linear, Module, Sequential, Tanh
+from torch.nn import Linear, Sequential, Tanh
 from tueplots import bundles
 
-from jet import jet, utils
+import jet
 from jet.simplify import simplify
 from jet.tracing import capture_graph
-from jet.vmap import traceable_vmap
+from jet.utils import visualize_graph
 
 HEREDIR = path.dirname(path.abspath(__name__))
 # We need to store figures here so they will be picked up in the built doc
@@ -127,7 +125,7 @@ print(hessian_trace_laplacian)
 # Let's set up the jet function:
 
 k = 2
-f_jet = jet(f, k)
+f_jet = jet.jet(f, k, x)
 
 # %%
 #
@@ -218,26 +216,30 @@ else:
 # mode.
 #
 # To give a high-level intuition how this works, we will look at the computational
-# graph for computing a Laplacian. For that, we will write a `torch.nn.Module` which
-# performs the Laplacian computation in its `forward` pass. We can then trace this
-# module and look at its graph.
+# graph for computing a Laplacian. For that, we will write a function factory
+# `make_laplacian` that takes a function and a mock input, and returns a new function
+# computing the Laplacian. We can then trace this function and look at its graph.
 #
-# Here is the module:
+# Here is the function factory:
 
 
-class Laplacian(Module):
-    """Module that computes the Laplacian of a function using jets."""
+def make_laplacian(
+    f: Callable[[Tensor], Tensor], mock_x: Tensor
+) -> Callable[[Tensor], Tensor]:
+    """Create a function that computes the Laplacian of f using jets.
 
-    def __init__(self):
-        """Initialize the Laplacian module."""
-        super().__init__()
-        # NOTE We cannot use `torch.vmap` here because it will result in a structure
-        # that cannot be traced, hence we would not be able to look at the graph nor
-        # rewrite it. Therefore, we have our own `traceable_vmap` which is compatible
-        # with `torch.fx` tracing (but has other limitations, see below).
-        self.vmap_f_jet = traceable_vmap(f_jet, vmapsize=D)
+    Args:
+        f: The function whose Laplacian is computed.
+        mock_x: A mock input tensor for tracing. Only the shape matters.
 
-    def forward(self, x: Tensor) -> Tensor:
+    Returns:
+        A function that computes the Laplacian of f at a given input.
+    """
+    in_shape = mock_x.shape
+    in_dim = mock_x.numel()
+    jet_f = jet.jet(f, 2, mock_x)
+
+    def lap_f(x: Tensor) -> Tensor:
         """Compute the Laplacian.
 
         Args:
@@ -246,64 +248,57 @@ class Laplacian(Module):
         Returns:
             The Laplacian of shape [1].
         """
-        X0, X1, X2 = utils.replicate(x, D), eye(D), zeros(D, D)
-        _, _, F2 = self.vmap_f_jet(X0, X1, X2)
-        return utils.sum_vmapped(F2)
+        in_meta = {"dtype": x.dtype, "device": x.device}
+        X1 = eye(in_dim, **in_meta).reshape(in_dim, *in_shape)
+        vmapped = vmap(lambda x1: jet_f(x, x1, zeros_like(x)), randomness="different")
+        _, _, F2 = vmapped(X1)
+        return F2.sum(0)
+
+    return lap_f
 
 
-mod = Laplacian()
+lap_fn = make_laplacian(f, x)
 
 # %%
 #
 # We can verify that this indeed computes the correct Laplacian:
 
-mod_laplacian = mod(x)
-print(mod_laplacian)
+fn_laplacian = lap_fn(x)
+print(fn_laplacian)
 
-if mod_laplacian.allclose(hessian_trace_laplacian):
-    print("Taylor mode Laplacian via module matches Hessian trace!")
+if fn_laplacian.allclose(hessian_trace_laplacian):
+    print("Taylor mode Laplacian via function factory matches Hessian trace!")
 else:
-    raise ValueError("Taylor mode Laplacian via module does not match Hessian trace!")
-
-# %%
-#
-# To visualize graphs, we define the following helper:
-
-
-def visualize_graph(mod: GraphModule, savefile: str, name: str = ""):
-    """Visualize the compute graph of a module and store it as .png.
-
-    Args:
-        mod: The module whose compute graph to visualize.
-        savefile: The path to the file where the graph should be saved.
-        name: A name for the graph, used in the visualization.
-    """
-    drawer = FxGraphDrawer(mod, name)
-    dot_graph = drawer.get_dot_graph()
-    with open(savefile, "wb") as f:
-        f.write(dot_graph.create_png())
-
+    raise ValueError(
+        "Taylor mode Laplacian via function factory does not match Hessian trace!"
+    )
 
 # %%
 #
 # Now, let's look at three different graphs which will become clear in a moment
 # (we evaluated approaches 2 and 3 in our paper).
 
-# Graph 1: Simply capture the module that computes the Laplacian
-mod_traced = capture_graph(mod)
-visualize_graph(mod_traced, path.join(GALLERYDIR, "02_laplacian_module.png"))
-assert hessian_trace_laplacian.allclose(mod_traced(x))
+# Graph 1: Simply capture the function that computes the Laplacian
+lap_traced = capture_graph(lap_fn, x)
+visualize_graph(
+    lap_traced, path.join(GALLERYDIR, "02_laplacian_module.png"), use_custom=True
+)
+assert hessian_trace_laplacian.allclose(lap_traced(x))
 
-# Graph 2: Simplify the module by removing replicate computations
-mod_standard = simplify(mod_traced, pull_sum_vmapped=False)
-visualize_graph(mod_standard, path.join(GALLERYDIR, "02_laplacian_standard.png"))
-assert hessian_trace_laplacian.allclose(mod_standard(x))
+# Graph 2: Standard simplifications (dead code elimination, CSE, but no collapsing)
+lap_standard = simplify(lap_fn, x, pull_sum=False)
+visualize_graph(
+    lap_standard, path.join(GALLERYDIR, "02_laplacian_standard.png"), use_custom=True
+)
+assert hessian_trace_laplacian.allclose(lap_standard(x))
 
-# Graph 3: Simplify the module by removing replicate computations and pulling up the
-# summations to directly propagate sums of Taylor coefficients
-mod_collapsed = simplify(mod_traced, pull_sum_vmapped=True)
-visualize_graph(mod_collapsed, path.join(GALLERYDIR, "02_laplacian_collapsed.png"))
-assert hessian_trace_laplacian.allclose(mod_collapsed(x))
+# Graph 3: Collapsing simplifications — pull summations up the graph to directly
+# propagate sums of Taylor coefficients
+lap_collapsed = simplify(lap_fn, x, pull_sum=True)
+visualize_graph(
+    lap_collapsed, path.join(GALLERYDIR, "02_laplacian_collapsed.png"), use_custom=True
+)
+assert hessian_trace_laplacian.allclose(lap_collapsed(x))
 
 # %%
 #
@@ -312,9 +307,9 @@ assert hessian_trace_laplacian.allclose(mod_collapsed(x))
 #
 # First, we can look at the graph sizes:
 
-print(f"1) Captured: {len(mod_traced.graph.nodes)} nodes")
-print(f"2) Standard simplifications: {len(mod_standard.graph.nodes)} nodes")
-print(f"3) Collapsing simplifications: {len(mod_collapsed.graph.nodes)} nodes")
+print(f"1) Captured: {len(lap_traced.graph.nodes)} nodes")
+print(f"2) Standard simplifications: {len(lap_standard.graph.nodes)} nodes")
+print(f"3) Collapsing simplifications: {len(lap_collapsed.graph.nodes)} nodes")
 
 # %%
 #
@@ -323,60 +318,50 @@ print(f"3) Collapsing simplifications: {len(mod_collapsed.graph.nodes)} nodes")
 
 # %%
 #
-# Next, let's have a look at the computation graphs. Don't try to understand all the
-# details here, instead let's focus on two kinds of operations:
-# `jet.utils.replicate` (dark orange), and `jet.utils.sum_vmapped` (brown,
-# second-to-last node in Graphs 1 and 2).
+# Next, let's have a look at the computation graphs. In the visualizations below,
+# `sum` nodes are highlighted in orange-red to make them easy to track across
+# the three graphs.
 #
 # | Captured | Standard simplifications | Collapsing simplifications |
 # |:--------:|:------------------------:|:---------------------------|
 # | ![](02_laplacian_module.png) | ![](02_laplacian_standard.png) | ![](02_laplacian_collapsed.png) |
 #
-# - Graph 1 (**Captured**) contains a `jet.utils.replicate` node at the beginning, which
-#   takes `x` and copies it $D$ times for each 2-jet we want to compute. This leads to
-#   repeated computations: e.g. if we compute `sin(replicate(x))`, we might instead
-#   compute `replicate(sin(x))`. We can remove this redundancy and thereby share
-#   information that depends on `x` and is used by all jets by 'pushing' the `replicate`
-#   operation down the graph.
+# - Graph 1 (**Captured**) is the raw traced graph. It has a `sum`
+#   node (orange-red) at the end, which sums the Hessian diagonal elements to
+#   obtain the Laplacian.
 #
-# - Graph 2 (**Standard simplifications**) does exactly that: If you look for the dark
-#   orange nodes that represent `replicate` operations, you can see that they moved down
-#   the graph. To carry out this simplification, you used our `simplify` function which
-#   carries out graph rewrites based on mathematical properties of `replicate`.
+# - Graph 2 (**Standard simplifications**) applies dead code elimination and common
+#   subexpression elimination (CSE), but does not collapse Taylor mode. Note that
+#   the `sum` node remains at the bottom of the graph.
 #
-# - Graph 3 (**Collapsing simplifications**) goes one step further than Graph 2 and
+# - Graph 3 (**Collapsing simplifications**) goes one step further and
 #   performs the 'collapsing' of Taylor mode we present in our paper.
 #
-#     Let's note one more thing: Graphs 1 and 2 both have a `jet.utils.sum_vmapped`
-#     node at the end, which sums the Hessian diagonal elements to obtain the Laplacian.
-#     If we take an even closer look, we see that the input to this summation is the
-#     output of a linear operation, something like
+#     The input to the `sum` node at the end of Graph 2 is the output of a linear
+#     operation, something like
 #     ```python
-#     laplacian = sum_vmapped(linear(Z, weight)) # standard: D matvecs
+#     laplacian = sum(linear(Z, weight)) # standard: D matvecs
 #     ```
-#     *The crucial insight from our paper is that the sum can be propagated up the
+#     *The crucial insight from our paper is that the `sum` can be propagated up the
 #     graph!* For our example, we can first sum, then apply the linear operation, as
 #     this is mathematically equivalent, but cheaper:
 #     ```python
-#     laplacian = linear(sum_vmapped(Z), weight) # collapsed: 1 matvec
+#     laplacian = linear(sum(Z), weight) # collapsed: 1 matvec
 #     ```
-#     In the graph perspective, we have 'pulled' the `sum_vmapped` node up the graph.
-#     We can repeat this procedure until we run out of possible simplifications.
-#     Effectively, this 'collapses' the Taylor coefficients we propagate forward;
-#     hence the name 'collapsed Taylor mode'. The resulting graph is Graph 3, which
-#     used `simplify` and enabled its `pull_sum_vmapped` option. As a neat side effect,
-#     note how many of the `replicate` nodes cancel out with the up-propagated sums,
-#     and Graph 3 has less `replicate` nodes than Graph 2.
+#     In the graph perspective, we have 'pulled' the `sum` node (orange-red) up the
+#     graph. We can repeat this procedure until we run out of possible
+#     simplifications. Effectively, this 'collapses' the Taylor coefficients we
+#     propagate forward; hence the name 'collapsed Taylor mode'.
 #
 # We can verify successful collapsing by looking at the tensor constants of the graph
 # which represent the forward-propagated coefficients:
 
 print("2) Standard simplifications tensor constants:")
-for name, buf in mod_standard.named_buffers():
+for name, buf in lap_standard.named_buffers():
     print(f"\t{name}: {buf.shape}")
 
 print("3) Collapsing simplifications tensor constants:")
-for name, buf in mod_collapsed.named_buffers():
+for name, buf in lap_collapsed.named_buffers():
     print(f"\t{name}: {buf.shape}")
 
 # %%
@@ -404,8 +389,8 @@ for name, buf in mod_collapsed.named_buffers():
 # 3. **Collapsed Taylor mode:** Same as 2, but collapses the 2-jets.
 
 compute_batched_nested_laplacian = vmap(compute_hessian_trace_laplacian)
-compute_batched_standard_laplacian = vmap(mod_standard.forward)
-compute_batched_collapsed_laplacian = vmap(mod_collapsed.forward)
+compute_batched_standard_laplacian = vmap(lap_standard)
+compute_batched_collapsed_laplacian = vmap(lap_collapsed)
 
 # %%
 #
@@ -502,9 +487,8 @@ print(
 # We see that collapsed Taylor mode is faster than standard Taylor mode.
 # Of course, we use a relatively small neural net and a CPU in this example, but our
 # paper also confirms this performance benefits on bigger nets and on GPU (also in
-# terms of memory consumption). Intuitively, this improvement over standard Taylor mode
-# also makes sense, as the collapsed propagation uses less operations and smaller
-# tensors.
+# terms of memory consumption). Intuitively, this makes sense, as the collapsed
+# propagation uses less operations and smaller tensors.
 #
 # Here is a quick summary of the performance results in a single diagram:
 
@@ -517,9 +501,8 @@ colors = [
     (27 / 255, 158 / 255, 119 / 255),
 ]
 
-# LaTeX is not available in Github actions.
-# Therefore, we are turning it off if the script executes on GHA.
-USETEX = not getenv("CI")
+# Use LaTeX if available
+USETEX = which("latex") is not None
 
 with plt.rc_context(bundles.neurips2024(usetex=USETEX)):
     plt.figure(dpi=150)

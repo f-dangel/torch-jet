@@ -1,29 +1,41 @@
 """Test individual simplification rules."""
 
-from itertools import product
-from typing import Any, Callable
+import operator
+from typing import Callable
 
 from pytest import mark
-from torch import Size, Tensor, linspace, manual_seed, mul, rand
+from torch import Tensor, linspace, manual_seed, rand
 from torch.fx import Graph, Node
 from torch.nn import Module
 from torch.nn.functional import linear
 
-import jet.utils
 from jet.rules import (
-    MergeSumVmappedConstant,
-    PullSumVmappedLinear,
-    PullSumVmappedReplicateMultiplication,
-    PullSumVmappedScalarMultiplication,
-    PullSumVmappedTensorAddition,
-    PushReplicateElementwise,
-    PushReplicateLinear,
-    PushReplicateScalarArithmetic,
-    PushReplicateSumVmapped,
-    PushReplicateTensorArithmetic,
+    PullSumAddMM,
+    PullSumAddOrSub,
+    PullSumMM,
+    PullSumMul,
+    PullSumSqueeze,
+    PullSumUnsqueeze,
+    PullSumView,
 )
-from jet.simplify import apply_once
+from jet.simplify import apply_all
 from jet.tracing import capture_graph
+
+
+class RuleTestCase(Module):
+    """A test case for a simplification rule.
+
+    Subclasses define ``forward`` (the original computation) and
+    ``forward_simple`` (the expected simplified computation), along with
+    ``rules``, ``shape``, and ``id``.
+    """
+
+    shape: tuple[int, ...]
+    id: str
+    rules: list
+
+    def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
+        raise NotImplementedError
 
 
 def compare_graphs(graph1: Graph, graph2: Graph):
@@ -41,387 +53,426 @@ def compare_graphs(graph1: Graph, graph2: Graph):
 
     for node1, node2 in zip(graph1.nodes, graph2.nodes):
         assert node1.op == node2.op
-        if not node1.op == node2.op == "get_attr":
+        if node1.op not in ("get_attr", "placeholder"):
             assert node1.target == node2.target
         assert len(node1.args) == len(node2.args)
         for arg1, arg2 in zip(node1.args, node2.args):
             if isinstance(arg1, Node) and isinstance(arg2, Node):
                 # node comparison
                 assert arg1.op == arg2.op
-                if not arg1.op == arg2.op == "get_attr":
+                if arg1.op not in ("get_attr", "placeholder"):
                     assert arg1.target == arg2.target
                 assert node_mapping[arg1] == arg2
             else:
                 assert arg1 == arg2
-        # TODO Support comparing kwargs that contain nodes
         assert node1.kwargs == node2.kwargs
 
         # nodes match, hence add them to the mapping
         node_mapping[node1] = node2
 
 
-CASES = []
+CASES: list[RuleTestCase] = []
 
 
-# swapping replicate nodes with elementwise functions
-class ReplicateElementwise(Module):  # noqa: D101
-    def __init__(self, op: Callable[[Tensor], Tensor], times: int, pos: int):  # noqa: D107
-        super().__init__()
-        self.op, self.times, self.pos = op, times, pos
+# Pulling a sum node through an arithmetic operation with an integer/float
+class SumScalarMul(RuleTestCase):  # noqa: D101
+    """Test case for ``sum(5 * x) = 5 * sum(x)``."""
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        return self.op(jet.utils.replicate(x, self.times, pos=self.pos))
+    shape = (4,)
 
-
-class SimpleReplicateElementwise(ReplicateElementwise):  # noqa: D101
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        return jet.utils.replicate(self.op(x), self.times, pos=self.pos)
-
-
-CASES.extend(
-    [
-        {
-            "f": ReplicateElementwise(op, times=2, pos=pos),
-            "f_simple": SimpleReplicateElementwise(op, times=2, pos=pos),
-            "rules": lambda: [PushReplicateElementwise()],
-            "shape": (3,),
-            "id": f"replicate{pos}-{op.__module__}.{op.__name__}",
-        }
-        for op, pos in product(PushReplicateElementwise.OPERATIONS, [0, 1])
-    ]
-)
-
-
-# swapping replicate nodes with arithmetic operations involving one integer/float
-class ReplicateScalarArithmetic(Module):  # noqa: D101
     def __init__(  # noqa: D107
-        self,
-        op: Callable[[float | int | Tensor, float | int | Tensor], Tensor],
-        times: int,
-        pos: int,
-        scalar: int | float,
-        scalar_first: bool,
+        self, pos: int, scalar: float | int, scalar_first: bool
     ):
         super().__init__()
-        self.op = op
-        self.times = times
         self.pos = pos
         self.scalar = scalar
         self.scalar_first = scalar_first
+        self.id = f"sum-scalar-{scalar_first=}"
+        self.rules = [PullSumMul()]
 
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        x_rep = jet.utils.replicate(x, self.times, pos=self.pos)
-        return (
-            self.op(self.scalar, x_rep)
-            if self.scalar_first
-            else self.op(x_rep, self.scalar)
-        )
+        res = self.scalar * x if self.scalar_first else x * self.scalar
+        return res.sum(self.pos)
+
+    def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
+        x_sum = x.sum(self.pos)
+        return self.scalar * x_sum if self.scalar_first else x_sum * self.scalar
 
 
-class SimpleReplicateScalarArithmetic(ReplicateScalarArithmetic):  # noqa: D101
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        res = self.op(self.scalar, x) if self.scalar_first else self.op(x, self.scalar)
-        return jet.utils.replicate(res, self.times, pos=self.pos)
-
-
+_SUM_DIM, _SCALE_FACTOR = 0, 3.0
 CASES.extend(
-    [
-        {
-            "f": ReplicateScalarArithmetic(
-                op, times=5, pos=0, scalar=3.0, scalar_first=first
-            ),
-            "f_simple": SimpleReplicateScalarArithmetic(
-                op, times=5, pos=0, scalar=3.0, scalar_first=first
-            ),
-            "rules": lambda: [PushReplicateScalarArithmetic()],
-            "shape": (4,),
-            "id": f"replicate-{op.__module__}.{op.__name__}-scalar-{first=}",
-        }
-        for op, first in product(
-            PushReplicateScalarArithmetic.OPERATIONS, [False, True]
-        )
-    ]
+    SumScalarMul(_SUM_DIM, _SCALE_FACTOR, scalar_first)
+    for scalar_first in [False, True]
 )
 
-
-# swapping arithmetic operations that consume two replicate nodes
-class ReplicateTensorArithmetic(Module):  # noqa: D101
-    def __init__(  # noqa: D107
-        self, op: Callable[[Tensor, Tensor], Tensor], times: int, pos: int, same: bool
-    ):
-        super().__init__()
-        self.op = op
-        self.times = times
-        self.pos = pos
-        self.same = same
-
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        y = x if self.same else x + 1
-        return self.op(
-            jet.utils.replicate(x, self.times, pos=self.pos),
-            jet.utils.replicate(y, self.times, pos=self.pos),
-        )
+_ADDITION_OPS = [operator.add, operator.sub]
 
 
-class SimpleReplicateTensorArithmetic(ReplicateTensorArithmetic):  # noqa: D101
-    def forward(self, x):  # noqa: D102
-        y = x if self.same else x + 1
-        return jet.utils.replicate(self.op(x, y), self.times, pos=self.pos)
+# Pulling a sum node through addition/subtraction of two same-shape tensors
+class SumTensorAdd(RuleTestCase):  # noqa: D101
+    shape = (4,)
 
-
-CASES.extend(
-    [
-        {
-            "f": ReplicateTensorArithmetic(op, times=5, pos=0, same=same),
-            "f_simple": SimpleReplicateTensorArithmetic(op, times=5, pos=0, same=same),
-            "rules": lambda: [PushReplicateTensorArithmetic()],
-            "shape": (4,),
-            "id": f"replicate-{op.__module__}.{op.__name__}-tensors-{same=}",
-        }
-        for op, same in product(PushReplicateTensorArithmetic.OPERATIONS, [False, True])
-    ]
-)
-
-
-# Simplify linear operation with replicated input
-CASES.append(
-    {
-        "f": lambda x: linear(
-            jet.utils.replicate(x, 5, pos=0),
-            linspace(-2.0, 10, 12).reshape(3, 4),  # weight
-            linspace(-1.0, 2.0, 3),  # bias
-        ),
-        "f_simple": lambda x: jet.utils.replicate(
-            linear(
-                x,
-                linspace(-2.0, 10, 12).reshape(3, 4),  # weight
-                linspace(-1.0, 2.0, 3),  # bias
-            ),
-            5,
-            pos=0,
-        ),
-        "rules": lambda: [PushReplicateLinear()],
-        "shape": (4,),
-        "id": "replicate-linear",
-    }
-)
-
-
-# Pushing a replicate node through a sum_vmapped node
-class ReplicateSumVmapped(Module):  # noqa: D101
-    def __init__(self, pos1: int, pos2: int, times: int) -> None:  # noqa: D107
-        super().__init__()
-        self.pos1, self.pos2, self.times = pos1, pos2, times
-
-    def forward(self, x):  # noqa: D102
-        x_rep = jet.utils.replicate(x, self.times, pos=self.pos1)
-        return jet.utils.sum_vmapped(x_rep, pos=self.pos2)
-
-
-class SimpleReplicateSumVmapped(ReplicateSumVmapped):  # noqa: D101
-    def forward(self, x):  # noqa: D102
-        if self.pos1 == self.pos2:
-            return x * self.times
-
-        new_sum_pos = self.pos2 if self.pos1 > self.pos2 else self.pos2 - 1
-        x_sum = jet.utils.sum_vmapped(x, pos=new_sum_pos)
-
-        new_rep_pos = self.pos1 - 1 if self.pos1 > self.pos2 else self.pos1
-        return jet.utils.replicate(x_sum, self.times, pos=new_rep_pos)
-
-
-CASES.extend(
-    [
-        {
-            "f": ReplicateSumVmapped(pos1, pos2, times=5),
-            "f_simple": SimpleReplicateSumVmapped(pos1, pos2, times=5),
-            "rules": lambda: [PushReplicateSumVmapped()],
-            "shape": (4, 3),
-            "id": f"replicate{pos1}-sum_vmapped{pos2}",
-        }
-        for pos1, pos2 in [(2, 2), (2, 0), (0, 2)]
-    ]
-)
-
-
-# Pulling a sum_vmapped node through an arithmetic operation with an integer/float
-class SumVmappedScalarMultiplication(Module):  # noqa: D101
-    def __init__(  # noqa: D107
-        self,
-        op: Callable[[float | int | Tensor, float | int | Tensor], Tensor],
-        pos: int,
-        scalar: float | int,
-        scalar_first: bool,
-    ):
-        super().__init__()
-        self.op = op
-        self.pos = pos
-        self.scalar = scalar
-        self.scalar_first = scalar_first
-
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        res = self.op(self.scalar, x) if self.scalar_first else self.op(x, self.scalar)
-        return jet.utils.sum_vmapped(res, pos=self.pos)
-
-
-class SimpleSumVmappedScalarMultiplication(SumVmappedScalarMultiplication):  # noqa: D101
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        x_sum = jet.utils.sum_vmapped(x, pos=self.pos)
-        return (
-            self.op(self.scalar, x_sum)
-            if self.scalar_first
-            else self.op(x_sum, self.scalar)
-        )
-
-
-CASES.extend(
-    [
-        {
-            "f": SumVmappedScalarMultiplication(
-                op, pos=0, scalar=3.0, scalar_first=first
-            ),
-            "f_simple": SimpleSumVmappedScalarMultiplication(
-                op, pos=0, scalar=3.0, scalar_first=first
-            ),
-            "rules": lambda: [PullSumVmappedScalarMultiplication()],
-            "shape": (4,),
-            "id": f"sum_vmapped-{op.__module__}.{op.__name__}-scalar-{first=}",
-        }
-        for op, first in product(
-            PullSumVmappedScalarMultiplication.OPERATIONS, [False, True]
-        )
-    ]
-)
-
-
-# pulling a sum_vmapped node through addition/subtraction of two tensors
-class SumVmappedTensorAddition(Module):  # noqa: D101
     def __init__(self, op: Callable[[Tensor, Tensor], Tensor], pos: int):  # noqa: D107
         super().__init__()
         self.op, self.pos = op, pos
+        self.id = f"sum-{op.__module__}.{op.__name__}-two-tensors"
+        self.rules = [PullSumAddOrSub()]
 
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         y = x + 1
-        return jet.utils.sum_vmapped(self.op(x, y), pos=self.pos)
+        return self.op(x, y).sum(self.pos)
+
+    def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
+        # sum(x + 1, pos) also simplifies: sum(x, pos) + 1 * K.
+        # The inner sum(x) is inserted first in the graph.
+        K = x.shape[self.pos]
+        x_sum_inner = x.sum(self.pos)
+        x_sum_outer = x.sum(self.pos)
+        return self.op(x_sum_outer, x_sum_inner + 1 * K)
 
 
-class SimpleSumVmappedTensorAddition(SumVmappedTensorAddition):  # noqa: D101
-    def forward(self, x):  # noqa: D102
-        return self.op(
-            jet.utils.sum_vmapped(x, pos=self.pos),
-            jet.utils.sum_vmapped(x + 1, pos=self.pos),
-        )
+CASES.extend(SumTensorAdd(op, _SUM_DIM) for op in _ADDITION_OPS)
 
 
-CASES.extend(
-    [
-        {
-            "f": SumVmappedTensorAddition(op, pos=0),
-            "f_simple": SimpleSumVmappedTensorAddition(op, pos=0),
-            "rules": lambda: [PullSumVmappedTensorAddition()],
-            "shape": (4,),
-            "id": f"sum_vmapped-{op.__module__}.{op.__name__}-two-tensors",
-        }
-        for op in PullSumVmappedTensorAddition.OPERATIONS
-    ]
-)
+# Pulling a sum node through addition with a scalar
+class SumScalarAdd(RuleTestCase):  # noqa: D101
+    shape = (3, 4)
+    id = "sum-scalar-add"
+    rules = [PullSumAddOrSub()]
 
-# Pull a sum_vmapped node through a linear layer
-CASES.append(
-    {
-        "f": lambda x: jet.utils.sum_vmapped(
-            linear(x, linspace(-2.0, 10, 12).reshape(3, 4)),  # weight
-            pos=0,
-        ),
-        "f_simple": lambda x: linear(
-            jet.utils.sum_vmapped(x, pos=0),
-            linspace(-2.0, 10, 12).reshape(3, 4),  # weight
-        ),
-        "rules": lambda: [PullSumVmappedLinear()],
-        "shape": (5, 4),
-        "id": "sum_vmapped-linear",
-    }
-)
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        return (x + 5.0).sum(0)
+
+    def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
+        return x.sum(0) + 5.0 * 3
 
 
-# Pull a sum_vmapped through a multiplication, one of whose arguments is a replicate
-class SumVmappedReplicateMultiplication(Module):  # noqa: D101
+CASES.append(SumScalarAdd())
+
+
+# Pulling a sum node through a broadcasted tensor multiplication
+class SumBroadcastedMul(RuleTestCase):  # noqa: D101
+    shape = (5, 4)
+    rules = [PullSumMul()]
+
+    def __init__(self, pos: int, invariant_first: bool):  # noqa: D107
+        super().__init__()
+        self.pos = pos
+        self.invariant_first = invariant_first
+        self.id = f"sum-broadcasted-mul-{invariant_first=}"
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        b = linspace(1.0, 5.0, 4)
+        return (b * x if self.invariant_first else x * b).sum(self.pos)
+
+    def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
+        b = linspace(1.0, 5.0, 4)
+        s = x.sum(self.pos)
+        return b * s if self.invariant_first else s * b
+
+
+CASES.extend(SumBroadcastedMul(_SUM_DIM, inv) for inv in [False, True])
+
+
+# Pulling a sum node through a broadcasted tensor addition/subtraction
+class SumAddBroadcasted(RuleTestCase):  # noqa: D101
+    shape = (3, 4)
+    rules = [PullSumAddOrSub()]
+
     def __init__(  # noqa: D107
-        self, times: int, shape: tuple[int, ...], pos: int, replicate_first: bool
+        self,
+        op: Callable[[Tensor, Tensor], Tensor],
+        pos: int,
+        invariant_first: bool,
     ):
         super().__init__()
-        self.times = times
-        self.shape = Size(shape)
+        self.op = op
         self.pos = pos
-        self.replicate_first = replicate_first
-        self.y = linspace(-2.0, 6.0, self.times * self.shape.numel()).reshape(
-            times, *shape
-        )
+        self.invariant_first = invariant_first
+        self.id = f"sum-{op.__name__}-broadcasted-{pos=}-{invariant_first=}"
 
     def forward(self, x: Tensor) -> Tensor:  # noqa: D102
-        res = (
-            jet.utils.replicate(x, self.times, pos=0) * self.y
-            if self.replicate_first
-            else mul(self.y, jet.utils.replicate(x, self.times, pos=0))
-        )
-        return jet.utils.sum_vmapped(res, pos=self.pos)
-
-
-class SimpleSumVmappedReplicateMultiplication(SumVmappedReplicateMultiplication):  # noqa: D101
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        y = linspace(1.0, 4.0, 4)
         return (
-            x * jet.utils.sum_vmapped(self.y, pos=self.pos)
-            if self.replicate_first
-            else mul(jet.utils.sum_vmapped(self.y, pos=self.pos), x)
+            self.op(y, x).sum(self.pos)
+            if self.invariant_first
+            else self.op(x, y).sum(self.pos)
         )
+
+    def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
+        x_sum = x.sum(self.pos)
+        y = linspace(1.0, 4.0, 4)
+        # pos=0: y invariant along dim 0 → mul(y, K=3)
+        # pos=1: y varies (adjusted_pos=0) → sum(y, 0)
+        y_result = y * 3 if self.pos == 0 else y.sum(0)
+        if self.invariant_first:
+            return self.op(y_result, x_sum)
+        return self.op(x_sum, y_result)
 
 
 CASES.extend(
-    [
-        {
-            "f": SumVmappedReplicateMultiplication(
-                times=5, shape=(4,), pos=0, replicate_first=first
-            ),
-            "f_simple": SimpleSumVmappedReplicateMultiplication(
-                times=5, shape=(4,), pos=0, replicate_first=first
-            ),
-            "rules": lambda: [
-                PullSumVmappedReplicateMultiplication(),
-                MergeSumVmappedConstant(),
-            ],
-            "shape": (4,),
-            "id": f"sum_vmapped-replicate-multiplication-{first=}",
-        }
-        for first in [True, False]
+    SumAddBroadcasted(op, pos, inv)
+    for op in _ADDITION_OPS
+    for pos in [0, 1]
+    for inv in [False, True]
+)
+
+
+# Pull a sum node through mm (linear without bias).
+class SumMM(RuleTestCase):  # noqa: D101
+    shape = (5, 4)
+    id = "sum-mm"
+    rules = [PullSumMM()]
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        return linear(x, linspace(-2.0, 10, 12).reshape(3, 4)).sum(0)
+
+    def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
+        W = linspace(-2.0, 10, 12).reshape(3, 4)
+        Wt = W.t()
+        sv = x.sum(0)
+        return sv.unsqueeze(0).mm(Wt).squeeze(0)
+
+
+CASES.append(SumMM())
+
+
+# Pull a sum node through mm (linear without bias), summing over last dim.
+class SumMMLastDim(RuleTestCase):  # noqa: D101
+    shape = (5, 4)
+    id = "sum-mm-last-dim"
+    rules = [PullSumMM()]
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        return linear(x, linspace(-2.0, 10, 12).reshape(3, 4)).sum(1)
+
+    def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
+        W = linspace(-2.0, 10, 12).reshape(3, 4)
+        sv = W.t().sum(1)
+        return x.mm(sv.unsqueeze(1)).squeeze(1)
+
+
+CASES.append(SumMMLastDim())
+
+
+# Pull a sum node through addmm (linear with bias).
+class SumAddmm(RuleTestCase):  # noqa: D101
+    shape = (5, 4)
+    id = "sum-addmm"
+    rules = [PullSumAddMM()]
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        return linear(
+            x, linspace(-2.0, 10, 12).reshape(3, 4), linspace(-1.0, 2.0, 3)
+        ).sum(0)
+
+    def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
+        W = linspace(-2.0, 10, 12).reshape(3, 4)
+        b = linspace(-1.0, 2.0, 3)
+        Wt = W.t()
+        sv = x.sum(0)
+        out = sv.unsqueeze(0).mm(Wt).squeeze(0)
+        return out + b * x.shape[0]
+
+
+CASES.append(SumAddmm())
+
+
+# Pull a sum node through addmm (linear with bias), summing over last dim.
+class SumAddmmLastDim(RuleTestCase):  # noqa: D101
+    shape = (5, 4)
+    id = "sum-addmm-last-dim"
+    rules = [PullSumAddMM()]
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        return linear(
+            x, linspace(-2.0, 10, 12).reshape(3, 4), linspace(-1.0, 2.0, 3)
+        ).sum(1)
+
+    def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
+        W = linspace(-2.0, 10, 12).reshape(3, 4)
+        b = linspace(-1.0, 2.0, 3)
+        sv = W.t().sum(1)
+        out = x.mm(sv.unsqueeze(1)).squeeze(1)
+        return out + b.sum()
+
+
+CASES.append(SumAddmmLastDim())
+
+
+# Pull a sum node through squeeze.
+class SumSqueeze(RuleTestCase):  # noqa: D101
+    rules = [PullSumSqueeze()]
+
+    def __init__(self, shape: tuple[int, ...], sq_d: int, pos: int):  # noqa: D107
+        super().__init__()
+        self.shape = shape
+        self.sq_d = sq_d
+        self.pos = pos
+        self.id = f"sum-squeeze-{sq_d=}-{pos=}"
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        return x.squeeze(self.sq_d).sum(self.pos)
+
+    def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
+        new_s_d = self.pos + 1 if self.sq_d <= self.pos else self.pos
+        new_sq_d = self.sq_d - 1 if new_s_d < self.sq_d else self.sq_d
+        return x.sum(new_s_d).squeeze(new_sq_d)
+
+
+CASES.extend(
+    SumSqueeze(shape, sq_d, pos)
+    for shape, sq_d, pos in [
+        ((5, 1, 4), 1, 0),  # sq_d > pos
+        ((1, 5, 4), 0, 1),  # sq_d < pos
+        ((5, 1, 4), 1, 1),  # sq_d == pos
     ]
 )
 
 
-@mark.parametrize("config", CASES, ids=lambda conf: conf["id"])
-def test_simplification_rules(config: dict[str, Any]):
+# Pull a sum node through unsqueeze (no-op: sum dim == unsqueeze dim).
+class SumUnsqueezeNoop(RuleTestCase):  # noqa: D101
+    shape = (5, 4)
+    rules = [PullSumUnsqueeze()]
+
+    def __init__(self, pos: int):  # noqa: D107
+        super().__init__()
+        self.pos = pos
+        self.id = f"sum-unsqueeze-noop-{pos=}"
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        return x.unsqueeze(self.pos).sum(self.pos)
+
+    def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
+        return x
+
+
+CASES.extend(SumUnsqueezeNoop(pos) for pos in [0, 1])
+
+
+# Pull a sum node through unsqueeze (swap: dims differ).
+class SumUnsqueezeSwap(RuleTestCase):  # noqa: D101
+    shape = (5, 4)
+    rules = [PullSumUnsqueeze()]
+
+    def __init__(self, uq_d: int, pos: int):  # noqa: D107
+        super().__init__()
+        self.uq_d = uq_d
+        self.pos = pos
+        self.id = f"sum-unsqueeze-swap-{uq_d=}-{pos=}"
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        return x.unsqueeze(self.uq_d).sum(self.pos)
+
+    def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
+        new_s_d = self.pos - 1 if self.uq_d <= self.pos else self.pos
+        new_uq_d = self.uq_d - 1 if new_s_d < self.uq_d else self.uq_d
+        return x.sum(new_s_d).unsqueeze(new_uq_d)
+
+
+CASES.extend(
+    SumUnsqueezeSwap(uq_d, pos)
+    for uq_d, pos in [
+        (0, 1),  # uq_d < pos
+        (2, 0),  # uq_d > pos
+    ]
+)
+
+
+# Pull a sum node through view.
+class SumView(RuleTestCase):  # noqa: D101
+    shape = (5, 4)
+    id = "sum-view"
+    rules = [PullSumView()]
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        return x.view(5, 2, 2).sum(0)
+
+    def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
+        return x.sum(0).view(2, 2)
+
+
+CASES.append(SumView())
+
+
+@mark.parametrize("case", CASES, ids=lambda c: c.id)
+def test_simplification_rules(case: RuleTestCase):
     """Test simplification rules.
 
     Args:
-        config: A dictionary specifying the test case.
+        case: The test case specifying the rule to test.
     """
     manual_seed(0)
-    f, f_simple, shape = config["f"], config["f_simple"], config["shape"]
-    x = rand(*shape)
-    rules = config["rules"]()
-
+    x = rand(*case.shape)
     # simplify the function
-    f_simplified = capture_graph(f)
+    f_simplified = capture_graph(case, x)
 
     do_simplify = True
     while do_simplify:
-        do_simplify = apply_once(rules, f_simplified, verbose=True)
+        do_simplify = apply_all(case.rules, f_simplified, verbose=True)
     f_simplified.graph.eliminate_dead_code()
 
     # make sure all functions yield the same result
-    f_x = f(x)
-    assert f_x.allclose(f_simple(x))
-    assert f_x.allclose(f_simplified(x))
+    f_x = case(x)
+    f_simple_x = case.forward_simple(x)
+    assert f_x.shape == f_simple_x.shape
+    assert f_x.allclose(f_simple_x)
+    f_simplified.recompile()
+    f_simplified_x = f_simplified(x)
+    assert f_x.shape == f_simplified_x.shape
+    assert f_x.allclose(f_simplified_x)
 
     # compare the graphs of f_simplified and f_simple
-    f_simple_graph = capture_graph(f_simple).graph
-    compare_graphs(f_simple_graph, f_simplified.graph)
+    f_simple_mod = capture_graph(lambda x: case.forward_simple(x), x)  # noqa: PLW0108
+    compare_graphs(f_simple_mod.graph, f_simplified.graph)
+
+
+# === Negative test cases: rules should NOT trigger ===
+
+NEGATIVE_CASES: list[RuleTestCase] = []
+
+
+# sum(x * y) where both tensors have the same shape (neither scalar nor broadcasted)
+class SumMulSameShape(RuleTestCase):  # noqa: D101
+    rules = [PullSumMul()]
+
+    def __init__(self, shape: tuple[int, ...]):  # noqa: D107
+        super().__init__()
+        self.shape = shape
+        self.id = f"neg-sum-mul-same-shape-{'x'.join(map(str, shape))}"
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        y = x + 1
+        return (x * y).sum(0)
+
+
+NEGATIVE_CASES.extend(SumMulSameShape(s) for s in [(4,), (5, 4)])
+
+
+# sum(view(x, ...), 0) where the dim doesn't map cleanly (split dim)
+class SumViewSplitDim(RuleTestCase):  # noqa: D101
+    shape = (10, 4)
+    id = "neg-sum-view-split-dim"
+    rules = [PullSumView()]
+
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+        return x.view(2, 5, 4).sum(0)
+
+
+NEGATIVE_CASES.append(SumViewSplitDim())
+
+
+@mark.parametrize("case", NEGATIVE_CASES, ids=lambda c: c.id)
+def test_rules_do_not_trigger(case: RuleTestCase):
+    """Test that rules do NOT trigger on non-matching patterns.
+
+    Args:
+        case: The test case specifying the rule to test.
+    """
+    manual_seed(0)
+    x = rand(*case.shape)
+    f = capture_graph(case, x)
+    graph_before = str(f.graph)
+    applied = apply_all(case.rules, f, verbose=True)
+    assert not applied, f"Rule unexpectedly triggered for {case.id}"
+    assert str(f.graph) == graph_before, "Graph was modified despite no rule match"

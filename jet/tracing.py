@@ -1,88 +1,52 @@
-"""Utility functions/classes for capturing compute graphs in PyTorch."""
+"""Utility functions for capturing compute graphs in PyTorch."""
 
-import math
 from typing import Callable
 
-from torch.fx import GraphModule, Tracer
-from torch.nn import Linear, Module, Sigmoid, Tanh
+from torch import Tensor, ops
+from torch.func import functionalize
+from torch.fx import GraphModule
+from torch.fx.experimental.proxy_tensor import make_fx
+from torch.nn import Module
 
-import jet.utils
 from jet.utils import Primal, Value
 
-
-class JetTracer(Tracer):
-    """Custom tracer for overloading functions with Taylor-mode arithmetic."""
-
-    def __init__(
-        self, autowrap_modules=(math, jet.utils), autowrap_functions=()
-    ) -> None:
-        """Initialize the JetTracer.
-
-        Args:
-            autowrap_modules: Modules to autowrap. Default: `(math, jet.utils)`.
-                The `jet.utils` module is included to autowrap the `replicate` and
-                `sum_vmapped` functions, which are used in the simplification logic.
-            autowrap_functions: Functions to autowrap. Default: `()`.
-        """
-        super().__init__(
-            autowrap_modules=autowrap_modules, autowrap_functions=autowrap_functions
-        )
-
-    def is_leaf_module(self, m: Module, module_qualified_name: str) -> bool:
-        """Determine whether a module is a leaf module or should be traced through.
-
-        Args:
-            m: Module to check.
-            module_qualified_name: Qualified name of the module.
-
-        Returns:
-            Whether the module is a leaf module.
-        """
-        # We don't want to maintain additional logic for replacing `call_module` nodes
-        # that execute modules who simply wrap `torch.nn.functional`s. Therefore, we
-        # explicitly trace through them, which will result in `call_function` nodes for
-        # which we maintain the logic to replace them with Taylor-mode arithmetic.
-        if isinstance(m, (Linear, Tanh, Sigmoid)):
-            return False
-        return super().is_leaf_module(m, module_qualified_name)
+# Map in-place ATen ops to their out-of-place equivalents.
+_INPLACE_TO_FUNCTIONAL = {
+    ops.aten.squeeze_.dim: ops.aten.squeeze.dim,
+}
 
 
-class WrapperModule(Module):
-    """Wraps a function in a module."""
+def capture_graph(
+    f: Module | Callable[[Primal], Value] | GraphModule,
+    mock_x: Tensor,
+) -> GraphModule:
+    """Capture the compute graph of a function using make_fx.
 
-    def __init__(self, f: Callable[[Primal], Value]):
-        """Initialize the module.
-
-        Args:
-            f: Function to wrap.
-        """
-        super().__init__()
-        self.f = f
-
-    def forward(self, x: Primal) -> Value:
-        """Forward pass of the module.
-
-        Args:
-            x: Input tensor.
-
-        Returns:
-            Output tensor.
-        """
-        return self.f(x)
-
-
-def capture_graph(f: Module | Callable | GraphModule) -> GraphModule:
-    """Capture the compute graph of a module using a custom tracer.
-
-    The tracer's granularity is specialized to perform the Taylor-mode arithmetic
-    overloading required for creating jets, and to apply simplifications.
+    The function is wrapped with ``functionalize`` and in-place operations are
+    replaced with their out-of-place equivalents, ensuring a purely functional
+    graph that is safe for transformations like common subexpression elimination.
 
     Args:
         f: The (graph) module or callable to trace.
+        mock_x: A mock input tensor for tracing. Does not need to be the actual
+            input; only the shape and dtype matter.
 
     Returns:
         The traced module with the captured compute graph.
     """
-    f_mod = f if isinstance(f, (Module, GraphModule)) else WrapperModule(f)
-    tracer = JetTracer()
-    return GraphModule(f_mod, tracer.trace(f_mod))
+    mod = make_fx(functionalize(f))(mock_x)
+    _replace_inplace_ops(mod)
+    mod.graph.eliminate_dead_code()
+    mod.recompile()
+    return mod
+
+
+def _replace_inplace_ops(mod: GraphModule) -> None:
+    """Replace in-place operations with their out-of-place equivalents.
+
+    Args:
+        mod: The graph module to modify in place.
+    """
+    for node in mod.graph.nodes:
+        if node.op == "call_function" and node.target in _INPLACE_TO_FUNCTIONAL:
+            node.target = _INPLACE_TO_FUNCTIONAL[node.target]

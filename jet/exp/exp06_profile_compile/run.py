@@ -5,9 +5,9 @@ from functools import partial
 from torch import compile, cuda, device, manual_seed, randn, vmap, zeros
 from torch.nn import Linear, Sequential, Tanh
 
-from jet.bilaplacian import Bilaplacian
+from jet.bilaplacian import bilaplacian as jet_bilaplacian
 from jet.exp.utils import measure_peak_memory, measure_time
-from jet.laplacian import Laplacian
+from jet.laplacian import laplacian as jet_laplacian
 from jet.simplify import simplify
 from jet.tracing import capture_graph
 
@@ -34,20 +34,20 @@ if __name__ == "__main__":
     X = randn(N, D).to(dev)
 
     for op in ["laplacian", "bilaplacian"]:
-        cls = {"laplacian": Laplacian, "bilaplacian": Bilaplacian}[op]
+        factory = {"laplacian": jet_laplacian, "bilaplacian": jet_bilaplacian}[op]
 
         for stochastic in [False, True]:
             randomization = ("normal", 30) if stochastic else None
             dummy_x = zeros(D, device=dev)
-            lap = cls(model, dummy_x, randomization=randomization)
+            lap = factory(model, dummy_x, randomization=randomization)
             print(f"\n{20 * '-'} {op=}, {randomization=} {20 * '-'}")
 
             # print number of computation graph nodes
-            f_before = capture_graph(lap)  # noqa: B023
+            f_before = capture_graph(lap, dummy_x)  # noqa: B023
             print("Before simplification:", len(list(f_before.graph.nodes)))
-            f_simple1 = simplify(lap, pull_sum_vmapped=False)
+            f_simple1 = simplify(lap, dummy_x, pull_sum=False)
             print("Naive after simplification:", len(list(f_simple1.graph.nodes)))
-            f_simple2 = simplify(lap, pull_sum_vmapped=True)
+            f_simple2 = simplify(lap, dummy_x, pull_sum=True)
             print("Collapsed after simplification:", len(list(f_simple2.graph.nodes)))
 
             print("\n--")

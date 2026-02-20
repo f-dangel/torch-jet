@@ -65,26 +65,26 @@ def _faa_di_bruno(
     return vs_out
 
 
-def jet_sin(
-    self_and_taylor_coefficients: JetTuple, *, derivative_order: int
-) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.sin``.
+# --- Elementwise unary ---
+
+
+def jet_sin(self: JetTuple, *, derivative_order: int) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.sin(self)``.
 
     Args:
-        self_and_taylor_coefficients: The primal and its Taylor coefficients.
+        self: The primal and its Taylor coefficients.
         derivative_order: The order of the Taylor expansion.
 
     Returns:
         The value and its Taylor coefficients.
     """
-    x, vs = self_and_taylor_coefficients[0], self_and_taylor_coefficients[1:]
+    self0, vs = self[0], self[1:]
 
-    # pre-compute derivatives
-    sin_x = sin(x)
-    dsin = {0: sin_x}
+    sin_self0 = sin(self0)
+    dsin = {0: sin_self0}
     for k in range(1, derivative_order + 1):
         if k == 1:
-            dsin[k] = cos(x)
+            dsin[k] = cos(self0)
         elif k in {2, 3}:
             dsin[k] = -1 * dsin[k - 2]
         else:
@@ -92,29 +92,26 @@ def jet_sin(
 
     vs_out = _faa_di_bruno(vs, derivative_order, dsin)
 
-    return JetTuple((sin_x, *vs_out))
+    return JetTuple((sin_self0, *vs_out))
 
 
-def jet_cos(
-    self_and_taylor_coefficients: JetTuple, *, derivative_order: int
-) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.cos``.
+def jet_cos(self: JetTuple, *, derivative_order: int) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.cos(self)``.
 
     Args:
-        self_and_taylor_coefficients: The primal and its Taylor coefficients.
+        self: The primal and its Taylor coefficients.
         derivative_order: The order of the Taylor expansion.
 
     Returns:
         The value and its Taylor coefficients.
     """
-    x, vs = self_and_taylor_coefficients[0], self_and_taylor_coefficients[1:]
+    self0, vs = self[0], self[1:]
 
-    # pre-compute derivatives
-    cos_x = cos(x)
-    dcos = {0: cos_x}
+    cos_self0 = cos(self0)
+    dcos = {0: cos_self0}
     for k in range(1, derivative_order + 1):
         if k == 1:
-            dcos[k] = -1 * sin(x)
+            dcos[k] = -1 * sin(self0)
         elif k in {2, 3}:
             dcos[k] = -1 * dcos[k - 2]
         else:
@@ -122,34 +119,31 @@ def jet_cos(
 
     vs_out = _faa_di_bruno(vs, derivative_order, dcos)
 
-    return JetTuple((cos_x, *vs_out))
+    return JetTuple((cos_self0, *vs_out))
 
 
-def jet_tanh(
-    self_and_taylor_coefficients: JetTuple, *, derivative_order: int
-) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.tanh``.
+def jet_tanh(self: JetTuple, *, derivative_order: int) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.tanh(self)``.
 
     Args:
-        self_and_taylor_coefficients: The primal and its Taylor coefficients.
+        self: The primal and its Taylor coefficients.
         derivative_order: The order of the Taylor expansion.
 
     Returns:
         The value and its Taylor coefficients.
     """
-    x, vs = self_and_taylor_coefficients[0], self_and_taylor_coefficients[1:]
+    self0, vs = self[0], self[1:]
 
-    # pre-compute derivatives
-    tanh_x = tanh(x)
-    dtanh = {0: tanh_x}
+    tanh_self0 = tanh(self0)
+    dtanh = {0: tanh_self0}
 
     # Use the explicit form of the derivative polynomials for tanh from "Derivative
     # polynomials for tanh, tan, sech and sec in explicit form" by Boyadzhiev (2006)
     # (https://www.fq.math.ca/Papers1/45-4/quartboyadzhiev04_2007.pdf);
     # see also this answer: https://math.stackexchange.com/a/4226178
     if derivative_order >= 1:
-        tanh_inc = tanh_x + 1
-        tanh_dec = tanh_x - 1
+        tanh_inc = tanh_self0 + 1
+        tanh_dec = tanh_self0 - 1
 
         # required powers of tanh_dec
         tanh_dec_powers = {1: tanh_dec}
@@ -172,35 +166,32 @@ def jet_tanh(
 
     vs_out = _faa_di_bruno(vs, derivative_order, dtanh)
 
-    return JetTuple((tanh_x, *vs_out))
+    return JetTuple((tanh_self0, *vs_out))
 
 
-def jet_sigmoid(
-    self_and_taylor_coefficients: JetTuple, *, derivative_order: int
-) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.sigmoid``.
+def jet_sigmoid(self: JetTuple, *, derivative_order: int) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.sigmoid(self)``.
 
     Args:
-        self_and_taylor_coefficients: The primal and its Taylor coefficients.
+        self: The primal and its Taylor coefficients.
         derivative_order: The order of the Taylor expansion.
 
     Returns:
         The value and its Taylor coefficients.
     """
-    x, vs = self_and_taylor_coefficients[0], self_and_taylor_coefficients[1:]
+    self0, vs = self[0], self[1:]
 
-    # pre-compute derivatives
-    sigmoid_x = sigmoid(x)
-    dsigmoid = {0: sigmoid_x}
+    sigmoid_self0 = sigmoid(self0)
+    dsigmoid = {0: sigmoid_self0}
 
     # Use the Stirling form of the sigmoid derivatives, see Equation 20
     # of "On the Derivatives of the Sigmoid" by Minai and Williams (1993)
     # (https://eecs.ceas.uc.edu/~minaiaa/papers/minai_sigmoids_NN93.pdf)
     if derivative_order >= 1:
         # The Stirling form requires sigmoid powers
-        sigmoid_powers = {1: sigmoid_x}
+        sigmoid_powers = {1: sigmoid_self0}
         for n in range(2, derivative_order + 2):
-            sigmoid_powers[n] = sigmoid_x**n
+            sigmoid_powers[n] = sigmoid_self0**n
 
         for n in range(1, derivative_order + 1):
             term = None
@@ -219,19 +210,19 @@ def jet_sigmoid(
 
     vs_out = _faa_di_bruno(vs, derivative_order, dsigmoid)
 
-    return JetTuple((sigmoid_x, *vs_out))
+    return JetTuple((sigmoid_self0, *vs_out))
+
+
+# --- Power ---
 
 
 def jet_pow(
-    base_and_taylor_coefficients: JetTuple,
-    exponent: float | int,
-    *,
-    derivative_order: int,
+    self: JetTuple, exponent: float | int, *, derivative_order: int
 ) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.pow.Tensor_Scalar``.
+    """Taylor-mode arithmetic for ``aten.pow(self, exponent)``.
 
     Args:
-        base_and_taylor_coefficients: The primal and its Taylor coefficients.
+        self: The primal and its Taylor coefficients.
         exponent: The scalar exponent.
         derivative_order: The order of the Taylor expansion.
 
@@ -240,13 +231,11 @@ def jet_pow(
     """
     assert isinstance(exponent, (float, int))
 
-    x, vs = base_and_taylor_coefficients[0], base_and_taylor_coefficients[1:]
+    self0, vs = self[0], self[1:]
 
-    # Compute the primal value
-    pow_x = x**exponent
+    pow_self0 = self0**exponent
 
-    # Pre-compute derivatives
-    dpow = {0: pow_x}
+    dpow = {0: pow_self0}
     for k in range(1, derivative_order + 1):
         if exponent - k < 0 and int(exponent) == exponent:
             dpow[k] = None
@@ -256,119 +245,259 @@ def jet_pow(
             scale = 1
             for i in range(1, k + 1):
                 scale *= exponent + 1 - i
-            dpow[k] = scale * x if exponent - k == 1 else scale * x ** (exponent - k)
+            dpow[k] = (
+                scale * self0 if exponent - k == 1 else scale * self0 ** (exponent - k)
+            )
 
-    # Compute Taylor coefficients using Faà di Bruno's formula
     vs_out = _faa_di_bruno(vs, derivative_order, dpow)
 
-    return JetTuple((pow_x, *vs_out))
+    return JetTuple((pow_self0, *vs_out))
+
+
+# --- Arithmetic ---
 
 
 def jet_add(
-    a: Primal | JetTuple | float | int,
-    b: Primal | JetTuple | float | int,
+    self: Primal | JetTuple | float | int,
+    other: Primal | JetTuple | float | int,
     *,
     derivative_order: int,
 ) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.add.Tensor``.
+    """Taylor-mode arithmetic for ``aten.add(self, other)``.
 
     Args:
-        a: The first primal and its Taylor coefficients, or a scalar.
-        b: The second primal and its Taylor coefficients, or a scalar.
+        self: The first operand and its Taylor coefficients, or a scalar.
+        other: The second operand and its Taylor coefficients, or a scalar.
         derivative_order: The order of the Taylor expansion.
 
     Returns:
         The value and its Taylor coefficients.
     """
-    a_is_jet, b_is_jet = isinstance(a, JetTuple), isinstance(b, JetTuple)
+    self_is_jet = isinstance(self, JetTuple)
+    other_is_jet = isinstance(other, JetTuple)
 
-    if a_is_jet and b_is_jet:
-        return JetTuple(a[k] + b[k] for k in range(derivative_order + 1))
-    elif a_is_jet:
+    if self_is_jet and other_is_jet:
+        return JetTuple(self[k] + other[k] for k in range(derivative_order + 1))
+    elif self_is_jet:
         return JetTuple(
-            (a[0] + b,) + tuple(a[k] for k in range(1, derivative_order + 1))
+            (self[0] + other,) + tuple(self[k] for k in range(1, derivative_order + 1))
         )
     else:
         return JetTuple(
-            (b[0] + a,) + tuple(b[k] for k in range(1, derivative_order + 1))
+            (other[0] + self,) + tuple(other[k] for k in range(1, derivative_order + 1))
         )
 
 
 def jet_sub(
-    a: Primal | JetTuple | float | int,
-    b: Primal | JetTuple | float | int,
+    self: Primal | JetTuple | float | int,
+    other: Primal | JetTuple | float | int,
     *,
     derivative_order: int,
 ) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.sub.Tensor``.
+    """Taylor-mode arithmetic for ``aten.sub(self, other)``.
 
     Args:
-        a: The first primal and its Taylor coefficients, or a scalar.
-        b: The second primal and its Taylor coefficients, or a scalar.
+        self: The first operand and its Taylor coefficients, or a scalar.
+        other: The second operand and its Taylor coefficients, or a scalar.
         derivative_order: The order of the Taylor expansion.
 
     Returns:
         The value and its Taylor coefficients.
     """
-    a_is_jet, b_is_jet = isinstance(a, JetTuple), isinstance(b, JetTuple)
+    self_is_jet = isinstance(self, JetTuple)
+    other_is_jet = isinstance(other, JetTuple)
 
-    if a_is_jet and b_is_jet:
-        return JetTuple(a[k] - b[k] for k in range(derivative_order + 1))
-    elif a_is_jet:
+    if self_is_jet and other_is_jet:
+        return JetTuple(self[k] - other[k] for k in range(derivative_order + 1))
+    elif self_is_jet:
         return JetTuple(
-            (a[0] - b,) + tuple(a[k] for k in range(1, derivative_order + 1))
+            (self[0] - other,) + tuple(self[k] for k in range(1, derivative_order + 1))
         )
     else:
         return JetTuple(
-            (a - b[0],) + tuple(-b[k] for k in range(1, derivative_order + 1))
+            (self - other[0],)
+            + tuple(-other[k] for k in range(1, derivative_order + 1))
         )
 
 
 def jet_mul(
-    a: Primal | JetTuple,
-    b: Primal | JetTuple,
+    self: Primal | JetTuple,
+    other: Primal | JetTuple,
     *,
     derivative_order: int,
 ) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.mul.Tensor``.
+    """Taylor-mode arithmetic for ``aten.mul(self, other)``.
 
     Args:
-        a: The first primal and its Taylor coefficients.
-        b: The second primal and its Taylor coefficients.
+        self: The first operand and its Taylor coefficients.
+        other: The second operand and its Taylor coefficients.
         derivative_order: The order of the Taylor expansion.
 
     Returns:
         The value and its Taylor coefficients.
     """
-    a_is_jet, b_is_jet = isinstance(a, JetTuple), isinstance(b, JetTuple)
+    self_is_jet = isinstance(self, JetTuple)
+    other_is_jet = isinstance(other, JetTuple)
 
-    if a_is_jet and b_is_jet:
+    if self_is_jet and other_is_jet:
         s_out = ()
         for k in range(derivative_order + 1):
             term = None
             for j in range(k + 1):
-                term_j = comb(k, j, exact=True) * a[j] * b[k - j]
+                term_j = comb(k, j, exact=True) * self[j] * other[k - j]
                 term = term_j if term is None else term + term_j
             s_out = s_out + (term,)
         return JetTuple(s_out)
 
-    elif a_is_jet:
-        return JetTuple(b * a[k] for k in range(derivative_order + 1))
+    elif self_is_jet:
+        return JetTuple(other * self[k] for k in range(derivative_order + 1))
     else:
-        return JetTuple(a * b[k] for k in range(derivative_order + 1))
+        return JetTuple(self * other[k] for k in range(derivative_order + 1))
+
+
+# --- Linear decomposition ---
+
+
+def jet_mm(
+    self: Primal | JetTuple,
+    mat2: Primal | JetTuple,
+    *,
+    derivative_order: int,
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.mm(self, mat2)``.
+
+    Args:
+        self: The first matrix and its Taylor coefficients.
+        mat2: The second matrix and its Taylor coefficients.
+        derivative_order: The order of the Taylor expansion.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    self_is_jet = isinstance(self, JetTuple)
+    mat2_is_jet = isinstance(mat2, JetTuple)
+
+    if self_is_jet and mat2_is_jet:
+        s_out = ()
+        for k in range(derivative_order + 1):
+            term = None
+            for j in range(k + 1):
+                term_j = comb(k, j, exact=True) * mm(self[j], mat2[k - j])
+                term = term_j if term is None else term + term_j
+            s_out = s_out + (term,)
+        return JetTuple(s_out)
+
+    elif self_is_jet:
+        return JetTuple(mm(self[k], mat2) for k in range(derivative_order + 1))
+    else:
+        return JetTuple(mm(self, mat2[k]) for k in range(derivative_order + 1))
+
+
+def jet_addmm(
+    self: Primal,
+    mat1: Primal | JetTuple,
+    mat2: Primal | JetTuple,
+    *,
+    derivative_order: int,
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.addmm(self, mat1, mat2)``.
+
+    Args:
+        self: The bias tensor (constant).
+        mat1: The first matrix and its Taylor coefficients.
+        mat2: The second matrix and its Taylor coefficients.
+        derivative_order: The order of the Taylor expansion.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    mat1_is_jet = isinstance(mat1, JetTuple)
+    mat2_is_jet = isinstance(mat2, JetTuple)
+
+    if mat1_is_jet and mat2_is_jet:
+        s_out = (addmm(self, mat1[0], mat2[0]),)
+        for k in range(1, derivative_order + 1):
+            term = None
+            for j in range(k + 1):
+                term_j = comb(k, j, exact=True) * mm(mat1[j], mat2[k - j])
+                term = term_j if term is None else term + term_j
+            s_out = s_out + (term,)
+        return JetTuple(s_out)
+
+    elif mat1_is_jet:
+        return JetTuple(
+            (addmm(self, mat1[0], mat2),)
+            + tuple(mm(mat1[k], mat2) for k in range(1, derivative_order + 1))
+        )
+    else:
+        return JetTuple(
+            (addmm(self, mat1, mat2[0]),)
+            + tuple(mm(mat1, mat2[k]) for k in range(1, derivative_order + 1))
+        )
+
+
+def jet_view(self: JetTuple, size: list[int], *, derivative_order: int) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.view(self, size)``.
+
+    Args:
+        self: The primal and its Taylor coefficients.
+        size: The target shape.
+        derivative_order: The order of the Taylor expansion.
+
+    Returns:
+        The value and its Taylor coefficients, each reshaped.
+    """
+    return JetTuple(
+        ops.aten.view.default(self[k], size) for k in range(derivative_order + 1)
+    )
+
+
+def jet_unsqueeze(self: JetTuple, dim: int, *, derivative_order: int) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.unsqueeze(self, dim)``.
+
+    Args:
+        self: The primal and its Taylor coefficients.
+        dim: The dimension to unsqueeze.
+        derivative_order: The order of the Taylor expansion.
+
+    Returns:
+        The value and its Taylor coefficients, each unsqueezed.
+    """
+    return JetTuple(
+        ops.aten.unsqueeze.default(self[k], dim) for k in range(derivative_order + 1)
+    )
+
+
+def jet_squeeze(self: JetTuple, dim: int, *, derivative_order: int) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.squeeze(self, dim)``.
+
+    Args:
+        self: The primal and its Taylor coefficients.
+        dim: The dimension to squeeze.
+        derivative_order: The order of the Taylor expansion.
+
+    Returns:
+        The value and its Taylor coefficients, each squeezed.
+    """
+    return JetTuple(
+        ops.aten.squeeze.dim(self[k], dim) for k in range(derivative_order + 1)
+    )
+
+
+# --- Sum (dim reduction) ---
 
 
 def jet_sum(
-    self_and_taylor_coefficients: JetTuple,
+    self: JetTuple,
     dim: list[int],
     keepdim: bool = False,
     *,
     derivative_order: int,
 ) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.sum.dim_IntList``.
+    """Taylor-mode arithmetic for ``aten.sum(self, dim, keepdim)``.
 
     Args:
-        self_and_taylor_coefficients: The primal and its Taylor coefficients.
+        self: The primal and its Taylor coefficients.
         dim: The dimensions along which to sum (list of ints).
         keepdim: Whether to keep the reduced dimension. Default: ``False``.
         derivative_order: The order of the Taylor expansion.
@@ -382,151 +511,7 @@ def jet_sum(
     if keepdim:
         raise NotImplementedError("keepdim=True is not supported.")
     pos = dim[0] if isinstance(dim, list) else dim
-    return JetTuple(
-        self_and_taylor_coefficients[k].sum(pos) for k in range(derivative_order + 1)
-    )
-
-
-def jet_view(
-    self_and_taylor_coefficients: JetTuple,
-    shape: list[int],
-    *,
-    derivative_order: int,
-) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.view``.
-
-    Args:
-        self_and_taylor_coefficients: The primal and its Taylor coefficients.
-        shape: The target shape.
-        derivative_order: The order of the Taylor expansion.
-
-    Returns:
-        The value and its Taylor coefficients, each reshaped.
-    """
-    return JetTuple(
-        ops.aten.view.default(self_and_taylor_coefficients[k], shape)
-        for k in range(derivative_order + 1)
-    )
-
-
-def jet_unsqueeze(
-    self_and_taylor_coefficients: JetTuple,
-    dim: int,
-    *,
-    derivative_order: int,
-) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.unsqueeze``.
-
-    Args:
-        self_and_taylor_coefficients: The primal and its Taylor coefficients.
-        dim: The dimension to unsqueeze.
-        derivative_order: The order of the Taylor expansion.
-
-    Returns:
-        The value and its Taylor coefficients, each unsqueezed.
-    """
-    return JetTuple(
-        ops.aten.unsqueeze.default(self_and_taylor_coefficients[k], dim)
-        for k in range(derivative_order + 1)
-    )
-
-
-def jet_squeeze(
-    self_and_taylor_coefficients: JetTuple,
-    dim: int,
-    *,
-    derivative_order: int,
-) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.squeeze.dim``.
-
-    Args:
-        self_and_taylor_coefficients: The primal and its Taylor coefficients.
-        dim: The dimension to squeeze.
-        derivative_order: The order of the Taylor expansion.
-
-    Returns:
-        The value and its Taylor coefficients, each squeezed.
-    """
-    return JetTuple(
-        ops.aten.squeeze.dim(self_and_taylor_coefficients[k], dim)
-        for k in range(derivative_order + 1)
-    )
-
-
-def jet_mm(
-    a: Primal | JetTuple,
-    b: Primal | JetTuple,
-    *,
-    derivative_order: int,
-) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.mm``.
-
-    Args:
-        a: The first matrix and its Taylor coefficients.
-        b: The second matrix and its Taylor coefficients.
-        derivative_order: The order of the Taylor expansion.
-
-    Returns:
-        The value and its Taylor coefficients.
-    """
-    a_is_jet, b_is_jet = isinstance(a, JetTuple), isinstance(b, JetTuple)
-
-    if a_is_jet and b_is_jet:
-        s_out = ()
-        for k in range(derivative_order + 1):
-            term = None
-            for j in range(k + 1):
-                term_j = comb(k, j, exact=True) * mm(a[j], b[k - j])
-                term = term_j if term is None else term + term_j
-            s_out = s_out + (term,)
-        return JetTuple(s_out)
-
-    elif a_is_jet:
-        return JetTuple(mm(a[k], b) for k in range(derivative_order + 1))
-    else:
-        return JetTuple(mm(a, b[k]) for k in range(derivative_order + 1))
-
-
-def jet_addmm(
-    bias: Primal,
-    a: Primal | JetTuple,
-    b: Primal | JetTuple,
-    *,
-    derivative_order: int,
-) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.addmm``.
-
-    Args:
-        bias: The bias tensor (constant).
-        a: The first matrix and its Taylor coefficients.
-        b: The second matrix and its Taylor coefficients.
-        derivative_order: The order of the Taylor expansion.
-
-    Returns:
-        The value and its Taylor coefficients.
-    """
-    a_is_jet, b_is_jet = isinstance(a, JetTuple), isinstance(b, JetTuple)
-
-    if a_is_jet and b_is_jet:
-        s_out = (addmm(bias, a[0], b[0]),)
-        for k in range(1, derivative_order + 1):
-            term = None
-            for j in range(k + 1):
-                term_j = comb(k, j, exact=True) * mm(a[j], b[k - j])
-                term = term_j if term is None else term + term_j
-            s_out = s_out + (term,)
-        return JetTuple(s_out)
-
-    elif a_is_jet:
-        return JetTuple(
-            (addmm(bias, a[0], b),)
-            + tuple(mm(a[k], b) for k in range(1, derivative_order + 1))
-        )
-    else:
-        return JetTuple(
-            (addmm(bias, a, b[0]),)
-            + tuple(mm(a, b[k]) for k in range(1, derivative_order + 1))
-        )
+    return JetTuple(self[k].sum(pos) for k in range(derivative_order + 1))
 
 
 MAPPING = {

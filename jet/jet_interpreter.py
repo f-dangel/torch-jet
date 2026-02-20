@@ -65,6 +65,11 @@ class JetInterpreter(Interpreter):
         Raises:
             NotImplementedError: If a Taylor-dependent operation has no jet rule.
         """
-        if target in MAPPING and any(isinstance(a, JetTuple) for a in args):
+        has_jet_arg = any(isinstance(a, JetTuple) for a in args)
+        if has_jet_arg:
+            if target not in MAPPING:
+                raise NotImplementedError(
+                    f"No jet rule for {target}. Please file an issue or add a rule."
+                )
             return MAPPING[target](*args, derivative_order=self.derivative_order)
         return super().call_function(target, args, kwargs)

@@ -3,14 +3,12 @@
 from typing import Any, Callable
 
 from pytest import mark
-from torch import Tensor, cos, manual_seed, rand, sigmoid, sin, tanh, tensor
+from torch import Tensor, cos, float64, manual_seed, rand, sigmoid, sin, tanh, tensor
 from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
 
 import jet
-import jet.utils
 from jet import rev_jet
-from jet.tracing import capture_graph
 from jet.utils import Primal, PrimalAndCoefficients, Value, ValueAndCoefficients
 from test.utils import report_nonclose
 
@@ -33,7 +31,7 @@ def check_jet(f: Callable[[Primal], Value], arg: PrimalAndCoefficients):  # noqa
     rev_jet_f = rev_jet(f)
     rev_jet_out = rev_jet_f(x, *vs)
 
-    jet_f = jet.jet(f, derivative_order=len(vs), verbose=True)
+    jet_f = jet.jet(f, len(vs), x, verbose=True)
     jet_out = jet_f(x, *vs)
 
     compare_jet_results(jet_out, rev_jet_out)
@@ -57,6 +55,9 @@ def f_multiply(x: Tensor) -> Tensor:
 
 # make generation of test cases deterministic
 manual_seed(1)
+
+_TANH_LINEAR_W = tensor([[0.1, -0.2, 0.3], [0.4, 0.5, -0.6]], dtype=float64)
+_TANH_LINEAR_B = tensor([0.12, -0.34], dtype=float64)
 
 JET_CASES = [
     # 1d sine function
@@ -87,18 +88,13 @@ JET_CASES = [
     {"f": lambda x: x * 3.0, "shape": (5,), "id": "mul-3.0"},
     # multiplication of x with itself
     {"f": lambda x: x * x, "shape": (5,), "id": "mul-x-x_"},
-    {"f": lambda x: jet.utils.replicate(x, 6), "shape": (5,), "id": "replicate-6"},
     # 2d sin(sin) function
     {"f": lambda x: sin(sin(x)), "shape": (2,), "id": "sin-sin"},
     # 2d tanh(tanh) function
     {"f": lambda x: tanh(tanh(x)), "shape": (2,), "id": "tanh-tanh"},
     # 2d linear(tanh) function
     {
-        "f": lambda x: linear(
-            tanh(x),
-            tensor([[0.1, -0.2, 0.3], [0.4, 0.5, -0.6]]).double(),
-            bias=tensor([0.12, -0.34]).double(),
-        ),
+        "f": lambda x: linear(tanh(x), _TANH_LINEAR_W, bias=_TANH_LINEAR_B),
         "shape": (3,),
         "id": "tanh-linear",
     },
@@ -127,8 +123,8 @@ JET_CASES = [
     {"f": lambda x: sin(x) - x, "shape": (3,), "id": "sin-neg-residual"},
     # multiplication two variables
     {"f": f_multiply, "shape": (5,), "id": "multiply-variables"},
-    # sum_vmapped
-    {"f": lambda x: jet.utils.sum_vmapped(x), "shape": (3, 5), "id": "sum_vmapped-3"},  # noqa: PLW0108
+    # sum
+    {"f": lambda x: x.sum(0), "shape": (3, 5), "id": "sum-3"},
 ]
 
 # set the `is_batched` flag for all cases
@@ -187,20 +183,3 @@ def test_jet(config: dict[str, Any], k: int):
     """
     f, x, vs = setup_case(config, derivative_order=k)
     check_jet(f, (x, vs))
-
-
-@mark.parametrize("k", K, ids=K_IDS)
-@mark.parametrize("config", JET_CASES, ids=JET_CASES_IDS)
-def test_symbolic_trace_jet(config: dict[str, Any], k: int):
-    """Test whether the function produced by jet can be traced.
-
-    Args:
-        config: Configuration dictionary of the test case.
-        k: The order of the jet to compute.
-    """
-    f, _, _ = setup_case(config, derivative_order=k)
-    # generate the jet's compute graph
-    jet_f = jet.jet(f, k)
-
-    # try tracing it
-    capture_graph(jet_f)

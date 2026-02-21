@@ -18,7 +18,7 @@ _INPLACE_TO_FUNCTIONAL = {
 
 def capture_graph(
     f: Module | Callable[[Primal], Value] | GraphModule,
-    mock_x: Tensor,
+    *mock_args: Tensor,
 ) -> GraphModule:
     """Capture the compute graph of a function using make_fx.
 
@@ -28,13 +28,12 @@ def capture_graph(
 
     Args:
         f: The (graph) module or callable to trace.
-        mock_x: A mock input tensor for tracing. Does not need to be the actual
-            input; only the shape and dtype matter.
+        *mock_args: Mock input tensors for tracing. Only shapes and dtypes matter.
 
     Returns:
         The traced module with the captured compute graph.
     """
-    mod = make_fx(functionalize(f))(mock_x)
+    mod = make_fx(functionalize(f))(*mock_args)
     _replace_inplace_ops(mod)
     mod.graph.eliminate_dead_code()
     mod.recompile()

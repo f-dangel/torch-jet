@@ -125,7 +125,7 @@ print(hessian_trace_laplacian)
 # Let's set up the jet function:
 
 k = 2
-f_jet = jet.jet(f, k, x)
+f_jet = jet.jet(f, k, (x,))
 
 # %%
 #
@@ -151,7 +151,7 @@ def compute_loop_laplacian(x: Tensor) -> Tensor:
     for d in range(D):  # compute the d-th Hessian diagonal element
         x1 = zeros_like(x)
         x1[d] = 1.0
-        _, _, f2 = f_jet(x0, x1, x2)
+        _, (_, f2) = f_jet((x0,), ((x1,), (x2,)))
         lap += f2
 
     return lap
@@ -185,7 +185,7 @@ def compute_loop_free_laplacian(x: Tensor) -> Tensor:
         The Laplacian of shape [1].
     """
     x0, x2 = x, zeros_like(x)  # fixed Taylor coefficients
-    eval_f2 = lambda x1: f_jet(x0, x1, x2)[2]  # noqa: E731
+    eval_f2 = lambda x1: f_jet((x0,), ((x1,), (x2,)))[1][1]  # noqa: E731
     vmap_eval_f2 = vmap(eval_f2)
 
     # generate all basis vectors at once and compute their Hessian diagonal elements
@@ -237,7 +237,7 @@ def make_laplacian(
     """
     in_shape = mock_x.shape
     in_dim = mock_x.numel()
-    jet_f = jet.jet(f, 2, mock_x)
+    jet_f = jet.jet(f, 2, (mock_x,))
 
     def lap_f(x: Tensor) -> Tensor:
         """Compute the Laplacian.
@@ -250,8 +250,12 @@ def make_laplacian(
         """
         in_meta = {"dtype": x.dtype, "device": x.device}
         X1 = eye(in_dim, **in_meta).reshape(in_dim, *in_shape)
-        vmapped = vmap(lambda x1: jet_f(x, x1, zeros_like(x)), randomness="different")
-        _, _, F2 = vmapped(X1)
+        vmapped = vmap(
+            lambda x1: jet_f((x,), ((x1,), (zeros_like(x),))),
+            randomness="different",
+            out_dims=(None, (0, 0)),
+        )
+        _, (_, F2) = vmapped(X1)
         return F2.sum(0)
 
     return lap_f

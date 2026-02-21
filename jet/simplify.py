@@ -97,7 +97,7 @@ def apply_all(rules: list[Rule], mod: GraphModule, verbose: bool = False) -> boo
 @contextmanager
 def check_unaltered(
     mod: GraphModule,
-    x: Tensor | None,
+    test_args: tuple[Tensor, ...] | None,
     seed: int = 0,
     rtol: float = 1e-5,
     atol: float = 1e-8,
@@ -106,10 +106,11 @@ def check_unaltered(
 
     Args:
         mod: The module to be checked.
-        x: Input tensor to the module. If `None`, the check will be skipped.
-        seed: Random seed to use for reproducibility. Default: `0`.
-        rtol: Relative tolerance for comparing outputs. Default: `1e-5`.
-        atol: Absolute tolerance for comparing outputs. Default: `1e-8`.
+        test_args: Input tensors to the module as a tuple. If ``None``, the
+            check will be skipped.
+        seed: Random seed to use for reproducibility. Default: ``0``.
+        rtol: Relative tolerance for comparing outputs. Default: ``1e-5``.
+        atol: Absolute tolerance for comparing outputs. Default: ``1e-8``.
 
     Yields:
         None
@@ -118,15 +119,15 @@ def check_unaltered(
         RuntimeError: If the module output changes after the body.
         Exception: If the module cannot be compiled or executed anymore.
     """
-    if x is not None:
+    if test_args is not None:
         before_str = str(mod.graph)
-        out_before = run_seeded(mod, seed, x)
+        out_before = run_seeded(mod, seed, *test_args)
         yield
 
         try:
             mod.graph.lint()
             mod.recompile()
-            out_after = run_seeded(mod, seed, x)
+            out_after = run_seeded(mod, seed, *test_args)
             if isinstance(out_before, tuple) and isinstance(out_after, tuple):
                 # If both outputs are tuples, compare each element
                 close = len(out_before) == len(out_after) and all(
@@ -154,7 +155,7 @@ def check_unaltered(
 
 def simplify(
     mod: GraphModule | Module | Callable,
-    mock_x: Tensor,
+    *mock_args: Tensor,
     remove_unused: bool = True,
     pull_sum: bool = True,
     eliminate_common_subexpressions: bool = True,
@@ -174,17 +175,17 @@ def simplify(
 
     Args:
         mod: A (graph) module or function whose computation graph will be simplified.
-        mock_x: A mock input tensor for tracing with ``make_fx``.
-        remove_unused: Whether to remove unused nodes from the graph. Default: `True`.
+        *mock_args: Mock input tensors for tracing with ``make_fx``.
+        remove_unused: Whether to remove unused nodes from the graph. Default: ``True``.
         pull_sum: Whether to pull ``sum`` nodes up the graph.
-            Default: `True`.
+            Default: ``True``.
         eliminate_common_subexpressions: Whether to eliminate common subexpressions.
-            Default: `True`.
-        verbose: Whether to print debug information. Default: `False`.
+            Default: ``True``.
+        verbose: Whether to print debug information. Default: ``False``.
         test_x: Input tensor to the module that will be verified after each
             simplification to make sure it does not change the correctness.
             This is expensive and should be considered for debugging purposes only.
-            If `None`, the verification step will be skipped. Default: `None`.
+            If ``None``, the verification step will be skipped. Default: ``None``.
 
     Returns:
         The simplified graph module.
@@ -195,7 +196,7 @@ def simplify(
         ``utils.visualize_graph(custom=True)`` to inspect the graph and look at
         the remaining ``sum`` nodes to understand which simplification is missing.
     """
-    mod = capture_graph(mod, mock_x)
+    mod = capture_graph(mod, *mock_args)
 
     nodes_before = len(list(mod.graph.nodes))
     if verbose:
@@ -223,7 +224,8 @@ def simplify(
         strategies["common_subexpression_elimination"] = partial(
             common_subexpression_elimination, mod.graph, verbose=verbose
         )
-    _exhaust_incrementally(strategies, mod, mock_x, test_x, verbose)
+    test_args = (test_x,) if test_x is not None else None
+    _exhaust_incrementally(strategies, mod, mock_args, test_args, verbose)
 
     mod.graph.lint()
     mod.recompile()
@@ -242,8 +244,8 @@ def simplify(
 def _exhaust_incrementally(
     strategies: dict[str, Callable[[], None]],
     mod: GraphModule,
-    mock_x: Tensor,
-    test_x: Tensor | None,
+    mock_args: tuple[Tensor, ...],
+    test_args: tuple[Tensor, ...] | None,
     verbose: bool,
 ):
     """Apply one round of simplifications.
@@ -256,13 +258,13 @@ def _exhaust_incrementally(
     Args:
         strategies: A dictionary of strategies to be applied.
         mod: The module to be simplified.
-        mock_x: A mock input tensor used to repropagate shape metadata after each
+        mock_args: Mock input tensors used to repropagate shape metadata after each
             successful strategy application.
-        test_x: Input tensor to the module that will be verified after each
+        test_args: Input tensors to the module that will be verified after each
             simplification to make sure it does not change the correctness.
             This is expensive and should be considered for debugging purposes only.
-            If `None`, the verification step will be skipped. Default: `None`.
-        verbose: Whether to print debug information. Default: `False`.
+            If ``None``, the verification step will be skipped.
+        verbose: Whether to print debug information. Default: ``False``.
     """
     if not strategies:
         return
@@ -271,14 +273,14 @@ def _exhaust_incrementally(
     while do_simplify:
         simplified = False
         for name, apply_strategy in strategies.items():
-            with check_unaltered(mod, test_x):
+            with check_unaltered(mod, test_args):
                 simplified = apply_strategy()
                 if verbose:
                     print(f"Applying strategy {name}: {simplified}")
 
             if simplified:
                 mod.recompile()
-                ShapeProp(mod).propagate(mock_x)
+                ShapeProp(mod).propagate(*mock_args)
                 break
 
         do_simplify = simplified

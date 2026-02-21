@@ -6,6 +6,7 @@ from pytest import mark
 from torch import Tensor, cos, float64, manual_seed, rand, sigmoid, sin, tanh, tensor
 from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
+from torch.utils._pytree import tree_flatten
 
 import jet
 from jet import rev_jet
@@ -16,6 +17,11 @@ from test.utils import report_nonclose
 def compare_jet_results(  # noqa: D103
     out1: ValueAndCoefficients, out2: ValueAndCoefficients
 ):
+    """Compare two jet outputs in flat-tuple format ``(f0, f1, ..., fk)``.
+
+    Kept for backward compatibility with ``test_simplify.py`` which compares
+    laplacian/bilaplacian outputs (flat tuples).
+    """
     value1, series1 = out1[0], out1[1:]
     value2, series2 = out2[0], out2[1:]
 
@@ -25,16 +31,47 @@ def compare_jet_results(  # noqa: D103
         report_nonclose(s1, s2, name=f"Coefficients {i + 1}")
 
 
+def compare_primals_series(out1, out2):
+    """Compare two jet outputs in ``(primals_out, series_out)`` format.
+
+    Args:
+        out1: First ``(primals_out, series_out)`` pair.
+        out2: Second ``(primals_out, series_out)`` pair.
+    """
+    primals1, series1 = out1
+    primals2, series2 = out2
+
+    flat_p1, _ = tree_flatten(primals1)
+    flat_p2, _ = tree_flatten(primals2)
+    assert len(flat_p1) == len(flat_p2)
+    for j, (t1, t2) in enumerate(zip(flat_p1, flat_p2)):
+        report_nonclose(t1, t2, name=f"Primals leaf {j}")
+
+    assert len(series1) == len(series2), (
+        f"Series length mismatch: {len(series1)} vs {len(series2)}"
+    )
+    for i, (s1, s2) in enumerate(zip(series1, series2)):
+        sf1, _ = tree_flatten(s1)
+        sf2, _ = tree_flatten(s2)
+        assert len(sf1) == len(sf2)
+        for j, (t1, t2) in enumerate(zip(sf1, sf2)):
+            report_nonclose(t1, t2, name=f"Series order {i + 1} leaf {j}")
+
+
 def check_jet(f: Callable[[Primal], Value], arg: PrimalAndCoefficients):  # noqa: D103
     x, vs = arg
+    k = len(vs)
+
+    primals = (x,)
+    series = tuple((v,) for v in vs)
 
     rev_jet_f = rev_jet(f)
-    rev_jet_out = rev_jet_f(x, *vs)
+    rev_jet_out = rev_jet_f(primals, series)
 
-    jet_f = jet.jet(f, len(vs), x, verbose=True)
-    jet_out = jet_f(x, *vs)
+    jet_f = jet.jet(f, k, (x,), verbose=True)
+    jet_out = jet_f(primals, series)
 
-    compare_jet_results(jet_out, rev_jet_out)
+    compare_primals_series(jet_out, rev_jet_out)
 
 
 INF = float("inf")
@@ -183,3 +220,168 @@ def test_jet(config: dict[str, Any], k: int):
     """
     f, x, vs = setup_case(config, derivative_order=k)
     check_jet(f, (x, vs))
+
+
+# ---------------------------------------------------------------------------
+# Phase 1: multi-input tests  (Tensor, ..., Tensor) -> Tensor
+# ---------------------------------------------------------------------------
+
+MULTI_INPUT_CASES = [
+    {
+        "id": "add-xy",
+        "f": lambda x, y: x + y,
+        "shapes": ((3,), (3,)),
+    },
+    {
+        "id": "sin-x-cos-y",
+        "f": lambda x, y: sin(x) * cos(y),
+        "shapes": ((3,), (3,)),
+    },
+    {
+        "id": "sub-xy",
+        "f": lambda x, y: x - y,
+        "shapes": ((4,), (4,)),
+    },
+    {
+        "id": "mul-xy",
+        "f": lambda x, y: x * y,
+        "shapes": ((5,), (5,)),
+    },
+]
+
+MULTI_INPUT_IDS = [c["id"] for c in MULTI_INPUT_CASES]
+
+
+@mark.parametrize("k", K, ids=K_IDS)
+@mark.parametrize("config", MULTI_INPUT_CASES, ids=MULTI_INPUT_IDS)
+def test_jet_multi_input(config: dict[str, Any], k: int):
+    """Compare forward jet with rev_jet for multi-input functions.
+
+    Args:
+        config: Configuration dictionary of the test case.
+        k: The order of the jet to compute.
+    """
+    manual_seed(0)
+    f = config["f"]
+    shapes = config["shapes"]
+
+    mock_args = tuple(rand(*s).double() for s in shapes)
+    primals = tuple(rand(*s).double() for s in shapes)
+    series = tuple(tuple(rand(*s).double() for s in shapes) for _ in range(k))
+
+    jet_f = jet.jet(f, k, mock_args, verbose=True)
+    jet_out = jet_f(primals, series)
+
+    rev_jet_f = rev_jet(f, k)
+    rev_jet_out = rev_jet_f(primals, series)
+
+    compare_primals_series(jet_out, rev_jet_out)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: pytree-input tests  PyTree -> Tensor
+# ---------------------------------------------------------------------------
+
+PYTREE_INPUT_CASES = [
+    {
+        "id": "dict-linear",
+        "f": lambda x, params: x @ params["w"] + params["b"],
+        "mock_args_fn": lambda: (
+            rand(3).double(),
+            {"w": rand(3, 2).double(), "b": rand(2).double()},
+        ),
+    },
+    {
+        "id": "dict-sin-cos",
+        "f": lambda x, params: sin(x) * params["scale"] + params["bias"],
+        "mock_args_fn": lambda: (
+            rand(4).double(),
+            {"scale": rand(4).double(), "bias": rand(4).double()},
+        ),
+    },
+]
+
+PYTREE_INPUT_IDS = [c["id"] for c in PYTREE_INPUT_CASES]
+
+
+@mark.parametrize("k", K, ids=K_IDS)
+@mark.parametrize("config", PYTREE_INPUT_CASES, ids=PYTREE_INPUT_IDS)
+def test_jet_pytree_input(config: dict[str, Any], k: int):
+    """Compare forward jet with rev_jet for pytree-input functions.
+
+    Args:
+        config: Configuration dictionary of the test case.
+        k: The order of the jet to compute.
+    """
+    manual_seed(0)
+    f = config["f"]
+    mock_args = config["mock_args_fn"]()
+
+    # Build primals and series with the same pytree structure
+    manual_seed(42)
+    primals = config["mock_args_fn"]()
+    series = tuple(config["mock_args_fn"]() for _ in range(k))
+
+    jet_f = jet.jet(f, k, mock_args, verbose=True)
+    jet_out = jet_f(primals, series)
+
+    rev_jet_f = rev_jet(f, k)
+    rev_jet_out = rev_jet_f(primals, series)
+
+    compare_primals_series(jet_out, rev_jet_out)
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: pytree-output tests  Tensor -> PyTree  and  PyTree -> PyTree
+# ---------------------------------------------------------------------------
+
+PYTREE_OUTPUT_CASES = [
+    {
+        "id": "tuple-sin-cos",
+        "f": lambda x: (sin(x), cos(x)),
+        "mock_args_fn": lambda: (rand(3).double(),),
+    },
+    {
+        "id": "dict-sin-cos",
+        "f": lambda x: {"sin": sin(x), "cos": cos(x)},
+        "mock_args_fn": lambda: (rand(3).double(),),
+    },
+    {
+        "id": "multi-in-tuple-out",
+        "f": lambda x, y: (x + y, x * y),
+        "mock_args_fn": lambda: (rand(4).double(), rand(4).double()),
+    },
+    {
+        "id": "multi-in-dict-out",
+        "f": lambda x, y: {"sum": x + y, "prod": x * y},
+        "mock_args_fn": lambda: (rand(4).double(), rand(4).double()),
+    },
+]
+
+PYTREE_OUTPUT_IDS = [c["id"] for c in PYTREE_OUTPUT_CASES]
+
+
+@mark.parametrize("k", K, ids=K_IDS)
+@mark.parametrize("config", PYTREE_OUTPUT_CASES, ids=PYTREE_OUTPUT_IDS)
+def test_jet_pytree_output(config: dict[str, Any], k: int):
+    """Compare forward jet with rev_jet for pytree-output functions.
+
+    Args:
+        config: Configuration dictionary of the test case.
+        k: The order of the jet to compute.
+    """
+    manual_seed(0)
+    f = config["f"]
+    mock_args = config["mock_args_fn"]()
+
+    manual_seed(42)
+    primals = config["mock_args_fn"]()
+    series = tuple(config["mock_args_fn"]() for _ in range(k))
+
+    jet_f = jet.jet(f, k, mock_args, verbose=True)
+    jet_out = jet_f(primals, series)
+
+    rev_jet_f = rev_jet(f, k)
+    rev_jet_out = rev_jet_f(primals, series)
+
+    compare_primals_series(jet_out, rev_jet_out)

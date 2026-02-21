@@ -94,10 +94,10 @@ _ = manual_seed(0)  # make deterministic
 # The important insight is that, by specifying the Taylor coefficients
 # $(x_0, x_1, \dots)$, we can compute various derivatives!
 #
-# **In code,** the `jet` library offers a function transformation `jet(f, k)` that
-# takes a function $f: x_0 \mapsto f(x_0) = f_0$ and a degree $k$ and returns a new
-# function $f_{k\text{-jet}}: (x_0, x_1, x_2, \dots, f_k)$ that computes the $k$-jet
-# $(f_0, f_1, f_2, \dots, f_k)$ of $f$.
+# **In code,** the `jet` library offers a function transformation `jet(f, k, mock_args)`
+# that takes a function $f$, a degree $k$, and mock arguments, and returns a new function
+# `jet_f(primals, series)` that returns `(primals_out, series_out)` — the function value
+# and its Taylor coefficients up to order $k$.
 
 # %%
 #
@@ -126,7 +126,7 @@ _ = manual_seed(0)  # make deterministic
 f = sin  # propagates x₀ ↦ f(x₀)
 k = 2  # jet degree
 x = rand(1)
-f_jet = jet(f, k, x)  # propagates (x₀, x₁, x₂) ↦ (f₀, f₁, f₂)
+f_jet = jet(f, k, (x,))  # propagates (x₀, (x₁, x₂)) ↦ (f₀, (f₁, f₂))
 
 # Set up the Taylor coefficients to compute the second derivative
 
@@ -135,7 +135,7 @@ x1 = ones_like(x)
 x2 = zeros_like(x)
 
 # Evaluate the second derivative
-f0, f1, f2 = f_jet(x0, x1, x2)
+f0, (f1, f2) = f_jet((x0,), ((x1,), (x2,)))
 
 # %%
 #
@@ -199,7 +199,7 @@ else:
 D = 3
 f = Sequential(Linear(D, 1), Tanh())
 x = rand(D)
-f_jet = jet(f, 2, x)
+f_jet = jet(f, 2, (x,))
 
 # constant Taylor coefficients
 x0 = x
@@ -211,7 +211,7 @@ d2_diag = zeros_like(x)
 for d in range(D):
     x1 = zeros_like(x)
     x1[d] = 1.0  # d-th canonical basis vector
-    f0, f1, f2 = f_jet(x0, x1, x2)
+    f0, (f1, f2) = f_jet((x0,), ((x1,), (x2,)))
     d2_diag[d] = f2
 
 # %%
@@ -253,7 +253,8 @@ else:
 mod = capture_graph(f, x)
 visualize_graph(mod, path.join(GALLERYDIR, "01_f.png"))
 visualize_graph(
-    make_fx(f_jet)(x0, x1, x2), path.join(GALLERYDIR, "01_f_jet_unrolled.png")
+    make_fx(f_jet)((x0,), ((x1,), (x2,))),
+    path.join(GALLERYDIR, "01_f_jet_unrolled.png"),
 )
 
 # %%
@@ -283,39 +284,26 @@ visualize_graph(
 #
 #### Supported Function Signatures
 #
-# **At the moment, `jet` only works on functions that process a single tensor.**
+# `jet` supports functions with multiple inputs and pytree I/O.  The calling
+# convention mirrors `torch.func.jvp`:
 #
-# **Why?** This is mostly to keep the `jet` function simple and already covers a lot of
-# use cases. We believe it is feasible to generalize our `jet` implementation and mostly
-# a non-trivial engineering challenge.
-# JAX's Taylor mode (`jax.experimental.jet.jet`) can handle such scenarios.
+# ```python
+# jet_f = jet(f, k, mock_args)          # mock_args: tuple matching f's args
+# primals_out, series_out = jet_f(primals, series)
+# ```
 #
-# Let's look at an example to make this clear. Coming back to our original example from
-# above, let's imagine a function with two arguments, $f: (x, y) \mapsto f(x, y)$.
-# Clearly, we can go through the same steps and define Taylor coefficients of the output
-# space curve $f(x(t), y(t))$ that can be computed given the Taylor coefficients of the
-# input curves $x(t), y(t)$. Hence, the $k$-jet's signature should be
-# $$
-# f_{k\text{-jet}}:
-# \begin{pmatrix}
-# \begin{pmatrix}
-# x_0 \\\\ x_1 \\\\ \ldots \\\\ x_k
-# \end{pmatrix},
-# &
-# \begin{pmatrix}
-# y_0 \\\\ y_1 \\\\ \ldots \\\\ y_k
-# \end{pmatrix}
-# \end{pmatrix}
-# \mapsto
-# \begin{pmatrix}
-# f_0 \\\\ f_1 \\\\ \ldots \\\\ f_k
-# \end{pmatrix}\,.
-# $$
-# This is currently not implemented:
+# For a function with two arguments $f: (x, y) \mapsto f(x, y)$, the $k$-jet is
+# called as:
+#
+# ```python
+# f0, (f1, ..., fk) = jet_f((x0, y0), ((x1, y1), ..., (xk, yk)))
+# ```
+#
+# Here is a quick example:
 
 
 def f(x: Tensor, y: Tensor) -> Tensor:
-    """A function with two tensor arguments (currently not supported).
+    """A function with two tensor arguments.
 
     Args:
         x: First tensor argument.
@@ -327,8 +315,12 @@ def f(x: Tensor, y: Tensor) -> Tensor:
     return x + y
 
 
-with raises(RuntimeError):
-    jet(f, 2, rand(3))
+x, y = rand(3), rand(3)
+f_jet = jet(f, 2, (x, y))
+f0, (f1, f2) = f_jet(
+    (x, y), ((ones_like(x), zeros_like(y)), (zeros_like(x), zeros_like(y)))
+)
+print(f"f0 = {f0}, f1 = {f1}, f2 = {f2}")
 
 # %%
 #
@@ -342,9 +334,10 @@ with raises(RuntimeError):
 # the ReLU function is currently not supported:
 
 
-f_relu = jet(lambda x: relu(x), 2, rand(3))  # noqa: PLW0108
+x_relu = rand(3)
+f_relu = jet(lambda x: relu(x), 2, (x_relu,))  # noqa: PLW0108
 with raises(NotImplementedError):
-    f_relu(rand(3), rand(3), rand(3))  # error is raised at call time
+    f_relu((x_relu,), ((rand(3),), (rand(3),)))  # error is raised at call time
 
 # %%
 #
@@ -359,7 +352,7 @@ with raises(NotImplementedError):
 # For example, the following works
 
 f = sin
-_ = jet(f, 2, rand(3))  # works because sin traces to aten.sin
+_ = jet(f, 2, (rand(3),))  # works because sin traces to aten.sin
 
 # %%
 #
@@ -379,7 +372,7 @@ def f(x: Tensor) -> Tensor:
     return x.sin()
 
 
-_ = jet(f, 2, rand(3))  # also works with make_fx tracing
+_ = jet(f, 2, (rand(3),))  # also works with make_fx tracing
 
 # %%
 #
@@ -410,7 +403,7 @@ def f(x: Tensor):
 
 
 with raises(RuntimeError):
-    jet(f, 2, rand(3))  # crashes because f cannot be traced
+    jet(f, 2, (rand(3),))  # crashes because f cannot be traced
 
 # %%
 #

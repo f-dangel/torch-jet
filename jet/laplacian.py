@@ -92,7 +92,7 @@ def laplacian(
             raise ValueError(f"{num_samples=} must be positive.")
 
     num_jets = rank_weightings if randomization is None else randomization[1]
-    jet_f = jet.jet(f, 2, mock_x)
+    jet_f = jet.jet(f, 2, (mock_x,))
 
     def lap_f(x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         """Compute the (weighted and/or randomized) Laplacian of f at x.
@@ -122,11 +122,11 @@ def laplacian(
         X1 = apply_weightings(x, V)
 
         vmapped = vmap(
-            lambda x1: jet_f(x, x1, zeros_like(x)),
+            lambda x1: jet_f((x,), ((x1,), (zeros_like(x),))),
             randomness="different",
-            out_dims=(None, 0, 0),
+            out_dims=(None, (0, 0)),
         )
-        F0, F1, F2 = vmapped(X1)
+        F0, (F1, F2) = vmapped(X1)
         if randomization is not None:
             # Monte Carlo averaging: scale by 1 / number of samples
             monte_carlo_scaling = 1.0 / randomization[1]

@@ -305,57 +305,93 @@ assert hessian_trace_laplacian.allclose(mod_collapsed(x))
 # which yields a ``SimplificationStep`` after each individual rule or strategy fires.
 # This lets us inspect exactly what happens at every step.
 
-# Collect frames: start with the traced (pre-simplification) graph
-mod_anim = capture_graph(Laplacian(f, x), x)
-frame_dir = path.join(GALLERYDIR, "02_frames")
-makedirs(frame_dir, exist_ok=True)
 
-frame_path = path.join(frame_dir, "frame_000.png")
-visualize_graph(mod_anim, frame_path, use_custom=True)
-labels = ["Initial graph"]
+def animate_simplification(
+    mod: Module,
+    mock_x: Tensor,
+    savefile: str,
+    fps: int = 1,
+    dpi: int = 100,
+):
+    """Animate the simplification of a module's compute graph as a GIF.
 
-for step in simplify_iter(mod_anim, x):
-    label = f"Step {step.step}: {step.strategy}"
-    if step.rule:
-        label += f" ({step.rule})"
-    labels.append(label)
-    frame_path = path.join(frame_dir, f"frame_{step.step:03d}.png")
-    visualize_graph(step.mod, frame_path, use_custom=True)
+    Traces the module, then iterates through ``simplify_iter`` and renders each
+    intermediate graph as a frame. The applied strategy (and rule, if applicable)
+    is shown in the title of each frame.
 
-# Load frames and pad to uniform size (graphs shrink as nodes are removed)
-frame_images = [
-    PILImage.open(path.join(frame_dir, f"frame_{i:03d}.png")).convert("RGBA")
-    for i in range(len(labels))
-]
+    Args:
+        mod: The module whose simplification to animate.
+        mock_x: A mock input tensor for tracing.
+        savefile: Path to save the GIF (must end in ``.gif``).
+        fps: Frames per second for the GIF. Default: ``1``.
+        dpi: Resolution of each frame. Default: ``100``.
+    """
+    save_dir = path.join(path.dirname(savefile), "_anim_frames")
+    makedirs(save_dir, exist_ok=True)
 
-max_w = max(img.width for img in frame_images)
-max_h = max(img.height for img in frame_images)
-for i, img in enumerate(frame_images):
-    if img.size != (max_w, max_h):
-        padded = PILImage.new("RGBA", (max_w, max_h), (255, 255, 255, 255))
-        padded.paste(img, ((max_w - img.width) // 2, (max_h - img.height) // 2))
-        frame_images[i] = padded
+    # Frame 0: the traced graph before any simplification
+    traced = capture_graph(mod, mock_x)
+    n_nodes = len(list(traced.graph.nodes))
+    visualize_graph(traced, path.join(save_dir, "frame_000.png"), use_custom=True)
+    labels = [f"Initial graph ({n_nodes} nodes)"]
 
-fig_anim, ax_anim = plt.subplots(dpi=100)
-ax_anim.set_axis_off()
-fig_anim.subplots_adjust(left=0, right=1, top=0.94, bottom=0)
+    for step in simplify_iter(traced, mock_x):
+        n_nodes = len(list(step.mod.graph.nodes))
+        label = f"Step {step.step}: {step.strategy}"
+        if step.rule:
+            label += f" ({step.rule})"
+        label += f" [{n_nodes} nodes]"
+        labels.append(label)
+        visualize_graph(
+            step.mod, path.join(save_dir, f"frame_{step.step:03d}.png"), use_custom=True
+        )
 
-im_display = ax_anim.imshow(frame_images[0])
-title = ax_anim.set_title(labels[0], fontsize=10)
+    # Load frames and pad to uniform size (graphs shrink as nodes are removed)
+    images = [
+        PILImage.open(path.join(save_dir, f"frame_{i:03d}.png")).convert("RGBA")
+        for i in range(len(labels))
+    ]
+    max_w = max(img.width for img in images)
+    max_h = max(img.height for img in images)
+    for i, img in enumerate(images):
+        if img.size != (max_w, max_h):
+            padded = PILImage.new("RGBA", (max_w, max_h), (255, 255, 255, 255))
+            padded.paste(img, ((max_w - img.width) // 2, (max_h - img.height) // 2))
+            images[i] = padded
+
+    # Hold the first and last frames longer by duplicating them
+    hold = max(1, fps * 3)  # hold for 3 seconds
+    images = [images[0]] * hold + images + [images[-1]] * hold
+    labels = [labels[0]] * hold + labels + [labels[-1]] * hold
+
+    # Build the matplotlib animation, sizing the figure to match the graph images
+    title_pad = 0.4  # extra inches for the title
+    fig_w = max_w / dpi
+    fig_h = max_h / dpi + title_pad
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=dpi)
+    ax.set_axis_off()
+    fig.subplots_adjust(left=0, right=1, top=1 - title_pad / fig_h, bottom=0)
+
+    im_display = ax.imshow(images[0])
+    title = ax.set_title(labels[0], fontsize=10)
+
+    def update(frame_idx):
+        im_display.set_data(images[frame_idx])
+        title.set_text(labels[frame_idx])
+
+    anim = FuncAnimation(fig, update, frames=len(images), interval=1000 // fps)
+    anim.save(savefile, writer=PillowWriter(fps=fps))
+    plt.close(fig)
+
+    print(f"Animation saved to {savefile}"
+          f" ({len(labels)} frames: 1 initial + {len(labels) - 1} steps)")
 
 
-def _update(frame_idx):
-    im_display.set_data(frame_images[frame_idx])
-    title.set_text(labels[frame_idx])
-
-
-anim = FuncAnimation(fig_anim, _update, frames=len(labels), interval=800, repeat=True)
-anim.save(
+animate_simplification(
+    Laplacian(f, x),
+    x,
     path.join(GALLERYDIR, "02_laplacian_simplification.gif"),
-    writer=PillowWriter(fps=1),
 )
-plt.close(fig_anim)
-print(f"Animation saved ({len(labels)} frames: 1 initial + {len(labels) - 1} steps)")
 
 # %%
 #

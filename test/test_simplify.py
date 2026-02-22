@@ -11,7 +11,7 @@ from torch.nn.functional import linear
 
 from jet.bilaplacian import Bilaplacian
 from jet.laplacian import Laplacian
-from jet.simplify import common_subexpression_elimination, simplify
+from jet.simplify import common_subexpression_elimination, simplify, simplify_iter
 from jet.tracing import capture_graph
 from jet.utils import run_seeded
 from test.test___init__ import compare_jet_results, setup_case
@@ -251,3 +251,47 @@ def test_common_subexpression_elimination():
     )
 
     report_nonclose(f_x, f_traced(x), name="f(x)")
+
+
+@mark.parametrize("config", SIMPLIFY_CASES, ids=[c["id"] for c in SIMPLIFY_CASES])
+def test_simplify_iter_metadata(config: dict[str, Any]):
+    """Test that simplify_iter yields steps with correct metadata."""
+    f, x, _ = setup_case(config)
+    mod = Laplacian(f, x)
+
+    steps = list(simplify_iter(mod, x))
+    assert len(steps) > 0, "Expected at least one simplification step"
+
+    valid_strategies = {"remove_unused", "pull_sum", "common_subexpression_elimination"}
+    for step in steps:
+        assert step.strategy in valid_strategies
+        assert isinstance(step.step, int) and step.step >= 1
+        assert isinstance(step.mod, torch.fx.GraphModule)
+        if step.strategy == "pull_sum":
+            assert step.rule is not None
+            assert step.node is not None
+        else:
+            assert step.rule is None
+
+    # Steps are numbered sequentially starting at 1
+    assert [s.step for s in steps] == list(range(1, len(steps) + 1))
+
+
+@mark.parametrize("config", SIMPLIFY_CASES, ids=[c["id"] for c in SIMPLIFY_CASES])
+def test_simplify_iter_matches_simplify(config: dict[str, Any]):
+    """Test that iterating simplify_iter to completion matches simplify."""
+    f, x, _ = setup_case(config)
+
+    mod_iter = Laplacian(f, x)
+    for step in simplify_iter(mod_iter, x):
+        final_mod = step.mod
+
+    mod_simple = simplify(Laplacian(f, x), x)
+
+    seed = 0
+    out_iter = run_seeded(final_mod, seed, x)
+    out_simple = run_seeded(mod_simple, seed, x)
+
+    assert len(out_iter) == len(out_simple)
+    for a, b in zip(out_iter, out_simple):
+        assert a.allclose(b), "simplify_iter and simplify produced different results"

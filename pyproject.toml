@@ -73,6 +73,7 @@ doc = [
     "mkdocs-gallery==0.10.4",
     "pydot",
     "pytest",
+    "tqdm",
     "tueplots",
     "ruff", # for formatting signatures
 ]

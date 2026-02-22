@@ -8,13 +8,15 @@ mode and (ii) how to collapse it to get better performance.
 Let's get the imports out of our way.
 """
 
-from os import path
+from os import makedirs, path
 from shutil import which
 from time import perf_counter
 from typing import Callable
 
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation, PillowWriter
 from matplotlib.patches import Patch
+from PIL import Image as PILImage, ImageDraw
 from torch import (
     Tensor,
     arange,
@@ -30,10 +32,11 @@ from torch import (
 )
 from torch.func import hessian
 from torch.nn import Linear, Module, Sequential, Tanh
+from tqdm import tqdm
 from tueplots import bundles
 
 import jet
-from jet.simplify import simplify
+from jet.simplify import simplify, simplify_iter
 from jet.tracing import capture_graph
 from jet.utils import visualize_graph
 
@@ -296,6 +299,130 @@ visualize_graph(
     mod_collapsed, path.join(GALLERYDIR, "02_laplacian_collapsed.png"), use_custom=True
 )
 assert hessian_trace_laplacian.allclose(mod_collapsed(x))
+
+# %%
+#
+# We can also animate the collapsing process step-by-step using ``simplify_iter``,
+# which yields a ``SimplificationStep`` after each individual rule or strategy fires.
+# This lets us inspect exactly what happens at every step.
+
+
+def animate_simplification(
+    mod: Module,
+    mock_x: Tensor,
+    savefile: str,
+    fps: int = 1,
+    hold: int = 3,
+    graph_dpi: int = 15,
+):
+    """Animate the simplification of a module's compute graph as a GIF.
+
+    Traces the module, then iterates through ``simplify_iter`` and renders each
+    intermediate graph as a frame. The applied strategy (and rule, if applicable)
+    is shown in the title of each frame.
+
+    Args:
+        mod: The module whose simplification to animate.
+        mock_x: A mock input tensor for tracing.
+        savefile: Path to save the GIF (must end in ``.gif``).
+        fps: Frames per second for the GIF. Default: ``1``.
+        hold: How many seconds to hold the initial and final frames.
+            Default: ``3``.
+        graph_dpi: Graphviz rendering resolution. Lower values produce smaller,
+            faster-to-render images. Default: ``30``.
+    """
+    save_dir = path.join(path.dirname(savefile), "_anim_frames")
+    makedirs(save_dir, exist_ok=True)
+
+    # Pass 1: run simplification and collect a deep copy of each intermediate graph
+    from copy import deepcopy
+
+    traced = capture_graph(mod, mock_x)
+    n_nodes = len(list(traced.graph.nodes))
+    snapshots = [(f"Initial graph ({n_nodes} nodes)", deepcopy(traced))]
+
+    for step in simplify_iter(traced, mock_x):
+        n_nodes = len(list(step.mod.graph.nodes))
+        label = f"Step {step.step}: {step.strategy}"
+        if step.rule:
+            label += f" ({step.rule})"
+        label += f" [{n_nodes} nodes]"
+        snapshots.append((label, deepcopy(step.mod)))
+
+    # Pass 2: render each snapshot to PNG (the slow part) with a progress bar
+    labels = []
+    for i, (label, snap) in enumerate(
+        tqdm(snapshots, desc="Rendering frames", unit="frame")
+    ):
+        labels.append(label)
+        visualize_graph(
+            snap,
+            path.join(save_dir, f"frame_{i:03d}.png"),
+            use_custom=True,
+            dpi=graph_dpi,
+        )
+
+    # Load frames, add title banner, pad to uniform size, and save back
+    raw_images = [
+        PILImage.open(path.join(save_dir, f"frame_{i:03d}.png")).convert("RGBA")
+        for i in range(len(labels))
+    ]
+    max_w = max(img.width for img in raw_images)
+    max_h = max(img.height for img in raw_images)
+
+    banner_h = 24
+    canvas_w, canvas_h = max_w, max_h + banner_h
+
+    images = []
+    for i, (img, label) in enumerate(zip(raw_images, labels)):
+        canvas = PILImage.new("RGBA", (canvas_w, canvas_h), (255, 255, 255, 255))
+        canvas.paste(img, ((canvas_w - img.width) // 2, canvas_h - img.height))
+        draw = ImageDraw.Draw(canvas)
+        bbox = draw.textbbox((0, 0), label)
+        text_w = bbox[2] - bbox[0]
+        draw.text(((canvas_w - text_w) // 2, 4), label, fill="black")
+        canvas.save(path.join(save_dir, f"frame_{i:03d}.png"))
+        images.append(canvas)
+
+    # Hold the first and last frames longer by duplicating them
+    hold_frames = max(1, fps * hold)
+    images = [images[0]] * hold_frames + images + [images[-1]] * hold_frames
+
+    # Build the matplotlib animation
+    dpi = 100
+    fig_w = canvas_w / dpi
+    fig_h = canvas_h / dpi
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=dpi)
+    ax.set_axis_off()
+    fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
+
+    im_display = ax.imshow(images[0])
+
+    def update(frame_idx):
+        im_display.set_data(images[frame_idx])
+
+    anim = FuncAnimation(fig, update, frames=len(images), interval=1000 // fps)
+    anim.save(savefile, writer=PillowWriter(fps=fps))
+    plt.close(fig)
+
+    n_steps = len(labels) - 1
+    print(f"Animation saved to {savefile}"
+          f" ({len(labels)} frames: 1 initial + {n_steps} steps)")
+
+
+animate_simplification(
+    Laplacian(f, x),
+    x,
+    path.join(GALLERYDIR, "02_laplacian_simplification.gif"),
+)
+
+# %%
+#
+# Here is the resulting animation. Each frame shows the graph after one
+# simplification step, with the applied strategy (and rule, if applicable)
+# shown in the title.
+#
+# ![](02_laplacian_simplification.gif)
 
 # %%
 #

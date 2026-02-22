@@ -368,7 +368,7 @@ def animate_simplification(
             raw_images[i] = padded
 
     # Downscale to a reasonable width
-    max_pixel_width = 600
+    max_pixel_width = 400
     if max_w > max_pixel_width:
         scale = max_pixel_width / max_w
         new_size = (max_pixel_width, int(max_h * scale))

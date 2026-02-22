@@ -330,42 +330,38 @@ def animate_simplification(
     save_dir = path.join(path.dirname(savefile), "_anim_frames")
     makedirs(save_dir, exist_ok=True)
 
-    # Frame 0: the traced graph before any simplification
+    # Pass 1: run simplification and collect a deep copy of each intermediate graph
+    from copy import deepcopy
+
     traced = capture_graph(mod, mock_x)
     n_nodes = len(list(traced.graph.nodes))
-    visualize_graph(traced, path.join(save_dir, "frame_000.png"), use_custom=True)
-    labels = [f"Initial graph ({n_nodes} nodes)"]
+    snapshots = [(f"Initial graph ({n_nodes} nodes)", deepcopy(traced))]
 
-    pbar = tqdm(simplify_iter(traced, mock_x), desc="Rendering frames", unit="step")
-    for step in pbar:
+    for step in simplify_iter(traced, mock_x):
         n_nodes = len(list(step.mod.graph.nodes))
         label = f"Step {step.step}: {step.strategy}"
         if step.rule:
             label += f" ({step.rule})"
         label += f" [{n_nodes} nodes]"
+        snapshots.append((label, deepcopy(step.mod)))
+
+    # Pass 2: render each snapshot to PNG (the slow part) with a progress bar
+    labels = []
+    for i, (label, snap) in enumerate(
+        tqdm(snapshots, desc="Rendering frames", unit="frame")
+    ):
         labels.append(label)
-        pbar.set_postfix_str(f"{n_nodes} nodes")
-        visualize_graph(
-            step.mod, path.join(save_dir, f"frame_{step.step:03d}.png"), use_custom=True
-        )
+        visualize_graph(snap, path.join(save_dir, f"frame_{i:03d}.png"), use_custom=True)
 
-    # Load frames, downscale to a reasonable width, and pad to uniform size
-    max_pixel_width = 800
-    raw_images = []
-    for i in range(len(labels)):
-        img = PILImage.open(path.join(save_dir, f"frame_{i:03d}.png")).convert("RGBA")
-        if img.width > max_pixel_width:
-            scale = max_pixel_width / img.width
-            img = img.resize(
-                (max_pixel_width, int(img.height * scale)),
-                PILImage.LANCZOS,
-            )
-        raw_images.append(img)
-
+    # Load frames and pad to uniform size first, then downscale uniformly
+    raw_images = [
+        PILImage.open(path.join(save_dir, f"frame_{i:03d}.png")).convert("RGBA")
+        for i in range(len(labels))
+    ]
     max_w = max(img.width for img in raw_images)
     max_h = max(img.height for img in raw_images)
 
-    # Add a title banner on top of each frame
+    # Add a title banner on top of each padded frame
     try:
         font = ImageFont.truetype("DejaVuSans.ttf", 20)
     except OSError:
@@ -377,15 +373,22 @@ def animate_simplification(
     frames = []
     for img, label in zip(raw_images, labels):
         canvas = PILImage.new("RGBA", (canvas_w, canvas_h), (255, 255, 255, 255))
-        # Center the graph image below the banner
         paste_x = (canvas_w - img.width) // 2
         canvas.paste(img, (paste_x, banner_h))
-        # Draw the title text centered in the banner
         draw = ImageDraw.Draw(canvas)
         bbox = draw.textbbox((0, 0), label, font=font)
         text_w = bbox[2] - bbox[0]
         draw.text(((canvas_w - text_w) // 2, 4), label, fill="black", font=font)
-        frames.append(canvas.convert("P", palette=PILImage.ADAPTIVE))
+        frames.append(canvas)
+
+    # Downscale all uniform-sized frames to a reasonable width
+    max_pixel_width = 600
+    if frames[0].width > max_pixel_width:
+        scale = max_pixel_width / frames[0].width
+        new_size = (max_pixel_width, int(frames[0].height * scale))
+        frames = [f.resize(new_size, PILImage.LANCZOS) for f in frames]
+
+    frames = [f.convert("P", palette=PILImage.ADAPTIVE) for f in frames]
 
     # Assemble GIF: hold first/last frames longer via per-frame durations
     ms_per_frame = 1000 // fps

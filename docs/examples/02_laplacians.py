@@ -313,12 +313,13 @@ def animate_simplification(
     savefile: str,
     fps: int = 1,
     hold: int = 3,
+    graph_dpi: int = 15,
 ):
     """Animate the simplification of a module's compute graph as a GIF.
 
     Traces the module, then iterates through ``simplify_iter`` and renders each
     intermediate graph as a frame. The applied strategy (and rule, if applicable)
-    is drawn as a title on each frame.
+    is shown in the title of each frame.
 
     Args:
         mod: The module whose simplification to animate.
@@ -327,6 +328,8 @@ def animate_simplification(
         fps: Frames per second for the GIF. Default: ``1``.
         hold: How many seconds to hold the initial and final frames.
             Default: ``3``.
+        graph_dpi: Graphviz rendering resolution. Lower values produce smaller,
+            faster-to-render images. Default: ``30``.
     """
     save_dir = path.join(path.dirname(savefile), "_anim_frames")
     makedirs(save_dir, exist_ok=True)
@@ -352,9 +355,14 @@ def animate_simplification(
         tqdm(snapshots, desc="Rendering frames", unit="frame")
     ):
         labels.append(label)
-        visualize_graph(snap, path.join(save_dir, f"frame_{i:03d}.png"), use_custom=True)
+        visualize_graph(
+            snap,
+            path.join(save_dir, f"frame_{i:03d}.png"),
+            use_custom=True,
+            dpi=graph_dpi,
+        )
 
-    # Load frames, pad to uniform size, then downscale uniformly
+    # Load frames and pad to uniform size
     raw_images = [
         PILImage.open(path.join(save_dir, f"frame_{i:03d}.png")).convert("RGBA")
         for i in range(len(labels))
@@ -364,15 +372,8 @@ def animate_simplification(
     for i, img in enumerate(raw_images):
         if img.size != (max_w, max_h):
             padded = PILImage.new("RGBA", (max_w, max_h), (255, 255, 255, 255))
-            padded.paste(img, ((max_w - img.width) // 2, (max_h - img.height) // 2))
+            padded.paste(img, ((max_w - img.width) // 2, max_h - img.height))
             raw_images[i] = padded
-
-    # Downscale to a reasonable width
-    max_pixel_width = 400
-    if max_w > max_pixel_width:
-        scale = max_pixel_width / max_w
-        new_size = (max_pixel_width, int(max_h * scale))
-        raw_images = [img.resize(new_size, PILImage.LANCZOS) for img in raw_images]
 
     # Hold the first and last frames longer by duplicating them
     hold_frames = max(1, fps * hold)

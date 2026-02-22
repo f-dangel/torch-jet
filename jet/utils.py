@@ -143,7 +143,11 @@ class _CustomDrawer(FxGraphDrawer):
 
 
 def visualize_graph(
-    mod: GraphModule, savefile: str, name: str = "", use_custom: bool = False
+    mod: GraphModule,
+    savefile: str,
+    name: str = "",
+    use_custom: bool = False,
+    dpi: int | None = None,
 ):
     """Visualize the compute graph of a module.
 
@@ -155,6 +159,8 @@ def visualize_graph(
         name: A name for the graph, used in the visualization.
         use_custom: If ``True``, highlight sum nodes in orange-red and use white
             for other operations. Defaults to ``False``.
+        dpi: Resolution for raster formats (PNG). If ``None``, graphviz uses its
+            default (96). Lower values produce smaller images. Default: ``None``.
 
     Raises:
         ValueError: If *savefile* has an unsupported extension.
@@ -162,6 +168,8 @@ def visualize_graph(
     cls = _CustomDrawer if use_custom else FxGraphDrawer
     drawer = cls(mod, name)
     dot_graph = drawer.get_dot_graph()
+    if dpi is not None:
+        dot_graph.set_dpi(dpi)
 
     creators = {
         ".png": dot_graph.create_png,

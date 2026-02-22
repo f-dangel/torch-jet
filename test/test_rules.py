@@ -3,6 +3,7 @@
 import operator
 from typing import Callable
 
+import torch
 from pytest import mark
 from torch import Tensor, linspace, manual_seed, rand
 from torch.fx import Graph, Node
@@ -231,7 +232,7 @@ class SumMM(RuleTestCase):  # noqa: D101
         W = linspace(-2.0, 10, 12).reshape(3, 4)
         Wt = W.t()
         sv = x.sum(0)
-        return sv.unsqueeze(0).mm(Wt).squeeze(0)
+        return Wt.t().mv(sv)
 
 
 CASES.append(SumMM())
@@ -249,7 +250,7 @@ class SumMMLastDim(RuleTestCase):  # noqa: D101
     def forward_simple(self, x: Tensor) -> Tensor:  # noqa: D102
         W = linspace(-2.0, 10, 12).reshape(3, 4)
         sv = W.t().sum(1)
-        return x.mm(sv.unsqueeze(1)).squeeze(1)
+        return x.mv(sv)
 
 
 CASES.append(SumMMLastDim())
@@ -271,8 +272,7 @@ class SumAddmm(RuleTestCase):  # noqa: D101
         b = linspace(-1.0, 2.0, 3)
         Wt = W.t()
         sv = x.sum(0)
-        out = sv.unsqueeze(0).mm(Wt).squeeze(0)
-        return out + b * x.shape[0]
+        return torch.addmv(b * x.shape[0], Wt.t(), sv)
 
 
 CASES.append(SumAddmm())
@@ -293,8 +293,7 @@ class SumAddmmLastDim(RuleTestCase):  # noqa: D101
         W = linspace(-2.0, 10, 12).reshape(3, 4)
         b = linspace(-1.0, 2.0, 3)
         sv = W.t().sum(1)
-        out = x.mm(sv.unsqueeze(1)).squeeze(1)
-        return out + b.sum()
+        return torch.addmv(b.sum(), x, sv)
 
 
 CASES.append(SumAddmmLastDim())

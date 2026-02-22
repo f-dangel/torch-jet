@@ -301,8 +301,8 @@ class PullSumMM(Rule):
     the contracted dimension ``K`` (dim 1 of ``X``, dim 0 of ``W``) never
     appears in the ``(M, N)`` output.
 
-    - ``pos == 0``: → ``squeeze(mm(unsqueeze(sum(X, 0), 0), W), 0)``
-    - ``pos == 1``: → ``squeeze(mm(X, unsqueeze(sum(W, 1), 1)), 1)``
+    - ``pos == 0``: → ``mv(t(W), sum(X, 0))``
+    - ``pos == 1``: → ``mv(X, sum(W, 1))``
 
     Attributes:
         OPERATIONS: Supported ATen operations.
@@ -334,8 +334,10 @@ class PullSumMM(Rule):
     def _rewrite(self, sum_node: Node, mm_node: Node, pos: int, graph: Graph) -> Node:
         """Pull sum through mm.
 
-        Replaces ``sum(mm(X, W), pos)`` with
-        ``squeeze(mm(…, unsqueeze(sum(arg, pos), pos), …), pos)``.
+        Replaces ``sum(mm(X, W), pos)`` with an ``mv`` call:
+
+        - ``pos == 0``: → ``mv(t(W), sum(X, 0))``
+        - ``pos == 1``: → ``mv(X, sum(W, 1))``
 
         Args:
             sum_node: The ``sum`` node.
@@ -354,32 +356,35 @@ class PullSumMM(Rule):
             sum_mat_args = _make_sum_args(target_arg, pos)
             sum_mat = graph.call_function(_sum_target, args=sum_mat_args)
 
-        with graph.inserting_after(sum_mat):
-            unsqueeze_node = graph.call_function(
-                _aten.unsqueeze.default, args=(sum_mat, pos)
-            )
+        if pos == 0:
+            # mv(t(mat2), sum(mat1, 0)): transpose (K, N) → (N, K), mv with (K,)
+            mat2 = mm_node.args[1]
+            with graph.inserting_after(sum_mat):
+                t_node = graph.call_function(_aten.t.default, args=(mat2,))
+            with graph.inserting_after(t_node):
+                mv_node = graph.call_function(
+                    _aten.mv.default, args=(t_node, sum_mat)
+                )
+        else:
+            # mv(mat1, sum(mat2, 1)): direct (M, K) @ (K,)
+            mat1 = mm_node.args[0]
+            with graph.inserting_after(sum_mat):
+                mv_node = graph.call_function(
+                    _aten.mv.default, args=(mat1, sum_mat)
+                )
 
-        with graph.inserting_after(unsqueeze_node):
-            mm_args = tuple(
-                unsqueeze_node if i == target_idx else mm_node.args[i] for i in (0, 1)
-            )
-            new_mm = graph.call_function(_aten.mm.default, args=mm_args)
-
-        with graph.inserting_after(new_mm):
-            squeeze_node = graph.call_function(_aten.squeeze.dim, args=(new_mm, pos))
-
-        return squeeze_node
+        return mv_node
 
 
 class PullSumAddMM(Rule):
     """Pull ``sum`` through ``addmm``.
 
     Matches ``sum(addmm(b, X, W), pos)`` where ``pos`` is a non-contracted
-    dimension.  The matrix part is rewritten using ``mm`` (not ``addmm``),
+    dimension.  The matrix part is rewritten using ``mv`` (or ``addmv``),
     and the bias ``b`` is corrected separately:
 
-    - ``pos == 0``: each of ``M`` rows had ``b`` added; summing gives ``M * b``.
-    - ``pos == 1``: each row had ``b`` element-wise; summing cols gives ``sum(b)``.
+    - ``pos == 0``: → ``addmv(M * b, t(W), sum(X, 0))``
+    - ``pos == 1``: → ``addmv(sum(b), X, sum(W, 1))``
 
     Attributes:
         OPERATIONS: Supported ATen operations.
@@ -413,8 +418,12 @@ class PullSumAddMM(Rule):
     ) -> Node:
         """Pull sum through addmm.
 
-        The matrix part is rewritten using ``mm``, and the bias ``b`` is
-        corrected: ``V * b`` when ``pos == 0``, or ``sum(b)`` when ``pos == 1``.
+        The matrix part is rewritten using ``mv`` (or ``addmv``), and the bias
+        ``b`` is corrected: ``V * b`` when ``pos == 0``, or ``sum(b)`` when
+        ``pos == 1``.
+
+        - ``pos == 0``: → ``addmv(V * b, t(mat2), sum(mat1, 0))``
+        - ``pos == 1``: → ``addmv(sum(b), mat1, sum(mat2, 1))``
 
         Args:
             sum_node: The ``sum`` node.
@@ -433,37 +442,30 @@ class PullSumAddMM(Rule):
             sum_mat_args = _make_sum_args(target_arg, pos)
             sum_mat = graph.call_function(_sum_target, args=sum_mat_args)
 
-        with graph.inserting_after(sum_mat):
-            unsqueeze_node = graph.call_function(
-                _aten.unsqueeze.default, args=(sum_mat, pos)
-            )
-
-        with graph.inserting_after(unsqueeze_node):
-            mm_args = tuple(
-                unsqueeze_node if i == target_idx else addmm_node.args[i]
-                for i in (1, 2)
-            )
-            new_mm = graph.call_function(_aten.mm.default, args=mm_args)
-
-        with graph.inserting_after(new_mm):
-            squeeze_node = graph.call_function(_aten.squeeze.dim, args=(new_mm, pos))
-
         bias = addmm_node.args[0]
-        with graph.inserting_after(squeeze_node):
-            if pos == 0:
-                # Bias b was broadcast from (n,) to (V, n); summing V rows
-                # gives V * b.
-                V = target_arg.meta["tensor_meta"].shape[0]
-                bias_term = graph.call_function(_aten.mul.Tensor, args=(bias, V))
-            else:
-                # pos == 1: each row had b added; summing over n columns
-                # contributes sum(b) to every row.
-                bias_term = graph.call_function(_aten.sum.default, args=(bias,))
 
-        with graph.inserting_after(bias_term):
-            result = graph.call_function(
-                _aten.add.Tensor, args=(squeeze_node, bias_term)
-            )
+        if pos == 0:
+            # addmv(V * b, t(mat2), sum(mat1, 0))
+            mat2 = addmm_node.args[2]
+            V = target_arg.meta["tensor_meta"].shape[0]
+            with graph.inserting_after(sum_mat):
+                bias_term = graph.call_function(_aten.mul.Tensor, args=(bias, V))
+            with graph.inserting_after(bias_term):
+                t_node = graph.call_function(_aten.t.default, args=(mat2,))
+            with graph.inserting_after(t_node):
+                result = graph.call_function(
+                    _aten.addmv.default, args=(bias_term, t_node, sum_mat)
+                )
+        else:
+            # addmv(sum(b), mat1, sum(mat2, 1))
+            mat1 = addmm_node.args[1]
+            with graph.inserting_after(sum_mat):
+                bias_term = graph.call_function(_aten.sum.default, args=(bias,))
+            with graph.inserting_after(bias_term):
+                result = graph.call_function(
+                    _aten.addmv.default, args=(bias_term, mat1, sum_mat)
+                )
+
         return result
 
 

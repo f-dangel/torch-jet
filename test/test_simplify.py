@@ -146,8 +146,8 @@ def test_simplify_laplacian(
             "sin": 15,
             "sin-sin": 24,
             "tanh-tanh": 40,
-            "tanh-linear": 42,
-            "two-layer-tanh-mlp": 72,
+            "tanh-linear": 41,
+            "two-layer-tanh-mlp": 71,
             "sigmoid-sigmoid": 36,
         }
         n_nodes = len(list(simplified.graph.nodes))
@@ -203,8 +203,8 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
             "sin": 35 if D == 1 else 103,
             "sin-sin": 200,
             "tanh-tanh": 246,
-            "tanh-linear": 149,
-            "two-layer-tanh-mlp": 365,
+            "tanh-linear": 144,
+            "two-layer-tanh-mlp": 355,
             "sigmoid-sigmoid": 242,
         }
         n_nodes = len(list(simple_mod.graph.nodes))

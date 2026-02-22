@@ -14,8 +14,9 @@ from time import perf_counter
 from typing import Callable
 
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation, PillowWriter
 from matplotlib.patches import Patch
-from PIL import Image as PILImage, ImageDraw, ImageFont
+from PIL import Image as PILImage
 from torch import (
     Tensor,
     arange,
@@ -353,55 +354,51 @@ def animate_simplification(
         labels.append(label)
         visualize_graph(snap, path.join(save_dir, f"frame_{i:03d}.png"), use_custom=True)
 
-    # Load frames and pad to uniform size first, then downscale uniformly
+    # Load frames, pad to uniform size, then downscale uniformly
     raw_images = [
         PILImage.open(path.join(save_dir, f"frame_{i:03d}.png")).convert("RGBA")
         for i in range(len(labels))
     ]
     max_w = max(img.width for img in raw_images)
     max_h = max(img.height for img in raw_images)
+    for i, img in enumerate(raw_images):
+        if img.size != (max_w, max_h):
+            padded = PILImage.new("RGBA", (max_w, max_h), (255, 255, 255, 255))
+            padded.paste(img, ((max_w - img.width) // 2, (max_h - img.height) // 2))
+            raw_images[i] = padded
 
-    # Add a title banner on top of each padded frame
-    try:
-        font = ImageFont.truetype("DejaVuSans.ttf", 20)
-    except OSError:
-        font = ImageFont.load_default()
-    banner_h = 32
-    canvas_w = max_w
-    canvas_h = max_h + banner_h
-
-    frames = []
-    for img, label in zip(raw_images, labels):
-        canvas = PILImage.new("RGBA", (canvas_w, canvas_h), (255, 255, 255, 255))
-        paste_x = (canvas_w - img.width) // 2
-        canvas.paste(img, (paste_x, banner_h))
-        draw = ImageDraw.Draw(canvas)
-        bbox = draw.textbbox((0, 0), label, font=font)
-        text_w = bbox[2] - bbox[0]
-        draw.text(((canvas_w - text_w) // 2, 4), label, fill="black", font=font)
-        frames.append(canvas)
-
-    # Downscale all uniform-sized frames to a reasonable width
+    # Downscale to a reasonable width
     max_pixel_width = 600
-    if frames[0].width > max_pixel_width:
-        scale = max_pixel_width / frames[0].width
-        new_size = (max_pixel_width, int(frames[0].height * scale))
-        frames = [f.resize(new_size, PILImage.LANCZOS) for f in frames]
+    if max_w > max_pixel_width:
+        scale = max_pixel_width / max_w
+        new_size = (max_pixel_width, int(max_h * scale))
+        raw_images = [img.resize(new_size, PILImage.LANCZOS) for img in raw_images]
 
-    frames = [f.convert("P", palette=PILImage.ADAPTIVE) for f in frames]
+    # Hold the first and last frames longer by duplicating them
+    hold_frames = max(1, fps * hold)
+    images = [raw_images[0]] * hold_frames + raw_images + [raw_images[-1]] * hold_frames
+    all_labels = [labels[0]] * hold_frames + labels + [labels[-1]] * hold_frames
 
-    # Assemble GIF: hold first/last frames longer via per-frame durations
-    ms_per_frame = 1000 // fps
-    hold_ms = hold * 1000
-    durations = [hold_ms] + [ms_per_frame] * (len(frames) - 2) + [hold_ms]
+    # Build the matplotlib animation
+    dpi = 100
+    title_inches = 0.35
+    fig_w = images[0].width / dpi
+    fig_h = images[0].height / dpi + title_inches
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=dpi)
+    ax.set_axis_off()
+    fig.subplots_adjust(left=0, right=1, top=1 - title_inches / fig_h, bottom=0)
 
-    frames[0].save(
-        savefile,
-        save_all=True,
-        append_images=frames[1:],
-        duration=durations,
-        loop=0,
-    )
+    im_display = ax.imshow(images[0])
+    title = fig.suptitle(all_labels[0], fontsize=9, y=1 - 0.5 * title_inches / fig_h)
+
+    def update(frame_idx):
+        im_display.set_data(images[frame_idx])
+        title.set_text(all_labels[frame_idx])
+        return [im_display, title]
+
+    anim = FuncAnimation(fig, update, frames=len(images), interval=1000 // fps)
+    anim.save(savefile, writer=PillowWriter(fps=fps))
+    plt.close(fig)
 
     n_steps = len(labels) - 1
     print(f"Animation saved to {savefile}"

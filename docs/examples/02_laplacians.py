@@ -8,13 +8,15 @@ mode and (ii) how to collapse it to get better performance.
 Let's get the imports out of our way.
 """
 
-from os import path
+from os import makedirs, path
 from shutil import which
 from time import perf_counter
 from typing import Callable
 
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation, PillowWriter
 from matplotlib.patches import Patch
+from PIL import Image as PILImage
 from torch import (
     Tensor,
     arange,
@@ -33,7 +35,7 @@ from torch.nn import Linear, Module, Sequential, Tanh
 from tueplots import bundles
 
 import jet
-from jet.simplify import simplify
+from jet.simplify import simplify, simplify_iter
 from jet.tracing import capture_graph
 from jet.utils import visualize_graph
 
@@ -296,6 +298,72 @@ visualize_graph(
     mod_collapsed, path.join(GALLERYDIR, "02_laplacian_collapsed.png"), use_custom=True
 )
 assert hessian_trace_laplacian.allclose(mod_collapsed(x))
+
+# %%
+#
+# We can also animate the collapsing process step-by-step using ``simplify_iter``,
+# which yields a ``SimplificationStep`` after each individual rule or strategy fires.
+# This lets us inspect exactly what happens at every step.
+
+# Collect frames: start with the traced (pre-simplification) graph
+mod_anim = capture_graph(Laplacian(f, x), x)
+frame_dir = path.join(GALLERYDIR, "02_frames")
+makedirs(frame_dir, exist_ok=True)
+
+frame_path = path.join(frame_dir, "frame_000.png")
+visualize_graph(mod_anim, frame_path, use_custom=True)
+labels = ["Initial graph"]
+
+for step in simplify_iter(mod_anim, x):
+    label = f"Step {step.step}: {step.strategy}"
+    if step.rule:
+        label += f" ({step.rule})"
+    labels.append(label)
+    frame_path = path.join(frame_dir, f"frame_{step.step:03d}.png")
+    visualize_graph(step.mod, frame_path, use_custom=True)
+
+# Load frames and pad to uniform size (graphs shrink as nodes are removed)
+frame_images = [
+    PILImage.open(path.join(frame_dir, f"frame_{i:03d}.png")).convert("RGBA")
+    for i in range(len(labels))
+]
+
+max_w = max(img.width for img in frame_images)
+max_h = max(img.height for img in frame_images)
+for i, img in enumerate(frame_images):
+    if img.size != (max_w, max_h):
+        padded = PILImage.new("RGBA", (max_w, max_h), (255, 255, 255, 255))
+        padded.paste(img, ((max_w - img.width) // 2, (max_h - img.height) // 2))
+        frame_images[i] = padded
+
+fig_anim, ax_anim = plt.subplots(dpi=100)
+ax_anim.set_axis_off()
+fig_anim.subplots_adjust(left=0, right=1, top=0.94, bottom=0)
+
+im_display = ax_anim.imshow(frame_images[0])
+title = ax_anim.set_title(labels[0], fontsize=10)
+
+
+def _update(frame_idx):
+    im_display.set_data(frame_images[frame_idx])
+    title.set_text(labels[frame_idx])
+
+
+anim = FuncAnimation(fig_anim, _update, frames=len(labels), interval=800, repeat=True)
+anim.save(
+    path.join(GALLERYDIR, "02_laplacian_simplification.gif"),
+    writer=PillowWriter(fps=1),
+)
+plt.close(fig_anim)
+print(f"Animation saved ({len(labels)} frames: 1 initial + {len(labels) - 1} steps)")
+
+# %%
+#
+# Here is the resulting animation. Each frame shows the graph after one
+# simplification step, with the applied strategy (and rule, if applicable)
+# shown in the title.
+#
+# ![](02_laplacian_simplification.gif)
 
 # %%
 #

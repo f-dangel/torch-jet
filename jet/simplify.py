@@ -1,8 +1,8 @@
 """Functions to simplify a compute graph captured with `torch.fx`."""
 
 from contextlib import contextmanager
-from functools import partial
-from typing import Callable
+from dataclasses import dataclass
+from typing import Callable, Generator
 
 from torch import Tensor
 from torch.fx import Graph, GraphModule
@@ -92,6 +92,54 @@ def apply_all(rules: list[Rule], mod: GraphModule, verbose: bool = False) -> boo
                 break
 
     return applied
+
+
+@dataclass
+class SimplificationStep:
+    """Metadata about a single simplification step.
+
+    Attributes:
+        strategy: Name of the strategy that fired (e.g. ``"pull_sum"``).
+        rule: Name of the rule that fired, or ``None`` for strategies that are
+            not rule-based (e.g. ``"remove_unused"``).
+        node: Name of the node the rule was applied to, or ``None``.
+        step: 1-based index of this step in the simplification sequence.
+        mod: Live reference to the :class:`GraphModule` **after** this step.
+    """
+
+    strategy: str
+    rule: str | None
+    node: str | None
+    step: int
+    mod: GraphModule
+
+
+def _apply_next(
+    rules: list[Rule], mod: GraphModule
+) -> tuple[bool, str | None, str | None]:
+    """Apply ONE rule to the first matching node.
+
+    Unlike :func:`apply_all` which applies rules to every matching node in a
+    single pass, this function returns as soon as the first rule fires on the
+    first matching node.
+
+    Args:
+        rules: A list of rules to try.
+        mod: The module to which the rule will be applied.
+
+    Returns:
+        A tuple ``(applied, rule_name, node_name)`` where *applied* is whether
+        a rule fired, *rule_name* is the class name of the rule (or ``None``),
+        and *node_name* is the name of the node it was applied to (or ``None``).
+    """
+    for node in list(mod.graph.nodes):
+        for rule in rules:
+            if rule.match(node):
+                rule_name = rule.__class__.__name__
+                node_name = node.name
+                rule.apply(node, mod.graph)
+                return True, rule_name, node_name
+    return False, None, None
 
 
 @contextmanager
@@ -201,9 +249,59 @@ def simplify(
     if verbose:
         print(f"Traced graph before simplification:\n{mod.graph}")
 
-    graph = mod.graph
+    for step in simplify_iter(
+        mod,
+        mock_x,
+        remove_unused=remove_unused,
+        pull_sum=pull_sum,
+        eliminate_common_subexpressions=eliminate_common_subexpressions,
+        test_x=test_x,
+    ):
+        if verbose:
+            msg = f"Applying strategy {step.strategy}: True"
+            if step.rule:
+                msg += f" (rule {step.rule} on {step.node})"
+            print(msg)
 
-    # Initialize PullSum* rules
+    if verbose:
+        print(f"Traced graph after simplification:\n{mod.graph}")
+        print(f"Number of nodes before simplification: {nodes_before}.")
+        nodes_after = len(list(mod.graph.nodes))
+        print(f"Number of nodes after simplification: {nodes_after}.")
+
+    return mod
+
+
+def simplify_iter(
+    mod: GraphModule | Module | Callable,
+    mock_x: Tensor,
+    remove_unused: bool = True,
+    pull_sum: bool = True,
+    eliminate_common_subexpressions: bool = True,
+    test_x: Tensor | None = None,
+) -> Generator[SimplificationStep, None, None]:
+    """Yield one :class:`SimplificationStep` after each individual rule or strategy fires.
+
+    This is the iterator counterpart of :func:`simplify`. The yielded ``mod``
+    is a **live reference** — the same object is mutated in-place at each step —
+    so callers that need a snapshot should deep-copy it.
+
+    Args:
+        mod: A (graph) module or function whose computation graph will be simplified.
+        mock_x: A mock input tensor for tracing with ``make_fx``.
+        remove_unused: Whether to remove unused nodes. Default: ``True``.
+        pull_sum: Whether to pull ``sum`` nodes up the graph. Default: ``True``.
+        eliminate_common_subexpressions: Whether to eliminate common
+            subexpressions. Default: ``True``.
+        test_x: Input tensor verified after each simplification to ensure
+            correctness. Expensive — for debugging only. Default: ``None``.
+
+    Yields:
+        :class:`SimplificationStep` after every individual simplification.
+    """
+    if not isinstance(mod, GraphModule):
+        mod = capture_graph(mod, mock_x)
+
     sum_rules = [
         PullSumSqueeze(),
         PullSumUnsqueeze(),
@@ -214,71 +312,57 @@ def simplify(
         PullSumAddMM(),
     ]
 
-    strategies = {}
+    graph = mod.graph
+    step_idx = 0
+
+    # Build ordered strategy list.  Each entry is
+    # (name, callable_returning_(applied, rule_name, node_name))
+    strategies: list[tuple[str, Callable[[], tuple[bool, str | None, str | None]]]] = (
+        []
+    )
     if remove_unused:
-        strategies["remove_unused"] = graph.eliminate_dead_code
-    if pull_sum:
-        strategies["pull_sum"] = lambda: apply_all(sum_rules, mod, verbose=verbose)
-    if eliminate_common_subexpressions:
-        strategies["common_subexpression_elimination"] = partial(
-            common_subexpression_elimination, mod.graph, verbose=verbose
+        strategies.append(
+            ("remove_unused", lambda: (graph.eliminate_dead_code(), None, None))
         )
-    _exhaust_incrementally(strategies, mod, mock_x, test_x, verbose)
+    if pull_sum:
+        strategies.append(("pull_sum", lambda: _apply_next(sum_rules, mod)))
+    if eliminate_common_subexpressions:
+        strategies.append(
+            (
+                "common_subexpression_elimination",
+                lambda: (
+                    common_subexpression_elimination(mod.graph),
+                    None,
+                    None,
+                ),
+            )
+        )
 
-    mod.graph.lint()
-    mod.recompile()
-
-    if verbose:
-        print(f"Traced graph after simplification:\n{mod.graph}")
-
-    if verbose:
-        print(f"Number of nodes before simplification: {nodes_before}.")
-        nodes_after = len(list(mod.graph.nodes))
-        print(f"Number of nodes after simplification: {nodes_after}.")
-
-    return mod
-
-
-def _exhaust_incrementally(
-    strategies: dict[str, Callable[[], None]],
-    mod: GraphModule,
-    mock_x: Tensor,
-    test_x: Tensor | None,
-    verbose: bool,
-):
-    """Apply one round of simplifications.
-
-    Loop through the simplification strategies until one is successful, then start
-    from the beginning until we complete one round where none of the strategies is
-    successful. After each successful application, shape metadata is repropagated
-    so that newly created nodes have valid ``meta["tensor_meta"]``.
-
-    Args:
-        strategies: A dictionary of strategies to be applied.
-        mod: The module to be simplified.
-        mock_x: A mock input tensor used to repropagate shape metadata after each
-            successful strategy application.
-        test_x: Input tensor to the module that will be verified after each
-            simplification to make sure it does not change the correctness.
-            This is expensive and should be considered for debugging purposes only.
-            If `None`, the verification step will be skipped. Default: `None`.
-        verbose: Whether to print debug information. Default: `False`.
-    """
     if not strategies:
         return
 
     do_simplify = True
     while do_simplify:
-        simplified = False
-        for name, apply_strategy in strategies.items():
+        fired = False
+        for name, apply_strategy in strategies:
             with check_unaltered(mod, test_x):
-                simplified = apply_strategy()
-                if verbose:
-                    print(f"Applying strategy {name}: {simplified}")
+                applied, rule_name, node_name = apply_strategy()
 
-            if simplified:
+            if applied:
                 mod.recompile()
                 ShapeProp(mod).propagate(mock_x)
+                step_idx += 1
+                yield SimplificationStep(
+                    strategy=name,
+                    rule=rule_name,
+                    node=node_name,
+                    step=step_idx,
+                    mod=mod,
+                )
+                fired = True
                 break
 
-        do_simplify = simplified
+        do_simplify = fired
+
+    mod.graph.lint()
+    mod.recompile()

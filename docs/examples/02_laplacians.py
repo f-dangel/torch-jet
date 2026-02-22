@@ -16,7 +16,7 @@ from typing import Callable
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation, PillowWriter
 from matplotlib.patches import Patch
-from PIL import Image as PILImage
+from PIL import Image as PILImage, ImageDraw
 from torch import (
     Tensor,
     arange,
@@ -362,40 +362,44 @@ def animate_simplification(
             dpi=graph_dpi,
         )
 
-    # Load frames and pad to uniform size
+    # Load frames, add title banner, pad to uniform size, and save back
     raw_images = [
         PILImage.open(path.join(save_dir, f"frame_{i:03d}.png")).convert("RGBA")
         for i in range(len(labels))
     ]
     max_w = max(img.width for img in raw_images)
     max_h = max(img.height for img in raw_images)
-    for i, img in enumerate(raw_images):
-        if img.size != (max_w, max_h):
-            padded = PILImage.new("RGBA", (max_w, max_h), (255, 255, 255, 255))
-            padded.paste(img, ((max_w - img.width) // 2, max_h - img.height))
-            raw_images[i] = padded
+
+    banner_h = 24
+    canvas_w, canvas_h = max_w, max_h + banner_h
+
+    images = []
+    for i, (img, label) in enumerate(zip(raw_images, labels)):
+        canvas = PILImage.new("RGBA", (canvas_w, canvas_h), (255, 255, 255, 255))
+        canvas.paste(img, ((canvas_w - img.width) // 2, canvas_h - img.height))
+        draw = ImageDraw.Draw(canvas)
+        bbox = draw.textbbox((0, 0), label)
+        text_w = bbox[2] - bbox[0]
+        draw.text(((canvas_w - text_w) // 2, 4), label, fill="black")
+        canvas.save(path.join(save_dir, f"frame_{i:03d}.png"))
+        images.append(canvas)
 
     # Hold the first and last frames longer by duplicating them
     hold_frames = max(1, fps * hold)
-    images = [raw_images[0]] * hold_frames + raw_images + [raw_images[-1]] * hold_frames
-    all_labels = [labels[0]] * hold_frames + labels + [labels[-1]] * hold_frames
+    images = [images[0]] * hold_frames + images + [images[-1]] * hold_frames
 
     # Build the matplotlib animation
     dpi = 100
-    title_inches = 0.35
-    fig_w = images[0].width / dpi
-    fig_h = images[0].height / dpi + title_inches
+    fig_w = canvas_w / dpi
+    fig_h = canvas_h / dpi
     fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=dpi)
     ax.set_axis_off()
-    fig.subplots_adjust(left=0, right=1, top=1 - title_inches / fig_h, bottom=0)
+    fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
 
     im_display = ax.imshow(images[0])
-    title = fig.suptitle(all_labels[0], fontsize=9, y=1 - 0.5 * title_inches / fig_h)
 
     def update(frame_idx):
         im_display.set_data(images[frame_idx])
-        title.set_text(all_labels[frame_idx])
-        return [im_display, title]
 
     anim = FuncAnimation(fig, update, frames=len(images), interval=1000 // fps)
     anim.save(savefile, writer=PillowWriter(fps=fps))

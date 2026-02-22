@@ -14,9 +14,8 @@ from time import perf_counter
 from typing import Callable
 
 import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation, PillowWriter
 from matplotlib.patches import Patch
-from PIL import Image as PILImage
+from PIL import Image as PILImage, ImageDraw, ImageFont
 from torch import (
     Tensor,
     arange,
@@ -32,6 +31,7 @@ from torch import (
 )
 from torch.func import hessian
 from torch.nn import Linear, Module, Sequential, Tanh
+from tqdm import tqdm
 from tueplots import bundles
 
 import jet
@@ -311,20 +311,21 @@ def animate_simplification(
     mock_x: Tensor,
     savefile: str,
     fps: int = 1,
-    dpi: int = 100,
+    hold: int = 3,
 ):
     """Animate the simplification of a module's compute graph as a GIF.
 
     Traces the module, then iterates through ``simplify_iter`` and renders each
     intermediate graph as a frame. The applied strategy (and rule, if applicable)
-    is shown in the title of each frame.
+    is drawn as a title on each frame.
 
     Args:
         mod: The module whose simplification to animate.
         mock_x: A mock input tensor for tracing.
         savefile: Path to save the GIF (must end in ``.gif``).
         fps: Frames per second for the GIF. Default: ``1``.
-        dpi: Resolution of each frame. Default: ``100``.
+        hold: How many seconds to hold the initial and final frames.
+            Default: ``3``.
     """
     save_dir = path.join(path.dirname(savefile), "_anim_frames")
     makedirs(save_dir, exist_ok=True)
@@ -335,56 +336,73 @@ def animate_simplification(
     visualize_graph(traced, path.join(save_dir, "frame_000.png"), use_custom=True)
     labels = [f"Initial graph ({n_nodes} nodes)"]
 
-    for step in simplify_iter(traced, mock_x):
+    pbar = tqdm(simplify_iter(traced, mock_x), desc="Rendering frames", unit="step")
+    for step in pbar:
         n_nodes = len(list(step.mod.graph.nodes))
         label = f"Step {step.step}: {step.strategy}"
         if step.rule:
             label += f" ({step.rule})"
         label += f" [{n_nodes} nodes]"
         labels.append(label)
+        pbar.set_postfix_str(f"{n_nodes} nodes")
         visualize_graph(
             step.mod, path.join(save_dir, f"frame_{step.step:03d}.png"), use_custom=True
         )
 
-    # Load frames and pad to uniform size (graphs shrink as nodes are removed)
-    images = [
-        PILImage.open(path.join(save_dir, f"frame_{i:03d}.png")).convert("RGBA")
-        for i in range(len(labels))
-    ]
-    max_w = max(img.width for img in images)
-    max_h = max(img.height for img in images)
-    for i, img in enumerate(images):
-        if img.size != (max_w, max_h):
-            padded = PILImage.new("RGBA", (max_w, max_h), (255, 255, 255, 255))
-            padded.paste(img, ((max_w - img.width) // 2, (max_h - img.height) // 2))
-            images[i] = padded
+    # Load frames, downscale to a reasonable width, and pad to uniform size
+    max_pixel_width = 800
+    raw_images = []
+    for i in range(len(labels)):
+        img = PILImage.open(path.join(save_dir, f"frame_{i:03d}.png")).convert("RGBA")
+        if img.width > max_pixel_width:
+            scale = max_pixel_width / img.width
+            img = img.resize(
+                (max_pixel_width, int(img.height * scale)),
+                PILImage.LANCZOS,
+            )
+        raw_images.append(img)
 
-    # Hold the first and last frames longer by duplicating them
-    hold = max(1, fps * 3)  # hold for 3 seconds
-    images = [images[0]] * hold + images + [images[-1]] * hold
-    labels = [labels[0]] * hold + labels + [labels[-1]] * hold
+    max_w = max(img.width for img in raw_images)
+    max_h = max(img.height for img in raw_images)
 
-    # Build the matplotlib animation, sizing the figure to match the graph images
-    title_pad = 0.4  # extra inches for the title
-    fig_w = max_w / dpi
-    fig_h = max_h / dpi + title_pad
-    fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=dpi)
-    ax.set_axis_off()
-    fig.subplots_adjust(left=0, right=1, top=1 - title_pad / fig_h, bottom=0)
+    # Add a title banner on top of each frame
+    try:
+        font = ImageFont.truetype("DejaVuSans.ttf", 20)
+    except OSError:
+        font = ImageFont.load_default()
+    banner_h = 32
+    canvas_w = max_w
+    canvas_h = max_h + banner_h
 
-    im_display = ax.imshow(images[0])
-    title = ax.set_title(labels[0], fontsize=10)
+    frames = []
+    for img, label in zip(raw_images, labels):
+        canvas = PILImage.new("RGBA", (canvas_w, canvas_h), (255, 255, 255, 255))
+        # Center the graph image below the banner
+        paste_x = (canvas_w - img.width) // 2
+        canvas.paste(img, (paste_x, banner_h))
+        # Draw the title text centered in the banner
+        draw = ImageDraw.Draw(canvas)
+        bbox = draw.textbbox((0, 0), label, font=font)
+        text_w = bbox[2] - bbox[0]
+        draw.text(((canvas_w - text_w) // 2, 4), label, fill="black", font=font)
+        frames.append(canvas.convert("P", palette=PILImage.ADAPTIVE))
 
-    def update(frame_idx):
-        im_display.set_data(images[frame_idx])
-        title.set_text(labels[frame_idx])
+    # Assemble GIF: hold first/last frames longer via per-frame durations
+    ms_per_frame = 1000 // fps
+    hold_ms = hold * 1000
+    durations = [hold_ms] + [ms_per_frame] * (len(frames) - 2) + [hold_ms]
 
-    anim = FuncAnimation(fig, update, frames=len(images), interval=1000 // fps)
-    anim.save(savefile, writer=PillowWriter(fps=fps))
-    plt.close(fig)
+    frames[0].save(
+        savefile,
+        save_all=True,
+        append_images=frames[1:],
+        duration=durations,
+        loop=0,
+    )
 
+    n_steps = len(labels) - 1
     print(f"Animation saved to {savefile}"
-          f" ({len(labels)} frames: 1 initial + {len(labels) - 1} steps)")
+          f" ({len(labels)} frames: 1 initial + {n_steps} steps)")
 
 
 animate_simplification(

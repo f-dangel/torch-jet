@@ -71,8 +71,10 @@ doc = [
     "mkdocs-material==9.6.13",
     "mkdocstrings[python]==0.30.0",
     "mkdocs-gallery==0.10.4",
+    "Pillow",
     "pydot",
     "pytest",
+    "tqdm",
     "tueplots",
     "ruff", # for formatting signatures
 ]

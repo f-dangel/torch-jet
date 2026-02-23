@@ -103,24 +103,6 @@ def generate_restricted_multi_indices(i_vec: MultiIndex) -> list[MultiIndex]:
     Returns:
        All m with 0 <= m_p <= i_p for each p, and 0 < sum(m) <= sum(i).
     """
-    ranges = [range(int(i_p) + 1) for i_p in i_vec]
-    m_vec_list = []
-    for m_vec in product(*ranges):
-        if sum(m_vec) > 0:
-            m_vec_list.append(m_vec)
-    return m_vec_list
-
-
-def generate_restricted_multi_indices2(i_vec: MultiIndex) -> list[MultiIndex]:
-    """All m with 0 <= m_p <= i_p for each p, and 0 < sum(m) <= sum(i).
-
-    Args:
-        i_vec: mixed_partial derivative
-
-    Returns:
-       All m with 0 <= m_p <= i_p for each p, and 0 < sum(m) <= sum(i).
-
-    """
     return [
         m_vec
         for m_vec in product(*[range(int(i_p) + 1) for i_p in i_vec])

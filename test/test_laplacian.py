@@ -10,6 +10,7 @@ from torch.linalg import norm
 from torch.nn import Linear, Sequential, Tanh
 
 from jet.laplacian import Laplacian
+from jet.utils import run_seeded
 from jet.weighted_laplacian import C_func_diagonal_increments, get_weighting
 from test.test___init__ import setup_case
 
@@ -172,13 +173,14 @@ def test_Laplacian_randomization(
     # check convergence of MC estimator
     weighting = get_weighting(x, weights, randomization=randomization)
 
-    def sample(idx: int) -> Tensor:
-        manual_seed(idx)
-        _, _, lap = Laplacian(f, x, randomization=randomization, weighting=weighting)(x)
-        return lap
+    lap_fn = Laplacian(f, x, randomization=randomization, weighting=weighting)
 
     converged = _check_mc_convergence(
-        lap, sample, chunk_size, max_num_chunks, target_rel_error
+        lap,
+        lambda idx: run_seeded(lap_fn, idx, x)[2],
+        chunk_size,
+        max_num_chunks,
+        target_rel_error,
     )
     assert converged, f"Monte-Carlo Laplacian ({distribution}) did not converge."
 

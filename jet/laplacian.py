@@ -2,11 +2,11 @@
 
 from typing import Callable
 
-from torch import Tensor, eye, zeros
+from torch import Tensor, eye, zeros_like
+from torch.func import vmap
 from torch.nn import Module
 
 import jet
-from jet.vmap import traceable_vmap
 
 
 class Laplacian(Module):
@@ -34,7 +34,7 @@ class Laplacian(Module):
     def __init__(
         self,
         f: Callable[[Tensor], Tensor],
-        dummy_x: Tensor,
+        mock_x: Tensor,
         randomization: tuple[str, int] | None = None,
         weighting: tuple[Callable[[Tensor, Tensor], Tensor], int] | None = None,
     ):
@@ -42,9 +42,8 @@ class Laplacian(Module):
 
         Args:
             f: The function whose Laplacian is computed.
-            dummy_x: The input on which the Laplacian is computed. It is only used to
-                infer meta-data of the function input that `torch.fx` is not capable
-                of determining at the moment.
+            mock_x: A mock input tensor for tracing. Does not need to be the actual
+                input; only the shape matters.
             randomization: Optional tuple containing the distribution type and number
                 of samples for randomized Laplacian. If provided, the Laplacian will
                 be computed using Monte-Carlo sampling. The first element is the
@@ -72,7 +71,7 @@ class Laplacian(Module):
             >>> f = Sequential(Linear(3, 1), Tanh())
             >>> x0 = rand(3)
             >>> # Compute the Laplacian via Taylor mode
-            >>> _, _, laplacian = Laplacian(f, dummy_x=zeros(3))(x0)
+            >>> _, _, laplacian = Laplacian(f, zeros(3))(x0)
             >>> assert laplacian.shape == f(x0).shape
             >>> # Compute the Laplacian with PyTorch's autodiff (Hessian trace)
             >>> laplacian_pt = hessian(f)(x0).squeeze(0).trace().unsqueeze(0)
@@ -81,11 +80,8 @@ class Laplacian(Module):
         """
         super().__init__()
 
-        # data that needs to be inferred explicitly from a dummy input
-        # because `torch.fx` cannot do this.
-        self.in_shape = dummy_x.shape
-        self.in_meta = {"dtype": dummy_x.dtype, "device": dummy_x.device}
-        self.in_dim = dummy_x.numel()
+        self.in_shape = mock_x.shape
+        self.in_dim = mock_x.numel()
 
         (self.apply_weightings, self.rank_weightings) = (
             (lambda x, V: V.reshape(self.num_jets, *self.in_shape), self.in_dim)
@@ -104,46 +100,55 @@ class Laplacian(Module):
                 raise ValueError(f"{num_samples=} must be positive.")
         self.randomization = randomization
 
-        jet_f = jet.jet(f, 2)
         self.num_jets = (
             self.rank_weightings if randomization is None else randomization[1]
         )
-        self.jet_f = traceable_vmap(jet_f, self.num_jets)
+        self.jet_f = jet.jet(f, 2, mock_x)
 
     def forward(self, x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         """Compute the (weighted and/or randomized) Laplacian of f at x.
 
         Args:
-            x: Input tensor. Must have same shape as the dummy input tensor that was
+            x: Input tensor. Must have same shape as the mock input that was
                 passed in the constructor.
 
         Returns:
-            Tuple containing the replicated function value, the weighted and/or
-                randomized Jacobian and Laplacian.
+            Tuple containing the function value, the weighted and/or
+                randomized Jacobian, and the Laplacian.
+
+        Raises:
+            ValueError: If the input shape does not match the mock input shape
+                passed in the constructor.
         """
-        X0 = jet.utils.replicate(x, self.num_jets)
+        if x.shape != self.in_shape:
+            raise ValueError(f"Expected input shape {self.in_shape}, got {x.shape}.")
         X1 = self._set_up_first_taylor_coefficient(x)
-        X2 = zeros(self.num_jets, *self.in_shape, **self.in_meta)
-        F0, F1, F2 = self.jet_f(X0, X1, X2)
+        vmapped = vmap(
+            lambda x1: self.jet_f(x, x1, zeros_like(x)),
+            randomness="different",
+            out_dims=(None, 0, 0),
+        )
+        F0, F1, F2 = vmapped(X1)
         if self.randomization is not None:
             # Monte Carlo averaging: scale by 1 / number of samples
             monte_carlo_scaling = 1.0 / self.randomization[1]
             F2 = F2 * monte_carlo_scaling
-        return F0, F1, jet.utils.sum_vmapped(F2)
+        return F0, F1, F2.sum(0)
 
     def _set_up_first_taylor_coefficient(self, x: Tensor) -> Tensor:
         """Create the first Taylor coefficients for the Laplacian computation.
 
         Args:
-            x: Input tensor. Must have same shape as the dummy input tensor that was
+            x: Input tensor. Must have same shape as the mock input that was
                 passed in the constructor.
 
         Returns:
             The first Taylor coefficient for computing the Laplacian.
         """
         shape = (self.num_jets, self.rank_weightings)
+        in_meta = {"dtype": x.dtype, "device": x.device}
         V = (
-            eye(self.rank_weightings, **self.in_meta)
+            eye(self.rank_weightings, **in_meta)
             if self.randomization is None
             else jet.utils.sample(x, self.randomization[0], shape)
         )

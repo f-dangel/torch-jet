@@ -1,7 +1,7 @@
 """Implementation of AD primitives in Taylor-mode arithmetic."""
 
 from scipy.special import comb, factorial, stirling2
-from torch import addmm, cos, mm, mul, ops, sigmoid, sin, tanh
+from torch import Tensor, addmm, cos, mm, mul, ops, relu, sigmoid, sin, tanh
 from torch.utils._pytree import register_pytree_node
 
 from jet.utils import (
@@ -514,6 +514,216 @@ def jet_sum(
     return JetTuple(self[k].sum(pos) for k in range(derivative_order + 1))
 
 
+# --- Convolution (linear in input) ---
+
+
+def jet_convolution(
+    self: JetTuple,
+    weight: Primal,
+    bias: Primal | None,
+    stride: list[int],
+    padding: list[int],
+    dilation: list[int],
+    transposed: bool,
+    output_padding: list[int],
+    groups: int,
+    *,
+    derivative_order: int,
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.convolution(self, weight, bias, ...)``.
+
+    Convolution is linear in its input when the weight is constant, so Taylor
+    coefficients pass through the convolution independently (with bias only
+    applied to the primal).
+
+    Args:
+        self: The input and its Taylor coefficients.
+        weight: The convolution kernel (constant).
+        bias: The bias tensor (constant), or ``None``.
+        stride: Convolution stride.
+        padding: Convolution padding.
+        dilation: Convolution dilation.
+        transposed: Whether to use transposed convolution.
+        output_padding: Output padding for transposed convolution.
+        groups: Number of groups.
+        derivative_order: The order of the Taylor expansion.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    primal = ops.aten.convolution.default(
+        self[0], weight, bias, stride, padding, dilation,
+        transposed, output_padding, groups,
+    )
+    coeffs = tuple(
+        ops.aten.convolution.default(
+            self[k], weight, None, stride, padding, dilation,
+            transposed, output_padding, groups,
+        )
+        for k in range(1, derivative_order + 1)
+    )
+    return JetTuple((primal, *coeffs))
+
+
+# --- Batch normalization (eval mode, affine in input) ---
+
+
+def jet_native_batch_norm(
+    self: JetTuple,
+    weight: Tensor | None,
+    bias: Tensor | None,
+    running_mean: Tensor | None,
+    running_var: Tensor | None,
+    training: bool,
+    momentum: float,
+    eps: float,
+    *,
+    derivative_order: int,
+) -> tuple:
+    """Taylor-mode arithmetic for ``aten.native_batch_norm(self, ...)``.
+
+    Only eval mode is supported, where batch normalization is affine in the
+    input: ``y = (x - mean) / sqrt(var + eps) * weight + bias``.
+
+    Args:
+        self: The input and its Taylor coefficients.
+        weight: Scale parameter (constant), or ``None``.
+        bias: Shift parameter (constant), or ``None``.
+        running_mean: Running mean (constant).
+        running_var: Running variance (constant).
+        training: Must be ``False``.
+        momentum: Momentum (unused in eval mode).
+        eps: Epsilon for numerical stability.
+        derivative_order: The order of the Taylor expansion.
+
+    Returns:
+        A plain 3-tuple ``(JetTuple_output, save_mean, save_invstd)`` so that
+        ``operator.getitem`` in the interpreter falls through correctly.
+
+    Raises:
+        NotImplementedError: If ``training`` is ``True``.
+    """
+    if training:
+        raise NotImplementedError("Only eval-mode BatchNorm is supported in jet.")
+
+    bn_result = ops.aten.native_batch_norm.default(
+        self[0], weight, bias, running_mean, running_var,
+        training, momentum, eps,
+    )
+    primal_out = bn_result[0]
+
+    # Scale factor: weight / sqrt(running_var + eps)
+    # For affine=False (weight is None), scale is 1/sqrt(running_var + eps)
+    invstd = 1.0 / (running_var + eps).sqrt()
+    scale = weight * invstd if weight is not None else invstd
+    # Reshape for broadcasting over (N, C, *spatial)
+    shape = [1] * self[0].ndim
+    shape[1] = -1
+    scale = scale.reshape(shape)
+
+    coeffs = tuple(self[k] * scale for k in range(1, derivative_order + 1))
+
+    return (JetTuple((primal_out, *coeffs)), bn_result[1], bn_result[2])
+
+
+# --- ReLU (piecewise linear) ---
+
+
+def jet_relu(self: JetTuple, *, derivative_order: int) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.relu(self)``.
+
+    ReLU is piecewise linear with derivative equal to the Heaviside step
+    function.  Higher-order derivatives are zero (treating the non-differentiable
+    point at zero as having derivative zero).
+
+    Args:
+        self: The primal and its Taylor coefficients.
+        derivative_order: The order of the Taylor expansion.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    primal = relu(self[0])
+    mask = (self[0] > 0).to(self[0].dtype)
+    coeffs = tuple(self[k] * mask for k in range(1, derivative_order + 1))
+    return JetTuple((primal, *coeffs))
+
+
+# --- Mean (linear, for AdaptiveAvgPool2d) ---
+
+
+def jet_mean(
+    self: JetTuple,
+    dim: list[int],
+    keepdim: bool = False,
+    *,
+    derivative_order: int,
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.mean(self, dim, keepdim)``.
+
+    Mean is a linear operation, so it applies identically to each Taylor
+    coefficient.
+
+    Args:
+        self: The primal and its Taylor coefficients.
+        dim: The dimensions along which to compute the mean.
+        keepdim: Whether to keep the reduced dimensions. Default: ``False``.
+        derivative_order: The order of the Taylor expansion.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    return JetTuple(
+        ops.aten.mean.dim(self[k], dim, keepdim)
+        for k in range(derivative_order + 1)
+    )
+
+
+# --- MaxPool2d (piecewise linear, index-based) ---
+
+
+def jet_max_pool2d_with_indices(
+    self: JetTuple,
+    kernel_size: list[int],
+    stride: list[int] = (),
+    padding: list[int] = (0, 0),
+    dilation: list[int] = (1, 1),
+    ceil_mode: bool = False,
+    *,
+    derivative_order: int,
+) -> tuple:
+    """Taylor-mode arithmetic for ``aten.max_pool2d_with_indices(self, ...)``.
+
+    MaxPool2d selects one element per pooling window.  The indices from the
+    primal computation are reused to gather the corresponding Taylor
+    coefficients.
+
+    Args:
+        self: The input and its Taylor coefficients.
+        kernel_size: Size of the pooling window.
+        stride: Stride of the pooling window.
+        padding: Padding added to the input.
+        dilation: Spacing between kernel elements.
+        ceil_mode: Whether to use ceil instead of floor for output shape.
+        derivative_order: The order of the Taylor expansion.
+
+    Returns:
+        A plain 2-tuple ``(JetTuple_values, indices)`` so that
+        ``operator.getitem`` in the interpreter falls through correctly.
+    """
+    values, indices = ops.aten.max_pool2d_with_indices.default(
+        self[0], kernel_size, stride, padding, dilation, ceil_mode,
+    )
+
+    flat_indices = indices.flatten(2)
+    coeffs = tuple(
+        self[k].flatten(2).gather(2, flat_indices).view_as(values)
+        for k in range(1, derivative_order + 1)
+    )
+
+    return (JetTuple((values, *coeffs)), indices)
+
+
 MAPPING = {
     # Elementwise unary
     ops.aten.sin.default: jet_sin,
@@ -534,4 +744,14 @@ MAPPING = {
     ops.aten.squeeze.dim: jet_squeeze,
     # Sum (dim reduction)
     ops.aten.sum.dim_IntList: jet_sum,
+    # Convolution (linear in input)
+    ops.aten.convolution.default: jet_convolution,
+    # Batch normalization (eval mode, affine in input)
+    ops.aten.native_batch_norm.default: jet_native_batch_norm,
+    # ReLU (piecewise linear)
+    ops.aten.relu.default: jet_relu,
+    # Mean (linear, for AdaptiveAvgPool2d)
+    ops.aten.mean.dim: jet_mean,
+    # MaxPool2d (piecewise linear, index-based)
+    ops.aten.max_pool2d_with_indices.default: jet_max_pool2d_with_indices,
 }

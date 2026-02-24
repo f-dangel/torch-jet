@@ -2,9 +2,19 @@
 
 from typing import Any, Callable
 
-from pytest import mark
+from pytest import mark, raises
 from torch import Tensor, cos, float64, manual_seed, rand, sigmoid, sin, tanh, tensor
-from torch.nn import Linear, Module, Sequential, Tanh
+from torch.nn import (
+    AdaptiveAvgPool2d,
+    BatchNorm2d,
+    Conv2d,
+    Linear,
+    MaxPool2d,
+    Module,
+    ReLU,
+    Sequential,
+    Tanh,
+)
 from torch.nn.functional import linear
 from torch.utils._pytree import tree_flatten
 
@@ -96,6 +106,36 @@ manual_seed(1)
 _TANH_LINEAR_W = tensor([[0.1, -0.2, 0.3], [0.4, 0.5, -0.6]], dtype=float64)
 _TANH_LINEAR_B = tensor([0.12, -0.34], dtype=float64)
 
+
+def _build_resnet9():
+    """Build a small ResNet9 for testing (few channels, tiny spatial dims)."""
+
+    def conv_bn_relu(c_in, c_out, **kwargs):
+        return Sequential(
+            Conv2d(c_in, c_out, 3, padding=1, bias=False, **kwargs),
+            BatchNorm2d(c_out),
+            ReLU(),
+        )
+
+    class _ResNet9(Module):
+        def __init__(self):
+            super().__init__()
+            self.conv1 = conv_bn_relu(3, 4)
+            self.conv2 = conv_bn_relu(4, 8)
+            self.pool1 = MaxPool2d(2, 2)
+            self.res1 = Sequential(conv_bn_relu(8, 8), conv_bn_relu(8, 8))
+            self.pool2 = AdaptiveAvgPool2d(1)
+            self.fc = Linear(8, 2)
+
+        def forward(self, x):
+            x = self.conv1(x)
+            x = self.pool1(self.conv2(x))
+            x = x + self.res1(x)
+            x = self.pool2(x).flatten(1)
+            return self.fc(x)
+
+    return _ResNet9().eval()
+
 JET_CASES = [
     # 1d sine function
     {"f": sin, "shape": (1,), "id": "sin"},
@@ -162,6 +202,41 @@ JET_CASES = [
     {"f": f_multiply, "shape": (5,), "id": "multiply-variables"},
     # sum
     {"f": lambda x: x.sum(0), "shape": (3, 5), "id": "sum-3"},
+    # --- CNN operations ---
+    # Conv2d with bias
+    {"f": Conv2d(2, 4, 3, padding=1), "shape": (1, 2, 4, 4), "id": "conv2d"},
+    # Conv2d without bias
+    {
+        "f": Conv2d(2, 4, 3, padding=1, bias=False),
+        "shape": (1, 2, 4, 4),
+        "id": "conv2d-no-bias",
+    },
+    # BatchNorm2d (eval mode)
+    {"f": BatchNorm2d(2).eval(), "shape": (1, 2, 4, 4), "id": "batchnorm2d"},
+    # ReLU
+    {"f": ReLU(), "shape": (1, 2, 4, 4), "id": "relu"},
+    # Conv + BN + ReLU block
+    {
+        "f": Sequential(
+            Conv2d(2, 4, 3, padding=1, bias=False), BatchNorm2d(4), ReLU()
+        ).eval(),
+        "shape": (1, 2, 4, 4),
+        "id": "conv-bn-relu",
+    },
+    # MaxPool2d
+    {"f": MaxPool2d(2, 2), "shape": (1, 2, 4, 4), "id": "maxpool2d"},
+    # AdaptiveAvgPool2d
+    {
+        "f": AdaptiveAvgPool2d(1),
+        "shape": (1, 2, 4, 4),
+        "id": "adaptive-avgpool2d",
+    },
+    # --- ResNet9 (small) ---
+    {
+        "f": _build_resnet9(),
+        "shape": (1, 3, 8, 8),
+        "id": "resnet9",
+    },
 ]
 
 # set the `is_batched` flag for all cases
@@ -220,6 +295,16 @@ def test_jet(config: dict[str, Any], k: int):
     """
     f, x, vs = setup_case(config, derivative_order=k)
     check_jet(f, (x, vs))
+
+
+def test_batchnorm_train_mode_raises():
+    """Verify that train-mode BatchNorm raises NotImplementedError."""
+    f = BatchNorm2d(2).train()
+    x = rand(1, 2, 4, 4).double()
+    f = f.double()
+    jet_f = jet.jet(f, 1, (x,))
+    with raises(NotImplementedError, match="eval-mode"):
+        jet_f((x,), ((rand(1, 2, 4, 4).double(),),))
 
 
 # ---------------------------------------------------------------------------

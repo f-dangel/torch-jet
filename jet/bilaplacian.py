@@ -2,12 +2,13 @@
 
 from typing import Callable
 
-from torch import Tensor, eye, triu_indices, zeros_like
-from torch.func import vmap
+from torch import Tensor, eye, triu_indices, zeros, zeros_like
+from torch.fx import GraphModule
 
-import jet
-import jet.utils
+from jet.collapsed import collapsed_jet
+from jet.tracing import capture_graph
 from jet.ttc_coefficients import compute_all_gammas
+from jet.utils import sample
 
 SUPPORTED_DISTRIBUTIONS = ["normal"]
 
@@ -16,7 +17,7 @@ def bilaplacian(
     f: Callable[[Tensor], Tensor],
     mock_x: Tensor,
     randomization: tuple[str, int] | None = None,
-) -> Callable[[Tensor], Tensor]:
+) -> GraphModule:
     r"""Transform f into a function that computes the Bi-Laplacian.
 
     The Bi-Laplacian of a function $f(\mathbf{x}) \in \mathbb{R}$ with
@@ -43,7 +44,7 @@ def bilaplacian(
             samples to use. Default is `None`.
 
     Returns:
-        A function `bilap_f(x)` that returns the Bi-Laplacian of f at x.
+        A `GraphModule` that maps `x → bilap(f(x))`.
 
     Raises:
         ValueError: If the provided distribution is not supported or if the number
@@ -58,7 +59,8 @@ def bilaplacian(
         >>> f = Sequential(Linear(3, 1), Tanh())
         >>> x0 = rand(3)
         >>> # Compute the Bilaplacian via Taylor mode
-        >>> bilap = bilaplacian(f, zeros(3))(x0)
+        >>> bilap_f = bilaplacian(f, zeros(3))
+        >>> bilap = bilap_f(x0)
         >>> assert bilap.shape == f(x0).shape
         >>> # Compute the Bilaplacian with PyTorch's autodiff
         >>> laplacian_pt = lambda x: hessian(f)(x).squeeze(0).trace().unsqueeze(0)
@@ -79,7 +81,7 @@ def bilaplacian(
             raise ValueError(f"{num_samples=} must be positive.")
 
     derivative_order = 4
-    jet_f = jet.jet(f, derivative_order, (mock_x,))
+    cjet_f = collapsed_jet(f, derivative_order, (mock_x,))
 
     def _set_up_taylor_coefficients(x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         """Create the first Taylor coefficients for the Bi-Laplacian computation.
@@ -110,6 +112,23 @@ def bilaplacian(
 
         return C1, C2, C3
 
+    def _collapsed_4jet(x: Tensor, X1: Tensor) -> Tensor:
+        """Evaluate the collapsed 4-jet and return the 4th coefficient.
+
+        Args:
+            x: Input tensor.
+            X1: First-order directions, shape (R, *in_shape).
+
+        Returns:
+            The collapsed 4th-order coefficient.
+        """
+        z = zeros_like(x)
+        R = X1.shape[0]
+        Z = zeros(R, *in_shape, dtype=x.dtype, device=x.device)
+        # series: (X1,), (Z,), (Z,), (z,) -- first 3 batched, last collapsed
+        _, (_, _, _, F4) = cjet_f((x,), ((X1,), (Z,), (Z,), (z,)))
+        return F4
+
     def bilap_f(x: Tensor) -> Tensor:
         """Compute the Bi-Laplacian of the function at the input tensor.
 
@@ -124,20 +143,12 @@ def bilaplacian(
         """
         if x.shape != in_shape:
             raise ValueError(f"Expected input shape {in_shape}, got {x.shape}.")
-        z = zeros_like(x)
-        vmapped = vmap(
-            lambda x1: jet_f((x,), ((x1,), (z,), (z,), (z,))),
-            randomness="different",
-            out_dims=(None, (0, 0, 0, 0)),
-        )
 
         if randomization is not None:
             distribution, num_samples = randomization
-            X1 = jet.utils.sample(x, distribution, (num_samples, *in_shape))
-
-            _, (_, _, _, F4) = vmapped(X1)
-            # need to divide the Laplacian by number of MC samples
-            return F4.sum(0) / (3 * num_samples)
+            X1 = sample(x, distribution, (num_samples, *in_shape))
+            F4 = _collapsed_4jet(x, X1)
+            return F4 / (3 * num_samples)
 
         # three lists of 4-jet coefficients, one for each term
         C1, C2, C3 = _set_up_taylor_coefficients(x)
@@ -147,9 +158,9 @@ def bilaplacian(
         gammas = compute_all_gammas((2, 2))
         gamma_4_0 = float(gammas[(4, 0)])
         # first summand
-        _, (_, _, _, F4_1) = vmapped(C1)
+        F4_1 = _collapsed_4jet(x, C1)
         factor1 = (gamma_4_4 + 2 * (D - 1) * gamma_4_0) / 24
-        term1 = factor1 * F4_1.sum(0)
+        term1 = factor1 * F4_1
 
         # there are no off-diagonal terms if the dimension is 1
         if D == 1:
@@ -157,16 +168,16 @@ def bilaplacian(
 
         # second summand
         gamma_3_1 = float(gammas[(3, 1)])
-        _, (_, _, _, F4_2) = vmapped(C2)
+        F4_2 = _collapsed_4jet(x, C2)
         factor2 = 2 * gamma_3_1 / 24
-        term2 = factor2 * F4_2.sum(0)
+        term2 = factor2 * F4_2
 
         # third term
         gamma_2_2 = float(gammas[(2, 2)])
-        _, (_, _, _, F4_3) = vmapped(C3)
+        F4_3 = _collapsed_4jet(x, C3)
         factor3 = 2 * gamma_2_2 / 24
-        term3 = factor3 * F4_3.sum(0)
+        term3 = factor3 * F4_3
 
         return term1 + term2 + term3
 
-    return bilap_f
+    return capture_graph(bilap_f, mock_x)

@@ -3,9 +3,11 @@
 from typing import Callable
 
 from torch import Tensor, eye, zeros_like
-from torch.func import vmap
+from torch.fx import GraphModule
 
-import jet
+from jet.collapsed import collapsed_jet
+from jet.tracing import capture_graph
+from jet.utils import sample
 
 SUPPORTED_DISTRIBUTIONS = ["normal", "rademacher"]
 
@@ -15,7 +17,7 @@ def laplacian(
     mock_x: Tensor,
     randomization: tuple[str, int] | None = None,
     weighting: tuple[Callable[[Tensor, Tensor], Tensor], int] | None = None,
-) -> Callable[[Tensor], tuple[Tensor, Tensor, Tensor]]:
+) -> GraphModule:
     r"""Transform f into a function that computes (f(x), jac(f(x)), lap(f(x))).
 
     The Laplacian of a function $f(\mathbf{x}) \in \mathbb{R}$ with
@@ -50,7 +52,7 @@ def laplacian(
             the identity matrix (i.e. computing the standard Laplacian).
 
     Returns:
-        A function `lap_f(x)` that returns `(f(x), jac(f(x)), lap(f(x)))`.
+        A `GraphModule` that maps `x → (f(x), jac(f(x)), lap(f(x)))`.
 
     Raises:
         ValueError: If the provided distribution is not supported or if the number
@@ -65,7 +67,8 @@ def laplacian(
         >>> f = Sequential(Linear(3, 1), Tanh())
         >>> x0 = rand(3)
         >>> # Compute the Laplacian via Taylor mode
-        >>> _, _, lap = laplacian(f, zeros(3))(x0)
+        >>> lap_f = laplacian(f, zeros(3))
+        >>> _, _, lap = lap_f(x0)
         >>> assert lap.shape == f(x0).shape
         >>> # Compute the Laplacian with PyTorch's autodiff (Hessian trace)
         >>> lap_pt = hessian(f)(x0).squeeze(0).trace().unsqueeze(0)
@@ -92,7 +95,7 @@ def laplacian(
             raise ValueError(f"{num_samples=} must be positive.")
 
     num_jets = rank_weightings if randomization is None else randomization[1]
-    jet_f = jet.jet(f, 2, (mock_x,))
+    cjet_f = collapsed_jet(f, 2, (mock_x,))
 
     def lap_f(x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         """Compute the (weighted and/or randomized) Laplacian of f at x.
@@ -117,20 +120,18 @@ def laplacian(
         V = (
             eye(rank_weightings, **in_meta)
             if randomization is None
-            else jet.utils.sample(x, randomization[0], shape)
+            else sample(x, randomization[0], shape)
         )
         X1 = apply_weightings(x, V)
+        z = zeros_like(x)
 
-        vmapped = vmap(
-            lambda x1: jet_f((x,), ((x1,), (zeros_like(x),))),
-            randomness="different",
-            out_dims=(None, (0, 0)),
-        )
-        F0, (F1, F2) = vmapped(X1)
+        # series[0] = (X1,) batched with shape (num_jets, *in_shape)
+        # series[1] = (z,) collapsed with shape (*in_shape)
+        F0, (F1, F2) = cjet_f((x,), ((X1,), (z,)))
         if randomization is not None:
             # Monte Carlo averaging: scale by 1 / number of samples
             monte_carlo_scaling = 1.0 / randomization[1]
             F2 = F2 * monte_carlo_scaling
-        return F0, F1, F2.sum(0)
+        return F0, F1, F2
 
-    return lap_f
+    return capture_graph(lap_f, mock_x)

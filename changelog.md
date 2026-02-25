@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
+- **Backward-incompatible.** Remove PullSum graph rewriting rules (`jet/rules.py`,
+  7 rule classes, ~685 lines) and replace with interpreter-level collapsing via
+  `CollapsedJetInterpreter` (`jet/collapsed.py`). `laplacian()` and `bilaplacian()`
+  now use `collapsed_jet` internally. `simplify()` no longer accepts `pull_sum`
+  parameter; it only performs CSE and dead code elimination
+
 ### Internal
 
 - Replace `JetTransformer` (graph rewriting via `torch.fx.Transformer`) with

@@ -1,7 +1,7 @@
 """Implementation of AD primitives in Taylor-mode arithmetic."""
 
 from scipy.special import comb, factorial, stirling2
-from torch import Tensor, addmm, cos, mm, mul, ops, relu, sigmoid, sin, tanh
+from torch import Tensor, addmm, cos, mm, mul, ops, relu, sigmoid, sin, tanh, zeros_like
 from torch.utils._pytree import register_pytree_node
 
 from jet.utils import (
@@ -29,8 +29,32 @@ register_pytree_node(
 )
 
 
+def _partition_term(
+    vs: tuple[Primal, ...], sigma: tuple[int, ...], dn: dict[int, Primal]
+) -> Value | None:
+    """Compute one term of the Faà di Bruno sum for a given partition.
+
+    Returns ``None`` when ``dn[len(sigma)]`` is ``None``.
+    """
+    if dn[len(sigma)] is None:
+        return None
+    vs_count = {i: sigma.count(i) for i in sigma}
+    vs_contract = [
+        vs[i - 1] ** count if count > 1 else vs[i - 1] for i, count in vs_count.items()
+    ]
+    term = vs_contract[0]
+    for v in vs_contract[1:]:
+        term = mul(term, v)
+    term = mul(term, dn[len(sigma)])
+    nu = multiplicity(sigma)
+    return nu * term if nu != 1.0 else term
+
+
 def _faa_di_bruno(
-    vs: tuple[Primal, ...], derivative_order: int, dn: dict[int, Primal]
+    vs: tuple[Primal, ...],
+    derivative_order: int,
+    dn: dict[int, Primal],
+    collapsed: bool = False,
 ) -> list[Value]:
     """Apply Faà di Bruno's formula for elementwise functions.
 
@@ -38,31 +62,144 @@ def _faa_di_bruno(
         vs: The incoming Taylor coefficients.
         derivative_order: The order of the Taylor expansion.
         dn: A dictionary mapping the degree to the function's derivative.
+        collapsed: If ``True``, treat ``vs[-1]`` as a collapsed (already
+            summed) coefficient and ``vs[0:-1]`` as batched with a leading
+            direction dimension *R*.  The last output coefficient is then
+            computed by separating the linear contribution (which multiplies
+            the collapsed input) from the nonlinear contributions (which are
+            summed over *R*).
 
     Returns:
         The outgoing Taylor coefficients.
     """
+    K = derivative_order
     vs_out = []
-    for k in range(derivative_order):
-        for idx, sigma in enumerate(integer_partitions(k + 1)):
-            if dn[len(sigma)] is None:
-                continue
-
-            vs_count = {i: sigma.count(i) for i in sigma}
-            vs_contract = [
-                vs[i - 1] ** count if count > 1 else vs[i - 1]
-                for i, count in vs_count.items()
-            ]
-            term = vs_contract[0]
-            for v in vs_contract[1:]:
-                term = mul(term, v)
-            term = mul(term, dn[len(sigma)])
-
-            nu = multiplicity(sigma)
-            # avoid multiplication by one
-            term = nu * term if nu != 1.0 else term
-            vs_out.append(term if idx == 0 else vs_out.pop(-1) + term)
+    for k in range(K):
+        order = k + 1
+        if order == K and collapsed:
+            linear_term = mul(dn[1], vs[K - 1]) if dn[1] is not None else None
+            nonlinear_term = None
+            for sigma in integer_partitions(K):
+                if sigma == (K,):
+                    continue
+                term = _partition_term(vs, sigma, dn)
+                if term is not None:
+                    nonlinear_term = (
+                        term if nonlinear_term is None else nonlinear_term + term
+                    )
+            if nonlinear_term is not None and linear_term is not None:
+                vs_out.append(linear_term + nonlinear_term.sum(0))
+            elif nonlinear_term is not None:
+                vs_out.append(nonlinear_term.sum(0))
+            elif linear_term is not None:
+                vs_out.append(linear_term)
+            else:
+                vs_out.append(zeros_like(dn[0]))
+        else:
+            result = None
+            for sigma in integer_partitions(order):
+                term = _partition_term(vs, sigma, dn)
+                if term is not None:
+                    result = term if result is None else result + term
+            vs_out.append(result)
     return vs_out
+
+
+# --- Derivative helpers (shared with collapsed mode) ---
+
+
+def _sin_derivatives(x0: Primal, K: int) -> tuple[Primal, dict[int, Primal]]:
+    """Compute ``sin(x0)`` and its derivatives up to order *K*."""
+    sin_x0 = sin(x0)
+    d = {0: sin_x0}
+    for k in range(1, K + 1):
+        if k == 1:
+            d[k] = cos(x0)
+        elif k in {2, 3}:
+            d[k] = -1 * d[k - 2]
+        else:
+            d[k] = d[k - 4]
+    return sin_x0, d
+
+
+def _cos_derivatives(x0: Primal, K: int) -> tuple[Primal, dict[int, Primal]]:
+    """Compute ``cos(x0)`` and its derivatives up to order *K*."""
+    cos_x0 = cos(x0)
+    d = {0: cos_x0}
+    for k in range(1, K + 1):
+        if k == 1:
+            d[k] = -1 * sin(x0)
+        elif k in {2, 3}:
+            d[k] = -1 * d[k - 2]
+        else:
+            d[k] = d[k - 4]
+    return cos_x0, d
+
+
+def _tanh_derivatives(x0: Primal, K: int) -> tuple[Primal, dict[int, Primal]]:
+    """Compute ``tanh(x0)`` and its derivatives up to order *K*."""
+    tanh_x0 = tanh(x0)
+    d = {0: tanh_x0}
+    if K >= 1:
+        tanh_inc = tanh_x0 + 1
+        tanh_dec = tanh_x0 - 1
+        tanh_dec_powers = {1: tanh_dec}
+        if K >= 2:
+            for k in range(2, K + 1):
+                tanh_dec_powers[k] = tanh_dec**k
+        for m in range(1, K + 1):
+            term = None
+            for k in range(1, m + 1):
+                scale = factorial(k, exact=True) / 2**k * stirling2(m, k, exact=True)
+                term_k = (
+                    (scale * tanh_dec_powers[k]) if scale != 1.0 else tanh_dec_powers[k]
+                )
+                term = term_k if term is None else term + term_k
+            d[m] = (-2) ** m * tanh_inc * term
+    return tanh_x0, d
+
+
+def _sigmoid_derivatives(x0: Primal, K: int) -> tuple[Primal, dict[int, Primal]]:
+    """Compute ``sigmoid(x0)`` and its derivatives up to order *K*."""
+    sigmoid_x0 = sigmoid(x0)
+    d = {0: sigmoid_x0}
+    if K >= 1:
+        sigmoid_powers = {1: sigmoid_x0}
+        for n in range(2, K + 2):
+            sigmoid_powers[n] = sigmoid_x0**n
+        for n in range(1, K + 1):
+            term = None
+            for k in range(1, n + 2):
+                scale = (
+                    (-1) ** (k - 1)
+                    * factorial(k - 1, exact=True)
+                    * stirling2(n + 1, k, exact=True)
+                )
+                term_k = (
+                    scale * sigmoid_powers[k] if scale != 1.0 else sigmoid_powers[k]
+                )
+                term = term_k if term is None else term + term_k
+            d[n] = term
+    return sigmoid_x0, d
+
+
+def _pow_derivatives(
+    x0: Primal, exponent: float | int, K: int
+) -> tuple[Primal, dict[int, Primal | None]]:
+    """Compute ``x0 ** exponent`` and its derivatives up to order *K*."""
+    pow_x0 = x0**exponent
+    d = {0: pow_x0}
+    for k in range(1, K + 1):
+        if exponent - k < 0 and int(exponent) == exponent:
+            d[k] = None
+        elif exponent == k:
+            d[k] = factorial(exponent, exact=True)
+        else:
+            scale = 1
+            for i in range(1, k + 1):
+                scale *= exponent + 1 - i
+            d[k] = scale * x0 if exponent - k == 1 else scale * x0 ** (exponent - k)
+    return pow_x0, d
 
 
 # --- Elementwise unary ---
@@ -79,19 +216,8 @@ def jet_sin(self: JetTuple, *, derivative_order: int) -> JetTuple:
         The value and its Taylor coefficients.
     """
     self0, vs = self[0], self[1:]
-
-    sin_self0 = sin(self0)
-    dsin = {0: sin_self0}
-    for k in range(1, derivative_order + 1):
-        if k == 1:
-            dsin[k] = cos(self0)
-        elif k in {2, 3}:
-            dsin[k] = -1 * dsin[k - 2]
-        else:
-            dsin[k] = dsin[k - 4]
-
+    sin_self0, dsin = _sin_derivatives(self0, derivative_order)
     vs_out = _faa_di_bruno(vs, derivative_order, dsin)
-
     return JetTuple((sin_self0, *vs_out))
 
 
@@ -106,19 +232,8 @@ def jet_cos(self: JetTuple, *, derivative_order: int) -> JetTuple:
         The value and its Taylor coefficients.
     """
     self0, vs = self[0], self[1:]
-
-    cos_self0 = cos(self0)
-    dcos = {0: cos_self0}
-    for k in range(1, derivative_order + 1):
-        if k == 1:
-            dcos[k] = -1 * sin(self0)
-        elif k in {2, 3}:
-            dcos[k] = -1 * dcos[k - 2]
-        else:
-            dcos[k] = dcos[k - 4]
-
+    cos_self0, dcos = _cos_derivatives(self0, derivative_order)
     vs_out = _faa_di_bruno(vs, derivative_order, dcos)
-
     return JetTuple((cos_self0, *vs_out))
 
 
@@ -133,39 +248,8 @@ def jet_tanh(self: JetTuple, *, derivative_order: int) -> JetTuple:
         The value and its Taylor coefficients.
     """
     self0, vs = self[0], self[1:]
-
-    tanh_self0 = tanh(self0)
-    dtanh = {0: tanh_self0}
-
-    # Use the explicit form of the derivative polynomials for tanh from "Derivative
-    # polynomials for tanh, tan, sech and sec in explicit form" by Boyadzhiev (2006)
-    # (https://www.fq.math.ca/Papers1/45-4/quartboyadzhiev04_2007.pdf);
-    # see also this answer: https://math.stackexchange.com/a/4226178
-    if derivative_order >= 1:
-        tanh_inc = tanh_self0 + 1
-        tanh_dec = tanh_self0 - 1
-
-        # required powers of tanh_dec
-        tanh_dec_powers = {1: tanh_dec}
-        if derivative_order >= 2:
-            for k in range(2, derivative_order + 1):
-                tanh_dec_powers[k] = tanh_dec**k
-
-        # Equations (3.3) and (3.4) from the above paper
-        for m in range(1, derivative_order + 1):
-            # Use that the Stirling number S(m>0, 0) = 0 to start the summation at 1
-            term = None
-            for k in range(1, m + 1):
-                scale = factorial(k, exact=True) / 2**k * stirling2(m, k, exact=True)
-                # avoid multiplication by one
-                term_k = (
-                    (scale * tanh_dec_powers[k]) if scale != 1.0 else tanh_dec_powers[k]
-                )
-                term = term_k if term is None else term + term_k
-            dtanh[m] = (-2) ** m * tanh_inc * term
-
+    tanh_self0, dtanh = _tanh_derivatives(self0, derivative_order)
     vs_out = _faa_di_bruno(vs, derivative_order, dtanh)
-
     return JetTuple((tanh_self0, *vs_out))
 
 
@@ -180,36 +264,8 @@ def jet_sigmoid(self: JetTuple, *, derivative_order: int) -> JetTuple:
         The value and its Taylor coefficients.
     """
     self0, vs = self[0], self[1:]
-
-    sigmoid_self0 = sigmoid(self0)
-    dsigmoid = {0: sigmoid_self0}
-
-    # Use the Stirling form of the sigmoid derivatives, see Equation 20
-    # of "On the Derivatives of the Sigmoid" by Minai and Williams (1993)
-    # (https://eecs.ceas.uc.edu/~minaiaa/papers/minai_sigmoids_NN93.pdf)
-    if derivative_order >= 1:
-        # The Stirling form requires sigmoid powers
-        sigmoid_powers = {1: sigmoid_self0}
-        for n in range(2, derivative_order + 2):
-            sigmoid_powers[n] = sigmoid_self0**n
-
-        for n in range(1, derivative_order + 1):
-            term = None
-            for k in range(1, n + 2):
-                scale = (
-                    (-1) ** (k - 1)
-                    * factorial(k - 1, exact=True)
-                    * stirling2(n + 1, k, exact=True)
-                )
-                # avoid multiplication by one
-                term_k = (
-                    scale * sigmoid_powers[k] if scale != 1.0 else sigmoid_powers[k]
-                )
-                term = term_k if term is None else term + term_k
-            dsigmoid[n] = term
-
+    sigmoid_self0, dsigmoid = _sigmoid_derivatives(self0, derivative_order)
     vs_out = _faa_di_bruno(vs, derivative_order, dsigmoid)
-
     return JetTuple((sigmoid_self0, *vs_out))
 
 
@@ -230,27 +286,9 @@ def jet_pow(
         The value and its Taylor coefficients.
     """
     assert isinstance(exponent, (float, int))
-
     self0, vs = self[0], self[1:]
-
-    pow_self0 = self0**exponent
-
-    dpow = {0: pow_self0}
-    for k in range(1, derivative_order + 1):
-        if exponent - k < 0 and int(exponent) == exponent:
-            dpow[k] = None
-        elif exponent == k:
-            dpow[k] = factorial(exponent, exact=True)
-        else:
-            scale = 1
-            for i in range(1, k + 1):
-                scale *= exponent + 1 - i
-            dpow[k] = (
-                scale * self0 if exponent - k == 1 else scale * self0 ** (exponent - k)
-            )
-
+    pow_self0, dpow = _pow_derivatives(self0, exponent, derivative_order)
     vs_out = _faa_di_bruno(vs, derivative_order, dpow)
-
     return JetTuple((pow_self0, *vs_out))
 
 
@@ -552,13 +590,27 @@ def jet_convolution(
         The value and its Taylor coefficients.
     """
     primal = ops.aten.convolution.default(
-        self[0], weight, bias, stride, padding, dilation,
-        transposed, output_padding, groups,
+        self[0],
+        weight,
+        bias,
+        stride,
+        padding,
+        dilation,
+        transposed,
+        output_padding,
+        groups,
     )
     coeffs = tuple(
         ops.aten.convolution.default(
-            self[k], weight, None, stride, padding, dilation,
-            transposed, output_padding, groups,
+            self[k],
+            weight,
+            None,
+            stride,
+            padding,
+            dilation,
+            transposed,
+            output_padding,
+            groups,
         )
         for k in range(1, derivative_order + 1)
     )
@@ -607,8 +659,14 @@ def jet_native_batch_norm(
         raise NotImplementedError("Only eval-mode BatchNorm is supported in jet.")
 
     bn_result = ops.aten.native_batch_norm.default(
-        self[0], weight, bias, running_mean, running_var,
-        training, momentum, eps,
+        self[0],
+        weight,
+        bias,
+        running_mean,
+        running_var,
+        training,
+        momentum,
+        eps,
     )
     primal_out = bn_result[0]
 
@@ -674,8 +732,7 @@ def jet_mean(
         The value and its Taylor coefficients.
     """
     return JetTuple(
-        ops.aten.mean.dim(self[k], dim, keepdim)
-        for k in range(derivative_order + 1)
+        ops.aten.mean.dim(self[k], dim, keepdim) for k in range(derivative_order + 1)
     )
 
 
@@ -712,7 +769,12 @@ def jet_max_pool2d_with_indices(
         ``operator.getitem`` in the interpreter falls through correctly.
     """
     values, indices = ops.aten.max_pool2d_with_indices.default(
-        self[0], kernel_size, stride, padding, dilation, ceil_mode,
+        self[0],
+        kernel_size,
+        stride,
+        padding,
+        dilation,
+        ceil_mode,
     )
 
     flat_indices = indices.flatten(2)

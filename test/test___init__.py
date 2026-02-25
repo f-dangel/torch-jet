@@ -136,6 +136,7 @@ def _build_resnet9():
 
     return _ResNet9().eval()
 
+
 JET_CASES = [
     # 1d sine function
     {"f": sin, "shape": (1,), "id": "sin"},

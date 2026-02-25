@@ -23,10 +23,13 @@ from torch import compile as torch_compile
 from torch.func import hessian, jacrev, jvp, vmap
 from torch.nn import Linear, Sequential, Tanh
 
+import jet
 from jet.bilaplacian import bilaplacian as jet_bilaplacian
 from jet.exp.utils import measure_peak_memory, measure_time, to_string
 from jet.laplacian import laplacian as jet_laplacian
-from jet.simplify import simplify
+from jet.simplify import common_subexpression_elimination
+from jet.tracing import capture_graph
+from jet.ttc_coefficients import compute_all_gammas
 from jet.utils import run_seeded, sample
 from jet.weighted_laplacian import get_weighting
 
@@ -203,6 +206,139 @@ def vector_hessian_vector_product_laplacian(
     return laplacian
 
 
+def naive_jet_laplacian(
+    f: Callable[[Tensor], Tensor],
+    mock_x: Tensor,
+    randomization: tuple[str, int] | None = None,
+    weighting: tuple[Callable[[Tensor, Tensor], Tensor], int] | None = None,
+) -> Callable[[Tensor], Tensor]:
+    """Compute the Laplacian using standard (non-collapsed) jets + vmap + sum.
+
+    This is the naive approach: propagate R full 2-jets, then sum the 2nd
+    coefficient over all directions.
+
+    Args:
+        f: The function whose Laplacian is computed.
+        mock_x: A mock input tensor for tracing.
+        randomization: Optional (distribution, num_samples) tuple.
+        weighting: Optional weighting specification.
+
+    Returns:
+        A function that takes x and returns the Laplacian of f at x.
+    """
+    from torch import zeros_like
+
+    in_shape = mock_x.shape
+    in_dim = mock_x.numel()
+
+    (apply_weightings, rank_weightings) = (
+        (lambda x, V: V.reshape(num_jets, *in_shape), in_dim)
+        if weighting is None
+        else weighting
+    )
+
+    num_jets = rank_weightings if randomization is None else randomization[1]
+    jet_f = jet.jet(f, 2, (mock_x,))
+
+    def lap_f(x: Tensor) -> Tensor:
+        shape = (num_jets, rank_weightings)
+        in_meta = {"dtype": x.dtype, "device": x.device}
+        V = (
+            eye(rank_weightings, **in_meta)
+            if randomization is None
+            else sample(x, randomization[0], shape)
+        )
+        X1 = apply_weightings(x, V)
+
+        vmapped = vmap(
+            lambda x1: jet_f((x,), ((x1,), (zeros_like(x),))),
+            randomness="different",
+            out_dims=(None, (0, 0)),
+        )
+        _, (_, F2) = vmapped(X1)
+        if randomization is not None:
+            return F2.sum(0) / randomization[1]
+        return F2.sum(0)
+
+    return lap_f
+
+
+def naive_jet_bilaplacian(
+    f: Callable[[Tensor], Tensor],
+    mock_x: Tensor,
+    randomization: tuple[str, int] | None = None,
+) -> Callable[[Tensor], Tensor]:
+    """Compute the Bi-Laplacian using standard (non-collapsed) jets + vmap + sum.
+
+    Args:
+        f: The function whose Bi-Laplacian is computed.
+        mock_x: A mock input tensor for tracing.
+        randomization: Optional (distribution, num_samples) tuple.
+
+    Returns:
+        A function that takes x and returns the Bi-Laplacian of f at x.
+    """
+    from torch import triu_indices, zeros_like
+
+    in_shape = mock_x.shape
+    in_dim = mock_x.numel()
+    jet_f = jet.jet(f, 4, (mock_x,))
+
+    def _set_up_taylor_coefficients(x: Tensor):
+        D = in_dim
+        in_meta = {"dtype": x.dtype, "device": x.device}
+        E = eye(D, **in_meta)
+        C1 = (4 * E).reshape(D, *in_shape)
+        mask = ~eye(D, dtype=bool, device=x.device)
+        i_idx, j_idx = mask.nonzero(as_tuple=True)
+        C2 = (3 * E[i_idx] + E[j_idx]).reshape(D * (D - 1), *in_shape)
+        i_idx, j_idx = triu_indices(D, D, offset=1)
+        C3 = (2 * E[i_idx] + 2 * E[j_idx]).reshape(D * (D - 1) // 2, *in_shape)
+        return C1, C2, C3
+
+    def bilap_f(x: Tensor) -> Tensor:
+        z = zeros_like(x)
+        vmapped = vmap(
+            lambda x1: jet_f((x,), ((x1,), (z,), (z,), (z,))),
+            randomness="different",
+            out_dims=(None, (0, 0, 0, 0)),
+        )
+
+        if randomization is not None:
+            distribution, num_samples = randomization
+            X1 = sample(x, distribution, (num_samples, *in_shape))
+            _, (_, _, _, F4) = vmapped(X1)
+            return F4.sum(0) / (3 * num_samples)
+
+        C1, C2, C3 = _set_up_taylor_coefficients(x)
+        D = in_dim
+
+        gamma_4_4 = float(compute_all_gammas((4,))[(4,)])
+        gammas = compute_all_gammas((2, 2))
+        gamma_4_0 = float(gammas[(4, 0)])
+
+        _, (_, _, _, F4_1) = vmapped(C1)
+        factor1 = (gamma_4_4 + 2 * (D - 1) * gamma_4_0) / 24
+        term1 = factor1 * F4_1.sum(0)
+
+        if D == 1:
+            return term1
+
+        gamma_3_1 = float(gammas[(3, 1)])
+        _, (_, _, _, F4_2) = vmapped(C2)
+        factor2 = 2 * gamma_3_1 / 24
+        term2 = factor2 * F4_2.sum(0)
+
+        gamma_2_2 = float(gammas[(2, 2)])
+        _, (_, _, _, F4_3) = vmapped(C3)
+        factor3 = 2 * gamma_2_2 / 24
+        term3 = factor3 * F4_3.sum(0)
+
+        return term1 + term2 + term3
+
+    return bilap_f
+
+
 def laplacian_function(
     f: Callable[[Tensor], Tensor],
     X: Tensor,
@@ -221,11 +357,10 @@ def laplacian_function(
             the Laplacian. The following strategies are supported:
             - `'hessian_trace'`: The Laplacian is computed by tracing the Hessian.
               The Hessian is computed via forward-over-reverse mode autodiff.
-            - `'jet_naive'`: The Laplacian is computed using jets. The computation graph
-                is simplified by propagating replication nodes.
-            - `'jet_simplified'`: The Laplacian is computed using Taylor mode. The
-              computation graph is simplified by propagating replications down, and
-              summations up, the computation graph.
+            - `'jet_naive'`: The Laplacian is computed using standard (non-collapsed)
+              Taylor mode with vmap + sum.
+            - `'jet_simplified'`: The Laplacian is computed using collapsed Taylor mode
+              with CSE and dead code elimination.
         randomization: If not `None`, a tuple containing the distribution type and
             number of samples for randomized Laplacian. The first element is the
             distribution type (e.g., 'normal', 'rademacher'), and the second is the
@@ -257,12 +392,21 @@ def laplacian_function(
                 f, dummy_x, randomization, weighting
             )
 
-    elif strategy in {"jet_naive", "jet_simplified"}:
+    elif strategy == "jet_naive":
+        lap_fn = naive_jet_laplacian(
+            f, dummy_x, randomization=randomization, weighting=weighting
+        )
+        lap_fn = capture_graph(lap_fn, dummy_x)
+        common_subexpression_elimination(lap_fn.graph)
+        lap_fn.recompile()
+        laplacian = lap_fn
+
+    elif strategy == "jet_simplified":
         lap_fn = jet_laplacian(
             f, dummy_x, randomization=randomization, weighting=weighting
         )
-        pull_sum = strategy == "jet_simplified"
-        lap_fn = simplify(lap_fn, dummy_x, pull_sum=pull_sum)
+        common_subexpression_elimination(lap_fn.graph)
+        lap_fn.recompile()
         laplacian = lambda x: lap_fn(x)[2]  # noqa: E731
 
     else:
@@ -335,11 +479,10 @@ def bilaplacian_function(
             - `'hessian_trace'`: The Bi-Laplacian is computed by computing the tensor
               of fourth-order derivatives, then summing the necessary entries. The
               derivative tensor is computed as Hessian of the Hessian with PyTorch.
-            - `'jet_naive'`: The Bi-Laplacian is computed using jets. The computation
-                graph is simplified by propagating replication nodes.
-            - `'jet_simplified'`: The Bi-Laplacian is computed using Taylor mode. The
-                computation graph is simplified by propagating replications down, and
-                summations up, the computation graph.
+            - `'jet_naive'`: The Bi-Laplacian is computed using standard (non-collapsed)
+              Taylor mode with vmap + sum.
+            - `'jet_simplified'`: The Bi-Laplacian is computed using collapsed Taylor
+              mode with CSE and dead code elimination.
         randomization: If not `None`, a tuple containing the distribution type and
             number of samples for randomized Bi-Laplacian. The first element is the
             distribution type (e.g., 'normal'), and the second is the number of samples
@@ -363,10 +506,16 @@ def bilaplacian_function(
                 f, dummy_x, randomization
             )
 
-    elif strategy in {"jet_naive", "jet_simplified"}:
+    elif strategy == "jet_naive":
+        bilap_fn = naive_jet_bilaplacian(f, dummy_x, randomization=randomization)
+        bilap_fn = capture_graph(bilap_fn, dummy_x)
+        common_subexpression_elimination(bilap_fn.graph)
+        bilap_fn.recompile()
+
+    elif strategy == "jet_simplified":
         bilap_fn = jet_bilaplacian(f, dummy_x, randomization=randomization)
-        pull_sum = strategy == "jet_simplified"
-        bilap_fn = simplify(bilap_fn, dummy_x, pull_sum=pull_sum)
+        common_subexpression_elimination(bilap_fn.graph)
+        bilap_fn.recompile()
 
     else:
         raise ValueError(f"Unsupported strategy: {strategy}.")

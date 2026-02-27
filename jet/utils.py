@@ -113,9 +113,7 @@ def validate_randomization(
         return
     distribution, num_samples = randomization
     if distribution not in supported_distributions:
-        raise ValueError(
-            f"Unsupported {distribution=} ({supported_distributions=})."
-        )
+        raise ValueError(f"Unsupported {distribution=} ({supported_distributions=}).")
     if num_samples <= 0:
         raise ValueError(f"{num_samples=} must be positive.")
 

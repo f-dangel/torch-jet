@@ -77,8 +77,6 @@ def laplacian(
     in_dim = mock_x.numel()
 
     rank_weightings = in_dim if weighting is None else weighting[1]
-
-    # Optional: Use randomization instead of deterministic computation
     validate_randomization(randomization, SUPPORTED_DISTRIBUTIONS)
 
     num_jets = rank_weightings if randomization is None else randomization[1]

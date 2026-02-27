@@ -15,7 +15,7 @@ from test.utils import report_nonclose
 
 
 def compare_jet_results(  # noqa: D103
-    out1: ValueAndCoefficients, out2: ValueAndCoefficients
+    out1: tuple[Tensor, ...], out2: tuple[Tensor, ...]
 ):
     """Compare two jet outputs in flat-tuple format ``(f0, f1, ..., fk)``.
 
@@ -68,7 +68,7 @@ def check_jet(f: Callable[[Primal], Value], arg: PrimalAndCoefficients):  # noqa
     rev_jet_f = rev_jet(f)
     rev_jet_out = rev_jet_f(primals, series)
 
-    jet_f = jet.jet(f, k, (x,), verbose=True)
+    jet_f = jet.jet(f, k, (x,))
     jet_out = jet_f(primals, series)
 
     compare_primals_series(jet_out, rev_jet_out)
@@ -177,7 +177,7 @@ K_IDS = [f"{k=}" for k in K]
 
 def setup_case(
     config: dict[str, Any], vmapsize: int = 0, derivative_order: int | None = None
-) -> tuple[Callable[[Primal], Value], Primal, tuple[Primal, ...]]:
+) -> tuple[Callable[[Tensor], Tensor], Tensor, tuple[Tensor, ...]]:
     """Instantiate the function, its input, and Taylor coefficients.
 
     Args:
@@ -269,7 +269,7 @@ def test_jet_multi_input(config: dict[str, Any], k: int):
     primals = tuple(rand(*s).double() for s in shapes)
     series = tuple(tuple(rand(*s).double() for s in shapes) for _ in range(k))
 
-    jet_f = jet.jet(f, k, mock_args, verbose=True)
+    jet_f = jet.jet(f, k, mock_args)
     jet_out = jet_f(primals, series)
 
     rev_jet_f = rev_jet(f, k)
@@ -322,7 +322,7 @@ def test_jet_pytree_input(config: dict[str, Any], k: int):
     primals = config["mock_args_fn"]()
     series = tuple(config["mock_args_fn"]() for _ in range(k))
 
-    jet_f = jet.jet(f, k, mock_args, verbose=True)
+    jet_f = jet.jet(f, k, mock_args)
     jet_out = jet_f(primals, series)
 
     rev_jet_f = rev_jet(f, k)
@@ -378,7 +378,7 @@ def test_jet_pytree_output(config: dict[str, Any], k: int):
     primals = config["mock_args_fn"]()
     series = tuple(config["mock_args_fn"]() for _ in range(k))
 
-    jet_f = jet.jet(f, k, mock_args, verbose=True)
+    jet_f = jet.jet(f, k, mock_args)
     jet_out = jet_f(primals, series)
 
     rev_jet_f = rev_jet(f, k)

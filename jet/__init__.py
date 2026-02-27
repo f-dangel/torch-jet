@@ -56,7 +56,6 @@ def jet(
     f: Callable[..., Value],
     derivative_order: int,
     mock_args: tuple,
-    verbose: bool = False,
 ) -> Callable[..., ValueAndCoefficients]:
     """Overload a function with its Taylor-mode equivalent.
 
@@ -66,7 +65,6 @@ def jet(
         mock_args: Mock input tensors (or pytrees of tensors) for tracing,
             provided as a tuple matching the positional arguments of ``f``.
             Only shapes matter, not the actual values.
-        verbose: Whether to print the traced graph. Default: ``False``.
 
     Returns:
         A function ``jet_f(primals, series)`` that returns
@@ -100,9 +98,6 @@ def jet(
         return f(*args)
 
     mod = capture_graph(flat_f, *flat_mocks)
-
-    if verbose:
-        print(f"Traced graph:\n{mod.graph}")
 
     interp = JetInterpreter(mod, derivative_order)
 

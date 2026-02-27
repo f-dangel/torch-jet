@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
-- **Backward-incompatible.** Replace `Laplacian` and `Bilaplacian` `nn.Module`
-  classes with `laplacian()` and `bilaplacian()` function transforms that return
+- **Backward-incompatible.** Replace `Laplacian` and `Bilaplacian` `nn.Module`s
+  with `laplacian()` and `bilaplacian()` function transforms that return
   plain callables
   ([PR](https://github.com/f-dangel/torch-jet/pull/123))
 
@@ -20,16 +20,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   batching implementation. Remove `replicate` and `sum_vmapped` from `jet.utils`
   ([PR](https://github.com/f-dangel/torch-jet/pull/122))
 
+- Support general functions with multiple inputs and pytree I/O in `jet()` and
+  `rev_jet()`. `jet()` now accepts `mock_args` as a tuple and returns a closure
+  `jet_f(primals, series)` that returns `(primals_out, series_out)`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/126))
+
 ### Fixed/Removed
 
 ### Internal
 
-- Replace `JetTransformer` (graph rewriting via `torch.fx.Transformer`) with
+- **Backward-incompatible.** Remove the `verbose` argument from `jet()`.
+  Replace `JetTransformer` (graph rewriting via `torch.fx.Transformer`) with
   `JetInterpreter` (execution-time dispatch via `torch.fx.Interpreter`).
   `jet()` now returns a plain closure instead of a `GraphModule`. Removes
   `analyze_dependencies`, `_replace_operations_with_taylor`, and
   `jet_transformer.py` (~250 lines). No changes to `laplacian()`,
   `bilaplacian()`, or `simplify()`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/125))
 
 - **Backward-incompatible.** Rewrite tracing and simplification to operate on
   ATen-level ops. Remove `jet/vmap.py` (custom `traceable_vmap`),

@@ -8,6 +8,7 @@ from torch.func import vmap
 import jet
 import jet.utils
 from jet.ttc_coefficients import compute_all_gammas
+from jet.utils import sample, validate_randomization
 
 SUPPORTED_DISTRIBUTIONS = ["normal"]
 
@@ -69,14 +70,7 @@ def bilaplacian(
     in_shape = mock_x.shape
     in_dim = mock_x.numel()
 
-    if randomization is not None:
-        (distribution, num_samples) = randomization
-        if distribution not in SUPPORTED_DISTRIBUTIONS:
-            raise ValueError(
-                f"Unsupported {distribution=} ({SUPPORTED_DISTRIBUTIONS=})."
-            )
-        if num_samples <= 0:
-            raise ValueError(f"{num_samples=} must be positive.")
+    validate_randomization(randomization, SUPPORTED_DISTRIBUTIONS)
 
     derivative_order = 4
     jet_f = jet.jet(f, derivative_order, (mock_x,))
@@ -133,7 +127,7 @@ def bilaplacian(
 
         if randomization is not None:
             distribution, num_samples = randomization
-            X1 = jet.utils.sample(x, distribution, (num_samples, *in_shape))
+            X1 = sample(x, distribution, (num_samples, *in_shape))
 
             _, (_, _, _, F4) = vmapped(X1)
             # need to divide the Laplacian by number of MC samples

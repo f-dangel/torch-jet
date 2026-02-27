@@ -1,7 +1,7 @@
 """Implementation of AD primitives in Taylor-mode arithmetic."""
 
 from scipy.special import comb, factorial, stirling2
-from torch import addmm, cos, mm, mul, ops, sigmoid, sin, tanh
+from torch import Tensor, addmm, cos, mm, mul, ops, sigmoid, sin, tanh
 from torch.utils._pytree import register_pytree_node
 
 from jet.utils import (
@@ -30,8 +30,8 @@ register_pytree_node(
 
 
 def _faa_di_bruno(
-    vs: tuple[Primal, ...], derivative_order: int, dn: dict[int, Primal]
-) -> list[Value]:
+    vs: tuple[Tensor, ...], derivative_order: int, dn: dict[int, Tensor]
+) -> list[Tensor]:
     """Apply Faà di Bruno's formula for elementwise functions.
 
     Args:
@@ -403,7 +403,7 @@ def jet_addmm(
     """Taylor-mode arithmetic for ``aten.addmm(self, mat1, mat2)``.
 
     Args:
-        self: The bias tensor (constant).
+        self: The bias tensor. Must be a constant ``Tensor``, not a ``JetTuple``.
         mat1: The first matrix and its Taylor coefficients.
         mat2: The second matrix and its Taylor coefficients.
         derivative_order: The order of the Taylor expansion.
@@ -411,6 +411,12 @@ def jet_addmm(
     Returns:
         The value and its Taylor coefficients.
     """
+    if isinstance(self, JetTuple):
+        raise NotImplementedError(
+            "jet_addmm does not support a Taylor-expanded bias (self). "
+            "Expected a constant Tensor."
+        )
+
     mat1_is_jet = isinstance(mat1, JetTuple)
     mat2_is_jet = isinstance(mat2, JetTuple)
 

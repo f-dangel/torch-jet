@@ -94,6 +94,32 @@ def rademacher(*shape: int, dtype: dtype | None = None, device: device | None = 
     )
 
 
+def validate_randomization(
+    randomization: tuple[str, int] | None, supported_distributions: list[str]
+):
+    """Validate the randomization arguments.
+
+    Does nothing if ``randomization`` is ``None``.
+
+    Args:
+        randomization: Tuple of (distribution name, number of samples), or ``None``.
+        supported_distributions: List of supported distribution names.
+
+    Raises:
+        ValueError: If the distribution is not supported or the number of samples
+            is not positive.
+    """
+    if randomization is None:
+        return
+    distribution, num_samples = randomization
+    if distribution not in supported_distributions:
+        raise ValueError(
+            f"Unsupported {distribution=} ({supported_distributions=})."
+        )
+    if num_samples <= 0:
+        raise ValueError(f"{num_samples=} must be positive.")
+
+
 def sample(x_meta: Tensor, distribution: str, shape: tuple[int, ...]) -> Tensor:
     """Sample a random tensor with the same dtype and device as a given tensor.
 

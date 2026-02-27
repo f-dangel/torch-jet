@@ -6,6 +6,7 @@ from torch import Tensor, eye, zeros_like
 from torch.func import vmap
 
 import jet
+from jet.utils import validate_randomization
 
 SUPPORTED_DISTRIBUTIONS = ["normal", "rademacher"]
 
@@ -75,23 +76,17 @@ def laplacian(
     in_shape = mock_x.shape
     in_dim = mock_x.numel()
 
-    (apply_weightings, rank_weightings) = (
-        (lambda x, V: V.reshape(num_jets, *in_shape), in_dim)
-        if weighting is None
-        else weighting
-    )
+    rank_weightings = in_dim if weighting is None else weighting[1]
 
     # Optional: Use randomization instead of deterministic computation
-    if randomization is not None:
-        (distribution, num_samples) = randomization
-        if distribution not in SUPPORTED_DISTRIBUTIONS:
-            raise ValueError(
-                f"Unsupported {distribution=} ({SUPPORTED_DISTRIBUTIONS=})."
-            )
-        if num_samples <= 0:
-            raise ValueError(f"{num_samples=} must be positive.")
+    validate_randomization(randomization, SUPPORTED_DISTRIBUTIONS)
 
     num_jets = rank_weightings if randomization is None else randomization[1]
+    apply_weightings = (
+        (lambda x, V: V.reshape(num_jets, *in_shape))
+        if weighting is None
+        else weighting[0]
+    )
     jet_f = jet.jet(f, 2, mock_x)
 
     def lap_f(x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
@@ -123,7 +118,7 @@ def laplacian(
 
         vmapped = vmap(
             lambda x1: jet_f(x, x1, zeros_like(x)),
-            randomness="different",
+            randomness="error" if randomization is None else "different",
             out_dims=(None, 0, 0),
         )
         F0, F1, F2 = vmapped(X1)

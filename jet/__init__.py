@@ -11,11 +11,10 @@ from torch.fx.experimental.proxy_tensor import make_fx
 from jet.jet_interpreter import JetInterpreter
 from jet.operations import JetTuple
 from jet.tracing import capture_graph
-from jet.utils import Primal, PrimalAndCoefficients, Value, ValueAndCoefficients
 
 
 def jet(
-    f: Callable[[Primal], Value],
+    f: Callable[[Tensor], Tensor],
     derivative_order: int,
     mock_x: Tensor,
     verbose: bool = False,
@@ -55,7 +54,7 @@ def jet(
 
     interp = JetInterpreter(mod, derivative_order)
 
-    def jet_f(x: Primal, *vs: Primal) -> ValueAndCoefficients:
+    def jet_f(x: Tensor, *vs: Tensor) -> tuple[Tensor, ...]:
         result = interp.run((x, *vs))
         if not isinstance(result, JetTuple):
             return (result,) + tuple(zeros_like(result) for _ in vs)
@@ -71,10 +70,10 @@ def jet(
 
 
 def rev_jet(
-    f: Callable[[Primal], Value],
+    f: Callable[[Tensor], Tensor],
     derivative_order: int | None = None,
     detach: bool = True,
-) -> Callable[[PrimalAndCoefficients], ValueAndCoefficients]:
+) -> Callable[..., tuple[Tensor, ...]]:
     """Implement Taylor-mode via nested reverse-mode autodiff.
 
     Args:
@@ -107,8 +106,8 @@ def rev_jet(
         return grad(f, X, **grad_kwargs)[0] if f.requires_grad else zeros_like(X)
 
     def jet_f(
-        x: Primal, *vs: Primal, derivative_order: int | None = derivative_order
-    ) -> ValueAndCoefficients:
+        x: Tensor, *vs: Tensor, derivative_order: int | None = derivative_order
+    ) -> tuple[Tensor, ...]:
         """Compute the function and its Taylor coefficients.
 
         Args:

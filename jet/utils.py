@@ -9,13 +9,6 @@ from torch.fx import GraphModule, Node
 from torch.fx.passes.graph_drawer import FxGraphDrawer
 from torch.random import fork_rng
 
-# type annotation for arguments and Taylor coefficients in input and output space
-Primal = Tensor
-Value = Tensor
-# primals and values form a tuple
-PrimalAndCoefficients = tuple[Primal, ...]
-ValueAndCoefficients = tuple[Value, ...]
-
 
 def run_seeded(f: Callable, seed: int, *args, **kwargs):
     """Run a callable with a specific random seed, restoring the RNG state afterwards.

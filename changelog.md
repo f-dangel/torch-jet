@@ -32,7 +32,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   No changes to `laplacian()`, `bilaplacian()`, or `simplify()`
   ([PR](https://github.com/f-dangel/torch-jet/pull/125))
 
-
 - **Backward-incompatible.** Rewrite tracing and simplification to operate on
   ATen-level ops. Remove `jet/vmap.py` (custom `traceable_vmap`),
   `jet/signature_parser.py`, and related utilities (`replicate`, `sum_vmapped`,

@@ -8,8 +8,6 @@ from torch.fx import GraphModule
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.nn import Module
 
-from jet.utils import Primal, Value
-
 # Map in-place ATen ops to their out-of-place equivalents.
 _INPLACE_TO_FUNCTIONAL = {
     ops.aten.squeeze_.dim: ops.aten.squeeze.dim,
@@ -17,7 +15,7 @@ _INPLACE_TO_FUNCTIONAL = {
 
 
 def capture_graph(
-    f: Module | Callable[[Primal], Value] | GraphModule,
+    f: Module | Callable[[Tensor], Tensor] | GraphModule,
     mock_x: Tensor,
 ) -> GraphModule:
     """Capture the compute graph of a function using make_fx.

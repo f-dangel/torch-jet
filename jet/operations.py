@@ -1,15 +1,10 @@
 """Implementation of AD primitives in Taylor-mode arithmetic."""
 
 from scipy.special import comb, factorial, stirling2
-from torch import addmm, cos, mm, mul, ops, sigmoid, sin, tanh
+from torch import Tensor, addmm, cos, mm, mul, ops, sigmoid, sin, tanh
 from torch.utils._pytree import register_pytree_node
 
-from jet.utils import (
-    Primal,
-    Value,
-    integer_partitions,
-    multiplicity,
-)
+from jet.utils import integer_partitions, multiplicity
 
 
 class JetTuple(tuple):
@@ -30,8 +25,8 @@ register_pytree_node(
 
 
 def _faa_di_bruno(
-    vs: tuple[Primal, ...], derivative_order: int, dn: dict[int, Primal]
-) -> list[Value]:
+    vs: tuple[Tensor, ...], derivative_order: int, dn: dict[int, Tensor]
+) -> list[Tensor]:
     """Apply Faà di Bruno's formula for elementwise functions.
 
     Args:
@@ -258,8 +253,8 @@ def jet_pow(
 
 
 def jet_add(
-    self: Primal | JetTuple | float | int,
-    other: Primal | JetTuple | float | int,
+    self: Tensor | JetTuple | float | int,
+    other: Tensor | JetTuple | float | int,
     *,
     derivative_order: int,
 ) -> JetTuple:
@@ -289,8 +284,8 @@ def jet_add(
 
 
 def jet_sub(
-    self: Primal | JetTuple | float | int,
-    other: Primal | JetTuple | float | int,
+    self: Tensor | JetTuple | float | int,
+    other: Tensor | JetTuple | float | int,
     *,
     derivative_order: int,
 ) -> JetTuple:
@@ -321,8 +316,8 @@ def jet_sub(
 
 
 def jet_mul(
-    self: Primal | JetTuple,
-    other: Primal | JetTuple,
+    self: Tensor | JetTuple,
+    other: Tensor | JetTuple,
     *,
     derivative_order: int,
 ) -> JetTuple:
@@ -359,8 +354,8 @@ def jet_mul(
 
 
 def jet_mm(
-    self: Primal | JetTuple,
-    mat2: Primal | JetTuple,
+    self: Tensor | JetTuple,
+    mat2: Tensor | JetTuple,
     *,
     derivative_order: int,
 ) -> JetTuple:
@@ -394,9 +389,9 @@ def jet_mm(
 
 
 def jet_addmm(
-    self: Primal,
-    mat1: Primal | JetTuple,
-    mat2: Primal | JetTuple,
+    self: Tensor,
+    mat1: Tensor | JetTuple,
+    mat2: Tensor | JetTuple,
     *,
     derivative_order: int,
 ) -> JetTuple:

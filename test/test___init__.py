@@ -9,12 +9,11 @@ from torch.nn.functional import linear
 
 import jet
 from jet import rev_jet
-from jet.utils import Primal, PrimalAndCoefficients, Value, ValueAndCoefficients
 from test.utils import report_nonclose
 
 
 def compare_jet_results(  # noqa: D103
-    out1: ValueAndCoefficients, out2: ValueAndCoefficients
+    out1: tuple[Tensor, ...], out2: tuple[Tensor, ...]
 ):
     value1, series1 = out1[0], out1[1:]
     value2, series2 = out2[0], out2[1:]
@@ -25,7 +24,7 @@ def compare_jet_results(  # noqa: D103
         report_nonclose(s1, s2, name=f"Coefficients {i + 1}")
 
 
-def check_jet(f: Callable[[Primal], Value], arg: PrimalAndCoefficients):  # noqa: D103
+def check_jet(f: Callable[[Tensor], Tensor], arg: tuple[Tensor, tuple[Tensor, ...]]):  # noqa: D103
     x, vs = arg
 
     rev_jet_f = rev_jet(f)
@@ -140,7 +139,7 @@ K_IDS = [f"{k=}" for k in K]
 
 def setup_case(
     config: dict[str, Any], vmapsize: int = 0, derivative_order: int | None = None
-) -> tuple[Callable[[Primal], Value], Primal, tuple[Primal, ...]]:
+) -> tuple[Callable[[Tensor], Tensor], Tensor, tuple[Tensor, ...]]:
     """Instantiate the function, its input, and Taylor coefficients.
 
     Args:

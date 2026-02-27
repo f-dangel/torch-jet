@@ -6,9 +6,8 @@ from torch import Tensor, eye, triu_indices, zeros_like
 from torch.func import vmap
 
 import jet
-import jet.utils
 from jet.ttc_coefficients import compute_all_gammas
-from jet.utils import validate_randomization
+from jet.utils import sample, validate_randomization
 
 SUPPORTED_DISTRIBUTIONS = ["normal"]
 
@@ -127,7 +126,7 @@ def bilaplacian(
 
         if randomization is not None:
             distribution, num_samples = randomization
-            X1 = jet.utils.sample(x, distribution, (num_samples, *in_shape))
+            X1 = sample(x, distribution, (num_samples, *in_shape))
 
             _, _, _, _, F4 = vmapped(X1)
             # need to divide the Laplacian by number of MC samples

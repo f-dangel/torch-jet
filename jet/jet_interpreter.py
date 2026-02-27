@@ -8,7 +8,10 @@ tensors under `make_fx`) and uses `isinstance(arg, JetTuple)` to distinguish
 Taylor-expanded arguments from constants.
 """
 
+from typing import Any
+
 from torch.fx import GraphModule, Interpreter
+from torch.fx.node import Argument, Target
 
 from jet.operations import MAPPING, JetTuple
 
@@ -37,7 +40,9 @@ class JetInterpreter(Interpreter):
         super().__init__(module)
         self.derivative_order = derivative_order
 
-    def placeholder(self, target, args, kwargs):
+    def placeholder(
+        self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Any]
+    ) -> JetTuple:
         """Wrap placeholder values in a JetTuple.
 
         Args:
@@ -51,7 +56,9 @@ class JetInterpreter(Interpreter):
         value = super().placeholder(target, args, kwargs)
         return JetTuple(value)
 
-    def call_function(self, target, args, kwargs):
+    def call_function(
+        self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Any]
+    ) -> Any:
         """Execute a function node, substituting jet operations when needed.
 
         Args:
@@ -63,13 +70,22 @@ class JetInterpreter(Interpreter):
             The result of the jet operation (a JetTuple) or the original operation.
 
         Raises:
-            NotImplementedError: If a Taylor-dependent operation has no jet rule.
+            NotImplementedError: If a Taylor-dependent operation has no jet rule,
+                or if the node has non-empty kwargs.
         """
+        # TODO Only checks top-level args. JetTuples nested inside
+        # tuple/list/dict args (e.g. for aten.stack, aten.cat) will be missed,
+        # causing a TypeError instead of a clear NotImplementedError.
         has_jet_arg = any(isinstance(a, JetTuple) for a in args)
         if has_jet_arg:
             if target not in MAPPING:
                 raise NotImplementedError(
                     f"No jet rule for {target}. Please file an issue or add a rule."
+                )
+            if kwargs:
+                raise NotImplementedError(
+                    f"Jet dispatch does not support kwargs for {target} "
+                    f"(got {kwargs})."
                 )
             return MAPPING[target](*args, derivative_order=self.derivative_order)
         return super().call_function(target, args, kwargs)

@@ -26,10 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Replace `JetTransformer` (graph rewriting via `torch.fx.Transformer`) with
   `JetInterpreter` (execution-time dispatch via `torch.fx.Interpreter`).
-  `jet()` now returns a plain closure instead of a `GraphModule`. Removes
-  `analyze_dependencies`, `_replace_operations_with_taylor`, and
-  `jet_transformer.py` (~250 lines). No changes to `laplacian()`,
-  `bilaplacian()`, or `simplify()`
+  `jet()` still returns a `GraphModule` (the interpreter closure is traced
+  with `make_fx`). Removes `analyze_dependencies`,
+  `_replace_operations_with_taylor`, and `jet_transformer.py` (~250 lines).
+  No changes to `laplacian()`, `bilaplacian()`, or `simplify()`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/125))
 
 
 - **Backward-incompatible.** Rewrite tracing and simplification to operate on

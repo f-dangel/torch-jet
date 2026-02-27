@@ -12,7 +12,6 @@ from os import path
 from pytest import raises
 from torch import Tensor, cos, manual_seed, ones_like, rand, sin, zeros_like
 from torch.func import hessian
-from torch.fx.experimental.proxy_tensor import make_fx
 from torch.nn import Linear, Sequential, Tanh
 from torch.nn.functional import relu
 
@@ -239,28 +238,23 @@ else:
 #
 ### How It Works
 #
-# `jet` uses `make_fx` to capture the function's ATen-level compute graph, then wraps
-# it in an interpreter that dispatches jet operations at runtime.
+# `jet` uses `make_fx` to capture the function's ATen-level compute graph, then
+# runs it through a `JetInterpreter` that dispatches jet operations (e.g.
+# `jet_linear`, `jet_tanh`) in place of the original ATen ops. The interpreter
+# output is traced again with `make_fx` so that `jet` returns a
+# `torch.fx.GraphModule` containing the fully unrolled jet computation.
 #
-# When `f_jet` is called, the interpreter walks through the captured graph node by
-# node. For each `call_function` node, it checks whether any argument is a
-# Taylor-expanded value (a `JetTuple`). If so, it dispatches to the corresponding jet
-# operation (e.g. `jet_linear`, `jet_tanh`) instead of the original ATen op.
-#
-# Let's visualize both the original function's compute graph and the unrolled jet
-# function (obtained by tracing `f_jet` with `make_fx`):
+# Let's visualize both the original function's compute graph and the jet function:
 
 mod = capture_graph(f, x)
 visualize_graph(mod, path.join(GALLERYDIR, "01_f.png"))
-visualize_graph(
-    make_fx(f_jet)(x0, x1, x2), path.join(GALLERYDIR, "01_f_jet_unrolled.png")
-)
+visualize_graph(f_jet, path.join(GALLERYDIR, "01_f_jet.png"))
 
 # %%
 #
-# | Original function $f$ | Unrolled 2-jet function $f_{2\text{-jet}}$  |
-# |:---------------------:|:-------------------------------------------:|
-# | ![f graph](01_f.png)  | ![f-jet graph](01_f_jet_unrolled.png)       |
+# | Original function $f$ | 2-jet function $f_{2\text{-jet}}$  |
+# |:---------------------:|:----------------------------------:|
+# | ![f graph](01_f.png)  | ![f-jet graph](01_f_jet.png)       |
 #
 # The unrolled graph is, unsurprisingly, much larger. However, you should be able to
 # recognize all functions that are being called. We can regard this process as a
@@ -342,9 +336,8 @@ with raises(RuntimeError):
 # the ReLU function is currently not supported:
 
 
-f_relu = jet(lambda x: relu(x), 2, rand(3))  # noqa: PLW0108
 with raises(NotImplementedError):
-    f_relu(rand(3), rand(3), rand(3))  # error is raised at call time
+    jet(lambda x: relu(x), 2, rand(3))  # noqa: PLW0108
 
 # %%
 #

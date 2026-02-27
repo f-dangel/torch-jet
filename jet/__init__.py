@@ -5,6 +5,8 @@ from typing import Callable
 
 from torch import Tensor, tensor, zeros_like
 from torch.autograd import grad
+from torch.fx import GraphModule
+from torch.fx.experimental.proxy_tensor import make_fx
 
 from jet.jet_interpreter import JetInterpreter
 from jet.operations import JetTuple
@@ -17,7 +19,7 @@ def jet(
     derivative_order: int,
     mock_x: Tensor,
     verbose: bool = False,
-) -> Callable[[PrimalAndCoefficients], ValueAndCoefficients]:
+) -> GraphModule:
     """Overload a function with its Taylor-mode equivalent.
 
     Args:
@@ -28,7 +30,7 @@ def jet(
         verbose: Whether to print the traced graph. Default: `False`.
 
     Returns:
-        The overloaded function that computes the function and its Taylor coefficients
+        A ``GraphModule`` that computes the function and its Taylor coefficients
             from the input tensor and its Taylor coefficients.
 
     Examples:
@@ -59,7 +61,13 @@ def jet(
             return (result,) + tuple(zeros_like(result) for _ in vs)
         return tuple(result)
 
-    return jet_f
+    mock_vs = tuple(zeros_like(mock_x) for _ in range(derivative_order))
+    jet_mod = make_fx(jet_f)(mock_x, *mock_vs)
+
+    if verbose:
+        print(f"Jet graph:\n{jet_mod.graph}")
+
+    return jet_mod
 
 
 def rev_jet(

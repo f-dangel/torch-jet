@@ -389,7 +389,7 @@ def jet_mm(
 
 
 def jet_addmm(
-    self: Tensor,
+    self: Tensor | JetTuple,
     mat1: Tensor | JetTuple,
     mat2: Tensor | JetTuple,
     *,
@@ -398,7 +398,7 @@ def jet_addmm(
     """Taylor-mode arithmetic for ``aten.addmm(self, mat1, mat2)``.
 
     Args:
-        self: The bias tensor (constant).
+        self: The bias tensor. Must be a constant ``Tensor``, not a ``JetTuple``.
         mat1: The first matrix and its Taylor coefficients.
         mat2: The second matrix and its Taylor coefficients.
         derivative_order: The order of the Taylor expansion.
@@ -406,6 +406,12 @@ def jet_addmm(
     Returns:
         The value and its Taylor coefficients.
     """
+    if isinstance(self, JetTuple):
+        raise NotImplementedError(
+            "jet_addmm does not support a Taylor-expanded bias (self). "
+            "Expected a constant Tensor."
+        )
+
     mat1_is_jet = isinstance(mat1, JetTuple)
     mat2_is_jet = isinstance(mat2, JetTuple)
 

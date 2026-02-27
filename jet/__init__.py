@@ -14,10 +14,7 @@ from jet.tracing import capture_graph
 
 
 def jet(
-    f: Callable[[Tensor], Tensor],
-    derivative_order: int,
-    mock_x: Tensor,
-    verbose: bool = False,
+    f: Callable[[Tensor], Tensor], derivative_order: int, mock_x: Tensor
 ) -> GraphModule:
     """Overload a function with its Taylor-mode equivalent.
 
@@ -26,7 +23,6 @@ def jet(
         derivative_order: The order of the Taylor expansion.
         mock_x: A mock input tensor for tracing. Only the shape matters, not
             the actual values.
-        verbose: Whether to print the traced graph. Default: `False`.
 
     Returns:
         A ``GraphModule`` that computes the function and its Taylor coefficients
@@ -48,10 +44,6 @@ def jet(
         >>> assert f2.allclose(df * x2 + d2f * x1 ** 2)
     """
     mod = capture_graph(f, mock_x)
-
-    if verbose:
-        print(f"Traced graph:\n{mod.graph}")
-
     interp = JetInterpreter(mod, derivative_order)
 
     def jet_f(x: Tensor, *vs: Tensor) -> tuple[Tensor, ...]:
@@ -61,12 +53,7 @@ def jet(
         return tuple(result)
 
     mock_vs = tuple(zeros_like(mock_x) for _ in range(derivative_order))
-    jet_mod = make_fx(jet_f)(mock_x, *mock_vs)
-
-    if verbose:
-        print(f"Jet graph:\n{jet_mod.graph}")
-
-    return jet_mod
+    return make_fx(jet_f)(mock_x, *mock_vs)
 
 
 def rev_jet(

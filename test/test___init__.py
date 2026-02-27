@@ -30,7 +30,7 @@ def check_jet(f: Callable[[Tensor], Tensor], arg: tuple[Tensor, tuple[Tensor, ..
     rev_jet_f = rev_jet(f)
     rev_jet_out = rev_jet_f(x, *vs)
 
-    jet_f = jet.jet(f, len(vs), x, verbose=True)
+    jet_f = jet.jet(f, len(vs), x)
     jet_out = jet_f(x, *vs)
 
     compare_jet_results(jet_out, rev_jet_out)

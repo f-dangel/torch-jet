@@ -6,7 +6,7 @@ from torch import Tensor, eye, zeros_like
 from torch.func import vmap
 
 import jet
-from jet.utils import validate_randomization
+from jet.utils import sample, validate_randomization
 
 SUPPORTED_DISTRIBUTIONS = ["normal", "rademacher"]
 
@@ -110,7 +110,7 @@ def laplacian(
         V = (
             eye(rank_weightings, **in_meta)
             if randomization is None
-            else jet.utils.sample(x, randomization[0], shape)
+            else sample(x, randomization[0], shape)
         )
         X1 = apply_weightings(x, V)
 

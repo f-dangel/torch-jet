@@ -31,7 +31,7 @@ from torch.nn import Linear, Sequential, Tanh
 from torch.optim import Adam
 from tueplots import bundles
 
-from jet.laplacian import Laplacian
+from jet.laplacian import laplacian
 from jet.simplify import simplify
 
 _ = manual_seed(42)  # make deterministic
@@ -193,7 +193,7 @@ X_boundary = sample_boundary()
 
 
 # Function that computes three numbers, the last is the neural networks Laplacian
-lap_f = Laplacian(f, zeros(2, dtype=DTYPE))  # uses Taylor mode
+lap_f = laplacian(f, zeros(2, dtype=DTYPE))  # uses Taylor mode
 lap_f = simplify(lap_f, zeros(2, dtype=DTYPE))  # collapses Taylor mode
 lap_f = vmap(lap_f)  # parallelized over data points
 

@@ -9,12 +9,13 @@ from torch.func import hessian
 from torch.linalg import norm
 from torch.nn import Linear, Sequential, Tanh
 
-from jet.laplacian import Laplacian
+from jet.laplacian import SUPPORTED_DISTRIBUTIONS
+from jet.laplacian import laplacian as jet_laplacian
 from jet.utils import run_seeded
 from jet.weighted_laplacian import C_func_diagonal_increments, get_weighting
 from test.test___init__ import setup_case
 
-DISTRIBUTIONS = Laplacian.SUPPORTED_DISTRIBUTIONS
+DISTRIBUTIONS = SUPPORTED_DISTRIBUTIONS
 DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]
 
 WEIGHTS = [
@@ -136,8 +137,8 @@ def test_Laplacian(config: dict[str, Any], weights: str | None | tuple[str, floa
 
     # Using a manually-vmapped jet
     weighting = get_weighting(x, weights)
-    _, _, lap_mod = Laplacian(f, x, weighting=weighting)(x)
-    assert lap_rev.allclose(lap_mod), "Functorch and jet Laplacians do not match."
+    _, _, lap_fn = jet_laplacian(f, x, weighting=weighting)(x)
+    assert lap_rev.allclose(lap_fn), "Functorch and jet Laplacians do not match."
 
 
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
@@ -173,7 +174,7 @@ def test_Laplacian_randomization(
     # check convergence of MC estimator
     weighting = get_weighting(x, weights, randomization=randomization)
 
-    lap_fn = Laplacian(f, x, randomization=randomization, weighting=weighting)
+    lap_fn = jet_laplacian(f, x, randomization=randomization, weighting=weighting)
 
     converged = _check_mc_convergence(
         lap,

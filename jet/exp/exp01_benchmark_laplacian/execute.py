@@ -23,9 +23,9 @@ from torch import compile as torch_compile
 from torch.func import hessian, jacrev, jvp, vmap
 from torch.nn import Linear, Sequential, Tanh
 
-from jet.bilaplacian import Bilaplacian
+from jet.bilaplacian import bilaplacian as jet_bilaplacian
 from jet.exp.utils import measure_peak_memory, measure_time, to_string
-from jet.laplacian import Laplacian
+from jet.laplacian import laplacian as jet_laplacian
 from jet.simplify import simplify
 from jet.utils import run_seeded, sample
 from jet.weighted_laplacian import get_weighting
@@ -258,12 +258,12 @@ def laplacian_function(
             )
 
     elif strategy in {"jet_naive", "jet_simplified"}:
-        lap_mod = Laplacian(
+        lap_fn = jet_laplacian(
             f, dummy_x, randomization=randomization, weighting=weighting
         )
         pull_sum = strategy == "jet_simplified"
-        lap_mod = simplify(lap_mod, dummy_x, pull_sum=pull_sum)
-        laplacian = lambda x: lap_mod(x)[2]  # noqa: E731
+        lap_fn = simplify(lap_fn, dummy_x, pull_sum=pull_sum)
+        laplacian = lambda x: lap_fn(x)[2]  # noqa: E731
 
     else:
         raise ValueError(f"Unsupported {strategy=}. {SUPPORTED_STRATEGIES=}.")
@@ -357,26 +357,26 @@ def bilaplacian_function(
     if strategy == "hessian_trace":
         if randomization is None:
             laplacian = hessian_trace_laplacian(f, dummy_x)
-            bilaplacian = hessian_trace_laplacian(laplacian, dummy_x)
+            bilap_fn = hessian_trace_laplacian(laplacian, dummy_x)
         else:
-            bilaplacian = vector_hessian_vector_product_bilaplacian(
+            bilap_fn = vector_hessian_vector_product_bilaplacian(
                 f, dummy_x, randomization
             )
 
     elif strategy in {"jet_naive", "jet_simplified"}:
-        bilaplacian = Bilaplacian(f, dummy_x, randomization=randomization)
+        bilap_fn = jet_bilaplacian(f, dummy_x, randomization=randomization)
         pull_sum = strategy == "jet_simplified"
-        bilaplacian = simplify(bilaplacian, dummy_x, pull_sum=pull_sum)
+        bilap_fn = simplify(bilap_fn, dummy_x, pull_sum=pull_sum)
 
     else:
         raise ValueError(f"Unsupported strategy: {strategy}.")
 
     if is_batched:
-        bilaplacian = vmap(
-            bilaplacian, randomness="error" if randomization is None else "different"
+        bilap_fn = vmap(
+            bilap_fn, randomness="error" if randomization is None else "different"
         )
 
-    return partial(bilaplacian, X)
+    return partial(bilap_fn, X)
 
 
 def setup_architecture(

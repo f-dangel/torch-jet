@@ -84,8 +84,7 @@ class JetInterpreter(Interpreter):
                 )
             if kwargs:
                 raise NotImplementedError(
-                    f"Jet dispatch does not support kwargs for {target} "
-                    f"(got {kwargs})."
+                    f"Jet dispatch does not support kwargs for {target} (got {kwargs})."
                 )
             return MAPPING[target](*args, derivative_order=self.derivative_order)
         return super().call_function(target, args, kwargs)

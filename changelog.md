@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
-- **Backward-incompatible.** Replace `Laplacian` and `Bilaplacian` `nn.Module`
-  classes with `laplacian()` and `bilaplacian()` function transforms that return
+- **Backward-incompatible.** Replace `Laplacian` and `Bilaplacian` `nn.Module`s
+  with `laplacian()` and `bilaplacian()` function transforms that return
   plain callables
   ([PR](https://github.com/f-dangel/torch-jet/pull/123))
 
@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `analyze_dependencies`, `_replace_operations_with_taylor`, and
   `jet_transformer.py` (~250 lines). No changes to `laplacian()`,
   `bilaplacian()`, or `simplify()`
+
 
 - **Backward-incompatible.** Rewrite tracing and simplification to operate on
   ATen-level ops. Remove `jet/vmap.py` (custom `traceable_vmap`),

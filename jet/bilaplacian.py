@@ -8,6 +8,7 @@ from torch.func import vmap
 import jet
 import jet.utils
 from jet.ttc_coefficients import compute_all_gammas
+from jet.utils import validate_randomization
 
 SUPPORTED_DISTRIBUTIONS = ["normal"]
 
@@ -69,14 +70,7 @@ def bilaplacian(
     in_shape = mock_x.shape
     in_dim = mock_x.numel()
 
-    if randomization is not None:
-        (distribution, num_samples) = randomization
-        if distribution not in SUPPORTED_DISTRIBUTIONS:
-            raise ValueError(
-                f"Unsupported {distribution=} ({SUPPORTED_DISTRIBUTIONS=})."
-            )
-        if num_samples <= 0:
-            raise ValueError(f"{num_samples=} must be positive.")
+    validate_randomization(randomization, SUPPORTED_DISTRIBUTIONS)
 
     derivative_order = 4
     jet_f = jet.jet(f, derivative_order, mock_x)
@@ -124,9 +118,10 @@ def bilaplacian(
         """
         if x.shape != in_shape:
             raise ValueError(f"Expected input shape {in_shape}, got {x.shape}.")
+        z = zeros_like(x)
         vmapped = vmap(
-            lambda x1: jet_f(x, x1, zeros_like(x), zeros_like(x), zeros_like(x)),
-            randomness="different",
+            lambda x1: jet_f(x, x1, z, z, z),
+            randomness="error" if randomization is None else "different",
             out_dims=(None, 0, 0, 0, 0),
         )
 

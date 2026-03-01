@@ -20,9 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   batching implementation. Remove `replicate` and `sum_vmapped` from `jet.utils`
   ([PR](https://github.com/f-dangel/torch-jet/pull/122))
 
-- Support general functions with multiple inputs and pytree I/O in `jet()` and
-  `rev_jet()`. `jet()` now accepts `mock_args` as a tuple and returns a closure
-  `jet_f(primals, series)` that returns `(primals_out, series_out)`
+- **Backward-incompatible.** Support general functions with multiple inputs and
+  pytree I/O in `jet()` and `rev_jet()`. `jet()` now accepts `mock_args` as a
+  tuple and returns a closure `jet_f(primals, series)` that returns
+  `(primals_out, series_out)`
   ([PR](https://github.com/f-dangel/torch-jet/pull/126))
 
 ### Fixed/Removed

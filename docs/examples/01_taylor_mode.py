@@ -135,7 +135,7 @@ x1 = ones_like(x)
 x2 = zeros_like(x)
 
 # Evaluate the second derivative
-f0, (f1, f2) = f_jet((x0,), ((x1,), (x2,)))
+f0, (f1, f2) = f_jet((x0,), ((x1, x2),))
 
 # %%
 #
@@ -211,7 +211,7 @@ d2_diag = zeros_like(x)
 for d in range(D):
     x1 = zeros_like(x)
     x1[d] = 1.0  # d-th canonical basis vector
-    f0, (f1, f2) = f_jet((x0,), ((x1,), (x2,)))
+    f0, (f1, f2) = f_jet((x0,), ((x1, x2),))
     d2_diag[d] = f2
 
 # %%
@@ -226,6 +226,188 @@ if d2_diag.allclose(hessian_diag):
     print("Taylor mode Hessian diagonal matches functorch Hessian diagonal!")
 else:
     raise ValueError(f"{d2_diag} does not match {hessian_diag}!")
+
+# %%
+#
+### Multi-variate Functions
+#
+# So far, we have applied ``jet`` to functions with a single tensor argument. But ``jet``
+# also supports functions with **multiple inputs**. This is useful, for example, when
+# dealing with partial differential equations (PDEs) where the unknown depends on
+# multiple variables such as time and space.
+#
+# For a function with multiple arguments, ``mock_args`` is a tuple that matches the
+# function's positional arguments, and the jet is called with ``(primals, series)``
+# where each entry in ``series`` groups one Taylor coefficient **per argument** at the
+# same order.
+#
+# .. note::
+#
+#    **Comparison with JAX's Taylor mode.**
+#    `JAX's jet <https://docs.jax.dev/en/latest/jax.experimental.jet.html>`_
+#    uses the signature ``jet(fun, primals, series)`` where ``series`` is grouped
+#    **per argument** — each element is a tuple of that argument's Taylor
+#    coefficients across orders. ``torch-jet`` follows the same convention for
+#    ``series``.
+#
+#    The key difference is that ``torch-jet`` uses a two-step API: first
+#    ``jet_f = jet(f, k, mock_args)`` traces the function, then
+#    ``jet_f(primals, series)`` evaluates it. This separates tracing (which
+#    can be expensive) from evaluation, allowing the traced jet to be reused
+#    across multiple inputs.
+#
+# As a concrete example, consider the function
+# $u(t, x) = \cos(t) \sin(x)$, which is a solution to the 1-D wave equation
+# $\partial_{tt} u = \partial_{xx} u$. We will use ``jet`` to compute
+# $\partial_t u$ and $\partial_{xx} u$, verify them against their analytical
+# values, and finally check that the wave equation is satisfied.
+
+
+def u(t: Tensor, x: Tensor) -> Tensor:
+    """A solution to the 1-D wave equation.
+
+    Args:
+        t: Time (scalar tensor).
+        x: Space (scalar tensor).
+
+    Returns:
+        u(t, x) = cos(t) * sin(x).
+    """
+    return cos(t) * sin(x)
+
+
+t_val, x_val = rand(1), rand(1)  # evaluation point
+jet_u = jet(u, 2, (t_val, x_val))
+
+# %%
+#
+# **Computing** $\partial_t u$. We use the first-order Taylor coefficient with
+# $t_1 = 1$, $x_1 = 0$ so that
+# $f_1 = \frac{\partial u}{\partial t} \cdot 1
+#       + \frac{\partial u}{\partial x} \cdot 0
+#       = \frac{\partial u}{\partial t}$:
+
+_, (du_dt, _) = jet_u(
+    (t_val, x_val),
+    (
+        (ones_like(t_val), zeros_like(t_val)),
+        (zeros_like(x_val), zeros_like(x_val)),
+    ),
+)
+print(f"∂u/∂t = {du_dt.item():.6f}")
+
+# %%
+#
+# **Computing** $\partial_{xx} u$. We use the second-order Taylor coefficient with
+# $t_1 = 0$, $x_1 = 1$, $t_2 = 0$, $x_2 = 0$ so that
+# $f_2 = \frac{\partial^2 u}{\partial x^2} \cdot 1^2 = \frac{\partial^2 u}{\partial x^2}$:
+
+_, (_, d2u_dx2) = jet_u(
+    (t_val, x_val),
+    (
+        (zeros_like(t_val), zeros_like(t_val)),
+        (ones_like(x_val), zeros_like(x_val)),
+    ),
+)
+print(f"∂²u/∂x² = {d2u_dx2.item():.6f}")
+
+# %%
+#
+# Let's verify these against the known analytical derivatives.
+# For $u(t, x) = \cos(t) \sin(x)$:
+# $\partial_t u = -\sin(t) \sin(x)$ and
+# $\partial_{xx} u = -\cos(t) \sin(x)$.
+
+du_dt_exact = -sin(t_val) * sin(x_val)
+if du_dt.allclose(du_dt_exact):
+    print("∂u/∂t matches analytical value!")
+else:
+    raise ValueError(f"∂u/∂t = {du_dt} does not match {du_dt_exact}")
+
+d2u_dx2_exact = -cos(t_val) * sin(x_val)
+if d2u_dx2.allclose(d2u_dx2_exact):
+    print("∂²u/∂x² matches analytical value!")
+else:
+    raise ValueError(f"∂²u/∂x² = {d2u_dx2} does not match {d2u_dx2_exact}")
+
+# %%
+#
+# As a bonus, we can also verify the wave equation $\partial_{tt} u = \partial_{xx} u$.
+# We obtain $\partial_{tt} u$ from the second-order Taylor coefficient with
+# $t_1 = 1, x_1 = 0$:
+
+_, (_, d2u_dt2) = jet_u(
+    (t_val, x_val),
+    (
+        (ones_like(t_val), zeros_like(t_val)),
+        (zeros_like(x_val), zeros_like(x_val)),
+    ),
+)
+
+if d2u_dt2.allclose(d2u_dx2):
+    print("Wave equation verified: ∂²u/∂t² = ∂²u/∂x²!")
+else:
+    raise ValueError(f"∂²u/∂t² = {d2u_dt2} does not match ∂²u/∂x² = {d2u_dx2}")
+
+# %%
+#
+### Pytree Inputs and Outputs
+#
+# ``jet`` also supports functions whose inputs and outputs are arbitrary pytrees
+# (nested combinations of tuples, lists, and dicts with tensor leaves). As an example,
+# consider a function that takes a dict with entries ``"x"`` and ``"y"`` and returns
+# a dict with entries ``"mul"`` and ``"sub"``:
+
+
+def f_pytree(inputs: dict[str, Tensor]) -> dict[str, Tensor]:
+    """A function with dict input and dict output.
+
+    Args:
+        inputs: A dict with keys ``"x"`` and ``"y"``, each a tensor.
+
+    Returns:
+        A dict with ``"mul" = x * y`` and ``"sub" = x - y``.
+    """
+    x, y = inputs["x"], inputs["y"]
+    return {"mul": x * y, "sub": x - y}
+
+
+mock_inputs = {"x": rand(2), "y": rand(2)}
+jet_pytree = jet(f_pytree, 1, (mock_inputs,))
+
+# %%
+#
+# The primals and series follow the same pytree structure as the function's arguments.
+# Since ``f_pytree`` has a single argument (a dict), ``primals`` is a 1-tuple containing
+# that dict, and ``series`` has one entry (for that argument) with one Taylor coefficient
+# (since $k=1$):
+
+inputs = {"x": rand(2), "y": rand(2)}
+d_inputs = {"x": ones_like(inputs["x"]), "y": zeros_like(inputs["y"])}
+
+f0, (f1,) = jet_pytree((inputs,), ((d_inputs,),))
+
+# %%
+#
+# The output is also a pytree (dict) at each order:
+
+print(f"f0 keys: {list(f0.keys())}, f1 keys: {list(f1.keys())}")
+print(f"f0['mul'] = {f0['mul']}")
+print(f"f1['mul'] = {f1['mul']}  (should be d/dt [x*y] = dx/dt * y = 1 * y = y)")
+
+# Verify: with d_inputs = (1, 0), the directional derivative of x*y w.r.t. x is y,
+# and the directional derivative of x - y w.r.t. x is 1.
+x_val, y_val = inputs["x"], inputs["y"]
+
+if f1["mul"].allclose(y_val):
+    print("Pytree jet 'mul' derivative matches!")
+else:
+    raise ValueError(f"f1['mul'] = {f1['mul']} does not match y = {y_val}")
+
+if f1["sub"].allclose(ones_like(x_val)):
+    print("Pytree jet 'sub' derivative matches!")
+else:
+    raise ValueError(f"f1['sub'] = {f1['sub']} does not match 1")
 
 # %%
 #
@@ -253,7 +435,7 @@ else:
 mod = capture_graph(f, x)
 visualize_graph(mod, path.join(GALLERYDIR, "01_f.png"))
 visualize_graph(
-    make_fx(f_jet)((x0,), ((x1,), (x2,))),
+    make_fx(f_jet)((x0,), ((x1, x2),)),
     path.join(GALLERYDIR, "01_f_jet_unrolled.png"),
 )
 
@@ -282,48 +464,6 @@ visualize_graph(
 # how to properly implement `jet` in PyTorch. So if you have suggestions how to fix
 # them, please reach out to us, open an issue, or submit a pull request :wink:.**
 #
-#### Supported Function Signatures
-#
-# `jet` supports functions with multiple inputs and pytree I/O.  The calling
-# convention mirrors `torch.func.jvp`:
-#
-# ```python
-# jet_f = jet(f, k, mock_args)          # mock_args: tuple matching f's args
-# primals_out, series_out = jet_f(primals, series)
-# ```
-#
-# For a function with two arguments $f: (x, y) \mapsto f(x, y)$, the $k$-jet is
-# called as:
-#
-# ```python
-# f0, (f1, ..., fk) = jet_f((x0, y0), ((x1, y1), ..., (xk, yk)))
-# ```
-#
-# Here is a quick example:
-
-
-def f(x: Tensor, y: Tensor) -> Tensor:
-    """A function with two tensor arguments.
-
-    Args:
-        x: First tensor argument.
-        y: Second tensor argument.
-
-    Returns:
-        The sum of the two tensors.
-    """
-    return x + y
-
-
-x, y = rand(3), rand(3)
-f_jet = jet(f, 2, (x, y))
-f0, (f1, f2) = f_jet(
-    (x, y), ((ones_like(x), zeros_like(y)), (zeros_like(x), zeros_like(y)))
-)
-print(f"f0 = {f0}, f1 = {f1}, f2 = {f2}")
-
-# %%
-#
 #### Unsupported Operations
 #
 # **`jet` supports only a small number of operations.**
@@ -337,7 +477,7 @@ print(f"f0 = {f0}, f1 = {f1}, f2 = {f2}")
 x_relu = rand(3)
 f_relu = jet(lambda x: relu(x), 2, (x_relu,))  # noqa: PLW0108
 with raises(NotImplementedError):
-    f_relu((x_relu,), ((rand(3),), (rand(3),)))  # error is raised at call time
+    f_relu((x_relu,), ((rand(3), rand(3)),))  # error is raised at call time
 
 # %%
 #

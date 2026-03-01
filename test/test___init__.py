@@ -63,7 +63,7 @@ def check_jet(f: Callable[[Primal], Value], arg: PrimalAndCoefficients):  # noqa
     k = len(vs)
 
     primals = (x,)
-    series = tuple((v,) for v in vs)
+    series = (vs,)
 
     rev_jet_f = rev_jet(f)
     rev_jet_out = rev_jet_f(primals, series)
@@ -267,7 +267,7 @@ def test_jet_multi_input(config: dict[str, Any], k: int):
 
     mock_args = tuple(rand(*s).double() for s in shapes)
     primals = tuple(rand(*s).double() for s in shapes)
-    series = tuple(tuple(rand(*s).double() for s in shapes) for _ in range(k))
+    series = tuple(tuple(rand(*s).double() for _ in range(k)) for s in shapes)
 
     jet_f = jet.jet(f, k, mock_args)
     jet_out = jet_f(primals, series)
@@ -320,7 +320,9 @@ def test_jet_pytree_input(config: dict[str, Any], k: int):
     # Build primals and series with the same pytree structure
     manual_seed(42)
     primals = config["mock_args_fn"]()
-    series = tuple(config["mock_args_fn"]() for _ in range(k))
+    num_args = len(mock_args)
+    per_order = tuple(config["mock_args_fn"]() for _ in range(k))
+    series = tuple(tuple(per_order[j][i] for j in range(k)) for i in range(num_args))
 
     jet_f = jet.jet(f, k, mock_args)
     jet_out = jet_f(primals, series)
@@ -376,7 +378,9 @@ def test_jet_pytree_output(config: dict[str, Any], k: int):
 
     manual_seed(42)
     primals = config["mock_args_fn"]()
-    series = tuple(config["mock_args_fn"]() for _ in range(k))
+    num_args = len(mock_args)
+    per_order = tuple(config["mock_args_fn"]() for _ in range(k))
+    series = tuple(tuple(per_order[j][i] for j in range(k)) for i in range(num_args))
 
     jet_f = jet.jet(f, k, mock_args)
     jet_out = jet_f(primals, series)

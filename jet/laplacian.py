@@ -115,7 +115,7 @@ def laplacian(
         X1 = apply_weightings(x, V)
 
         vmapped = vmap(
-            lambda x1: jet_f((x,), ((x1,), (zeros_like(x),))),
+            lambda x1: jet_f((x,), ((x1, zeros_like(x)),)),
             randomness="different",
             out_dims=(None, (0, 0)),
         )

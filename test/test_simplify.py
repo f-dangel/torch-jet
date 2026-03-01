@@ -4,7 +4,7 @@ from typing import Any, Callable
 
 import torch
 from pytest import mark
-from torch import Tensor, arange, float64, manual_seed, sigmoid, sin, tanh, tensor
+from torch import Tensor, arange, float64, manual_seed, rand, sigmoid, sin, tanh, tensor
 from torch.fx import Graph, Node
 from torch.nn import Linear, Sequential, Tanh
 from torch.nn.functional import linear
@@ -34,32 +34,25 @@ _TANH_LINEAR_W = tensor([[0.1, -0.2, 0.3], [0.4, 0.5, -0.6]], dtype=float64)
 _TANH_LINEAR_B = tensor([0.12, -0.34], dtype=float64)
 
 SIMPLIFY_CASES = [
-    # 1d sine function
-    {"f": sin, "shape": (1,), "id": "sin"},
-    # 2d sine function
-    {"f": sin, "shape": (2,), "id": "sin"},
-    # 2d sin(sin) function
-    {"f": lambda x: sin(sin(x)), "shape": (2,), "id": "sin-sin"},
-    # 2d tanh(tanh) function
-    {"f": lambda x: tanh(tanh(x)), "shape": (2,), "id": "tanh-tanh"},
-    # 2d linear(tanh) function
+    {"f": sin, "mock_args_fn": lambda: (rand(1).double(),), "id": "sin-1d"},
+    {"f": sin, "mock_args_fn": lambda: (rand(2).double(),), "id": "sin-2d"},
+    {"f": lambda x: sin(sin(x)), "mock_args_fn": lambda: (rand(2).double(),), "id": "sin-sin"},
+    {"f": lambda x: tanh(tanh(x)), "mock_args_fn": lambda: (rand(2).double(),), "id": "tanh-tanh"},
     {
         "f": lambda x: linear(tanh(x), _TANH_LINEAR_W, bias=_TANH_LINEAR_B),
-        "shape": (3,),
+        "mock_args_fn": lambda: (rand(3).double(),),
         "id": "tanh-linear",
     },
-    # 5d tanh-activated two-layer MLP
     {
         "f": Sequential(
             Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
         ),
-        "shape": (5,),
+        "mock_args_fn": lambda: (rand(5).double(),),
         "id": "two-layer-tanh-mlp",
     },
-    # 3d sigmoid(sigmoid) function
     {
         "f": lambda x: sigmoid(sigmoid(x)),
-        "shape": (3,),
+        "mock_args_fn": lambda: (rand(3).double(),),
         "id": "sigmoid-sigmoid",
     },
 ]
@@ -143,7 +136,8 @@ def test_simplify_laplacian(
     # Exact node counts: detect regressions if simplification rules stop firing
     if randomization is None and weighting is None:
         expected_nodes = {
-            "sin": 15,
+            "sin-1d": 15,
+            "sin-2d": 15,
             "sin-sin": 24,
             "tanh-tanh": 40,
             "tanh-linear": 42,
@@ -200,7 +194,8 @@ def test_simplify_bilaplacian(config: dict[str, Any], distribution: str | None):
     # Exact node counts: detect regressions if simplification rules stop firing
     if randomization is None:
         expected_nodes = {
-            "sin": 35 if D == 1 else 103,
+            "sin-1d": 35,
+            "sin-2d": 103,
             "sin-sin": 200,
             "tanh-tanh": 246,
             "tanh-linear": 149,

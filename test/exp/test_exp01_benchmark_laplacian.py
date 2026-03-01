@@ -3,7 +3,7 @@
 from typing import Any
 
 from pytest import mark
-from torch import manual_seed, sigmoid, vmap
+from torch import manual_seed, rand, sigmoid, vmap
 from torch.nn import Linear, Sequential, Tanh
 
 from jet.bilaplacian import (
@@ -44,11 +44,15 @@ EXP01_CASES = [
         "f": Sequential(
             Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
         ),
-        "shape": (5,),
+        "mock_args_fn": lambda: (rand(5).double(),),
         "id": "two-layer-tanh-mlp",
     },
     # 3d sigmoid(sigmoid) function
-    {"f": lambda x: sigmoid(sigmoid(x)), "shape": (3,), "id": "sigmoid-sigmoid"},
+    {
+        "f": lambda x: sigmoid(sigmoid(x)),
+        "mock_args_fn": lambda: (rand(3).double(),),
+        "id": "sigmoid-sigmoid",
+    },
 ]
 EXP01_IDS = [config["id"] for config in EXP01_CASES]
 

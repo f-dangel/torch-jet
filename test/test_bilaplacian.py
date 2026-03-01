@@ -11,7 +11,7 @@ from typing import Any, Callable
 
 from einops import einsum
 from pytest import mark
-from torch import Tensor, manual_seed, sigmoid
+from torch import Tensor, manual_seed, rand, sigmoid
 from torch.func import hessian
 from torch.nn import Linear, Sequential, Tanh
 
@@ -33,11 +33,15 @@ BILAPLACIAN_CASES = [
         "f": Sequential(
             Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
         ),
-        "shape": (5,),
+        "mock_args_fn": lambda: (rand(5).double(),),
         "id": "two-layer-tanh-mlp",
     },
     # 3d sigmoid(sigmoid) function
-    {"f": lambda x: sigmoid(sigmoid(x)), "shape": (3,), "id": "sigmoid-sigmoid"},
+    {
+        "f": lambda x: sigmoid(sigmoid(x)),
+        "mock_args_fn": lambda: (rand(3).double(),),
+        "id": "sigmoid-sigmoid",
+    },
 ]
 
 BILAPLACIAN_IDS = [config["id"] for config in BILAPLACIAN_CASES]

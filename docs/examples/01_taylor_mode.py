@@ -347,21 +347,11 @@ f0, (f1,) = jet_pytree((inputs,), ((d_inputs,),))
 
 print(f"f0 keys: {list(f0.keys())}, f1 keys: {list(f1.keys())}")
 print(f"f0['mul'] = {f0['mul']}")
-print(f"f1['mul'] = {f1['mul']}  (should be d/dt [x*y] = dx/dt * y = 1 * y = y)")
+print(f"f1['mul'] = {f1['mul']}  (= dx/dt * y + x * dy/dt = 1 * y + x * 0 = y)")
+print(f"f1['sub'] = {f1['sub']}  (= dx/dt - dy/dt = 1 - 0 = 1)")
 
-# Verify: with d_inputs = (1, 0), the directional derivative of x*y w.r.t. x is y,
-# and the directional derivative of x - y w.r.t. x is 1.
-x_val, y_val = inputs["x"], inputs["y"]
-
-if f1["mul"].allclose(y_val):
-    print("Pytree jet 'mul' derivative matches!")
-else:
-    raise ValueError(f"f1['mul'] = {f1['mul']} does not match y = {y_val}")
-
-if f1["sub"].allclose(ones_like(x_val)):
-    print("Pytree jet 'sub' derivative matches!")
-else:
-    raise ValueError(f"f1['sub'] = {f1['sub']} does not match 1")
+assert f1["mul"].allclose(inputs["y"]), f"f1['mul'] = {f1['mul']} != y"
+assert f1["sub"].allclose(ones_like(inputs["x"])), f"f1['sub'] = {f1['sub']} != 1"
 
 # %%
 #

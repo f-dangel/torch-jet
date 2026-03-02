@@ -250,11 +250,7 @@ def make_laplacian(
         """
         in_meta = {"dtype": x.dtype, "device": x.device}
         X1 = eye(in_dim, **in_meta).reshape(in_dim, *in_shape)
-        vmapped = vmap(
-            lambda x1: jet_f((x,), ((x1, zeros_like(x)),)),
-            randomness="different",
-            out_dims=(None, (0, 0)),
-        )
+        vmapped = vmap(lambda x1: jet_f((x,), ((x1, zeros_like(x)),)))
         _, (_, F2) = vmapped(X1)
         return F2.sum(0)
 

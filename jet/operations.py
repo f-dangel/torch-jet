@@ -6,7 +6,6 @@ from torch.utils._pytree import register_pytree_node
 
 from jet.utils import (
     Primal,
-    Value,
     integer_partitions,
     multiplicity,
 )

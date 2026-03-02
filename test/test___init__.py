@@ -6,85 +6,10 @@ from pytest import mark
 from torch import Tensor, cos, float64, manual_seed, rand, sigmoid, sin, tanh, tensor
 from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
-from torch.utils._pytree import TreeSpec, tree_flatten
 
 import jet
 from jet import rev_jet
-
-from test.utils import report_nonclose
-
-
-def compare_jet_results(
-    out1: tuple[Tensor, ...], out2: tuple[Tensor, ...]
-) -> None:
-    """Compare two jet outputs in flat-tuple format ``(f0, f1, ..., fk)``.
-
-    Kept for backward compatibility with ``test_simplify.py`` which compares
-    laplacian/bilaplacian outputs (flat tuples).
-    """
-    value1, series1 = out1[0], out1[1:]
-    value2, series2 = out2[0], out2[1:]
-
-    report_nonclose(value1, value2, name="Values")
-    assert len(series1) == len(series2)
-    for i, (s1, s2) in enumerate(zip(series1, series2)):
-        report_nonclose(s1, s2, name=f"Coefficients {i + 1}")
-
-
-def _assert_specs_compatible(spec1: TreeSpec, spec2: TreeSpec, name: str = "") -> None:
-    """Assert two tree specs are structurally compatible.
-
-    Tolerates ``dict`` vs ``immutable_dict`` differences introduced by
-    ``make_fx`` tracing by normalizing container type names before comparing.
-
-    Args:
-        spec1: First tree spec.
-        spec2: Second tree spec.
-        name: Label for error messages.
-
-    Raises:
-        AssertionError: If the tree specs are not structurally compatible.
-    """
-    if spec1 == spec2:
-        return
-    # Normalize container type names (make_fx turns dict → immutable_dict)
-    s1 = str(spec1).replace("immutable_dict", "dict")
-    s2 = str(spec2).replace("immutable_dict", "dict")
-    assert s1 == s2, f"{name} tree structure mismatch: {spec1} vs {spec2}"
-
-
-def compare_primals_series(out1: tuple[Any, tuple], out2: tuple[Any, tuple]) -> None:
-    """Compare two jet outputs in ``(primals_out, series_out)`` format.
-
-    Verifies that primals and each series order have matching tree structure
-    (tolerating ``dict``/``immutable_dict`` differences) and close tensor values.
-
-    Args:
-        out1: First ``(primals_out, series_out)`` pair.
-        out2: Second ``(primals_out, series_out)`` pair.
-
-    Raises:
-        AssertionError: If tree structures differ or tensor values are not close.
-    """
-    primals1, series1 = out1
-    primals2, series2 = out2
-
-    flat_p1, spec_p1 = tree_flatten(primals1)
-    flat_p2, spec_p2 = tree_flatten(primals2)
-    _assert_specs_compatible(spec_p1, spec_p2, "Primals")
-    for j, (t1, t2) in enumerate(zip(flat_p1, flat_p2)):
-        report_nonclose(t1, t2, name=f"Primals leaf {j}")
-
-    assert len(series1) == len(series2), (
-        f"Series length mismatch: {len(series1)} vs {len(series2)}"
-    )
-    for i, (s1, s2) in enumerate(zip(series1, series2)):
-        sf1, spec_s1 = tree_flatten(s1)
-        sf2, spec_s2 = tree_flatten(s2)
-        _assert_specs_compatible(spec_s1, spec_s2, f"Series order {i + 1}")
-        for j, (t1, t2) in enumerate(zip(sf1, sf2)):
-            report_nonclose(t1, t2, name=f"Series order {i + 1} leaf {j}")
-
+from test.utils import assert_pytrees_close
 
 INF = float("inf")
 
@@ -335,4 +260,4 @@ def test_jet(config: dict[str, Any], k: int):
     rev_jet_f = rev_jet(f, k)
     rev_jet_out = rev_jet_f(primals, series)
 
-    compare_primals_series(jet_out, rev_jet_out)
+    assert_pytrees_close(jet_out, rev_jet_out)

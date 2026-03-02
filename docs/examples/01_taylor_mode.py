@@ -12,7 +12,6 @@ from os import path
 from pytest import raises
 from torch import Tensor, cos, manual_seed, ones_like, rand, sin, zeros_like
 from torch.func import hessian
-from torch.fx.experimental.proxy_tensor import make_fx
 from torch.nn import Linear, Sequential, Tanh
 from torch.nn.functional import relu
 
@@ -259,8 +258,7 @@ else:
 # As a concrete example, consider the function
 # $u(t, x) = \cos(t) \sin(x)$, which is a solution to the 1-D wave equation
 # $\partial_{tt} u = \partial_{xx} u$. We will use ``jet`` to compute
-# $\partial_t u$ and $\partial_{xx} u$, verify them against their analytical
-# values, and finally check that the wave equation is satisfied.
+# $\partial_{tt} u$ and $\partial_{xx} u$ and verify the wave equation.
 
 
 def u(t: Tensor, x: Tensor) -> Tensor:
@@ -281,26 +279,8 @@ jet_u = jet(u, 2, (t_val, x_val))
 
 # %%
 #
-# **Computing** $\partial_t u$. We use the first-order Taylor coefficient with
-# $t_1 = 1$, $x_1 = 0$ so that
-# $f_1 = \frac{\partial u}{\partial t} \cdot 1
-#       + \frac{\partial u}{\partial x} \cdot 0
-#       = \frac{\partial u}{\partial t}$:
-
-_, (du_dt, _) = jet_u(
-    (t_val, x_val),
-    (
-        (ones_like(t_val), zeros_like(t_val)),
-        (zeros_like(x_val), zeros_like(x_val)),
-    ),
-)
-print(f"∂u/∂t = {du_dt.item():.6f}")
-
-# %%
-#
-# **Computing** $\partial_{xx} u$. We use the second-order Taylor coefficient with
-# $t_1 = 0$, $x_1 = 1$, $t_2 = 0$, $x_2 = 0$ so that
-# $f_2 = \frac{\partial^2 u}{\partial x^2} \cdot 1^2 = \frac{\partial^2 u}{\partial x^2}$:
+# **Computing** $\partial_{xx} u$. We set $t_1 = 0$, $x_1 = 1$, $t_2 = 0$, $x_2 = 0$
+# so that $f_2 = \partial_{xx} u$:
 
 _, (_, d2u_dx2) = jet_u(
     (t_val, x_val),
@@ -309,20 +289,6 @@ _, (_, d2u_dx2) = jet_u(
         (ones_like(x_val), zeros_like(x_val)),
     ),
 )
-print(f"∂²u/∂x² = {d2u_dx2.item():.6f}")
-
-# %%
-#
-# Let's verify these against the known analytical derivatives.
-# For $u(t, x) = \cos(t) \sin(x)$:
-# $\partial_t u = -\sin(t) \sin(x)$ and
-# $\partial_{xx} u = -\cos(t) \sin(x)$.
-
-du_dt_exact = -sin(t_val) * sin(x_val)
-if du_dt.allclose(du_dt_exact):
-    print("∂u/∂t matches analytical value!")
-else:
-    raise ValueError(f"∂u/∂t = {du_dt} does not match {du_dt_exact}")
 
 d2u_dx2_exact = -cos(t_val) * sin(x_val)
 if d2u_dx2.allclose(d2u_dx2_exact):
@@ -332,9 +298,8 @@ else:
 
 # %%
 #
-# As a bonus, we can also verify the wave equation $\partial_{tt} u = \partial_{xx} u$.
-# We obtain $\partial_{tt} u$ from the second-order Taylor coefficient with
-# $t_1 = 1, x_1 = 0$:
+# Similarly, $\partial_{tt} u$ is obtained with $t_1 = 1$, $x_1 = 0$.
+# Let's verify the wave equation $\partial_{tt} u = \partial_{xx} u$:
 
 _, (_, d2u_dt2) = jet_u(
     (t_val, x_val),
@@ -421,29 +386,23 @@ else:
 #
 ### How It Works
 #
-# `jet` uses `make_fx` to capture the function's ATen-level compute graph, then wraps
-# it in an interpreter that dispatches jet operations at runtime.
+# `jet` uses `make_fx` to capture the function's ATen-level compute graph, then
+# runs it through a `JetInterpreter` that dispatches jet operations (e.g.
+# `jet_linear`, `jet_tanh`) in place of the original ATen ops. The interpreter
+# output is traced again with `make_fx` so that `jet` returns a
+# `torch.fx.GraphModule` containing the fully unrolled jet computation.
 #
-# When `f_jet` is called, the interpreter walks through the captured graph node by
-# node. For each `call_function` node, it checks whether any argument is a
-# Taylor-expanded value (a `JetTuple`). If so, it dispatches to the corresponding jet
-# operation (e.g. `jet_linear`, `jet_tanh`) instead of the original ATen op.
-#
-# Let's visualize both the original function's compute graph and the unrolled jet
-# function (obtained by tracing `f_jet` with `make_fx`):
+# Let's visualize both the original function's compute graph and the jet function:
 
 mod = capture_graph(f, x)
 visualize_graph(mod, path.join(GALLERYDIR, "01_f.png"))
-visualize_graph(
-    make_fx(f_jet)((x0,), ((x1, x2),)),
-    path.join(GALLERYDIR, "01_f_jet_unrolled.png"),
-)
+visualize_graph(f_jet, path.join(GALLERYDIR, "01_f_jet.png"))
 
 # %%
 #
-# | Original function $f$ | Unrolled 2-jet function $f_{2\text{-jet}}$  |
-# |:---------------------:|:-------------------------------------------:|
-# | ![f graph](01_f.png)  | ![f-jet graph](01_f_jet_unrolled.png)       |
+# | Original function $f$ | 2-jet function $f_{2\text{-jet}}$  |
+# |:---------------------:|:----------------------------------:|
+# | ![f graph](01_f.png)  | ![f-jet graph](01_f_jet.png)       |
 #
 # The unrolled graph is, unsurprisingly, much larger. However, you should be able to
 # recognize all functions that are being called. We can regard this process as a
@@ -475,9 +434,8 @@ visualize_graph(
 
 
 x_relu = rand(3)
-f_relu = jet(lambda x: relu(x), 2, (x_relu,))  # noqa: PLW0108
 with raises(NotImplementedError):
-    f_relu((x_relu,), ((rand(3), rand(3)),))  # error is raised at call time
+    jet(lambda x: relu(x), 2, (x_relu,))  # noqa: PLW0108
 
 # %%
 #

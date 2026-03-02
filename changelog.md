@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Backward-incompatible.** Support general functions with multiple inputs and
   pytree I/O in `jet()` and `rev_jet()`. `jet()` now accepts `mock_args` as a
-  tuple and returns a closure `jet_f(primals, series)` that returns
+  tuple and returns a `GraphModule` `jet_f(primals, series)` that returns
   `(primals_out, series_out)`
   ([PR](https://github.com/f-dangel/torch-jet/pull/126))
 
@@ -33,10 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Backward-incompatible.** Remove the `verbose` argument from `jet()`.
   Replace `JetTransformer` (graph rewriting via `torch.fx.Transformer`) with
   `JetInterpreter` (execution-time dispatch via `torch.fx.Interpreter`).
-  `jet()` now returns a plain closure instead of a `GraphModule`. Removes
-  `analyze_dependencies`, `_replace_operations_with_taylor`, and
-  `jet_transformer.py` (~250 lines). No changes to `laplacian()`,
-  `bilaplacian()`, or `simplify()`
+  `jet()` still returns a `GraphModule` (the interpreter closure is traced
+  with `make_fx`). Removes `analyze_dependencies`,
+  `_replace_operations_with_taylor`, and `jet_transformer.py` (~250 lines).
+  No changes to `laplacian()`, `bilaplacian()`, or `simplify()`
   ([PR](https://github.com/f-dangel/torch-jet/pull/125))
 
 - **Backward-incompatible.** Rewrite tracing and simplification to operate on

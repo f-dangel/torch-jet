@@ -14,7 +14,7 @@ from jet.laplacian import laplacian as jet_laplacian
 from jet.simplify import common_subexpression_elimination, simplify
 from jet.tracing import capture_graph
 from jet.utils import run_seeded
-from test.test___init__ import compare_jet_results, setup_case
+from test.test___init__ import setup_case
 from test.test_bilaplacian import bilaplacian
 from test.test_laplacian import (
     DISTRIBUTION_IDS,
@@ -25,7 +25,7 @@ from test.test_laplacian import (
     get_weighting,
     laplacian,
 )
-from test.utils import report_nonclose
+from test.utils import assert_pytrees_close, report_nonclose
 
 # make generation of test cases deterministic
 manual_seed(0)
@@ -34,15 +34,21 @@ _TANH_LINEAR_W = tensor([[0.1, -0.2, 0.3], [0.4, 0.5, -0.6]], dtype=float64)
 _TANH_LINEAR_B = tensor([0.12, -0.34], dtype=float64)
 
 SIMPLIFY_CASES = [
+    # 1d sine function
     {"f": sin, "mock_args_fn": lambda: (rand(1).double(),), "id": "sin-1d"},
+    # 2d sine function
     {"f": sin, "mock_args_fn": lambda: (rand(2).double(),), "id": "sin-2d"},
+    # 2d sin(sin) function
     {"f": lambda x: sin(sin(x)), "mock_args_fn": lambda: (rand(2).double(),), "id": "sin-sin"},
+    # 2d tanh(tanh) function
     {"f": lambda x: tanh(tanh(x)), "mock_args_fn": lambda: (rand(2).double(),), "id": "tanh-tanh"},
+    # 2d linear(tanh) function
     {
         "f": lambda x: linear(tanh(x), _TANH_LINEAR_W, bias=_TANH_LINEAR_B),
         "mock_args_fn": lambda: (rand(3).double(),),
         "id": "tanh-linear",
     },
+    # 5d tanh-activated two-layer MLP
     {
         "f": Sequential(
             Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
@@ -50,6 +56,7 @@ SIMPLIFY_CASES = [
         "mock_args_fn": lambda: (rand(5).double(),),
         "id": "two-layer-tanh-mlp",
     },
+    # 3d sigmoid(sigmoid) function
     {
         "f": lambda x: sigmoid(sigmoid(x)),
         "mock_args_fn": lambda: (rand(3).double(),),
@@ -131,7 +138,7 @@ def test_simplify_laplacian(
 
     # Verify output correctness
     simplified_out = run_seeded(simplified, seed, x)
-    compare_jet_results(lap_fn_out, simplified_out)
+    assert_pytrees_close(lap_fn_out, simplified_out)
 
     # Exact node counts: detect regressions if simplification rules stop firing
     if randomization is None and weighting is None:

@@ -5,6 +5,8 @@ from typing import Any, Callable
 
 from torch import Tensor, tensor, zeros_like
 from torch.autograd import grad
+from torch.fx import GraphModule
+from torch.fx.experimental.proxy_tensor import make_fx
 from torch.utils._pytree import tree_flatten, tree_unflatten
 
 from jet.jet_interpreter import JetInterpreter
@@ -84,7 +86,7 @@ def jet(
     f: Callable[..., Any],
     derivative_order: int,
     mock_args: tuple[Any, ...],
-) -> Callable[[tuple[Any, ...], tuple[tuple[Any, ...], ...]], tuple[Any, tuple[Any, ...]]]:
+) -> GraphModule:
     """Overload a function with its Taylor-mode equivalent.
 
     ``Any`` in the type signatures denotes a *pytree of tensors*, i.e. an
@@ -99,9 +101,9 @@ def jet(
             Only shapes matter, not the actual values.
 
     Returns:
-        A function ``jet_f(primals, series)`` where ``series`` is a tuple
-        with one entry per argument, each containing ``derivative_order``
-        Taylor coefficients (following
+        A ``GraphModule`` ``jet_f(primals, series)`` where ``series`` is a
+        tuple with one entry per argument, each containing
+        ``derivative_order`` Taylor coefficients (following
         `JAX's convention <https://docs.jax.dev/en/latest/jax.experimental.jet.html>`_).
         Returns ``(primals_out, series_out)`` where ``primals_out`` has the
         same pytree structure as ``f``'s output and ``series_out`` is a
@@ -148,7 +150,17 @@ def jet(
         all_orders = _transpose_jet_output(result, derivative_order)
         return all_orders[0], all_orders[1:]
 
-    return jet_f
+    mock_series = tuple(
+        tuple(
+            tree_unflatten(
+                [zeros_like(t) for t in tree_flatten(mock_args[i])[0]],
+                tree_flatten(mock_args[i])[1],
+            )
+            for _ in range(derivative_order)
+        )
+        for i in range(len(mock_args))
+    )
+    return make_fx(jet_f)(mock_args, mock_series)
 
 
 def rev_jet(

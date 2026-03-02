@@ -116,7 +116,7 @@ def laplacian(
 
         vmapped = vmap(
             lambda x1: jet_f((x,), ((x1, zeros_like(x)),)),
-            randomness="different",
+            randomness="error" if randomization is None else "different",
             out_dims=(None, (0, 0)),
         )
         F0, (F1, F2) = vmapped(X1)

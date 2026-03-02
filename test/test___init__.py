@@ -14,9 +14,9 @@ from jet import rev_jet
 from test.utils import report_nonclose
 
 
-def compare_jet_results(  # noqa: D103
+def compare_jet_results(
     out1: tuple[Tensor, ...], out2: tuple[Tensor, ...]
-):
+) -> None:
     """Compare two jet outputs in flat-tuple format ``(f0, f1, ..., fk)``.
 
     Kept for backward compatibility with ``test_simplify.py`` which compares
@@ -102,7 +102,9 @@ def f_multiply(x: Tensor) -> Tensor:
     return sin(y) * cos(y)
 
 
-def _deep_pytree_f(x, params):
+def _deep_pytree_f(
+    x: Tensor, params: dict[str, Tensor | list[Tensor]]
+) -> tuple[Tensor, dict[str, Tensor]]:
     """Function with deeply nested dict/list input and different output structure.
 
     Args:
@@ -118,7 +120,12 @@ def _deep_pytree_f(x, params):
     return (h + b0, {"a": cos(h) * b1, "b": tanh(h + b0 + b1)})
 
 
-def _deep_pytree_mock_args_fn():
+def _deep_pytree_mock_args_fn() -> tuple[Tensor, dict[str, Tensor | list[Tensor]]]:
+    """Create mock arguments for :func:`_deep_pytree_f`.
+
+    Returns:
+        A tuple ``(x, params)`` with random double-precision tensors.
+    """
     return (
         rand(3).double(),
         {"w": rand(3).double(), "bs": [rand(3).double(), rand(3).double()]},
@@ -169,7 +176,6 @@ JET_CASES = [
     {
         "f": _MLP_BATCHED,
         "mock_args_fn": lambda: (rand(10, 5).double(),),
-        "is_batched": True,
         "id": "batched-two-layer-tanh-mlp",
     },
     {"f": lambda x: sigmoid(sigmoid(x)), "mock_args_fn": lambda: (rand(3).double(),), "id": "sigmoid-sigmoid"},
@@ -178,9 +184,6 @@ JET_CASES = [
     {"f": f_multiply, "mock_args_fn": lambda: (rand(5).double(),), "id": "multiply-variables"},
     {"f": lambda x: x.sum(0), "mock_args_fn": lambda: (rand(3, 5).double(),), "id": "sum-3"},
 ]
-
-for config in JET_CASES:
-    config["is_batched"] = config.get("is_batched", False)
 
 JET_CASES_IDS = [config["id"] for config in JET_CASES]
 

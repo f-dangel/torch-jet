@@ -121,7 +121,7 @@ def bilaplacian(
         z = zeros_like(x)
         vmapped = vmap(
             lambda x1: jet_f((x,), ((x1, z, z, z),)),
-            randomness="different",
+            randomness="error" if randomization is None else "different",
             out_dims=(None, (0, 0, 0, 0)),
         )
 

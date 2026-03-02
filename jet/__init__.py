@@ -12,6 +12,37 @@ from jet.operations import JetTuple
 from jet.tracing import capture_graph
 
 
+def _flatten_series(
+    series: tuple[tuple[Any, ...], ...], derivative_order: int
+) -> list[list[Tensor]]:
+    """Flatten per-argument series into per-order flat lists of tensors.
+
+    Converts from the user-facing per-argument layout::
+
+        series[arg_idx] = (v_arg_1, v_arg_2, ..., v_arg_k)
+
+    to the interpreter-facing per-order layout::
+
+        result[order_idx] = [flat_leaf_0, flat_leaf_1, ...]
+
+    Args:
+        series: Per-argument series, where each entry is a tuple of
+            ``derivative_order`` Taylor coefficients (pytrees of tensors).
+        derivative_order: The order of the Taylor expansion.
+
+    Returns:
+        A list of length ``derivative_order``, where each element is a flat
+        list of tensors obtained by flattening all arguments at that order.
+    """
+    flat_series: list[list[Tensor]] = []
+    for j in range(derivative_order):
+        flat_j: list[Tensor] = []
+        for arg_series in series:
+            flat_j.extend(tree_flatten(arg_series[j])[0])
+        flat_series.append(flat_j)
+    return flat_series
+
+
 def _is_jet_or_tensor(x: Any) -> bool:
     """Return True for JetTuples and plain tensors (pytree leaves for transposition)."""
     return isinstance(x, (JetTuple, Tensor))
@@ -105,16 +136,11 @@ def jet(
 
     interp = JetInterpreter(mod, derivative_order)
 
-    def jet_f(primals: tuple[Any, ...], series: tuple[tuple[Any, ...], ...]) -> tuple[Any, tuple[Any, ...]]:
+    def jet_f(
+        primals: tuple[Any, ...], series: tuple[tuple[Any, ...], ...]
+    ) -> tuple[Any, tuple[Any, ...]]:
         flat_primals = tree_flatten(primals)[0]
-        # series is per-argument: series[arg] = (v_arg_1, ..., v_arg_k)
-        # Transpose to per-order flat lists for the interpreter
-        flat_series = []
-        for j in range(derivative_order):
-            flat_j: list[Tensor] = []
-            for arg_series in series:
-                flat_j.extend(tree_flatten(arg_series[j])[0])
-            flat_series.append(flat_j)
+        flat_series = _flatten_series(series, derivative_order)
         input_tuples = [
             (flat_primals[i], *(fs[i] for fs in flat_series)) for i in range(num_leaves)
         ]
@@ -190,15 +216,8 @@ def rev_jet(
             assert all(len(s) == derivative_order for s in series)
 
         flat_primals, in_spec = tree_flatten(primals)
-        # series is per-argument: series[arg] = (v_arg_1, ..., v_arg_k)
-        # Transpose to per-order flat lists
         k = derivative_order
-        flat_series = []
-        for j in range(k):
-            flat_j: list[Tensor] = []
-            for arg_series in series:
-                flat_j.extend(tree_flatten(arg_series[j])[0])
-            flat_series.append(flat_j)
+        flat_series = _flatten_series(series, k)
         ref_tensor = flat_primals[0]
 
         def path(t: Tensor) -> Any:

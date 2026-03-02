@@ -8,7 +8,10 @@ tensors under `make_fx`) and uses `isinstance(arg, JetTuple)` to distinguish
 Taylor-expanded arguments from constants.
 """
 
+from typing import Any
+
 from torch.fx import GraphModule, Interpreter
+from torch.fx.node import Argument, Target
 
 from jet.operations import MAPPING, JetTuple
 
@@ -37,7 +40,9 @@ class JetInterpreter(Interpreter):
         super().__init__(module)
         self.derivative_order = derivative_order
 
-    def placeholder(self, target, args, kwargs):
+    def placeholder(
+        self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Any]
+    ) -> JetTuple:
         """Wrap placeholder values in a JetTuple.
 
         Args:
@@ -51,7 +56,9 @@ class JetInterpreter(Interpreter):
         value = super().placeholder(target, args, kwargs)
         return JetTuple(value)
 
-    def call_function(self, target, args, kwargs):
+    def call_function(
+        self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Any]
+    ) -> Any:
         """Execute a function node, substituting jet operations when needed.
 
         Args:

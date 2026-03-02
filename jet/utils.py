@@ -9,12 +9,9 @@ from torch.fx import GraphModule, Node
 from torch.fx.passes.graph_drawer import FxGraphDrawer
 from torch.random import fork_rng
 
-# type annotation for arguments and Taylor coefficients in input and output space
+# Type aliases for arguments and return values of jet-able functions.
 Primal = Tensor
 Value = Tensor
-# primals and values form a tuple
-PrimalAndCoefficients = tuple[Primal, ...]
-ValueAndCoefficients = tuple[Value, ...]
 
 
 def run_seeded(f: Callable, seed: int, *args, **kwargs):

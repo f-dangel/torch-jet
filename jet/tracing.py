@@ -1,14 +1,12 @@
 """Utility functions for capturing compute graphs in PyTorch."""
 
-from typing import Callable
+from typing import Any, Callable
 
 from torch import Tensor, ops
 from torch.func import functionalize
 from torch.fx import GraphModule
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.nn import Module
-
-from jet.utils import Primal, Value
 
 # Map in-place ATen ops to their out-of-place equivalents.
 _INPLACE_TO_FUNCTIONAL = {
@@ -17,7 +15,7 @@ _INPLACE_TO_FUNCTIONAL = {
 
 
 def capture_graph(
-    f: Module | Callable[[Primal], Value] | GraphModule,
+    f: Module | Callable[..., Any] | GraphModule,
     *mock_args: Tensor,
 ) -> GraphModule:
     """Capture the compute graph of a function using make_fx.

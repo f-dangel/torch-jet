@@ -76,15 +76,16 @@ def laplacian(
     in_shape = mock_x.shape
     in_dim = mock_x.numel()
 
-    (apply_weightings, rank_weightings) = (
-        (lambda x, V: V.reshape(num_jets, *in_shape), in_dim)
-        if weighting is None
-        else weighting
-    )
+    rank_weightings = in_dim if weighting is None else weighting[1]
 
     validate_randomization(randomization, SUPPORTED_DISTRIBUTIONS)
 
     num_jets = rank_weightings if randomization is None else randomization[1]
+    apply_weightings = (
+        (lambda x, V: V.reshape(num_jets, *in_shape))
+        if weighting is None
+        else weighting[0]
+    )
     jet_f = jet.jet(f, 2, (mock_x,))
 
     def lap_f(x: Tensor) -> tuple[Tensor, Tensor, Tensor]:

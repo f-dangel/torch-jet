@@ -4,12 +4,12 @@ from typing import Any, Callable
 
 from pytest import mark
 from torch import Tensor, cos, float64, manual_seed, rand, sigmoid, sin, tanh, tensor
-from torch.nn import Linear, Module, Sequential, Tanh
+from torch.nn import Linear, Sequential, Tanh
 from torch.nn.functional import linear
 
 import jet
 from jet import rev_jet
-from test.utils import assert_pytrees_close
+from test.utils import report_pytrees_nonclose
 
 INF = float("inf")
 
@@ -137,9 +137,6 @@ def setup_case(
     manual_seed(0)
     f = config["f"]
 
-    if isinstance(f, Module):
-        f = f.double()
-
     # Extract shape from mock_args_fn (single-input cases only)
     mock_args = config["mock_args_fn"]()
     shape = mock_args[0].shape
@@ -244,8 +241,6 @@ def test_jet(config: dict[str, Any], k: int):
     """
     manual_seed(0)
     f = config["f"]
-    if isinstance(f, Module):
-        f = f.double()
     mock_args = config["mock_args_fn"]()
 
     manual_seed(42)
@@ -260,4 +255,4 @@ def test_jet(config: dict[str, Any], k: int):
     rev_jet_f = rev_jet(f, k)
     rev_jet_out = rev_jet_f(primals, series)
 
-    assert_pytrees_close(jet_out, rev_jet_out)
+    report_pytrees_nonclose(jet_out, rev_jet_out)

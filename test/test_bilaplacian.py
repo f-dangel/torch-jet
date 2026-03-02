@@ -18,8 +18,9 @@ from torch.nn import Linear, Sequential, Tanh
 from jet.bilaplacian import SUPPORTED_DISTRIBUTIONS
 from jet.bilaplacian import bilaplacian as jet_bilaplacian
 from jet.utils import run_seeded
-from test.test___init__ import report_nonclose, setup_case
+from test.test___init__ import setup_case
 from test.test_laplacian import _check_mc_convergence
+from test.utils import report_nonclose
 
 DISTRIBUTIONS = SUPPORTED_DISTRIBUTIONS
 DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]
@@ -32,7 +33,7 @@ BILAPLACIAN_CASES = [
     {
         "f": Sequential(
             Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
-        ),
+        ).double(),
         "mock_args_fn": lambda: (rand(5).double(),),
         "id": "two-layer-tanh-mlp",
     },

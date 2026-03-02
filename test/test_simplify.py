@@ -25,7 +25,7 @@ from test.test_laplacian import (
     get_weighting,
     laplacian,
 )
-from test.utils import assert_pytrees_close, report_nonclose
+from test.utils import report_nonclose, report_pytrees_nonclose
 
 # make generation of test cases deterministic
 manual_seed(0)
@@ -52,7 +52,7 @@ SIMPLIFY_CASES = [
     {
         "f": Sequential(
             Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
-        ),
+        ).double(),
         "mock_args_fn": lambda: (rand(5).double(),),
         "id": "two-layer-tanh-mlp",
     },
@@ -138,7 +138,7 @@ def test_simplify_laplacian(
 
     # Verify output correctness
     simplified_out = run_seeded(simplified, seed, x)
-    assert_pytrees_close(lap_fn_out, simplified_out)
+    report_pytrees_nonclose(lap_fn_out, simplified_out)
 
     # Exact node counts: detect regressions if simplification rules stop firing
     if randomization is None and weighting is None:

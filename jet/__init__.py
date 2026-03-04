@@ -17,19 +17,20 @@ from jet.tracing import capture_graph
 def _flatten_series(
     series: tuple[tuple[Any, ...], ...], derivative_order: int
 ) -> list[list[Tensor]]:
-    """Flatten per-argument series into per-order flat lists of tensors.
+    """Flatten per-order series into per-order flat lists of tensors.
 
-    Converts from the user-facing per-argument layout::
+    Converts from the user-facing per-order layout::
 
-        series[arg_idx] = (v_arg_1, v_arg_2, ..., v_arg_k)
+        series[order_idx] = (arg_0_coeff, arg_1_coeff, ...)
 
     to the interpreter-facing per-order layout::
 
         result[order_idx] = [flat_leaf_0, flat_leaf_1, ...]
 
     Args:
-        series: Per-argument series, where each entry is a tuple of
-            ``derivative_order`` Taylor coefficients (pytrees of tensors).
+        series: Per-order series, where each entry is a tuple of
+            Taylor coefficients for all arguments at that order
+            (pytrees of tensors).
         derivative_order: The order of the Taylor expansion.
 
     Returns:
@@ -39,8 +40,8 @@ def _flatten_series(
     flat_series: list[list[Tensor]] = []
     for j in range(derivative_order):
         flat_j: list[Tensor] = []
-        for arg_series in series:
-            flat_j.extend(tree_flatten(arg_series[j])[0])
+        for arg_coeff in series[j]:
+            flat_j.extend(tree_flatten(arg_coeff)[0])
         flat_series.append(flat_j)
     return flat_series
 
@@ -102,9 +103,8 @@ def jet(
 
     Returns:
         A ``GraphModule`` ``jet_f(primals, series)`` where ``series`` is a
-        tuple with one entry per argument, each containing
-        ``derivative_order`` Taylor coefficients (following
-        `JAX's convention <https://docs.jax.dev/en/latest/jax.experimental.jet.html>`_).
+        tuple with one entry per Taylor order, each containing one
+        coefficient per argument (pytree of tensors).
         Returns ``(primals_out, series_out)`` where ``primals_out`` has the
         same pytree structure as ``f``'s output and ``series_out`` is a
         tuple of ``derivative_order`` pytrees with the same structure.
@@ -116,7 +116,7 @@ def jet(
             >>> from jet import jet
             >>> jet2_f = jet(sin, 2, (zeros(1),))
             >>> x0, x1, x2 = Tensor([0.123]), Tensor([-0.456]), Tensor([0.789])
-            >>> f0, (f1, f2) = jet2_f((x0,), ((x1, x2),))
+            >>> f0, (f1, f2) = jet2_f((x0,), ((x1,), (x2,)))
 
         **Multi-input**::
 
@@ -125,7 +125,7 @@ def jet(
             >>> jet1_f = jet(f, 1, (zeros(3), zeros(3)))
             >>> x, y = Tensor([0.1, 0.2, 0.3]), Tensor([0.4, 0.5, 0.6])
             >>> vx, vy = Tensor([1.0, 0.0, 0.0]), Tensor([0.0, 1.0, 0.0])
-            >>> f0, (f1,) = jet1_f((x, y), ((vx,), (vy,)))
+            >>> f0, (f1,) = jet1_f((x, y), ((vx, vy),))
     """
     flat_mocks, in_spec = tree_flatten(mock_args)
     num_leaves = len(flat_mocks)
@@ -156,9 +156,9 @@ def jet(
                 [zeros_like(t) for t in tree_flatten(mock_args[i])[0]],
                 tree_flatten(mock_args[i])[1],
             )
-            for _ in range(derivative_order)
+            for i in range(len(mock_args))
         )
-        for i in range(len(mock_args))
+        for _ in range(derivative_order)
     )
     return make_fx(jet_f)(mock_args, mock_series)
 
@@ -213,8 +213,8 @@ def rev_jet(
 
         Args:
             primals: Tuple of primal values matching ``f``'s positional args.
-            series: Tuple with one entry per argument, each containing
-                ``derivative_order`` Taylor coefficients.
+            series: Tuple with one entry per Taylor order, each containing
+                one coefficient per argument.
             derivative_order: Order of the Taylor expansion.
 
         Returns:
@@ -223,9 +223,9 @@ def rev_jet(
             ``derivative_order`` pytrees with the same structure.
         """
         if derivative_order is None:
-            derivative_order = len(series[0])
+            derivative_order = len(series)
         else:
-            assert all(len(s) == derivative_order for s in series)
+            assert len(series) == derivative_order
 
         flat_primals, in_spec = tree_flatten(primals)
         k = derivative_order

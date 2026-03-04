@@ -53,7 +53,7 @@ def _assert_specs_compatible(spec1: TreeSpec, spec2: TreeSpec, name: str = "") -
     assert s1 == s2, f"{name} tree structure mismatch: {spec1} vs {spec2}"
 
 
-def assert_pytrees_close(
+def report_pytrees_nonclose(
     tree1: Any,
     tree2: Any,
     rtol: float = 1e-5,

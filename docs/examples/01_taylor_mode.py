@@ -134,7 +134,7 @@ x1 = ones_like(x)
 x2 = zeros_like(x)
 
 # Evaluate the second derivative
-f0, (f1, f2) = f_jet((x0,), ((x1,), (x2,)))
+f0, (f1, f2) = f_jet((x0,), ((x1, x2),))
 
 # %%
 #
@@ -210,7 +210,7 @@ d2_diag = zeros_like(x)
 for d in range(D):
     x1 = zeros_like(x)
     x1[d] = 1.0  # d-th canonical basis vector
-    f0, (f1, f2) = f_jet((x0,), ((x1,), (x2,)))
+    f0, (f1, f2) = f_jet((x0,), ((x1, x2),))
     d2_diag[d] = f2
 
 # %%
@@ -244,13 +244,12 @@ else:
 #
 #    **Comparison with JAX's Taylor mode.**
 #    `JAX's jet <https://docs.jax.dev/en/latest/jax.experimental.jet.html>`_
-#    groups ``series`` **per argument**: ``series[arg_idx][order_idx]``.
-#    ``torch-jet`` groups **per order**: ``series[order_idx][arg_idx]``.
-#    The per-order layout is more natural — each entry is a snapshot of all
-#    arguments at one Taylor order, matching the mathematical notation and the
-#    output layout (which is already per-order).
+#    uses the signature ``jet(fun, primals, series)`` where ``series`` is grouped
+#    **per argument** — each element is a tuple of that argument's Taylor
+#    coefficients across orders. ``torch-jet`` follows the same convention for
+#    ``series``.
 #
-#    ``torch-jet`` also uses a two-step API: first
+#    The key difference is that ``torch-jet`` uses a two-step API: first
 #    ``jet_f = jet(f, k, mock_args)`` traces the function, then
 #    ``jet_f(primals, series)`` evaluates it. This separates tracing (which
 #    can be expensive) from evaluation, allowing the traced jet to be reused
@@ -284,7 +283,7 @@ jet_u = jet(u, 2, (t_val, x_val))
 # **Computing** $\partial_{xx} u$. We set $t_1 = 0$, $x_1 = 1$, $t_2 = 0$, $x_2 = 0$
 # so that $f_2 = \partial_{xx} u$:
 
-_, (_, d2u_dx2) = jet_u((t_val, x_val), ((zt, ones_like(x_val)), (zt, zx)))
+_, (_, d2u_dx2) = jet_u((t_val, x_val), ((zt, zt), (ones_like(x_val), zx)))
 
 d2u_dx2_exact = -cos(t_val) * sin(x_val)
 if d2u_dx2.allclose(d2u_dx2_exact):
@@ -297,7 +296,7 @@ else:
 # Similarly, $\partial_{tt} u$ is obtained with $t_1 = 1$, $x_1 = 0$.
 # Let's verify the wave equation $\partial_{tt} u = \partial_{xx} u$:
 
-_, (_, d2u_dt2) = jet_u((t_val, x_val), ((ones_like(t_val), zx), (zt, zx)))
+_, (_, d2u_dt2) = jet_u((t_val, x_val), ((ones_like(t_val), zt), (zx, zx)))
 
 if d2u_dt2.allclose(d2u_dx2):
     print("Wave equation verified: ∂²u/∂t² = ∂²u/∂x²!")

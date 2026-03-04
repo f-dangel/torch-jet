@@ -245,7 +245,9 @@ def test_jet(config: dict[str, Any], k: int):
 
     manual_seed(42)
     primals = config["mock_args_fn"]()
-    series = tuple(config["mock_args_fn"]() for _ in range(k))
+    num_args = len(mock_args)
+    per_order = tuple(config["mock_args_fn"]() for _ in range(k))
+    series = tuple(tuple(per_order[j][i] for j in range(k)) for i in range(num_args))
 
     jet_f = jet.jet(f, k, mock_args)
     jet_out = jet_f(primals, series)

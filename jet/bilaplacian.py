@@ -120,7 +120,7 @@ def bilaplacian(
             raise ValueError(f"Expected input shape {in_shape}, got {x.shape}.")
         z = zeros_like(x)
         vmapped = vmap(
-            lambda x1: jet_f((x,), ((x1,), (z,), (z,), (z,))),
+            lambda x1: jet_f((x,), ((x1, z, z, z),)),
             randomness="error" if randomization is None else "different",
             out_dims=(None, (0, 0, 0, 0)),
         )

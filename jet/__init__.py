@@ -71,8 +71,9 @@ def jet(
 
     Returns:
         A ``GraphModule`` ``jet_f(primals, series)`` where ``series`` is a
-        tuple with one entry per Taylor order, each containing one
-        coefficient per argument (pytree of tensors).
+        tuple with one entry per argument, each containing
+        ``derivative_order`` Taylor coefficients (following
+        `JAX's convention <https://docs.jax.dev/en/latest/jax.experimental.jet.html>`_).
         Returns ``(primals_out, series_out)`` where ``primals_out`` has the
         same pytree structure as ``f``'s output and ``series_out`` is a
         tuple of ``derivative_order`` pytrees with the same structure.
@@ -84,7 +85,7 @@ def jet(
             >>> from jet import jet
             >>> jet2_f = jet(sin, 2, (zeros(1),))
             >>> x0, x1, x2 = Tensor([0.123]), Tensor([-0.456]), Tensor([0.789])
-            >>> f0, (f1, f2) = jet2_f((x0,), ((x1,), (x2,)))
+            >>> f0, (f1, f2) = jet2_f((x0,), ((x1, x2),))
 
         **Multi-input**::
 
@@ -93,7 +94,7 @@ def jet(
             >>> jet1_f = jet(f, 1, (zeros(3), zeros(3)))
             >>> x, y = Tensor([0.1, 0.2, 0.3]), Tensor([0.4, 0.5, 0.6])
             >>> vx, vy = Tensor([1.0, 0.0, 0.0]), Tensor([0.0, 1.0, 0.0])
-            >>> f0, (f1,) = jet1_f((x, y), ((vx, vy),))
+            >>> f0, (f1,) = jet1_f((x, y), ((vx,), (vy,)))
     """
     flat_mocks, in_spec = tree_flatten(mock_args)
     num_leaves = len(flat_mocks)
@@ -110,7 +111,10 @@ def jet(
         primals: tuple[Any, ...], series: tuple[tuple[Any, ...], ...]
     ) -> tuple[Any, tuple[Any, ...]]:
         flat_primals = tree_flatten(primals)[0]
-        flat_series = [tree_flatten(s)[0] for s in series]
+        flat_series = [
+            [leaf for arg_s in series for leaf in tree_flatten(arg_s[j])[0]]
+            for j in range(derivative_order)
+        ]
         input_tuples = [
             (flat_primals[i], *(fs[i] for fs in flat_series)) for i in range(num_leaves)
         ]
@@ -119,7 +123,8 @@ def jet(
         return all_orders[0], all_orders[1:]
 
     mock_series = tuple(
-        tree_map(zeros_like, mock_args) for _ in range(derivative_order)
+        tuple(tree_map(zeros_like, arg) for _ in range(derivative_order))
+        for arg in mock_args
     )
     return make_fx(jet_f)(mock_args, mock_series)
 
@@ -174,8 +179,8 @@ def rev_jet(
 
         Args:
             primals: Tuple of primal values matching ``f``'s positional args.
-            series: Tuple with one entry per Taylor order, each containing
-                one coefficient per argument.
+            series: Tuple with one entry per argument, each containing
+                ``derivative_order`` Taylor coefficients.
             derivative_order: Order of the Taylor expansion.
 
         Returns:
@@ -184,13 +189,16 @@ def rev_jet(
             ``derivative_order`` pytrees with the same structure.
         """
         if derivative_order is None:
-            derivative_order = len(series)
+            derivative_order = len(series[0])
         else:
-            assert len(series) == derivative_order
+            assert all(len(s) == derivative_order for s in series)
 
         flat_primals, in_spec = tree_flatten(primals)
         k = derivative_order
-        flat_series = [tree_flatten(s)[0] for s in series]
+        flat_series = [
+            [leaf for arg_s in series for leaf in tree_flatten(arg_s[j])[0]]
+            for j in range(k)
+        ]
         ref_tensor = flat_primals[0]
 
         def path(t: Tensor) -> Any:

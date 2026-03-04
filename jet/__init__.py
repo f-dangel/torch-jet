@@ -7,43 +7,11 @@ from torch import Tensor, tensor, zeros_like
 from torch.autograd import grad
 from torch.fx import GraphModule
 from torch.fx.experimental.proxy_tensor import make_fx
-from torch.utils._pytree import tree_flatten, tree_unflatten
+from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
 
 from jet.jet_interpreter import JetInterpreter
 from jet.operations import JetTuple
 from jet.tracing import capture_graph
-
-
-def _flatten_series(
-    series: tuple[tuple[Any, ...], ...], derivative_order: int
-) -> list[list[Tensor]]:
-    """Flatten per-order series into per-order flat lists of tensors.
-
-    Converts from the user-facing per-order layout::
-
-        series[order_idx] = (arg_0_coeff, arg_1_coeff, ...)
-
-    to the interpreter-facing per-order layout::
-
-        result[order_idx] = [flat_leaf_0, flat_leaf_1, ...]
-
-    Args:
-        series: Per-order series, where each entry is a tuple of
-            Taylor coefficients for all arguments at that order
-            (pytrees of tensors).
-        derivative_order: The order of the Taylor expansion.
-
-    Returns:
-        A list of length ``derivative_order``, where each element is a flat
-        list of tensors obtained by flattening all arguments at that order.
-    """
-    flat_series: list[list[Tensor]] = []
-    for j in range(derivative_order):
-        flat_j: list[Tensor] = []
-        for arg_coeff in series[j]:
-            flat_j.extend(tree_flatten(arg_coeff)[0])
-        flat_series.append(flat_j)
-    return flat_series
 
 
 def _is_jet_or_tensor(x: Any) -> bool:
@@ -142,7 +110,7 @@ def jet(
         primals: tuple[Any, ...], series: tuple[tuple[Any, ...], ...]
     ) -> tuple[Any, tuple[Any, ...]]:
         flat_primals = tree_flatten(primals)[0]
-        flat_series = _flatten_series(series, derivative_order)
+        flat_series = [tree_flatten(s)[0] for s in series]
         input_tuples = [
             (flat_primals[i], *(fs[i] for fs in flat_series)) for i in range(num_leaves)
         ]
@@ -151,14 +119,7 @@ def jet(
         return all_orders[0], all_orders[1:]
 
     mock_series = tuple(
-        tuple(
-            tree_unflatten(
-                [zeros_like(t) for t in tree_flatten(mock_args[i])[0]],
-                tree_flatten(mock_args[i])[1],
-            )
-            for i in range(len(mock_args))
-        )
-        for _ in range(derivative_order)
+        tree_map(zeros_like, mock_args) for _ in range(derivative_order)
     )
     return make_fx(jet_f)(mock_args, mock_series)
 
@@ -229,7 +190,7 @@ def rev_jet(
 
         flat_primals, in_spec = tree_flatten(primals)
         k = derivative_order
-        flat_series = _flatten_series(series, k)
+        flat_series = [tree_flatten(s)[0] for s in series]
         ref_tensor = flat_primals[0]
 
         def path(t: Tensor) -> Any:

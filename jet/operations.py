@@ -4,7 +4,11 @@ from scipy.special import comb, factorial, stirling2
 from torch import Tensor, addmm, cos, mm, mul, ops, sigmoid, sin, tanh
 from torch.utils._pytree import register_pytree_node
 
-from jet.utils import integer_partitions, multiplicity
+from jet.utils import (
+    Primal,
+    integer_partitions,
+    multiplicity,
+)
 
 
 class JetTuple(tuple):
@@ -253,8 +257,8 @@ def jet_pow(
 
 
 def jet_add(
-    self: Tensor | JetTuple | float | int,
-    other: Tensor | JetTuple | float | int,
+    self: Primal | JetTuple | float | int,
+    other: Primal | JetTuple | float | int,
     *,
     derivative_order: int,
 ) -> JetTuple:
@@ -284,8 +288,8 @@ def jet_add(
 
 
 def jet_sub(
-    self: Tensor | JetTuple | float | int,
-    other: Tensor | JetTuple | float | int,
+    self: Primal | JetTuple | float | int,
+    other: Primal | JetTuple | float | int,
     *,
     derivative_order: int,
 ) -> JetTuple:
@@ -316,8 +320,8 @@ def jet_sub(
 
 
 def jet_mul(
-    self: Tensor | JetTuple,
-    other: Tensor | JetTuple,
+    self: Primal | JetTuple,
+    other: Primal | JetTuple,
     *,
     derivative_order: int,
 ) -> JetTuple:
@@ -354,8 +358,8 @@ def jet_mul(
 
 
 def jet_mm(
-    self: Tensor | JetTuple,
-    mat2: Tensor | JetTuple,
+    self: Primal | JetTuple,
+    mat2: Primal | JetTuple,
     *,
     derivative_order: int,
 ) -> JetTuple:
@@ -389,9 +393,9 @@ def jet_mm(
 
 
 def jet_addmm(
-    self: Tensor | JetTuple,
-    mat1: Tensor | JetTuple,
-    mat2: Tensor | JetTuple,
+    self: Primal,
+    mat1: Primal | JetTuple,
+    mat2: Primal | JetTuple,
     *,
     derivative_order: int,
 ) -> JetTuple:

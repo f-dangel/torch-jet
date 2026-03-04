@@ -3,7 +3,7 @@
 from typing import Any
 
 from pytest import mark
-from torch import manual_seed, sigmoid, vmap
+from torch import manual_seed, rand, sigmoid, vmap
 from torch.nn import Linear, Sequential, Tanh
 
 from jet.bilaplacian import (
@@ -17,7 +17,7 @@ from jet.exp.exp01_benchmark_laplacian.execute import (
 from jet.laplacian import SUPPORTED_DISTRIBUTIONS as LAPLACIAN_SUPPORTED_DISTRIBUTIONS
 from jet.utils import run_seeded
 from jet.weighted_laplacian import get_weighting
-from test.test___init__ import report_nonclose, setup_case
+from test.test___init__ import setup_case
 from test.test_bilaplacian import bilaplacian
 from test.test_laplacian import (
     WEIGHT_IDS,
@@ -26,6 +26,7 @@ from test.test_laplacian import (
     get_coefficients,
     laplacian,
 )
+from test.utils import report_nonclose
 
 STRATEGY_IDS = [f"strategy={s}" for s in SUPPORTED_STRATEGIES]
 LAPLACIAN_DISTRIBUTION_IDS = [
@@ -43,12 +44,16 @@ EXP01_CASES = [
     {
         "f": Sequential(
             Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
-        ),
-        "shape": (5,),
+        ).double(),
+        "mock_args_fn": lambda: (rand(5).double(),),
         "id": "two-layer-tanh-mlp",
     },
     # 3d sigmoid(sigmoid) function
-    {"f": lambda x: sigmoid(sigmoid(x)), "shape": (3,), "id": "sigmoid-sigmoid"},
+    {
+        "f": lambda x: sigmoid(sigmoid(x)),
+        "mock_args_fn": lambda: (rand(3).double(),),
+        "id": "sigmoid-sigmoid",
+    },
 ]
 EXP01_IDS = [config["id"] for config in EXP01_CASES]
 

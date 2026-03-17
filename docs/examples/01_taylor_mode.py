@@ -93,10 +93,11 @@ _ = manual_seed(0)  # make deterministic
 # The important insight is that, by specifying the Taylor coefficients
 # $(x_0, x_1, \dots)$, we can compute various derivatives!
 #
-# **In code,** the `jet` library offers a function transformation `jet(f, k, mock_args)`
-# that takes a function $f$, a degree $k$, and mock arguments, and returns a new function
-# `jet_f(primals, series)` that returns `(primals_out, series_out)` — the function value
-# and its Taylor coefficients up to order $k$.
+# **In code,** the `jet` library offers a function transformation
+# `jet(f, derivative_order, mock_primals)` that takes a function $f$, a
+# derivative order, and mock primal inputs, and returns a new function
+# `jet_f(primals, input_jets)` that returns `(primals_out, output_jets)` — the
+# function value and its Taylor coefficients up to that derivative order.
 
 # %%
 #
@@ -123,9 +124,9 @@ _ = manual_seed(0)  # make deterministic
 
 # Define a function and obtain its jet function
 f = sin  # propagates x₀ ↦ f(x₀)
-k = 2  # jet degree
+derivative_order = 2
 x = rand(1)
-f_jet = jet(f, k, (x,))  # propagates (x₀, (x₁, x₂)) ↦ (f₀, (f₁, f₂))
+f_jet = jet(f, derivative_order, (x,))  # propagates (x₀, (x₁, x₂)) ↦ (f₀, (f₁, f₂))
 
 # Set up the Taylor coefficients to compute the second derivative
 
@@ -235,10 +236,10 @@ else:
 # dealing with partial differential equations (PDEs) where the unknown depends on
 # multiple variables such as time and space.
 #
-# For a function with multiple arguments, ``mock_args`` is a tuple that matches the
-# function's positional arguments, and the jet is called with ``(primals, series)``
-# where each entry in ``series`` groups one Taylor coefficient **per argument** at the
-# same order.
+# For a function with multiple arguments, ``mock_primals`` is a tuple that matches the
+# function's positional arguments, and the jet is called with ``(primals, input_jets)``
+# where each entry in ``input_jets`` groups Taylor coefficients **per argument**
+# across derivative orders.
 #
 # .. note::
 #
@@ -246,14 +247,14 @@ else:
 #    `JAX's jet <https://docs.jax.dev/en/latest/jax.experimental.jet.html>`_
 #    uses the signature ``jet(fun, primals, series)`` where ``series`` is grouped
 #    **per argument** — each element is a tuple of that argument's Taylor
-#    coefficients across orders. ``torch-jet`` follows the same convention for
-#    ``series``.
+#    coefficients across orders. ``torch-jet`` follows the same grouping, but
+#    names that argument ``input_jets``.
 #
 #    The key difference is that ``torch-jet`` uses a two-step API: first
-#    ``jet_f = jet(f, k, mock_args)`` traces the function, then
-#    ``jet_f(primals, series)`` evaluates it. This separates tracing (which
-#    can be expensive) from evaluation, allowing the traced jet to be reused
-#    across multiple inputs.
+#    ``jet_f = jet(f, derivative_order, mock_primals)`` traces the function, then
+#    ``jet_f(primals, input_jets)`` evaluates it. This separates tracing
+#    (which can be expensive) from evaluation, allowing the traced jet to be
+#    reused across multiple inputs.
 #
 # As a concrete example, consider the function
 # $u(t, x) = \cos(t) \sin(x)$, which is a solution to the 1-D wave equation
@@ -331,10 +332,10 @@ jet_pytree = jet(f_pytree, 1, (mock_inputs,))
 
 # %%
 #
-# The primals and series follow the same pytree structure as the function's arguments.
-# Since ``f_pytree`` has a single argument (a dict), ``primals`` is a 1-tuple containing
-# that dict, and ``series`` has one entry (for that argument) with one Taylor coefficient
-# (since $k=1$):
+# The primals and input jets follow the same pytree structure as the function's
+# arguments. Since ``f_pytree`` has a single argument (a dict), ``primals`` is a
+# 1-tuple containing that dict, and ``input_jets`` has one entry (for that
+# argument) with one Taylor coefficient (since ``derivative_order=1``):
 
 inputs = {"x": rand(2), "y": rand(2)}
 d_inputs = {"x": ones_like(inputs["x"]), "y": zeros_like(inputs["y"])}

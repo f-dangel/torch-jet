@@ -37,24 +37,27 @@ def _transpose_jet_output(result: Any, derivative_order: int) -> tuple[Any, ...]
         structure as *result* but with plain tensor leaves corresponding to
         the *i*-th Taylor coefficient.
     """
-    flat, out_spec = tree_flatten(result, is_leaf=_is_jet_or_tensor)
-    k = derivative_order + 1
-    outputs = []
-    for order in range(k):
-        flat_order = [
-            jt[order]
-            if isinstance(jt, JetTuple)
-            else (jt if order == 0 else zeros_like(jt))
-            for jt in flat
-        ]
-        outputs.append(tree_unflatten(flat_order, out_spec))
-    return tuple(outputs)
+    flat_tree, out_spec = tree_flatten(result, is_leaf=_is_jet_or_tensor)
+    return tuple(
+        tree_unflatten(
+            [
+                (
+                    node[order]
+                    if isinstance(node, JetTuple)
+                    else (node if order == 0 else zeros_like(node))
+                )
+                for node in flat_tree
+            ],
+            out_spec,
+        )
+        for order in range(derivative_order + 1)
+    )
 
 
 def jet(
     f: Callable[..., Any],
     derivative_order: int,
-    mock_args: tuple[Any, ...],
+    mock_primals: tuple[Any, ...],
 ) -> GraphModule:
     """Overload a function with its Taylor-mode equivalent.
 
@@ -65,17 +68,17 @@ def jet(
     Args:
         f: Function to overload. May accept and return pytrees of tensors.
         derivative_order: The order of the Taylor expansion.
-        mock_args: Mock input tensors (or pytrees of tensors) for tracing,
+        mock_primals: Mock input tensors (or pytrees of tensors) for tracing,
             provided as a tuple matching the positional arguments of ``f``.
             Only shapes matter, not the actual values.
 
     Returns:
-        A ``GraphModule`` ``jet_f(primals, series)`` where ``series`` is a
-        tuple with one entry per argument, each containing
+        A ``GraphModule`` ``jet_f(primals, input_jets)`` where ``input_jets``
+        is a tuple with one entry per argument, each containing
         ``derivative_order`` Taylor coefficients (following
         `JAX's convention <https://docs.jax.dev/en/latest/jax.experimental.jet.html>`_).
-        Returns ``(primals_out, series_out)`` where ``primals_out`` has the
-        same pytree structure as ``f``'s output and ``series_out`` is a
+        Returns ``(primals_out, output_jets)`` where ``primals_out`` has the
+        same pytree structure as ``f``'s output and ``output_jets`` is a
         tuple of ``derivative_order`` pytrees with the same structure.
 
     Examples:
@@ -96,44 +99,52 @@ def jet(
             >>> vx, vy = Tensor([1.0, 0.0, 0.0]), Tensor([0.0, 1.0, 0.0])
             >>> f0, (f1,) = jet1_f((x, y), ((vx,), (vy,)))
     """
-    flat_mocks, in_spec = tree_flatten(mock_args)
-    num_leaves = len(flat_mocks)
+    flat_mock_primals, in_spec = tree_flatten(mock_primals)
+    num_leaves = len(flat_mock_primals)
 
     def flat_f(*flat_tensors: Tensor) -> Any:
         args = tree_unflatten(list(flat_tensors), in_spec)
         return f(*args)
 
-    mod = capture_graph(flat_f, *flat_mocks)
+    mod = capture_graph(flat_f, *flat_mock_primals)
 
     interp = JetInterpreter(mod, derivative_order)
 
     def jet_f(
-        primals: tuple[Any, ...], series: tuple[tuple[Any, ...], ...]
+        primals: tuple[Any, ...], input_jets: tuple[tuple[Any, ...], ...]
     ) -> tuple[Any, tuple[Any, ...]]:
         flat_primals = tree_flatten(primals)[0]
-        flat_series = [
-            [leaf for arg_s in series for leaf in tree_flatten(arg_s[j])[0]]
-            for j in range(derivative_order)
+        flat_input_jets = [
+            [
+                coefficient
+                for in_jet in input_jets
+                for coefficient in tree_flatten(in_jet[order])[0]
+            ]
+            for order in range(derivative_order)
         ]
         input_tuples = [
-            (flat_primals[i], *(fs[i] for fs in flat_series)) for i in range(num_leaves)
+            (flat_primals[i], *(flat_in_jet[i] for flat_in_jet in flat_input_jets))
+            for i in range(num_leaves)
         ]
-        result = interp.run(*input_tuples)
-        all_orders = _transpose_jet_output(result, derivative_order)
-        return all_orders[0], all_orders[1:]
+        # contains output of f and jets of f
+        output = interp.run(*input_tuples)
+        output = _transpose_jet_output(output, derivative_order)
+        return output[0], output[1:]
 
-    mock_series = tuple(
+    mock_input_jets = tuple(
         tuple(tree_map(zeros_like, arg) for _ in range(derivative_order))
-        for arg in mock_args
+        for arg in mock_primals
     )
-    return make_fx(jet_f)(mock_args, mock_series)
+    return make_fx(jet_f)(mock_primals, mock_input_jets)
 
 
 def rev_jet(
     f: Callable[..., Any],
     derivative_order: int | None = None,
     detach: bool = True,
-) -> Callable[[tuple[Any, ...], tuple[tuple[Any, ...], ...]], tuple[Any, tuple[Any, ...]]]:
+) -> Callable[
+    [tuple[Any, ...], tuple[tuple[Any, ...], ...]], tuple[Any, tuple[Any, ...]]
+]:
     """Implement Taylor-mode via nested reverse-mode autodiff.
 
     Serves as a reference implementation for testing ``jet``. See :func:`jet`
@@ -147,8 +158,8 @@ def rev_jet(
             Default: ``True``.
 
     Returns:
-        A function ``jet_f(primals, series)`` that returns
-        ``(primals_out, series_out)``.
+        A function ``jet_f(primals, input_jets)`` that returns
+        ``(primals_out, output_jets)``.
     """
     grad_kwargs = {
         "allow_unused": True,
@@ -156,7 +167,7 @@ def rev_jet(
         "create_graph": True,
     }
 
-    def _maybe_grad(f: Tensor, X: Tensor) -> Tensor:
+    def _grad(f: Tensor, X: Tensor) -> Tensor:
         """Compute the gradient if f requires grad, otherwise return zeros.
 
         Args:
@@ -171,7 +182,7 @@ def rev_jet(
 
     def jet_f(
         primals: tuple[Any, ...],
-        series: tuple[tuple[Any, ...], ...],
+        input_jets: tuple[tuple[Any, ...], ...],
         *,
         derivative_order: int | None = derivative_order,
     ) -> tuple[Any, tuple[Any, ...]]:
@@ -179,38 +190,46 @@ def rev_jet(
 
         Args:
             primals: Tuple of primal values matching ``f``'s positional args.
-            series: Tuple with one entry per argument, each containing
+            input_jets: Tuple with one entry per argument, each containing
                 ``derivative_order`` Taylor coefficients.
             derivative_order: Order of the Taylor expansion.
 
         Returns:
-            ``(primals_out, series_out)`` where *primals_out* has the pytree
-            structure of ``f``'s output and *series_out* is a tuple of
+            ``(primals_out, output_jets)`` where *primals_out* has the pytree
+            structure of ``f``'s output and *output_jets* is a tuple of
             ``derivative_order`` pytrees with the same structure.
         """
+        # prepare inputs
         if derivative_order is None:
-            derivative_order = len(series[0])
+            derivative_order = len(input_jets[0])
         else:
-            assert all(len(s) == derivative_order for s in series)
+            assert all(len(in_jet) == derivative_order for in_jet in input_jets)
 
-        flat_primals, in_spec = tree_flatten(primals)
-        k = derivative_order
-        flat_series = [
-            [leaf for arg_s in series for leaf in tree_flatten(arg_s[j])[0]]
-            for j in range(k)
+        primals, in_spec = tree_flatten(primals)
+        input_jets = [
+            [
+                coefficient
+                for in_jet in input_jets
+                for coefficient in tree_flatten(in_jet[order])[0]
+            ]
+            for order in range(derivative_order)
         ]
-        ref_tensor = flat_primals[0]
+        ref_tensor = primals[0]
 
         def path(t: Tensor) -> Any:
-            flat_x_t = [
-                p
+            """Construct the Taylor path
+            x_0 + t * x_1 + t^2 / 2 * x_2 + ... + t^k / k! x_k.
+            It tracks ``f``'s dependence on the primal values and input jets.
+            """  # noqa: D205
+            taylor_series = [
+                primal
                 + sum(
-                    t**n / factorial(n) * flat_series[n - 1][i] for n in range(1, k + 1)
+                    t**order / factorial(order) * input_jets[order - 1][i]
+                    for order in range(1, derivative_order + 1)
                 )
-                for i, p in enumerate(flat_primals)
+                for i, primal in enumerate(primals)
             ]
-            unflat_args = tree_unflatten(flat_x_t, in_spec)
-            return f(*unflat_args)
+            return tree_unflatten(taylor_series, in_spec)
 
         t = tensor(
             0.0,
@@ -218,34 +237,44 @@ def rev_jet(
             dtype=ref_tensor.dtype,
             device=ref_tensor.device,
         )
-        f_x = path(t)
+        # evaluate f at all paths
+        f_paths = f(*path(t))
 
         # Handle output: may be a tensor or pytree
-        flat_f_x, out_spec = tree_flatten(f_x)
-        num_out_leaves = len(flat_f_x)
+        f_paths, out_spec = tree_flatten(f_paths)
+        num_output_paths = len(f_paths)
 
-        vs_out = [[zeros_like(leaf).flatten() for leaf in flat_f_x] for _ in range(k)]
+        output_jets = [
+            [zeros_like(f_path).flatten() for f_path in f_paths]
+            for _ in range(derivative_order)
+        ]
 
-        for leaf_idx in range(num_out_leaves):
-            leaf = flat_f_x[leaf_idx]
-            for i, elem in enumerate(leaf.flatten()):
-                dnf_dt = elem
-                for n in range(k):
-                    dnf_dt = _maybe_grad(dnf_dt, t)
-                    vs_out[n][leaf_idx][i] = dnf_dt.detach() if detach else dnf_dt
+        # compute the nested derivatives of all nodes in the f_paths tree.
+        for path_idx in range(num_output_paths):
+            f_path = f_paths[path_idx]
+            for i, path_node in enumerate(f_path.flatten()):
+                dnf_dt = path_node
+                for order in range(derivative_order):
+                    dnf_dt = _grad(dnf_dt, t)
+                    output_jets[order][path_idx][i] = (
+                        dnf_dt.detach() if detach else dnf_dt
+                    )
 
         # Reconstruct per-order outputs
-        flat_f_x_det = [v.detach() if detach else v for v in flat_f_x]
-        primals_out = tree_unflatten(flat_f_x_det, out_spec)
+        primals_out = tree_unflatten(
+            [f_path.detach() if detach else f_path for f_path in f_paths], out_spec
+        )
 
-        series_out = []
-        for n in range(k):
-            flat_n = [
-                (v.detach() if detach else v).reshape_as(leaf)
-                for v, leaf in zip(vs_out[n], flat_f_x)
-            ]
-            series_out.append(tree_unflatten(flat_n, out_spec))
-
-        return primals_out, tuple(series_out)
+        output_jets = tuple(
+            tree_unflatten(
+                [
+                    (out_jets.detach() if detach else out_jets).reshape_as(f_path)
+                    for out_jets, f_path in zip(output_jets[order], f_paths)
+                ],
+                out_spec,
+            )
+            for order in range(derivative_order)
+        )
+        return primals_out, output_jets
 
     return jet_f

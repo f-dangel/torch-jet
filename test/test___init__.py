@@ -114,7 +114,7 @@ JET_CASES_IDS = [config["id"] for config in JET_CASES]
 
 K_MAX = 5
 K = list(range(K_MAX + 1))
-K_IDS = [f"{k=}" for k in K]
+K_IDS = [f"derivative_order={derivative_order}" for derivative_order in K]
 
 
 def setup_case(
@@ -230,29 +230,32 @@ ALL_CASES = JET_CASES + [
 ALL_CASES_IDS = [c["id"] for c in ALL_CASES]
 
 
-@mark.parametrize("k", K, ids=K_IDS)
+@mark.parametrize("derivative_order", K, ids=K_IDS)
 @mark.parametrize("config", ALL_CASES, ids=ALL_CASES_IDS)
-def test_jet(config: dict[str, Any], k: int):
+def test_jet(config: dict[str, Any], derivative_order: int):
     """Compare forward jet with rev_jet for all function types.
 
     Args:
         config: Configuration dictionary of the test case.
-        k: The order of the jet to compute.
+        derivative_order: The order of the jet to compute.
     """
     manual_seed(0)
     f = config["f"]
-    mock_args = config["mock_args_fn"]()
+    mock_primals = config["mock_args_fn"]()
 
     manual_seed(42)
     primals = config["mock_args_fn"]()
-    num_args = len(mock_args)
-    per_order = tuple(config["mock_args_fn"]() for _ in range(k))
-    series = tuple(tuple(per_order[j][i] for j in range(k)) for i in range(num_args))
+    num_args = len(mock_primals)
+    per_order = tuple(config["mock_args_fn"]() for _ in range(derivative_order))
+    input_jets = tuple(
+        tuple(per_order[order][arg_idx] for order in range(derivative_order))
+        for arg_idx in range(num_args)
+    )
 
-    jet_f = jet.jet(f, k, mock_args)
-    jet_out = jet_f(primals, series)
+    jet_f = jet.jet(f, derivative_order, mock_primals)
+    jet_out = jet_f(primals, input_jets)
 
-    rev_jet_f = rev_jet(f, k)
-    rev_jet_out = rev_jet_f(primals, series)
+    rev_jet_f = rev_jet(f, derivative_order)
+    rev_jet_out = rev_jet_f(primals, input_jets)
 
     report_pytrees_nonclose(jet_out, rev_jet_out)

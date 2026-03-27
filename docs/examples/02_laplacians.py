@@ -151,7 +151,7 @@ def compute_loop_laplacian(x: Tensor) -> Tensor:
     for d in range(D):  # compute the d-th Hessian diagonal element
         x1 = zeros_like(x)
         x1[d] = 1.0
-        _, (_, f2) = f_jet((x0,), ((x1, x2),))
+        _, _, f2 = f_jet(((x0,), (x1,), (x2,)))
         lap += f2
 
     return lap
@@ -187,7 +187,7 @@ def compute_loop_free_laplacian(x: Tensor) -> Tensor:
     x0, x2 = x, zeros_like(x)  # fixed Taylor coefficients
 
     def eval_f2(x1: Tensor) -> Tensor:
-        _, (_, f2) = f_jet((x0,), ((x1, x2),))
+        _, _, f2 = f_jet(((x0,), (x1,), (x2,)))
         return f2
 
     vmap_eval_f2 = vmap(eval_f2)
@@ -255,8 +255,8 @@ def make_laplacian(
         """
         in_meta = {"dtype": x.dtype, "device": x.device}
         X1 = eye(in_dim, **in_meta).reshape(in_dim, *in_shape)
-        vmapped = vmap(lambda x1: jet_f((x,), ((x1, zeros_like(x)),)))
-        _, (_, F2) = vmapped(X1)
+        vmapped = vmap(lambda x1: jet_f(((x,), (x1,), (zeros_like(x),))))
+        _, _, F2 = vmapped(X1)
         return F2.sum(0)
 
     return lap_f

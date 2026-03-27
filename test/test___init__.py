@@ -301,21 +301,15 @@ def test_jet(config: dict[str, Any], derivative_order: int):
 
     manual_seed(42)
     primals = config["mock_args_fn"]()
-    num_args = len(mock_primals)
     taylor_coeffs_by_order = tuple(
         config["mock_args_fn"]() for _ in range(derivative_order)
     )
-    taylor_coeffs = tuple(
-        tuple(
-            taylor_coeffs_by_order[order][arg_idx] for order in range(derivative_order)
-        )
-        for arg_idx in range(num_args)
-    )
+    input_jet = (primals, *taylor_coeffs_by_order)
 
     jet_f = jet.jet(f, derivative_order, mock_primals)
-    jet_out = jet_f(primals, taylor_coeffs)
+    jet_out = jet_f(input_jet)
 
     rev_jet_f = rev_jet(f, derivative_order)
-    rev_jet_out = rev_jet_f(primals, taylor_coeffs)
+    rev_jet_out = rev_jet_f(input_jet)
 
     report_pytrees_nonclose(jet_out, rev_jet_out)

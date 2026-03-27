@@ -96,9 +96,9 @@ _ = manual_seed(0)  # make deterministic
 # **In code,** the `jet` library offers a function transformation
 # `jet(f, derivative_order, mock_primals)` that takes a function $f$, a
 # derivative order, and mock primal inputs, and returns a new function
-# `jet_f(primals, taylor_coeffs)` that returns
-# `(primals_out, taylor_coeffs_out)` — the function value and its Taylor
-# coefficients up to that derivative order.
+# `jet_f(input_jet)` that returns `output_jet` — the Taylor coefficients of the
+# output curve up to that derivative order. Both `input_jet` and `output_jet`
+# are order-major full jets whose 0-th entry contains the primals.
 
 # %%
 #
@@ -127,7 +127,9 @@ _ = manual_seed(0)  # make deterministic
 f = sin  # propagates x₀ ↦ f(x₀)
 derivative_order = 2
 x = rand(1)
-f_jet = jet(f, derivative_order, (x,))  # propagates (x₀, (x₁, x₂)) ↦ (f₀, (f₁, f₂))
+f_jet = jet(
+    f, derivative_order, (x,)
+)  # propagates ((x₀,), (x₁,), (x₂,)) ↦ (f₀, f₁, f₂)
 
 # Set up the Taylor coefficients to compute the second derivative
 
@@ -136,7 +138,7 @@ x1 = ones_like(x)
 x2 = zeros_like(x)
 
 # Evaluate the second derivative
-f0, (f1, f2) = f_jet((x0,), ((x1, x2),))
+f0, f1, f2 = f_jet(((x0,), (x1,), (x2,)))
 
 # %%
 #
@@ -212,7 +214,7 @@ d2_diag = zeros_like(x)
 for d in range(D):
     x1 = zeros_like(x)
     x1[d] = 1.0  # d-th canonical basis vector
-    f0, (f1, f2) = f_jet((x0,), ((x1, x2),))
+    f0, f1, f2 = f_jet(((x0,), (x1,), (x2,)))
     d2_diag[d] = f2
 
 # %%
@@ -238,9 +240,9 @@ else:
 # multiple variables such as time and space.
 #
 # For a function with multiple arguments, ``mock_primals`` is a tuple that matches the
-# function's positional arguments, and the jet is called with
-# ``(primals, taylor_coeffs)`` where each entry in ``taylor_coeffs`` groups
-# Taylor coefficients **per argument** across derivative orders.
+# function's positional arguments, and the jet is called with ``input_jet`` whose
+# outer tuple runs over derivative order. Each order entry has the same
+# positional-argument structure as the original function call.
 #
 # .. note::
 #
@@ -248,14 +250,14 @@ else:
 #    `JAX's jet <https://docs.jax.dev/en/latest/jax.experimental.jet.html>`_
 #    uses the signature ``jet(fun, primals, series)`` where ``series`` is grouped
 #    **per argument** — each element is a tuple of that argument's Taylor
-#    coefficients across orders. ``torch-jet`` follows the same grouping, but
-#    names that argument ``taylor_coeffs``.
+#    coefficients across orders. ``torch-jet`` instead uses one full
+#    order-major jet ``input_jet`` that also includes the primals.
 #
 #    The key difference is that ``torch-jet`` uses a two-step API: first
 #    ``jet_f = jet(f, derivative_order, mock_primals)`` traces the function, then
-#    ``jet_f(primals, taylor_coeffs)`` evaluates it. This separates tracing
-#    (which can be expensive) from evaluation, allowing the traced jet to be
-#    reused across multiple inputs.
+#    ``jet_f(input_jet)`` evaluates it. This separates tracing (which can be
+#    expensive) from evaluation, allowing the traced jet to be reused across
+#    multiple inputs.
 #
 # As a concrete example, consider the function
 # $u(t, x) = \cos(t) \sin(x)$, which is a solution to the 1-D wave equation
@@ -285,7 +287,7 @@ jet_u = jet(u, 2, (t_val, x_val))
 # **Computing** $\partial_{xx} u$. We set $t_1 = 0$, $x_1 = 1$, $t_2 = 0$, $x_2 = 0$
 # so that $f_2 = \partial_{xx} u$:
 
-_, (_, d2u_dx2) = jet_u((t_val, x_val), ((zt, zt), (ones_like(x_val), zx)))
+_, _, d2u_dx2 = jet_u(((t_val, x_val), (zt, ones_like(x_val)), (zt, zx)))
 
 d2u_dx2_exact = -cos(t_val) * sin(x_val)
 if d2u_dx2.allclose(d2u_dx2_exact):
@@ -298,7 +300,7 @@ else:
 # Similarly, $\partial_{tt} u$ is obtained with $t_1 = 1$, $x_1 = 0$.
 # Let's verify the wave equation $\partial_{tt} u = \partial_{xx} u$:
 
-_, (_, d2u_dt2) = jet_u((t_val, x_val), ((ones_like(t_val), zt), (zx, zx)))
+_, _, d2u_dt2 = jet_u(((t_val, x_val), (ones_like(t_val), zx), (zt, zx)))
 
 if d2u_dt2.allclose(d2u_dx2):
     print("Wave equation verified: ∂²u/∂t² = ∂²u/∂x²!")
@@ -333,15 +335,14 @@ jet_pytree = jet(f_pytree, 1, (mock_inputs,))
 
 # %%
 #
-# The primals and Taylor coefficients follow the same pytree structure as the
-# arguments. Since ``f_pytree`` has a single argument (a dict), ``primals`` is a
-# 1-tuple containing that dict, and ``taylor_coeffs`` has one entry (for that
-# argument) with one Taylor coefficient (since ``derivative_order=1``):
+# The jet is grouped by derivative order, and each order entry follows the same
+# pytree structure as the function's arguments. Since ``f_pytree`` has a single
+# argument (a dict), each order entry is a 1-tuple containing that dict.
 
 inputs = {"x": rand(2), "y": rand(2)}
 d_inputs = {"x": ones_like(inputs["x"]), "y": zeros_like(inputs["y"])}
 
-f0, (f1,) = jet_pytree((inputs,), ((d_inputs,),))
+f0, f1 = jet_pytree(((inputs,), (d_inputs,)))
 
 # %%
 #

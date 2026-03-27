@@ -9,6 +9,10 @@ from torch.fx import GraphModule, Node
 from torch.fx.passes.graph_drawer import FxGraphDrawer
 from torch.random import fork_rng
 
+# Type aliases for arguments and return values of jet-able functions.
+Primal = Tensor
+Value = Tensor
+
 
 def run_seeded(f: Callable, seed: int, *args, **kwargs):
     """Run a callable with a specific random seed, restoring the RNG state afterwards.

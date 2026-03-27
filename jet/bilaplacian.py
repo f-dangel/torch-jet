@@ -6,6 +6,7 @@ from torch import Tensor, eye, triu_indices, zeros_like
 from torch.func import vmap
 
 import jet
+import jet.utils
 from jet.ttc_coefficients import compute_all_gammas
 from jet.utils import sample, validate_randomization
 
@@ -72,7 +73,7 @@ def bilaplacian(
     validate_randomization(randomization, SUPPORTED_DISTRIBUTIONS)
 
     derivative_order = 4
-    jet_f = jet.jet(f, derivative_order, mock_x)
+    jet_f = jet.jet(f, derivative_order, (mock_x,))
 
     def _set_up_taylor_coefficients(x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         """Create the first Taylor coefficients for the Bi-Laplacian computation.
@@ -119,16 +120,16 @@ def bilaplacian(
             raise ValueError(f"Expected input shape {in_shape}, got {x.shape}.")
         z = zeros_like(x)
         vmapped = vmap(
-            lambda x1: jet_f(x, x1, z, z, z),
+            lambda x1: jet_f((x,), ((x1, z, z, z),)),
             randomness="error" if randomization is None else "different",
-            out_dims=(None, 0, 0, 0, 0),
+            out_dims=(None, (0, 0, 0, 0)),
         )
 
         if randomization is not None:
             distribution, num_samples = randomization
             X1 = sample(x, distribution, (num_samples, *in_shape))
 
-            _, _, _, _, F4 = vmapped(X1)
+            _, (_, _, _, F4) = vmapped(X1)
             # need to divide the Laplacian by number of MC samples
             return F4.sum(0) / (3 * num_samples)
 
@@ -140,7 +141,7 @@ def bilaplacian(
         gammas = compute_all_gammas((2, 2))
         gamma_4_0 = float(gammas[(4, 0)])
         # first summand
-        _, _, _, _, F4_1 = vmapped(C1)
+        _, (_, _, _, F4_1) = vmapped(C1)
         factor1 = (gamma_4_4 + 2 * (D - 1) * gamma_4_0) / 24
         term1 = factor1 * F4_1.sum(0)
 
@@ -150,13 +151,13 @@ def bilaplacian(
 
         # second summand
         gamma_3_1 = float(gammas[(3, 1)])
-        _, _, _, _, F4_2 = vmapped(C2)
+        _, (_, _, _, F4_2) = vmapped(C2)
         factor2 = 2 * gamma_3_1 / 24
         term2 = factor2 * F4_2.sum(0)
 
         # third term
         gamma_2_2 = float(gammas[(2, 2)])
-        _, _, _, _, F4_3 = vmapped(C3)
+        _, (_, _, _, F4_3) = vmapped(C3)
         factor3 = 2 * gamma_2_2 / 24
         term3 = factor3 * F4_3.sum(0)
 

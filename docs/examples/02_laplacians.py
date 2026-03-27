@@ -124,8 +124,8 @@ print(hessian_trace_laplacian)
 #
 # Let's set up the jet function:
 
-k = 2
-f_jet = jet.jet(f, k, (x,))
+derivative_order = 2
+f_jet = jet.jet(f, derivative_order, (x,))
 
 # %%
 #
@@ -239,9 +239,10 @@ def make_laplacian(
     Returns:
         A function that computes the Laplacian of f at a given input.
     """
+    derivative_order = 2
     in_shape = mock_x.shape
     in_dim = mock_x.numel()
-    jet_f = jet.jet(f, 2, (mock_x,))
+    jet_f = jet.jet(f, derivative_order, (mock_x,))
 
     def lap_f(x: Tensor) -> Tensor:
         """Compute the Laplacian.

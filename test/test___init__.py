@@ -84,30 +84,86 @@ JET_CASES = [
     {"f": _LINEAR, "mock_args_fn": lambda: (rand(4).double(),), "id": "linear"},
     {"f": lambda x: x**2, "mock_args_fn": lambda: (rand(5).double(),), "id": "pow-2"},
     {"f": lambda x: x**10, "mock_args_fn": lambda: (rand(5).double(),), "id": "pow-10"},
-    {"f": lambda x: x**1.5, "mock_args_fn": lambda: (rand(5).double(),), "id": "pow-1.5"},
-    {"f": lambda x: x + 2.0, "mock_args_fn": lambda: (rand(5).double(),), "id": "add-2.0"},
-    {"f": lambda x: x - 2.0, "mock_args_fn": lambda: (rand(5).double(),), "id": "sub-2.0"},
-    {"f": lambda x: x + x, "mock_args_fn": lambda: (rand(5).double(),), "id": "add-x-x_"},
-    {"f": lambda x: x * 3.0, "mock_args_fn": lambda: (rand(5).double(),), "id": "mul-3.0"},
-    {"f": lambda x: x * x, "mock_args_fn": lambda: (rand(5).double(),), "id": "mul-x-x_"},
-    {"f": lambda x: sin(sin(x)), "mock_args_fn": lambda: (rand(2).double(),), "id": "sin-sin"},
-    {"f": lambda x: tanh(tanh(x)), "mock_args_fn": lambda: (rand(2).double(),), "id": "tanh-tanh"},
+    {
+        "f": lambda x: x**1.5,
+        "mock_args_fn": lambda: (rand(5).double(),),
+        "id": "pow-1.5",
+    },
+    {
+        "f": lambda x: x + 2.0,
+        "mock_args_fn": lambda: (rand(5).double(),),
+        "id": "add-2.0",
+    },
+    {
+        "f": lambda x: x - 2.0,
+        "mock_args_fn": lambda: (rand(5).double(),),
+        "id": "sub-2.0",
+    },
+    {
+        "f": lambda x: x + x,
+        "mock_args_fn": lambda: (rand(5).double(),),
+        "id": "add-x-x_",
+    },
+    {
+        "f": lambda x: x * 3.0,
+        "mock_args_fn": lambda: (rand(5).double(),),
+        "id": "mul-3.0",
+    },
+    {
+        "f": lambda x: x * x,
+        "mock_args_fn": lambda: (rand(5).double(),),
+        "id": "mul-x-x_",
+    },
+    {
+        "f": lambda x: sin(sin(x)),
+        "mock_args_fn": lambda: (rand(2).double(),),
+        "id": "sin-sin",
+    },
+    {
+        "f": lambda x: tanh(tanh(x)),
+        "mock_args_fn": lambda: (rand(2).double(),),
+        "id": "tanh-tanh",
+    },
     {
         "f": lambda x: linear(tanh(x), _TANH_LINEAR_W, bias=_TANH_LINEAR_B),
         "mock_args_fn": lambda: (rand(3).double(),),
         "id": "tanh-linear",
     },
-    {"f": _MLP, "mock_args_fn": lambda: (rand(5).double(),), "id": "two-layer-tanh-mlp"},
+    {
+        "f": _MLP,
+        "mock_args_fn": lambda: (rand(5).double(),),
+        "id": "two-layer-tanh-mlp",
+    },
     {
         "f": _MLP_BATCHED,
         "mock_args_fn": lambda: (rand(10, 5).double(),),
         "id": "batched-two-layer-tanh-mlp",
     },
-    {"f": lambda x: sigmoid(sigmoid(x)), "mock_args_fn": lambda: (rand(3).double(),), "id": "sigmoid-sigmoid"},
-    {"f": lambda x: sin(x) + x, "mock_args_fn": lambda: (rand(3).double(),), "id": "sin-residual"},
-    {"f": lambda x: sin(x) - x, "mock_args_fn": lambda: (rand(3).double(),), "id": "sin-neg-residual"},
-    {"f": f_multiply, "mock_args_fn": lambda: (rand(5).double(),), "id": "multiply-variables"},
-    {"f": lambda x: x.sum(0), "mock_args_fn": lambda: (rand(3, 5).double(),), "id": "sum-3"},
+    {
+        "f": lambda x: sigmoid(sigmoid(x)),
+        "mock_args_fn": lambda: (rand(3).double(),),
+        "id": "sigmoid-sigmoid",
+    },
+    {
+        "f": lambda x: sin(x) + x,
+        "mock_args_fn": lambda: (rand(3).double(),),
+        "id": "sin-residual",
+    },
+    {
+        "f": lambda x: sin(x) - x,
+        "mock_args_fn": lambda: (rand(3).double(),),
+        "id": "sin-neg-residual",
+    },
+    {
+        "f": f_multiply,
+        "mock_args_fn": lambda: (rand(5).double(),),
+        "id": "multiply-variables",
+    },
+    {
+        "f": lambda x: x.sum(0),
+        "mock_args_fn": lambda: (rand(3, 5).double(),),
+        "id": "sum-3",
+    },
 ]
 
 JET_CASES_IDS = [config["id"] for config in JET_CASES]

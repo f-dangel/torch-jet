@@ -185,6 +185,7 @@ def compute_loop_free_laplacian(x: Tensor) -> Tensor:
         The Laplacian of shape [1].
     """
     x0, x2 = x, zeros_like(x)  # fixed Taylor coefficients
+
     def eval_f2(x1: Tensor) -> Tensor:
         _, (_, f2) = f_jet((x0,), ((x1, x2),))
         return f2

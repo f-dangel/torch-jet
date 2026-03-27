@@ -39,9 +39,17 @@ SIMPLIFY_CASES = [
     # 2d sine function
     {"f": sin, "mock_args_fn": lambda: (rand(2).double(),), "id": "sin-2d"},
     # 2d sin(sin) function
-    {"f": lambda x: sin(sin(x)), "mock_args_fn": lambda: (rand(2).double(),), "id": "sin-sin"},
+    {
+        "f": lambda x: sin(sin(x)),
+        "mock_args_fn": lambda: (rand(2).double(),),
+        "id": "sin-sin",
+    },
     # 2d tanh(tanh) function
-    {"f": lambda x: tanh(tanh(x)), "mock_args_fn": lambda: (rand(2).double(),), "id": "tanh-tanh"},
+    {
+        "f": lambda x: tanh(tanh(x)),
+        "mock_args_fn": lambda: (rand(2).double(),),
+        "id": "tanh-tanh",
+    },
     # 2d linear(tanh) function
     {
         "f": lambda x: linear(tanh(x), _TANH_LINEAR_W, bias=_TANH_LINEAR_B),

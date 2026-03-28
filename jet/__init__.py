@@ -3,13 +3,15 @@
 from math import factorial
 from typing import Any, Callable
 
+__all__ = ["collapsed_jet", "jet", "rev_jet"]
+
 from torch import Tensor, tensor, zeros_like
 from torch.autograd import grad
 from torch.fx import GraphModule
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
 
-from jet.collapsed_jet_interpreter import collapsed_jet as collapsed_jet
+from jet.collapsed_jet_interpreter import collapsed_jet
 from jet.jet_interpreter import JetInterpreter
 from jet.operations import JetTuple
 from jet.tracing import capture_graph

@@ -9,6 +9,7 @@ from torch.fx import GraphModule
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
 
+from jet.collapsed_jet_interpreter import collapsed_jet as collapsed_jet
 from jet.jet_interpreter import JetInterpreter
 from jet.operations import JetTuple
 from jet.tracing import capture_graph

@@ -3,8 +3,10 @@
 from typing import Callable
 
 from torch import Tensor, eye, triu_indices, zeros, zeros_like
+from torch.func import vmap
 from torch.fx import GraphModule
 
+import jet
 from jet.collapsed import collapsed_jet
 from jet.tracing import capture_graph
 from jet.ttc_coefficients import compute_all_gammas
@@ -17,6 +19,7 @@ def bilaplacian(
     f: Callable[[Tensor], Tensor],
     mock_x: Tensor,
     randomization: tuple[str, int] | None = None,
+    use_collapsing: bool = True,
 ) -> GraphModule:
     r"""Transform f into a function that computes the Bi-Laplacian.
 
@@ -42,9 +45,13 @@ def bilaplacian(
             will be computed using Monte-Carlo sampling. The first element is the
             distribution type (must be 'normal'), and the second is the number of
             samples to use. Default is `None`.
+        use_collapsing: Whether to use collapsed Taylor mode. If ``True``
+            (default), uses a ``CollapsedJetInterpreter`` that directly propagates
+            the summed fourth-order coefficient. If ``False``, propagates full
+            4-jets over all directions via ``vmap`` and sums afterward.
 
     Returns:
-        A `GraphModule` that maps `x → bilap(f(x))`.
+        A ``GraphModule`` that maps ``x → bilap(f(x))``.
 
     Raises:
         ValueError: If the provided distribution is not supported or if the number
@@ -74,7 +81,11 @@ def bilaplacian(
     validate_randomization(randomization, SUPPORTED_DISTRIBUTIONS)
 
     derivative_order = 4
-    cjet_f = collapsed_jet(f, derivative_order, (mock_x,))
+
+    if use_collapsing:
+        cjet_f = collapsed_jet(f, derivative_order, (mock_x,))
+    else:
+        jet_f = jet.jet(f, derivative_order, (mock_x,))
 
     def _set_up_taylor_coefficients(x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         """Create the first Taylor coefficients for the Bi-Laplacian computation.
@@ -105,21 +116,29 @@ def bilaplacian(
 
         return C1, C2, C3
 
-    def _collapsed_4jet(x: Tensor, X1: Tensor) -> Tensor:
-        """Evaluate the collapsed 4-jet and return the 4th coefficient.
+    def _eval_4jet(x: Tensor, X1: Tensor) -> Tensor:
+        """Evaluate the 4-jet for directions X1 and return the 4th coefficient.
 
         Args:
             x: Input tensor.
             X1: First-order directions, shape (R, *in_shape).
 
         Returns:
-            The collapsed 4th-order coefficient.
+            The (collapsed or summed) 4th-order coefficient.
         """
         z = zeros_like(x)
-        R = X1.shape[0]
-        Z = zeros(R, *in_shape, dtype=x.dtype, device=x.device)
-        # series: (X1,), (Z,), (Z,), (z,) -- first 3 batched, last collapsed
-        _, (_, _, _, F4) = cjet_f((x,), ((X1,), (Z,), (Z,), (z,)))
+        if use_collapsing:
+            R = X1.shape[0]
+            Z = zeros(R, *in_shape, dtype=x.dtype, device=x.device)
+            _, (_, _, _, F4) = cjet_f((x,), ((X1,), (Z,), (Z,), (z,)))
+        else:
+            vmapped = vmap(
+                lambda x1: jet_f((x,), ((x1, z, z, z),)),
+                randomness="error" if randomization is None else "different",
+                out_dims=(None, (0, 0, 0, 0)),
+            )
+            _, (_, _, _, F4) = vmapped(X1)
+            F4 = F4.sum(0)
         return F4
 
     def bilap_f(x: Tensor) -> Tensor:
@@ -140,7 +159,7 @@ def bilaplacian(
         if randomization is not None:
             distribution, num_samples = randomization
             X1 = sample(x, distribution, (num_samples, *in_shape))
-            F4 = _collapsed_4jet(x, X1)
+            F4 = _eval_4jet(x, X1)
             return F4 / (3 * num_samples)
 
         # three lists of 4-jet coefficients, one for each term
@@ -151,7 +170,7 @@ def bilaplacian(
         gammas = compute_all_gammas((2, 2))
         gamma_4_0 = float(gammas[(4, 0)])
         # first summand
-        F4_1 = _collapsed_4jet(x, C1)
+        F4_1 = _eval_4jet(x, C1)
         factor1 = (gamma_4_4 + 2 * (D - 1) * gamma_4_0) / 24
         term1 = factor1 * F4_1
 
@@ -161,13 +180,13 @@ def bilaplacian(
 
         # second summand
         gamma_3_1 = float(gammas[(3, 1)])
-        F4_2 = _collapsed_4jet(x, C2)
+        F4_2 = _eval_4jet(x, C2)
         factor2 = 2 * gamma_3_1 / 24
         term2 = factor2 * F4_2
 
         # third term
         gamma_2_2 = float(gammas[(2, 2)])
-        F4_3 = _collapsed_4jet(x, C3)
+        F4_3 = _eval_4jet(x, C3)
         factor3 = 2 * gamma_2_2 / 24
         term3 = factor3 * F4_3
 

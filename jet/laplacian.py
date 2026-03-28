@@ -3,8 +3,10 @@
 from typing import Callable
 
 from torch import Tensor, eye, zeros_like
+from torch.func import vmap
 from torch.fx import GraphModule
 
+import jet
 from jet.collapsed import collapsed_jet
 from jet.tracing import capture_graph
 from jet.utils import sample, validate_randomization
@@ -17,6 +19,7 @@ def laplacian(
     mock_x: Tensor,
     randomization: tuple[str, int] | None = None,
     weighting: tuple[Callable[[Tensor, Tensor], Tensor], int] | None = None,
+    use_collapsing: bool = True,
 ) -> GraphModule:
     r"""Transform f into a function that computes (f(x), jac(f(x)), lap(f(x))).
 
@@ -50,9 +53,13 @@ def laplacian(
             `[*D, rank_C]` while V is `[K, rank_C]` with arbitrary `K`. The second
             entry specifies `rank_C`. If `None`, then the weightings correspond to
             the identity matrix (i.e. computing the standard Laplacian).
+        use_collapsing: Whether to use collapsed Taylor mode. If ``True``
+            (default), uses a ``CollapsedJetInterpreter`` that directly propagates
+            the summed second-order coefficient. If ``False``, propagates full
+            2-jets over all directions via ``vmap`` and sums afterward.
 
     Returns:
-        A `GraphModule` that maps `x → (f(x), jac(f(x)), lap(f(x)))`.
+        A ``GraphModule`` that maps ``x → (f(x), jac(f(x)), lap(f(x)))``.
 
     Raises:
         ValueError: If the provided distribution is not supported or if the number
@@ -78,16 +85,21 @@ def laplacian(
     in_shape = mock_x.shape
     in_dim = mock_x.numel()
 
-    (apply_weightings, rank_weightings) = (
-        (lambda x, V: V.reshape(num_jets, *in_shape), in_dim)
-        if weighting is None
-        else weighting
-    )
+    rank_weightings = in_dim if weighting is None else weighting[1]
 
     validate_randomization(randomization, SUPPORTED_DISTRIBUTIONS)
 
     num_jets = rank_weightings if randomization is None else randomization[1]
-    cjet_f = collapsed_jet(f, 2, (mock_x,))
+    apply_weightings = (
+        (lambda x, V: V.reshape(num_jets, *in_shape))
+        if weighting is None
+        else weighting[0]
+    )
+
+    if use_collapsing:
+        cjet_f = collapsed_jet(f, 2, (mock_x,))
+    else:
+        jet_f = jet.jet(f, 2, (mock_x,))
 
     def lap_f(x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         """Compute the (weighted and/or randomized) Laplacian of f at x.
@@ -117,13 +129,22 @@ def laplacian(
         X1 = apply_weightings(x, V)
         z = zeros_like(x)
 
-        # series[0] = (X1,) batched with shape (num_jets, *in_shape)
-        # series[1] = (z,) collapsed with shape (*in_shape)
-        F0, (F1, F2) = cjet_f((x,), ((X1,), (z,)))
+        if use_collapsing:
+            F0, (F1, F2) = cjet_f((x,), ((X1,), (z,)))
+        else:
+            vmapped = vmap(
+                lambda x1: jet_f((x,), ((x1, z),)),
+                randomness="error" if randomization is None else "different",
+                out_dims=(None, (0, 0)),
+            )
+            F0, (F1, F2) = vmapped(X1)
+            F2 = F2.sum(0)
+
         if randomization is not None:
             # Monte Carlo averaging: scale by 1 / number of samples
             monte_carlo_scaling = 1.0 / randomization[1]
             F2 = F2 * monte_carlo_scaling
+
         return F0, F1, F2
 
     return capture_graph(lap_f, mock_x)

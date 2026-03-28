@@ -13,20 +13,17 @@ from jet.utils import sample, validate_randomization
 SUPPORTED_DISTRIBUTIONS = ["normal"]
 
 
-def _set_up_taylor_coefficients(
-    x: Tensor, in_dim: int, in_shape: tuple[int, ...]
-) -> tuple[Tensor, Tensor, Tensor]:
+def _set_up_taylor_coefficients(x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
     """Create the first Taylor coefficients for the Bi-Laplacian computation.
 
     Args:
         x: Input tensor.
-        in_dim: Total number of input elements.
-        in_shape: Shape of the input tensor.
 
     Returns:
         A tuple of three tensors (C1, C2, C3), one per 4-jet term.
     """
-    D = in_dim
+    in_shape = x.shape
+    D = x.numel()
     in_meta = {"dtype": x.dtype, "device": x.device}
     E = eye(D, **in_meta)
 
@@ -140,7 +137,7 @@ def bilaplacian(
         Returns:
             The Bi-Laplacian.
         """
-        C1, C2, C3 = _set_up_taylor_coefficients(x, in_dim, in_shape)
+        C1, C2, C3 = _set_up_taylor_coefficients(x)
         D = in_dim
 
         gamma_4_4 = float(compute_all_gammas((4,))[(4,)])

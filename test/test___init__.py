@@ -3,13 +3,27 @@
 from typing import Any, Callable
 
 from pytest import mark
-from torch import Tensor, cos, float64, manual_seed, rand, sigmoid, sin, tanh, tensor
-from torch.nn import Linear, Sequential, Tanh
+from torch import (
+    Tensor,
+    cos,
+    eye,
+    float64,
+    manual_seed,
+    rand,
+    sigmoid,
+    sin,
+    tanh,
+    tensor,
+    zeros,
+    zeros_like,
+)
+from torch.func import vmap
+from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
 
 import jet
-from jet import rev_jet
-from test.utils import report_pytrees_nonclose
+from jet import collapsed_jet, rev_jet
+from test.utils import report_nonclose, report_pytrees_nonclose
 
 INF = float("inf")
 
@@ -319,3 +333,69 @@ def test_jet(config: dict[str, Any], derivative_order: int):
     rev_jet_out = rev_jet_f(primals, taylor_coeffs)
 
     report_pytrees_nonclose(jet_out, rev_jet_out)
+
+
+# ---------------------------------------------------------------------------
+# Tests for collapsed_jet: compare against standard jet + vmap + sum
+# ---------------------------------------------------------------------------
+
+
+def _compare_collapsed_vs_standard(f, mock_args_fn, K):
+    """Compare collapsed jet output against standard jet + vmap + sum.
+
+    Args:
+        f: The function to test.
+        mock_args_fn: Callable returning mock arguments (used for shape).
+        K: Derivative order.
+    """
+    mock_args = mock_args_fn()
+    shape = mock_args[0].shape
+    in_dim = mock_args[0].numel()
+
+    if isinstance(f, Module):
+        f = f.double()
+
+    manual_seed(42)
+    x = rand(*shape, dtype=float64)
+    mock_x = zeros(*shape, dtype=float64)
+    R = in_dim
+    E = eye(R, dtype=float64).reshape(R, *shape)
+
+    # Standard: jet + vmap + sum
+    jet_f = jet.jet(f, K, (mock_x,))
+    z = zeros_like(x)
+
+    def single_jet(x1):
+        taylor_coeffs = ((x1,) + tuple(z for _ in range(K - 1)),)
+        return jet_f((x,), taylor_coeffs)
+
+    vmapped = vmap(
+        single_jet, randomness="different", out_dims=(None, tuple(0 for _ in range(K)))
+    )
+    F0_std, Fs_std = vmapped(E)
+    FK_std_summed = Fs_std[K - 1].sum(0)
+
+    # Collapsed: single call
+    cjet_f = collapsed_jet(f, K, (mock_x,))
+    batched_series = tuple(
+        (E,) if i == 0 else (zeros(R, *shape, dtype=float64),) for i in range(K - 1)
+    )
+    collapsed_series = ((zeros_like(x),),)
+    F0_col, Fs_col = cjet_f((x,), batched_series + collapsed_series)
+
+    report_nonclose(F0_std, F0_col, name="Primals")
+    report_nonclose(FK_std_summed, Fs_col[K - 1], name=f"Collapsed K={K} coefficient")
+
+
+@mark.parametrize("derivative_order", [2, 3, 4], ids=["K=2", "K=3", "K=4"])
+@mark.parametrize("config", JET_CASES, ids=JET_CASES_IDS)
+def test_collapsed_jet(config: dict[str, Any], derivative_order: int):
+    """Collapsed jet matches standard jet + vmap + sum.
+
+    Args:
+        config: Configuration dictionary of the test case.
+        derivative_order: The order of the jet to compute.
+    """
+    _compare_collapsed_vs_standard(
+        config["f"], config["mock_args_fn"], derivative_order
+    )

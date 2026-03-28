@@ -6,15 +6,11 @@ traced graph, dispatching to collapsed jet operations from
 ``jet.collapsed_operations``.
 """
 
-from typing import Callable
-
 from torch import Tensor, zeros_like
 from torch.fx import GraphModule, Interpreter
 from torch.utils._pytree import tree_flatten, tree_unflatten
 
 from jet.collapsed_operations import COLLAPSED_MAPPING, CollapsedJetTuple
-from jet.tracing import capture_graph
-from jet.utils import Value
 
 
 class CollapsedJetInterpreter(Interpreter):
@@ -60,44 +56,3 @@ def _transpose_collapsed_output(result, derivative_order):
         ]
         outputs.append(tree_unflatten(flat_order, out_spec))
     return tuple(outputs)
-
-
-def collapsed_jet(
-    f: Callable[..., Value],
-    derivative_order: int,
-    mock_args: tuple,
-    verbose: bool = False,
-) -> Callable[..., tuple[Value, ...]]:
-    """Overload f with collapsed Taylor-mode equivalent.
-
-    Same API as ``jet()``, but expects mixed-shape series:
-      - series[0..K-2]: tensors with leading batch dim R
-      - series[K-1]: tensors without batch dim (collapsed)
-
-    The K-th output coefficient is automatically collapsed (summed over
-    directions), so no ``.sum(0)`` or PullSum graph rewrites are needed.
-    """
-    flat_mocks, in_spec = tree_flatten(mock_args)
-    num_leaves = len(flat_mocks)
-
-    def flat_f(*flat_tensors):
-        args = tree_unflatten(list(flat_tensors), in_spec)
-        return f(*args)
-
-    mod = capture_graph(flat_f, *flat_mocks)
-    if verbose:
-        print(f"Traced graph:\n{mod.graph}")
-
-    interp = CollapsedJetInterpreter(mod, derivative_order)
-
-    def cjet_f(primals, series):
-        flat_primals = tree_flatten(primals)[0]
-        flat_series = [tree_flatten(s)[0] for s in series]
-        input_tuples = [
-            (flat_primals[i], *(fs[i] for fs in flat_series)) for i in range(num_leaves)
-        ]
-        result = interp.run(*input_tuples)
-        all_orders = _transpose_collapsed_output(result, derivative_order)
-        return all_orders[0], all_orders[1:]
-
-    return cjet_f

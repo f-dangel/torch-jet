@@ -3,18 +3,20 @@
 from math import factorial
 from typing import Any, Callable
 
-__all__ = ["collapsed_jet", "jet", "rev_jet"]
-
 from torch import Tensor, tensor, zeros_like
 from torch.autograd import grad
 from torch.fx import GraphModule
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
 
-from jet.collapsed_jet_interpreter import collapsed_jet
+from jet.collapsed_jet_interpreter import (
+    CollapsedJetInterpreter,
+    _transpose_collapsed_output,
+)
 from jet.jet_interpreter import JetInterpreter
 from jet.operations import JetTuple
 from jet.tracing import capture_graph
+from jet.utils import Value
 
 
 def _is_jet_or_tensor(x: Any) -> bool:
@@ -285,3 +287,44 @@ def rev_jet(
         return primals_out, taylor_coeffs_out
 
     return jet_f
+
+
+def collapsed_jet(
+    f: Callable[..., Value],
+    derivative_order: int,
+    mock_args: tuple,
+    verbose: bool = False,
+) -> Callable[..., tuple[Value, ...]]:
+    """Overload f with collapsed Taylor-mode equivalent.
+
+    Same API as ``jet()``, but expects mixed-shape series:
+      - series[0..K-2]: tensors with leading batch dim R
+      - series[K-1]: tensors without batch dim (collapsed)
+
+    The K-th output coefficient is automatically collapsed (summed over
+    directions), so no ``.sum(0)`` or PullSum graph rewrites are needed.
+    """
+    flat_mocks, in_spec = tree_flatten(mock_args)
+    num_leaves = len(flat_mocks)
+
+    def flat_f(*flat_tensors):
+        args = tree_unflatten(list(flat_tensors), in_spec)
+        return f(*args)
+
+    mod = capture_graph(flat_f, *flat_mocks)
+    if verbose:
+        print(f"Traced graph:\n{mod.graph}")
+
+    interp = CollapsedJetInterpreter(mod, derivative_order)
+
+    def cjet_f(primals, series):
+        flat_primals = tree_flatten(primals)[0]
+        flat_series = [tree_flatten(s)[0] for s in series]
+        input_tuples = [
+            (flat_primals[i], *(fs[i] for fs in flat_series)) for i in range(num_leaves)
+        ]
+        result = interp.run(*input_tuples)
+        all_orders = _transpose_collapsed_output(result, derivative_order)
+        return all_orders[0], all_orders[1:]
+
+    return cjet_f

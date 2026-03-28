@@ -14,7 +14,6 @@ from jet.laplacian import laplacian as jet_laplacian
 from jet.utils import run_seeded
 from jet.weighted_laplacian import C_func_diagonal_increments, get_weighting
 from test.test___init__ import setup_case
-from test.utils import report_nonclose
 
 DISTRIBUTIONS = SUPPORTED_DISTRIBUTIONS
 DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]
@@ -123,9 +122,14 @@ def get_coefficients(x: Tensor, weights: str | None | tuple[str, float]) -> Tens
     raise ValueError(f"Unsupported {weights=}.")
 
 
+@mark.parametrize("use_collapsing", [True, False], ids=["collapsed", "standard"])
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize("config", LAPLACIAN_CASES, ids=LAPLACIAN_IDS)
-def test_Laplacian(config: dict[str, Any], weights: str | None | tuple[str, float]):
+def test_Laplacian(
+    config: dict[str, Any],
+    weights: str | None | tuple[str, float],
+    use_collapsing: bool,
+):
     """Compare Laplacian implementations.
 
     Args:
@@ -133,6 +137,7 @@ def test_Laplacian(config: dict[str, Any], weights: str | None | tuple[str, floa
         weights: The weighting to use for the Laplacian. If `None`, the Laplacian is
             unweighted. If `diagonal_increments`, a synthetic coefficient tensor is
             used that has diagonal elements that are increments of 1 starting from 1.
+        use_collapsing: Whether to use collapsed Taylor mode.
     """
     f, x, _ = setup_case(config)
 
@@ -142,7 +147,9 @@ def test_Laplacian(config: dict[str, Any], weights: str | None | tuple[str, floa
 
     # Using a manually-vmapped jet
     weighting = get_weighting(x, weights)
-    _, _, lap_fn = jet_laplacian(f, x, weighting=weighting)(x)
+    _, _, lap_fn = jet_laplacian(
+        f, x, weighting=weighting, use_collapsing=use_collapsing
+    )(x)
     assert lap_rev.allclose(lap_fn), "Functorch and jet Laplacians do not match."
 
 
@@ -233,28 +240,3 @@ def _check_mc_convergence(
             break
 
     return converged
-
-
-@mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
-@mark.parametrize("config", LAPLACIAN_CASES, ids=LAPLACIAN_IDS)
-def test_collapsing_matches_non_collapsing(
-    config: dict[str, Any], weights: str | None | tuple[str, float]
-):
-    """Test that use_collapsing=True and False produce the same Laplacian.
-
-    Args:
-        config: Configuration dictionary of the test case.
-        weights: The weighting to use for the Laplacian.
-    """
-    f, x, _ = setup_case(config)
-    weighting = get_weighting(x, weights)
-
-    lap_collapsed = jet_laplacian(f, x, weighting=weighting, use_collapsing=True)
-    lap_standard = jet_laplacian(f, x, weighting=weighting, use_collapsing=False)
-
-    F0_col, F1_col, F2_col = run_seeded(lap_collapsed, 0, x)
-    F0_std, F1_std, F2_std = run_seeded(lap_standard, 0, x)
-
-    report_nonclose(F0_col, F0_std, name="Primals")
-    report_nonclose(F1_col, F1_std, name="Jacobians")
-    report_nonclose(F2_col, F2_std, name="Laplacians")

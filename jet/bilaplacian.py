@@ -8,7 +8,7 @@ from torch.fx import GraphModule
 from jet.collapsed import collapsed_jet
 from jet.tracing import capture_graph
 from jet.ttc_coefficients import compute_all_gammas
-from jet.utils import sample
+from jet.utils import sample, validate_randomization
 
 SUPPORTED_DISTRIBUTIONS = ["normal"]
 
@@ -71,14 +71,7 @@ def bilaplacian(
     in_shape = mock_x.shape
     in_dim = mock_x.numel()
 
-    if randomization is not None:
-        (distribution, num_samples) = randomization
-        if distribution not in SUPPORTED_DISTRIBUTIONS:
-            raise ValueError(
-                f"Unsupported {distribution=} ({SUPPORTED_DISTRIBUTIONS=})."
-            )
-        if num_samples <= 0:
-            raise ValueError(f"{num_samples=} must be positive.")
+    validate_randomization(randomization, SUPPORTED_DISTRIBUTIONS)
 
     derivative_order = 4
     cjet_f = collapsed_jet(f, derivative_order, (mock_x,))

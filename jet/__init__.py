@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 from torch import Tensor, tensor, zeros_like
 from torch.autograd import grad
+from torch.func import vmap
 from torch.fx import GraphModule
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
@@ -326,5 +327,44 @@ def collapsed_jet(
         result = interp.run(*input_tuples)
         all_orders = _transpose_collapsed_output(result, derivative_order)
         return all_orders[0], all_orders[1:]
+
+    return cjet_f
+
+
+def _make_uncollapsed_cjet(f, derivative_order, mock_args, randomization):
+    """Build a collapsed_jet-compatible function using standard jet + vmap + sum.
+
+    The returned function has the same calling convention as ``collapsed_jet``:
+    it accepts ``(primals, series)`` where ``series[0..K-2]`` are batched and
+    ``series[K-1]`` is collapsed, and returns output with the K-th coefficient
+    already summed over directions.
+
+    Args:
+        f: The function to trace.
+        derivative_order: The order of the Taylor expansion.
+        mock_args: Mock arguments for tracing.
+        randomization: Randomization tuple or ``None``.
+
+    Returns:
+        A callable with the same interface as ``collapsed_jet(f, ...)``.
+    """
+    K = derivative_order
+    jet_f = jet(f, K, mock_args)
+
+    def cjet_f(primals, series):
+        X1 = series[0][0]
+        z = series[K - 1][0]
+
+        def single_direction(x1):
+            taylor_coeffs = ((x1,) + tuple(z for _ in range(K - 1)),)
+            return jet_f(primals, taylor_coeffs)
+
+        vmapped = vmap(
+            single_direction,
+            randomness="error" if randomization is None else "different",
+            out_dims=(None, tuple(0 for _ in range(K))),
+        )
+        F0, Fs = vmapped(X1)
+        return F0, (*Fs[:-1], Fs[-1].sum(0))
 
     return cjet_f

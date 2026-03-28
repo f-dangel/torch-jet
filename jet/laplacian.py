@@ -3,11 +3,9 @@
 from typing import Callable
 
 from torch import Tensor, eye, zeros_like
-from torch.func import vmap
 from torch.fx import GraphModule
 
-import jet
-from jet import collapsed_jet
+from jet import _make_uncollapsed_cjet, collapsed_jet
 from jet.tracing import capture_graph
 from jet.utils import sample, validate_randomization
 
@@ -96,10 +94,11 @@ def laplacian(
         else weighting[0]
     )
 
-    if use_collapsing:
-        cjet_f = collapsed_jet(f, 2, (mock_x,))
-    else:
-        jet_f = jet.jet(f, 2, (mock_x,))
+    cjet_f = (
+        collapsed_jet(f, 2, (mock_x,))
+        if use_collapsing
+        else _make_uncollapsed_cjet(f, 2, (mock_x,), randomization)
+    )
 
     def lap_f(x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         """Compute the (weighted and/or randomized) Laplacian of f at x.
@@ -129,19 +128,9 @@ def laplacian(
         X1 = apply_weightings(x, V)
         z = zeros_like(x)
 
-        if use_collapsing:
-            F0, (F1, F2) = cjet_f((x,), ((X1,), (z,)))
-        else:
-            vmapped = vmap(
-                lambda x1: jet_f((x,), ((x1, z),)),
-                randomness="error" if randomization is None else "different",
-                out_dims=(None, (0, 0)),
-            )
-            F0, (F1, F2) = vmapped(X1)
-            F2 = F2.sum(0)
+        F0, (F1, F2) = cjet_f((x,), ((X1,), (z,)))
 
         if randomization is not None:
-            # Monte Carlo averaging: scale by 1 / number of samples
             monte_carlo_scaling = 1.0 / randomization[1]
             F2 = F2 * monte_carlo_scaling
 

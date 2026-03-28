@@ -3,11 +3,9 @@
 from typing import Callable
 
 from torch import Tensor, eye, triu_indices, zeros, zeros_like
-from torch.func import vmap
 from torch.fx import GraphModule
 
-import jet
-from jet import collapsed_jet
+from jet import _make_uncollapsed_cjet, collapsed_jet
 from jet.tracing import capture_graph
 from jet.ttc_coefficients import compute_all_gammas
 from jet.utils import sample, validate_randomization
@@ -111,10 +109,11 @@ def bilaplacian(
 
     derivative_order = 4
 
-    if use_collapsing:
-        cjet_f = collapsed_jet(f, derivative_order, (mock_x,))
-    else:
-        jet_f = jet.jet(f, derivative_order, (mock_x,))
+    cjet_f = (
+        collapsed_jet(f, derivative_order, (mock_x,))
+        if use_collapsing
+        else _make_uncollapsed_cjet(f, derivative_order, (mock_x,), randomization)
+    )
 
     def _eval_4jet(x: Tensor, X1: Tensor) -> Tensor:
         """Evaluate the 4-jet for directions X1 and return the 4th coefficient.
@@ -127,18 +126,9 @@ def bilaplacian(
             The (collapsed or summed) 4th-order coefficient.
         """
         z = zeros_like(x)
-        if use_collapsing:
-            R = X1.shape[0]
-            Z = zeros(R, *in_shape, dtype=x.dtype, device=x.device)
-            _, (_, _, _, F4) = cjet_f((x,), ((X1,), (Z,), (Z,), (z,)))
-        else:
-            vmapped = vmap(
-                lambda x1: jet_f((x,), ((x1, z, z, z),)),
-                randomness="error" if randomization is None else "different",
-                out_dims=(None, (0, 0, 0, 0)),
-            )
-            _, (_, _, _, F4) = vmapped(X1)
-            F4 = F4.sum(0)
+        R = X1.shape[0]
+        Z = zeros(R, *in_shape, dtype=x.dtype, device=x.device)
+        _, (_, _, _, F4) = cjet_f((x,), ((X1,), (Z,), (Z,), (z,)))
         return F4
 
     def _deterministic_bilap(x: Tensor) -> Tensor:

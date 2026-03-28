@@ -7,7 +7,7 @@ from torch.func import vmap
 from torch.fx import GraphModule
 
 import jet
-from jet.collapsed_jet_interpreter import collapsed_jet
+from jet import collapsed_jet
 from jet.tracing import capture_graph
 from jet.utils import sample, validate_randomization
 

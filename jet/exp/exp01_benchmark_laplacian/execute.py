@@ -18,6 +18,8 @@ from torch import (
     manual_seed,
     no_grad,
     rand,
+    triu_indices,
+    zeros_like,
 )
 from torch import compile as torch_compile
 from torch.func import hessian, jacrev, jvp, vmap
@@ -226,8 +228,6 @@ def naive_jet_laplacian(
     Returns:
         A function that takes x and returns the Laplacian of f at x.
     """
-    from torch import zeros_like
-
     in_shape = mock_x.shape
     in_dim = mock_x.numel()
 
@@ -278,8 +278,6 @@ def naive_jet_bilaplacian(
     Returns:
         A function that takes x and returns the Bi-Laplacian of f at x.
     """
-    from torch import triu_indices, zeros_like
-
     in_shape = mock_x.shape
     in_dim = mock_x.numel()
     jet_f = jet.jet(f, 4, (mock_x,))

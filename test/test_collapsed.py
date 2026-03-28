@@ -16,7 +16,7 @@ from torch import (
     zeros_like,
 )
 from torch.func import hessian, vmap
-from torch.nn import Linear, Sequential, Tanh
+from torch.nn import Linear, Module, Sequential, Tanh
 
 import jet
 from jet.collapsed import collapsed_jet
@@ -64,8 +64,6 @@ def _compare_collapsed_vs_standard(f, x, K, R=None):
 
     These should produce identical K-th order outputs.
     """
-    from torch.nn import Module
-
     if isinstance(f, Module):
         f = f.double()
     x = x.double()
@@ -129,8 +127,6 @@ def test_collapsed_k2(config: dict[str, Any]):
     manual_seed(0)
     f = config["f"]
     shape = config["shape"]
-    from torch.nn import Module
-
     if isinstance(f, Module):
         f = f.double()
 
@@ -165,8 +161,6 @@ def test_collapsed_laplacian(config: dict[str, Any]):
     manual_seed(0)
     f = config["f"]
     shape = config["shape"]
-    from torch.nn import Module
-
     if isinstance(f, Module):
         f_orig = f.double()
     else:
@@ -216,8 +210,6 @@ def test_collapsed_higher_order(config: dict[str, Any], K: int):
     manual_seed(0)
     f = config["f"]
     shape = config["shape"]
-    from torch.nn import Module
-
     if isinstance(f, Module):
         f = f.double()
 

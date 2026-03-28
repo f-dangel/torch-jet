@@ -84,7 +84,6 @@ def _compare_collapsed_vs_standard(f, x, K, R=None):
     # --- Standard approach: vmap + sum ---
     jet_f = jet.jet(f, K, (mock_x,))
     z = zeros_like(x)
-    series_zeros = tuple((z,) for _ in range(K))
 
     def single_jet(x1):
         taylor_coeffs = ((x1,) + tuple(z for _ in range(K - 1)),)

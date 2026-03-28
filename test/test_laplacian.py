@@ -12,9 +12,9 @@ from torch.nn import Linear, Sequential, Tanh
 from jet.laplacian import SUPPORTED_DISTRIBUTIONS
 from jet.laplacian import laplacian as jet_laplacian
 from jet.utils import run_seeded
-from test.utils import report_nonclose
 from jet.weighted_laplacian import C_func_diagonal_increments, get_weighting
 from test.test___init__ import setup_case
+from test.utils import report_nonclose
 
 DISTRIBUTIONS = SUPPORTED_DISTRIBUTIONS
 DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]

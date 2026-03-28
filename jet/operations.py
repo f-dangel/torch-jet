@@ -217,7 +217,9 @@ def jet_sin(self: JetTuple, *, derivative_order: int) -> JetTuple:
     """
     self0, vs = self[0], self[1:]
     sin_self0, dsin = _sin_derivatives(self0, derivative_order)
+
     vs_out = _faa_di_bruno(vs, derivative_order, dsin)
+
     return JetTuple((sin_self0, *vs_out))
 
 
@@ -233,7 +235,9 @@ def jet_cos(self: JetTuple, *, derivative_order: int) -> JetTuple:
     """
     self0, vs = self[0], self[1:]
     cos_self0, dcos = _cos_derivatives(self0, derivative_order)
+
     vs_out = _faa_di_bruno(vs, derivative_order, dcos)
+
     return JetTuple((cos_self0, *vs_out))
 
 
@@ -249,7 +253,9 @@ def jet_tanh(self: JetTuple, *, derivative_order: int) -> JetTuple:
     """
     self0, vs = self[0], self[1:]
     tanh_self0, dtanh = _tanh_derivatives(self0, derivative_order)
+
     vs_out = _faa_di_bruno(vs, derivative_order, dtanh)
+
     return JetTuple((tanh_self0, *vs_out))
 
 
@@ -265,7 +271,9 @@ def jet_sigmoid(self: JetTuple, *, derivative_order: int) -> JetTuple:
     """
     self0, vs = self[0], self[1:]
     sigmoid_self0, dsigmoid = _sigmoid_derivatives(self0, derivative_order)
+
     vs_out = _faa_di_bruno(vs, derivative_order, dsigmoid)
+
     return JetTuple((sigmoid_self0, *vs_out))
 
 
@@ -286,9 +294,12 @@ def jet_pow(
         The value and its Taylor coefficients.
     """
     assert isinstance(exponent, (float, int))
+
     self0, vs = self[0], self[1:]
     pow_self0, dpow = _pow_derivatives(self0, exponent, derivative_order)
+
     vs_out = _faa_di_bruno(vs, derivative_order, dpow)
+
     return JetTuple((pow_self0, *vs_out))
 
 
@@ -441,7 +452,7 @@ def jet_addmm(
     """Taylor-mode arithmetic for ``aten.addmm(self, mat1, mat2)``.
 
     Args:
-        self: The bias tensor (constant).
+        self: The bias tensor. Must be a constant ``Tensor``, not a ``JetTuple``.
         mat1: The first matrix and its Taylor coefficients.
         mat2: The second matrix and its Taylor coefficients.
         derivative_order: The order of the Taylor expansion.
@@ -449,6 +460,12 @@ def jet_addmm(
     Returns:
         The value and its Taylor coefficients.
     """
+    if isinstance(self, JetTuple):
+        raise NotImplementedError(
+            "jet_addmm does not support a Taylor-expanded bias (self). "
+            "Expected a constant Tensor."
+        )
+
     mat1_is_jet = isinstance(mat1, JetTuple)
     mat2_is_jet = isinstance(mat2, JetTuple)
 

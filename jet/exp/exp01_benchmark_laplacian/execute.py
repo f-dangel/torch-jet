@@ -259,7 +259,10 @@ def laplacian_function(
     elif strategy in {"jet_naive", "jet_simplified"}:
         use_collapsing = strategy == "jet_simplified"
         lap_fn = jet_laplacian(
-            f, dummy_x, randomization=randomization, weighting=weighting,
+            f,
+            dummy_x,
+            randomization=randomization,
+            weighting=weighting,
             use_collapsing=use_collapsing,
         )
         common_subexpression_elimination(lap_fn.graph)
@@ -366,7 +369,9 @@ def bilaplacian_function(
     elif strategy in {"jet_naive", "jet_simplified"}:
         use_collapsing = strategy == "jet_simplified"
         bilap_fn = jet_bilaplacian(
-            f, dummy_x, randomization=randomization,
+            f,
+            dummy_x,
+            randomization=randomization,
             use_collapsing=use_collapsing,
         )
         common_subexpression_elimination(bilap_fn.graph)

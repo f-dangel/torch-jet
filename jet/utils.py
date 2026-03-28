@@ -12,8 +12,6 @@ from torch.random import fork_rng
 # Type aliases for arguments and return values of jet-able functions.
 Primal = Tensor
 Value = Tensor
-PrimalAndCoefficients = tuple[Primal, ...]
-ValueAndCoefficients = tuple[Value, ...]
 
 
 def run_seeded(f: Callable, seed: int, *args, **kwargs):

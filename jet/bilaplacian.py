@@ -15,6 +15,35 @@ from jet.utils import sample, validate_randomization
 SUPPORTED_DISTRIBUTIONS = ["normal"]
 
 
+def _set_up_taylor_coefficients(
+    x: Tensor, in_dim: int, in_shape: tuple[int, ...]
+) -> tuple[Tensor, Tensor, Tensor]:
+    """Create the first Taylor coefficients for the Bi-Laplacian computation.
+
+    Args:
+        x: Input tensor.
+        in_dim: Total number of input elements.
+        in_shape: Shape of the input tensor.
+
+    Returns:
+        A tuple of three tensors (C1, C2, C3), one per 4-jet term.
+    """
+    D = in_dim
+    in_meta = {"dtype": x.dtype, "device": x.device}
+    E = eye(D, **in_meta)
+
+    C1 = (4 * E).reshape(D, *in_shape)
+
+    mask = ~eye(D, dtype=bool, device=x.device)
+    i_idx, j_idx = mask.nonzero(as_tuple=True)
+    C2 = (3 * E[i_idx] + E[j_idx]).reshape(D * (D - 1), *in_shape)
+
+    i_idx, j_idx = triu_indices(D, D, offset=1)
+    C3 = (2 * E[i_idx] + 2 * E[j_idx]).reshape(D * (D - 1) // 2, *in_shape)
+
+    return C1, C2, C3
+
+
 def bilaplacian(
     f: Callable[[Tensor], Tensor],
     mock_x: Tensor,
@@ -87,35 +116,6 @@ def bilaplacian(
     else:
         jet_f = jet.jet(f, derivative_order, (mock_x,))
 
-    def _set_up_taylor_coefficients(x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
-        """Create the first Taylor coefficients for the Bi-Laplacian computation.
-
-        Args:
-            x: Input tensor. Must have same shape as mock_x.
-
-        Returns:
-            A tuple of three tensors (C1, C2, C3), one per 4-jet term.
-        """
-        D = in_dim
-        in_meta = {"dtype": x.dtype, "device": x.device}
-        E = eye(D, **in_meta)
-
-        # first 4-jet: one direction per basis vector, X1 = 4*e_i
-        C1 = (4 * E).reshape(D, *in_shape)
-
-        # second 4-jet: all ordered pairs (i, j) with i != j.
-        # Each row is 3*e_i + e_j, giving D*(D-1) directions.
-        mask = ~eye(D, dtype=bool, device=x.device)
-        i_idx, j_idx = mask.nonzero(as_tuple=True)
-        C2 = (3 * E[i_idx] + E[j_idx]).reshape(D * (D - 1), *in_shape)
-
-        # third 4-jet: all unordered pairs (i, j) with i < j.
-        # Each row is 2*e_i + 2*e_j, giving D*(D-1)/2 directions.
-        i_idx, j_idx = triu_indices(D, D, offset=1)
-        C3 = (2 * E[i_idx] + 2 * E[j_idx]).reshape(D * (D - 1) // 2, *in_shape)
-
-        return C1, C2, C3
-
     def _eval_4jet(x: Tensor, X1: Tensor) -> Tensor:
         """Evaluate the 4-jet for directions X1 and return the 4th coefficient.
 
@@ -141,6 +141,38 @@ def bilaplacian(
             F4 = F4.sum(0)
         return F4
 
+    def _deterministic_bilap(x: Tensor) -> Tensor:
+        """Compute the deterministic Bi-Laplacian using three sets of directions.
+
+        Args:
+            x: Input tensor.
+
+        Returns:
+            The Bi-Laplacian.
+        """
+        C1, C2, C3 = _set_up_taylor_coefficients(x, in_dim, in_shape)
+        D = in_dim
+
+        gamma_4_4 = float(compute_all_gammas((4,))[(4,)])
+        gammas = compute_all_gammas((2, 2))
+        gamma_4_0 = float(gammas[(4, 0)])
+        F4_1 = _eval_4jet(x, C1)
+        factor1 = (gamma_4_4 + 2 * (D - 1) * gamma_4_0) / 24
+        term1 = factor1 * F4_1
+
+        if D == 1:
+            return term1
+
+        gamma_3_1 = float(gammas[(3, 1)])
+        F4_2 = _eval_4jet(x, C2)
+        term2 = 2 * gamma_3_1 / 24 * F4_2
+
+        gamma_2_2 = float(gammas[(2, 2)])
+        F4_3 = _eval_4jet(x, C3)
+        term3 = 2 * gamma_2_2 / 24 * F4_3
+
+        return term1 + term2 + term3
+
     def bilap_f(x: Tensor) -> Tensor:
         """Compute the Bi-Laplacian of the function at the input tensor.
 
@@ -162,34 +194,6 @@ def bilaplacian(
             F4 = _eval_4jet(x, X1)
             return F4 / (3 * num_samples)
 
-        # three lists of 4-jet coefficients, one for each term
-        C1, C2, C3 = _set_up_taylor_coefficients(x)
-        D = in_dim
-
-        gamma_4_4 = float(compute_all_gammas((4,))[(4,)])
-        gammas = compute_all_gammas((2, 2))
-        gamma_4_0 = float(gammas[(4, 0)])
-        # first summand
-        F4_1 = _eval_4jet(x, C1)
-        factor1 = (gamma_4_4 + 2 * (D - 1) * gamma_4_0) / 24
-        term1 = factor1 * F4_1
-
-        # there are no off-diagonal terms if the dimension is 1
-        if D == 1:
-            return term1
-
-        # second summand
-        gamma_3_1 = float(gammas[(3, 1)])
-        F4_2 = _eval_4jet(x, C2)
-        factor2 = 2 * gamma_3_1 / 24
-        term2 = factor2 * F4_2
-
-        # third term
-        gamma_2_2 = float(gammas[(2, 2)])
-        F4_3 = _eval_4jet(x, C3)
-        factor3 = 2 * gamma_2_2 / 24
-        term3 = factor3 * F4_3
-
-        return term1 + term2 + term3
+        return _deterministic_bilap(x)
 
     return capture_graph(bilap_f, mock_x)

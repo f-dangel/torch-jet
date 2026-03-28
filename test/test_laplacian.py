@@ -252,8 +252,9 @@ def test_collapsing_matches_non_collapsing(
     lap_collapsed = jet_laplacian(f, x, weighting=weighting, use_collapsing=True)
     lap_standard = jet_laplacian(f, x, weighting=weighting, use_collapsing=False)
 
-    F0_col, F1_col, F2_col = lap_collapsed(x)
-    F0_std, F1_std, F2_std = lap_standard(x)
+    F0_col, F1_col, F2_col = run_seeded(lap_collapsed, 0, x)
+    F0_std, F1_std, F2_std = run_seeded(lap_standard, 0, x)
 
     report_nonclose(F0_col, F0_std, name="Primals")
+    report_nonclose(F1_col, F1_std, name="Jacobians")
     report_nonclose(F2_col, F2_std, name="Laplacians")

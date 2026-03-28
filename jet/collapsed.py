@@ -28,7 +28,7 @@ from jet.operations import (
     _tanh_derivatives,
 )
 from jet.tracing import capture_graph
-from jet.utils import Value, ValueAndCoefficients
+from jet.utils import Value
 
 # ---------------------------------------------------------------------------
 # CollapsedJetTuple
@@ -113,22 +113,27 @@ def _cjet_elementwise(self, derivative_order, deriv_fn):
 
 
 def cjet_sin(self, *, derivative_order):
+    """Collapsed jet rule for ``aten.sin``."""
     return _cjet_elementwise(self, derivative_order, _sin_derivatives)
 
 
 def cjet_cos(self, *, derivative_order):
+    """Collapsed jet rule for ``aten.cos``."""
     return _cjet_elementwise(self, derivative_order, _cos_derivatives)
 
 
 def cjet_tanh(self, *, derivative_order):
+    """Collapsed jet rule for ``aten.tanh``."""
     return _cjet_elementwise(self, derivative_order, _tanh_derivatives)
 
 
 def cjet_sigmoid(self, *, derivative_order):
+    """Collapsed jet rule for ``aten.sigmoid``."""
     return _cjet_elementwise(self, derivative_order, _sigmoid_derivatives)
 
 
 def cjet_pow(self, exponent, *, derivative_order):
+    """Collapsed jet rule for ``aten.pow``."""
     assert isinstance(exponent, (float, int))
     self0, vs = self[0], self[1:]
     primal, dpow = _pow_derivatives(self0, exponent, derivative_order)
@@ -142,6 +147,7 @@ def cjet_pow(self, exponent, *, derivative_order):
 
 
 def cjet_add(self, other, *, derivative_order):
+    """Collapsed jet rule for ``aten.add``."""
     K = derivative_order
     self_is = isinstance(self, CollapsedJetTuple)
     other_is = isinstance(other, CollapsedJetTuple)
@@ -158,6 +164,7 @@ def cjet_add(self, other, *, derivative_order):
 
 
 def cjet_sub(self, other, *, derivative_order):
+    """Collapsed jet rule for ``aten.sub``."""
     K = derivative_order
     self_is = isinstance(self, CollapsedJetTuple)
     other_is = isinstance(other, CollapsedJetTuple)
@@ -174,6 +181,7 @@ def cjet_sub(self, other, *, derivative_order):
 
 
 def cjet_mul(self, other, *, derivative_order):
+    """Collapsed jet rule for ``aten.mul``."""
     K = derivative_order
     self_is = isinstance(self, CollapsedJetTuple)
     other_is = isinstance(other, CollapsedJetTuple)
@@ -191,6 +199,7 @@ def cjet_mul(self, other, *, derivative_order):
 
 
 def cjet_mm(self, mat2, *, derivative_order):
+    """Collapsed jet rule for ``aten.mm``."""
     K = derivative_order
     self_is = isinstance(self, CollapsedJetTuple)
     mat2_is = isinstance(mat2, CollapsedJetTuple)
@@ -203,6 +212,7 @@ def cjet_mm(self, mat2, *, derivative_order):
 
 
 def cjet_addmm(bias, mat1, mat2, *, derivative_order):
+    """Collapsed jet rule for ``aten.addmm``."""
     K = derivative_order
     mat1_is = isinstance(mat1, CollapsedJetTuple)
     mat2_is = isinstance(mat2, CollapsedJetTuple)
@@ -226,22 +236,26 @@ def cjet_addmm(bias, mat1, mat2, *, derivative_order):
 
 
 def cjet_view(self, size, *, derivative_order):
+    """Collapsed jet rule for ``aten.view``."""
     return _apply_linear(
         self, derivative_order, lambda x: ops.aten.view.default(x, size)
     )
 
 
 def cjet_unsqueeze(self, dim, *, derivative_order):
+    """Collapsed jet rule for ``aten.unsqueeze``."""
     return _apply_linear(
         self, derivative_order, lambda x: ops.aten.unsqueeze.default(x, dim)
     )
 
 
 def cjet_squeeze(self, dim, *, derivative_order):
+    """Collapsed jet rule for ``aten.squeeze``."""
     return _apply_linear(self, derivative_order, lambda x: ops.aten.squeeze.dim(x, dim))
 
 
 def cjet_sum(self, dim, keepdim=False, *, derivative_order):
+    """Collapsed jet rule for ``aten.sum``."""
     if keepdim:
         raise NotImplementedError("keepdim=True is not supported.")
     pos = dim[0] if isinstance(dim, list) else dim
@@ -249,6 +263,7 @@ def cjet_sum(self, dim, keepdim=False, *, derivative_order):
 
 
 def cjet_mean(self, dim, keepdim=False, *, derivative_order):
+    """Collapsed jet rule for ``aten.mean``."""
     return _apply_linear(
         self, derivative_order, lambda x: ops.aten.mean.dim(x, dim, keepdim)
     )
@@ -260,6 +275,7 @@ def cjet_mean(self, dim, keepdim=False, *, derivative_order):
 
 
 def cjet_relu(self, *, derivative_order):
+    """Collapsed jet rule for ``aten.relu``."""
     K = derivative_order
     primal = relu(self[0])
     mask = (self[0] > 0).to(self[0].dtype)
@@ -285,6 +301,7 @@ def cjet_convolution(
     *,
     derivative_order,
 ):
+    """Collapsed jet rule for ``aten.convolution``."""
     K = derivative_order
     primal = ops.aten.convolution.default(
         self[0],
@@ -297,17 +314,20 @@ def cjet_convolution(
         output_padding,
         groups,
     )
-    op = lambda x: ops.aten.convolution.default(
-        x,
-        weight,
-        None,
-        stride,
-        padding,
-        dilation,
-        transposed,
-        output_padding,
-        groups,
-    )
+
+    def op(x):
+        return ops.aten.convolution.default(
+            x,
+            weight,
+            None,
+            stride,
+            padding,
+            dilation,
+            transposed,
+            output_padding,
+            groups,
+        )
+
     coeffs = _apply_linear_coeffs(self, K, op)
     return CollapsedJetTuple((primal, *coeffs))
 
@@ -329,6 +349,7 @@ def cjet_native_batch_norm(
     *,
     derivative_order,
 ):
+    """Collapsed jet rule for ``aten.native_batch_norm``."""
     if training:
         raise NotImplementedError("Only eval-mode BatchNorm is supported.")
     K = derivative_order
@@ -367,6 +388,7 @@ def cjet_max_pool2d_with_indices(
     *,
     derivative_order,
 ):
+    """Collapsed jet rule for ``aten.max_pool2d_with_indices``."""
     K = derivative_order
     values, indices = ops.aten.max_pool2d_with_indices.default(
         self[0],
@@ -377,7 +399,10 @@ def cjet_max_pool2d_with_indices(
         ceil_mode,
     )
     flat_indices = indices.flatten(2)
-    op = lambda x: x.flatten(2).gather(2, flat_indices).view_as(values)
+
+    def op(x):
+        return x.flatten(2).gather(2, flat_indices).view_as(values)
+
     coeffs = _apply_linear_coeffs(self, K, op)
     return (CollapsedJetTuple((values, *coeffs)), indices)
 
@@ -428,14 +453,17 @@ class CollapsedJetInterpreter(Interpreter):
     """Interpreter that propagates CollapsedJetTuples through a traced graph."""
 
     def __init__(self, module: GraphModule, derivative_order: int):
+        """Initialize with a graph module and derivative order."""
         super().__init__(module)
         self.derivative_order = derivative_order
 
     def placeholder(self, target, args, kwargs):
+        """Wrap placeholder values in a CollapsedJetTuple."""
         value = super().placeholder(target, args, kwargs)
         return CollapsedJetTuple(value)
 
     def call_function(self, target, args, kwargs):
+        """Dispatch to collapsed jet rules when arguments contain CollapsedJetTuples."""
         has_jet_arg = any(isinstance(a, CollapsedJetTuple) for a in args)
         if has_jet_arg:
             if target not in COLLAPSED_MAPPING:
@@ -476,7 +504,7 @@ def collapsed_jet(
     derivative_order: int,
     mock_args: tuple,
     verbose: bool = False,
-) -> Callable[..., ValueAndCoefficients]:
+) -> Callable[..., tuple[Value, ...]]:
     """Overload f with collapsed Taylor-mode equivalent.
 
     Same API as ``jet()``, but expects mixed-shape series:
@@ -510,5 +538,3 @@ def collapsed_jet(
         return all_orders[0], all_orders[1:]
 
     return cjet_f
-
-

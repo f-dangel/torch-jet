@@ -50,6 +50,40 @@ def _partition_term(
     return nu * term if nu != 1.0 else term
 
 
+def _collapsed_highest_order(
+    vs: tuple[Primal, ...], K: int, dn: dict[int, Primal]
+) -> Value:
+    """Compute the collapsed (summed) highest-order Faà di Bruno coefficient.
+
+    Separates the linear contribution (which multiplies the collapsed input)
+    from the nonlinear contributions (which are summed over the direction
+    dimension *R*).
+
+    Args:
+        vs: The incoming Taylor coefficients.
+        K: The derivative order (= highest order to compute).
+        dn: A dictionary mapping the degree to the function's derivative.
+
+    Returns:
+        The collapsed highest-order coefficient.
+    """
+    linear_term = mul(dn[1], vs[K - 1]) if dn[1] is not None else None
+    nonlinear_term = None
+    for sigma in integer_partitions(K):
+        if sigma == (K,):
+            continue
+        term = _partition_term(vs, sigma, dn)
+        if term is not None:
+            nonlinear_term = term if nonlinear_term is None else nonlinear_term + term
+    if nonlinear_term is not None and linear_term is not None:
+        return linear_term + nonlinear_term.sum(0)
+    elif nonlinear_term is not None:
+        return nonlinear_term.sum(0)
+    elif linear_term is not None:
+        return linear_term
+    return zeros_like(dn[0])
+
+
 def _faa_di_bruno(
     vs: tuple[Primal, ...],
     derivative_order: int,
@@ -77,24 +111,7 @@ def _faa_di_bruno(
     for k in range(K):
         order = k + 1
         if order == K and collapsed:
-            linear_term = mul(dn[1], vs[K - 1]) if dn[1] is not None else None
-            nonlinear_term = None
-            for sigma in integer_partitions(K):
-                if sigma == (K,):
-                    continue
-                term = _partition_term(vs, sigma, dn)
-                if term is not None:
-                    nonlinear_term = (
-                        term if nonlinear_term is None else nonlinear_term + term
-                    )
-            if nonlinear_term is not None and linear_term is not None:
-                vs_out.append(linear_term + nonlinear_term.sum(0))
-            elif nonlinear_term is not None:
-                vs_out.append(nonlinear_term.sum(0))
-            elif linear_term is not None:
-                vs_out.append(linear_term)
-            else:
-                vs_out.append(zeros_like(dn[0]))
+            vs_out.append(_collapsed_highest_order(vs, K, dn))
         else:
             result = None
             for sigma in integer_partitions(order):

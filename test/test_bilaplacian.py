@@ -126,3 +126,18 @@ def test_Bilaplacian_randomization(
         target_rel_error,
     )
     assert converged, f"Monte-Carlo Bi-Laplacian ({distribution}) did not converge."
+
+
+@mark.parametrize("config", BILAPLACIAN_CASES, ids=BILAPLACIAN_IDS)
+def test_collapsing_matches_non_collapsing(config: dict[str, Any]):
+    """Test that use_collapsing=True and False produce the same Bi-Laplacian.
+
+    Args:
+        config: Configuration dictionary of the test case.
+    """
+    f, x, _ = setup_case(config)
+
+    bilap_collapsed = jet_bilaplacian(f, x, use_collapsing=True)
+    bilap_standard = jet_bilaplacian(f, x, use_collapsing=False)
+
+    report_nonclose(bilap_collapsed(x), bilap_standard(x), name="Bi-Laplacians")

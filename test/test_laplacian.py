@@ -12,6 +12,7 @@ from torch.nn import Linear, Sequential, Tanh
 from jet.laplacian import SUPPORTED_DISTRIBUTIONS
 from jet.laplacian import laplacian as jet_laplacian
 from jet.utils import run_seeded
+from test.utils import report_nonclose
 from jet.weighted_laplacian import C_func_diagonal_increments, get_weighting
 from test.test___init__ import setup_case
 
@@ -232,3 +233,27 @@ def _check_mc_convergence(
             break
 
     return converged
+
+
+@mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
+@mark.parametrize("config", LAPLACIAN_CASES, ids=LAPLACIAN_IDS)
+def test_collapsing_matches_non_collapsing(
+    config: dict[str, Any], weights: str | None | tuple[str, float]
+):
+    """Test that use_collapsing=True and False produce the same Laplacian.
+
+    Args:
+        config: Configuration dictionary of the test case.
+        weights: The weighting to use for the Laplacian.
+    """
+    f, x, _ = setup_case(config)
+    weighting = get_weighting(x, weights)
+
+    lap_collapsed = jet_laplacian(f, x, weighting=weighting, use_collapsing=True)
+    lap_standard = jet_laplacian(f, x, weighting=weighting, use_collapsing=False)
+
+    F0_col, F1_col, F2_col = lap_collapsed(x)
+    F0_std, F1_std, F2_std = lap_standard(x)
+
+    report_nonclose(F0_col, F0_std, name="Primals")
+    report_nonclose(F2_col, F2_std, name="Laplacians")

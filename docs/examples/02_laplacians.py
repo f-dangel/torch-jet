@@ -357,24 +357,8 @@ print(f"3) Collapsed Taylor mode: {len(lap_collapsed.graph.nodes)} nodes")
 #   performs the 'collapsing' of Taylor mode we present in our paper.
 #   Instead of computing all `D` second-order Taylor coefficients and summing them
 #   at the end, the collapsed interpreter directly propagates the summed coefficient.
-#
-# We can verify successful collapsing by looking at the tensor constants of the graph
-# which represent the forward-propagated coefficients:
-
-print("2) Standard simplifications tensor constants:")
-for name, buf in lap_standard.named_buffers():
-    print(f"\t{name}: {buf.shape}")
-
-print("3) Collapsed Taylor mode tensor constants:")
-for name, buf in lap_collapsed.named_buffers():
-    print(f"\t{name}: {buf.shape}")
-
-# %%
-#
-# We see that the collapsed Taylor mode graph has a tensor constant whose shape
-# is smaller than the one of the standard simplifications graph. This reflects that,
-# instead of propagating $D$ second-order Taylor coefficients (shape `[D, D]`),
-# collapsed Taylor mode directly propagates their sum (shape `[D]`).
+#   This reduces what gets propagated from $D$ second-order Taylor
+#   coefficients (shape `[D, D]`) to their sum (shape `[D]`).
 #
 ### Batching
 #

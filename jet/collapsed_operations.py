@@ -1,7 +1,6 @@
-"""Collapsed Taylor mode via interpreter-level collapsing.
+"""Implementation of AD primitives in collapsed Taylor-mode arithmetic.
 
-Instead of propagating R full K-jets then using PullSum graph rewrites,
-propagates a single "collapsed jet" with mixed shapes:
+Collapsed Taylor mode propagates a single "collapsed jet" with mixed shapes:
 
   - Coefficient 0 (primal): shape (...)
   - Coefficients 1..K-1: shape (R, ...) -- batched over R directions
@@ -11,13 +10,10 @@ At each nonlinear operation, the K-th output coefficient is computed as:
   out_K = LINEAR_TERM(in_K_collapsed) + NONLINEAR_TERMS(in_1..K-1).sum(0)
 """
 
-from typing import Callable
-
 from scipy.special import comb
-from torch import Tensor, addmm, matmul, mm, ops, relu, zeros_like
+from torch import addmm, matmul, mm, ops, relu
 from torch.func import vmap
-from torch.fx import GraphModule, Interpreter
-from torch.utils._pytree import register_pytree_node, tree_flatten, tree_unflatten
+from torch.utils._pytree import register_pytree_node
 
 from jet.operations import (
     _cos_derivatives,
@@ -27,8 +23,6 @@ from jet.operations import (
     _sin_derivatives,
     _tanh_derivatives,
 )
-from jet.tracing import capture_graph
-from jet.utils import Value
 
 # ---------------------------------------------------------------------------
 # CollapsedJetTuple
@@ -442,99 +436,3 @@ COLLAPSED_MAPPING = {
     # MaxPool2d
     ops.aten.max_pool2d_with_indices.default: cjet_max_pool2d_with_indices,
 }
-
-
-# ---------------------------------------------------------------------------
-# CollapsedJetInterpreter
-# ---------------------------------------------------------------------------
-
-
-class CollapsedJetInterpreter(Interpreter):
-    """Interpreter that propagates CollapsedJetTuples through a traced graph."""
-
-    def __init__(self, module: GraphModule, derivative_order: int):
-        """Initialize with a graph module and derivative order."""
-        super().__init__(module)
-        self.derivative_order = derivative_order
-
-    def placeholder(self, target, args, kwargs):
-        """Wrap placeholder values in a CollapsedJetTuple."""
-        value = super().placeholder(target, args, kwargs)
-        return CollapsedJetTuple(value)
-
-    def call_function(self, target, args, kwargs):
-        """Dispatch to collapsed jet rules when arguments contain CollapsedJetTuples."""
-        has_jet_arg = any(isinstance(a, CollapsedJetTuple) for a in args)
-        if has_jet_arg:
-            if target not in COLLAPSED_MAPPING:
-                raise NotImplementedError(f"No collapsed jet rule for {target}.")
-            return COLLAPSED_MAPPING[target](
-                *args, derivative_order=self.derivative_order
-            )
-        return super().call_function(target, args, kwargs)
-
-
-# ---------------------------------------------------------------------------
-# Entry points
-# ---------------------------------------------------------------------------
-
-
-def _is_collapsed_or_tensor(x):
-    return isinstance(x, (CollapsedJetTuple, Tensor))
-
-
-def _transpose_collapsed_output(result, derivative_order):
-    """Transpose pytree-of-CollapsedJetTuples into tuple-of-pytrees."""
-    flat, out_spec = tree_flatten(result, is_leaf=_is_collapsed_or_tensor)
-    k = derivative_order + 1
-    outputs = []
-    for order in range(k):
-        flat_order = [
-            jt[order]
-            if isinstance(jt, CollapsedJetTuple)
-            else (jt if order == 0 else zeros_like(jt))
-            for jt in flat
-        ]
-        outputs.append(tree_unflatten(flat_order, out_spec))
-    return tuple(outputs)
-
-
-def collapsed_jet(
-    f: Callable[..., Value],
-    derivative_order: int,
-    mock_args: tuple,
-    verbose: bool = False,
-) -> Callable[..., tuple[Value, ...]]:
-    """Overload f with collapsed Taylor-mode equivalent.
-
-    Same API as ``jet()``, but expects mixed-shape series:
-      - series[0..K-2]: tensors with leading batch dim R
-      - series[K-1]: tensors without batch dim (collapsed)
-
-    The K-th output coefficient is automatically collapsed (summed over
-    directions), so no ``.sum(0)`` or PullSum graph rewrites are needed.
-    """
-    flat_mocks, in_spec = tree_flatten(mock_args)
-    num_leaves = len(flat_mocks)
-
-    def flat_f(*flat_tensors):
-        args = tree_unflatten(list(flat_tensors), in_spec)
-        return f(*args)
-
-    mod = capture_graph(flat_f, *flat_mocks)
-    if verbose:
-        print(f"Traced graph:\n{mod.graph}")
-
-    interp = CollapsedJetInterpreter(mod, derivative_order)
-
-    def cjet_f(primals, series):
-        flat_primals = tree_flatten(primals)[0]
-        flat_series = [tree_flatten(s)[0] for s in series]
-        input_tuples = [
-            (flat_primals[i], *(fs[i] for fs in flat_series)) for i in range(num_leaves)
-        ]
-        result = interp.run(*input_tuples)
-        all_orders = _transpose_collapsed_output(result, derivative_order)
-        return all_orders[0], all_orders[1:]
-
-    return cjet_f

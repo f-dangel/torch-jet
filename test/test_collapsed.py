@@ -19,7 +19,7 @@ from torch.func import hessian, vmap
 from torch.nn import Linear, Module, Sequential, Tanh
 
 import jet
-from jet.collapsed import collapsed_jet
+from jet.collapsed_jet_interpreter import collapsed_jet
 from jet.laplacian import laplacian
 from test.utils import report_nonclose
 

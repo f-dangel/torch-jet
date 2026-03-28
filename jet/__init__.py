@@ -298,9 +298,9 @@ def collapsed_jet(
 ) -> Callable[..., tuple[Value, ...]]:
     """Overload f with collapsed Taylor-mode equivalent.
 
-    Same API as ``jet()``, but expects mixed-shape series:
-      - series[0..K-2]: tensors with leading batch dim R
-      - series[K-1]: tensors without batch dim (collapsed)
+    Same API as ``jet()``, but expects mixed-shape series (orders 1..K):
+      - series[0..K-2] (orders 1..K-1): tensors with leading batch dim R
+      - series[K-1] (order K): tensors without batch dim (collapsed)
 
     The K-th output coefficient is automatically collapsed (summed over
     directions), so no ``.sum(0)`` or PullSum graph rewrites are needed.
@@ -335,9 +335,9 @@ def _make_uncollapsed_cjet(f, derivative_order, mock_args, randomization):
     """Build a collapsed_jet-compatible function using standard jet + vmap + sum.
 
     The returned function has the same calling convention as ``collapsed_jet``:
-    it accepts ``(primals, series)`` where ``series[0..K-2]`` are batched and
-    ``series[K-1]`` is collapsed, and returns output with the K-th coefficient
-    already summed over directions.
+    it accepts ``(primals, series)`` where ``series[0..K-2]`` (orders 1..K-1)
+    are batched and ``series[K-1]`` (order K) is collapsed, and returns output
+    with the K-th coefficient already summed over directions.
 
     Args:
         f: The function to trace.

@@ -9,10 +9,9 @@ from torch.fx import GraphModule, Node
 from torch.fx.passes.graph_drawer import FxGraphDrawer
 from torch.random import fork_rng
 
-# type annotation for arguments and Taylor coefficients in input and output space
+# Type aliases for arguments and return values of jet-able functions.
 Primal = Tensor
 Value = Tensor
-# primals and values form a tuple
 PrimalAndCoefficients = tuple[Primal, ...]
 ValueAndCoefficients = tuple[Value, ...]
 
@@ -92,6 +91,30 @@ def rademacher(*shape: int, dtype: dtype | None = None, device: device | None = 
     return (
         empty(*shape, dtype=dtype, device=device).fill_(0.5).bernoulli().mul_(2).sub_(1)
     )
+
+
+def validate_randomization(
+    randomization: tuple[str, int] | None, supported_distributions: list[str]
+):
+    """Validate the randomization arguments.
+
+    Does nothing if ``randomization`` is ``None``.
+
+    Args:
+        randomization: Tuple of (distribution name, number of samples), or ``None``.
+        supported_distributions: List of supported distribution names.
+
+    Raises:
+        ValueError: If the distribution is not supported or the number of samples
+            is not positive.
+    """
+    if randomization is None:
+        return
+    distribution, num_samples = randomization
+    if distribution not in supported_distributions:
+        raise ValueError(f"Unsupported {distribution=} ({supported_distributions=}).")
+    if num_samples <= 0:
+        raise ValueError(f"{num_samples=} must be positive.")
 
 
 def sample(x_meta: Tensor, distribution: str, shape: tuple[int, ...]) -> Tensor:

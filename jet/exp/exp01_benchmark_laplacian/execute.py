@@ -251,7 +251,7 @@ def naive_jet_laplacian(
         X1 = apply_weightings(x, V)
 
         vmapped = vmap(
-            lambda x1: jet_f((x,), ((x1,), (zeros_like(x),))),
+            lambda x1: jet_f((x,), ((x1, zeros_like(x)),)),
             randomness="different",
             out_dims=(None, (0, 0)),
         )
@@ -299,7 +299,7 @@ def naive_jet_bilaplacian(
     def bilap_f(x: Tensor) -> Tensor:
         z = zeros_like(x)
         vmapped = vmap(
-            lambda x1: jet_f((x,), ((x1,), (z,), (z,), (z,))),
+            lambda x1: jet_f((x,), ((x1, z, z, z),)),
             randomness="different",
             out_dims=(None, (0, 0, 0, 0)),
         )

@@ -89,8 +89,8 @@ def _compare_collapsed_vs_standard(f, x, K, R=None):
     series_zeros = tuple((z,) for _ in range(K))
 
     def single_jet(x1):
-        series = ((x1,),) + tuple((z,) for _ in range(K - 1))
-        return jet_f((x,), series)
+        taylor_coeffs = ((x1,) + tuple(z for _ in range(K - 1)),)
+        return jet_f((x,), taylor_coeffs)
 
     vmapped = vmap(
         single_jet, randomness="different", out_dims=(None, tuple(0 for _ in range(K)))

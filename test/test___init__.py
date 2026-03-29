@@ -333,17 +333,18 @@ def test_jet(config: dict[str, Any], derivative_order: int):
     report_pytrees_nonclose(jet_out, rev_jet_out)
 
 
-
-
-def _compare_collapsed_vs_standard(f, mock_args_fn, K):
-    """Compare collapsed jet output against standard jet + vmap + sum.
+@mark.parametrize("derivative_order", [2, 3, 4], ids=["K=2", "K=3", "K=4"])
+@mark.parametrize("config", JET_CASES, ids=JET_CASES_IDS)
+def test_collapsed_jet(config: dict[str, Any], derivative_order: int):
+    """Collapsed jet matches standard jet + vmap + sum.
 
     Args:
-        f: The function to test.
-        mock_args_fn: Callable returning mock arguments (used for shape).
-        K: Derivative order.
+        config: Configuration dictionary of the test case.
+        derivative_order: The order of the jet to compute.
     """
-    mock_args = mock_args_fn()
+    K = derivative_order
+    f = config["f"]
+    mock_args = config["mock_args_fn"]()
     shape = mock_args[0].shape
 
     if isinstance(f, Module):
@@ -356,35 +357,15 @@ def _compare_collapsed_vs_standard(f, mock_args_fn, K):
     E = rand(R, *shape, dtype=float64)
     z = zeros_like(x)
 
-    # Build series in collapsed convention
     batched_series = tuple(
         (E,) if i == 0 else (zeros(R, *shape, dtype=float64),) for i in range(K - 1)
     )
     series = batched_series + ((z,),)
 
-    # Standard: jet + vmap + sum (via uncollapsed wrapper)
     std_f = jet._make_uncollapsed_cjet(f, K, (mock_x,), randomization=None)
-    F0_std, Fs_std = std_f((x,), series)
-
-    # Collapsed: single call
     cjet_f = collapsed_jet(f, K, (mock_x,))
-    F0_col, Fs_col = cjet_f((x,), series)
 
-    report_pytrees_nonclose((F0_std, Fs_std), (F0_col, Fs_col))
-
-
-@mark.parametrize("derivative_order", [2, 3, 4], ids=["K=2", "K=3", "K=4"])
-@mark.parametrize("config", JET_CASES, ids=JET_CASES_IDS)
-def test_collapsed_jet(config: dict[str, Any], derivative_order: int):
-    """Collapsed jet matches standard jet + vmap + sum.
-
-    Args:
-        config: Configuration dictionary of the test case.
-        derivative_order: The order of the jet to compute.
-    """
-    _compare_collapsed_vs_standard(
-        config["f"], config["mock_args_fn"], derivative_order
-    )
+    report_pytrees_nonclose(std_f((x,), series), cjet_f((x,), series))
 
 
 def test_collapsed_jet_rejects_order_below_2():

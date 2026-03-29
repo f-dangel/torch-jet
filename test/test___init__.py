@@ -21,7 +21,7 @@ from torch.nn.functional import linear
 
 import jet
 from jet import collapsed_jet, rev_jet
-from test.utils import report_nonclose, report_pytrees_nonclose
+from test.utils import report_pytrees_nonclose
 
 INF = float("inf")
 
@@ -373,8 +373,7 @@ def _compare_collapsed_vs_standard(f, mock_args_fn, K):
     cjet_f = collapsed_jet(f, K, (mock_x,))
     F0_col, Fs_col = cjet_f((x,), series)
 
-    report_nonclose(F0_std, F0_col, name="Primals")
-    report_nonclose(Fs_std[K - 1], Fs_col[K - 1], name=f"Collapsed K={K} coefficient")
+    report_pytrees_nonclose((F0_std, Fs_std), (F0_col, Fs_col))
 
 
 @mark.parametrize("derivative_order", [2, 3, 4], ids=["K=2", "K=3", "K=4"])

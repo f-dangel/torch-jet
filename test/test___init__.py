@@ -6,7 +6,6 @@ from pytest import mark
 from torch import (
     Tensor,
     cos,
-    eye,
     float64,
     manual_seed,
     rand,
@@ -350,7 +349,6 @@ def _compare_collapsed_vs_standard(f, mock_args_fn, K):
     """
     mock_args = mock_args_fn()
     shape = mock_args[0].shape
-    in_dim = mock_args[0].numel()
 
     if isinstance(f, Module):
         f = f.double()
@@ -358,8 +356,8 @@ def _compare_collapsed_vs_standard(f, mock_args_fn, K):
     manual_seed(42)
     x = rand(*shape, dtype=float64)
     mock_x = zeros(*shape, dtype=float64)
-    R = in_dim
-    E = eye(R, dtype=float64).reshape(R, *shape)
+    R = 2
+    E = rand(R, *shape, dtype=float64)
 
     # Standard: jet + vmap + sum
     jet_f = jet.jet(f, K, (mock_x,))

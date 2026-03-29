@@ -302,7 +302,15 @@ def collapsed_jet(
 
     The K-th output coefficient is automatically collapsed (summed over
     directions), so no ``.sum(0)`` or PullSum graph rewrites are needed.
+
+    Raises:
+        ValueError: If ``derivative_order < 2`` (collapsing requires at least
+            one batched coefficient to carry direction information).
     """
+    if derivative_order < 2:
+        raise ValueError(
+            f"collapsed_jet requires derivative_order >= 2, got {derivative_order}."
+        )
     flat_mocks, in_spec = tree_flatten(mock_args)
     num_leaves = len(flat_mocks)
 

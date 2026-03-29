@@ -399,3 +399,14 @@ def test_collapsed_jet(config: dict[str, Any], derivative_order: int):
     _compare_collapsed_vs_standard(
         config["f"], config["mock_args_fn"], derivative_order
     )
+
+
+def test_collapsed_jet_rejects_order_below_2():
+    """collapsed_jet raises ValueError for derivative_order < 2."""
+    from pytest import raises
+
+    with raises(ValueError, match="derivative_order >= 2"):
+        collapsed_jet(sin, 1, (zeros(3),))
+
+    with raises(ValueError, match="derivative_order >= 2"):
+        collapsed_jet(sin, 0, (zeros(3),))

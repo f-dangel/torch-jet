@@ -333,9 +333,6 @@ def test_jet(config: dict[str, Any], derivative_order: int):
     report_pytrees_nonclose(jet_out, rev_jet_out)
 
 
-# ---------------------------------------------------------------------------
-# Tests for collapsed_jet: compare against standard jet + vmap + sum
-# ---------------------------------------------------------------------------
 
 
 def _compare_collapsed_vs_standard(f, mock_args_fn, K):

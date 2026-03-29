@@ -18,6 +18,7 @@ from torch import (
 )
 from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
+from torch.utils._pytree import tree_map
 
 import jet
 from jet import collapsed_jet, rev_jet
@@ -338,39 +339,46 @@ def _setup_collapsed_jet_args(
 ):
     """Set up primals and series for collapsed jet testing.
 
+    Supports pytree inputs: each argument in ``mock_args`` can be an
+    arbitrary pytree of tensors.
+
     Args:
         config: Configuration dictionary with ``"f"`` and ``"mock_args_fn"`` keys.
         derivative_order: The order of the Taylor expansion (K >= 2).
         R: Number of random directions. Default: ``2``.
 
     Returns:
-        Tuple ``(f, mock_x, primals, series)`` ready for both ``collapsed_jet``
-        and ``_make_uncollapsed_cjet``.
+        Tuple ``(f, mock_args, primals, series)`` ready for both
+        ``collapsed_jet`` and ``_make_uncollapsed_cjet``.
     """
     K = derivative_order
     f = config["f"]
     mock_args = config["mock_args_fn"]()
-    shape = mock_args[0].shape
 
     if isinstance(f, Module):
         f = f.double()
 
     manual_seed(42)
-    x = rand(*shape, dtype=float64)
-    mock_x = zeros(*shape, dtype=float64)
-    E = rand(R, *shape, dtype=float64)
-    z = zeros_like(x)
+    primals = tree_map(lambda t: rand(*t.shape, dtype=float64), mock_args)
+    mock_args = tree_map(lambda t: zeros(*t.shape, dtype=float64), mock_args)
+
+    def batched(t):
+        return rand(R, *t.shape, dtype=float64)
+
+    def batched_zero(t):
+        return zeros(R, *t.shape, dtype=float64)
 
     batched_series = tuple(
-        (E,) if i == 0 else (zeros(R, *shape, dtype=float64),) for i in range(K - 1)
+        tree_map(batched, mock_args) if i == 0 else tree_map(batched_zero, mock_args)
+        for i in range(K - 1)
     )
-    series = batched_series + ((z,),)
+    series = batched_series + (tree_map(zeros_like, mock_args),)
 
-    return f, mock_x, (x,), series
+    return f, mock_args, primals, series
 
 
 @mark.parametrize("derivative_order", [2, 3, 4], ids=["K=2", "K=3", "K=4"])
-@mark.parametrize("config", JET_CASES, ids=JET_CASES_IDS)
+@mark.parametrize("config", ALL_CASES, ids=ALL_CASES_IDS)
 def test_collapsed_jet(config: dict[str, Any], derivative_order: int):
     """Collapsed jet matches standard jet + vmap + sum.
 
@@ -378,12 +386,12 @@ def test_collapsed_jet(config: dict[str, Any], derivative_order: int):
         config: Configuration dictionary of the test case.
         derivative_order: The order of the jet to compute.
     """
-    f, mock_x, primals, series = _setup_collapsed_jet_args(config, derivative_order)
+    f, mock_args, primals, series = _setup_collapsed_jet_args(config, derivative_order)
 
     std_f = jet._make_uncollapsed_cjet(
-        f, derivative_order, (mock_x,), randomization=None
+        f, derivative_order, mock_args, randomization=None
     )
-    cjet_f = collapsed_jet(f, derivative_order, (mock_x,))
+    cjet_f = collapsed_jet(f, derivative_order, mock_args)
 
     report_pytrees_nonclose(std_f(primals, series), cjet_f(primals, series))
 

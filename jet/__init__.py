@@ -345,6 +345,9 @@ def _make_uncollapsed_cjet(f, derivative_order, mock_args, randomization):
     are batched and ``series[K-1]`` (order K) is collapsed, and returns output
     with the K-th coefficient already summed over directions.
 
+    Supports pytree inputs and outputs, matching the generality of ``jet()``
+    and ``collapsed_jet()``.
+
     Args:
         f: The function to trace.
         derivative_order: The order of the Taylor expansion.
@@ -356,13 +359,33 @@ def _make_uncollapsed_cjet(f, derivative_order, mock_args, randomization):
     """
     K = derivative_order
     jet_f = jet(f, K, mock_args)
+    num_args = len(mock_args)
 
     def cjet_f(primals, series):
-        X1 = series[0][0]
-        z = series[K - 1][0]
+        # Flatten batched series entries (orders 1..K-1) for vmap
+        batched_flat = []
+        batched_specs = []
+        for order in range(K - 1):
+            flat, spec = tree_flatten(series[order])
+            batched_flat.extend(flat)
+            batched_specs.append((len(flat), spec))
 
-        def single_direction(x1):
-            taylor_coeffs = ((x1,) + tuple(z for _ in range(K - 1)),)
+        collapsed = series[K - 1]
+
+        def single_direction(*flat_batched):
+            # Reconstruct per-order pytrees from flat batched leaves
+            idx = 0
+            all_orders = []
+            for n_leaves, spec in batched_specs:
+                all_orders.append(tree_unflatten(list(flat_batched[idx : idx + n_leaves]), spec))
+                idx += n_leaves
+            all_orders.append(collapsed)
+
+            # Transpose: series[order][arg] -> taylor_coeffs[arg][order]
+            taylor_coeffs = tuple(
+                tuple(all_orders[order][arg_idx] for order in range(K))
+                for arg_idx in range(num_args)
+            )
             return jet_f(primals, taylor_coeffs)
 
         vmapped = vmap(
@@ -370,7 +393,8 @@ def _make_uncollapsed_cjet(f, derivative_order, mock_args, randomization):
             randomness="error" if randomization is None else "different",
             out_dims=(None, tuple(0 for _ in range(K))),
         )
-        F0, Fs = vmapped(X1)
-        return F0, (*Fs[:-1], Fs[-1].sum(0))
+        F0, Fs = vmapped(*batched_flat)
+        FK_summed = tree_map(lambda t: t.sum(0), Fs[-1])
+        return F0, (*Fs[:-1], FK_summed)
 
     return cjet_f

@@ -128,15 +128,27 @@ def bilaplacian(
         _, (_, _, _, F4) = cjet_f((x,), ((X1,), (Z,), (Z,), (z,)))
         return F4
 
-    def _deterministic_bilap(x: Tensor) -> Tensor:
-        """Compute the deterministic Bi-Laplacian using three sets of directions.
+    def bilap_f(x: Tensor) -> Tensor:
+        """Compute the Bi-Laplacian of the function at the input tensor.
 
         Args:
-            x: Input tensor.
+            x: Input tensor. Must have same shape as mock_x.
 
         Returns:
-            The Bi-Laplacian.
+            The Bi-Laplacian. Has the same shape as f(x).
+
+        Raises:
+            ValueError: If the input shape does not match the expected shape.
         """
+        if x.shape != in_shape:
+            raise ValueError(f"Expected input shape {in_shape}, got {x.shape}.")
+
+        if randomization is not None:
+            distribution, num_samples = randomization
+            X1 = sample(x, distribution, (num_samples, *in_shape))
+            F4 = _eval_4jet(x, X1)
+            return F4 / (3 * num_samples)
+
         C1, C2, C3 = _set_up_taylor_coefficients(x)
         D = in_dim
 
@@ -159,28 +171,5 @@ def bilaplacian(
         term3 = 2 * gamma_2_2 / 24 * F4_3
 
         return term1 + term2 + term3
-
-    def bilap_f(x: Tensor) -> Tensor:
-        """Compute the Bi-Laplacian of the function at the input tensor.
-
-        Args:
-            x: Input tensor. Must have same shape as mock_x.
-
-        Returns:
-            The Bi-Laplacian. Has the same shape as f(x).
-
-        Raises:
-            ValueError: If the input shape does not match the expected shape.
-        """
-        if x.shape != in_shape:
-            raise ValueError(f"Expected input shape {in_shape}, got {x.shape}.")
-
-        if randomization is not None:
-            distribution, num_samples = randomization
-            X1 = sample(x, distribution, (num_samples, *in_shape))
-            F4 = _eval_4jet(x, X1)
-            return F4 / (3 * num_samples)
-
-        return _deterministic_bilap(x)
 
     return capture_graph(bilap_f, mock_x)

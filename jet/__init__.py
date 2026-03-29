@@ -377,7 +377,9 @@ def _make_uncollapsed_cjet(f, derivative_order, mock_args, randomization):
             idx = 0
             all_orders = []
             for n_leaves, spec in batched_specs:
-                all_orders.append(tree_unflatten(list(flat_batched[idx : idx + n_leaves]), spec))
+                all_orders.append(
+                    tree_unflatten(list(flat_batched[idx : idx + n_leaves]), spec)
+                )
                 idx += n_leaves
             all_orders.append(collapsed)
 

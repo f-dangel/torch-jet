@@ -72,8 +72,7 @@ def laplacian(
         >>> f = Sequential(Linear(3, 1), Tanh())
         >>> x0 = rand(3)
         >>> # Compute the Laplacian via Taylor mode
-        >>> lap_f = laplacian(f, zeros(3))
-        >>> _, _, lap = lap_f(x0)
+        >>> _, _, lap = laplacian(f, zeros(3))(x0)
         >>> assert lap.shape == f(x0).shape
         >>> # Compute the Laplacian with PyTorch's autodiff (Hessian trace)
         >>> lap_pt = hessian(f)(x0).squeeze(0).trace().unsqueeze(0)

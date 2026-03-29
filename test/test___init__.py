@@ -333,14 +333,19 @@ def test_jet(config: dict[str, Any], derivative_order: int):
     report_pytrees_nonclose(jet_out, rev_jet_out)
 
 
-@mark.parametrize("derivative_order", [2, 3, 4], ids=["K=2", "K=3", "K=4"])
-@mark.parametrize("config", JET_CASES, ids=JET_CASES_IDS)
-def test_collapsed_jet(config: dict[str, Any], derivative_order: int):
-    """Collapsed jet matches standard jet + vmap + sum.
+def _setup_collapsed_jet_args(
+    config: dict[str, Any], derivative_order: int, R: int = 2
+):
+    """Set up primals and series for collapsed jet testing.
 
     Args:
-        config: Configuration dictionary of the test case.
-        derivative_order: The order of the jet to compute.
+        config: Configuration dictionary with ``"f"`` and ``"mock_args_fn"`` keys.
+        derivative_order: The order of the Taylor expansion (K >= 2).
+        R: Number of random directions. Default: ``2``.
+
+    Returns:
+        Tuple ``(f, mock_x, primals, series)`` ready for both ``collapsed_jet``
+        and ``_make_uncollapsed_cjet``.
     """
     K = derivative_order
     f = config["f"]
@@ -353,7 +358,6 @@ def test_collapsed_jet(config: dict[str, Any], derivative_order: int):
     manual_seed(42)
     x = rand(*shape, dtype=float64)
     mock_x = zeros(*shape, dtype=float64)
-    R = 2
     E = rand(R, *shape, dtype=float64)
     z = zeros_like(x)
 
@@ -362,10 +366,26 @@ def test_collapsed_jet(config: dict[str, Any], derivative_order: int):
     )
     series = batched_series + ((z,),)
 
-    std_f = jet._make_uncollapsed_cjet(f, K, (mock_x,), randomization=None)
-    cjet_f = collapsed_jet(f, K, (mock_x,))
+    return f, mock_x, (x,), series
 
-    report_pytrees_nonclose(std_f((x,), series), cjet_f((x,), series))
+
+@mark.parametrize("derivative_order", [2, 3, 4], ids=["K=2", "K=3", "K=4"])
+@mark.parametrize("config", JET_CASES, ids=JET_CASES_IDS)
+def test_collapsed_jet(config: dict[str, Any], derivative_order: int):
+    """Collapsed jet matches standard jet + vmap + sum.
+
+    Args:
+        config: Configuration dictionary of the test case.
+        derivative_order: The order of the jet to compute.
+    """
+    f, mock_x, primals, series = _setup_collapsed_jet_args(config, derivative_order)
+
+    std_f = jet._make_uncollapsed_cjet(
+        f, derivative_order, (mock_x,), randomization=None
+    )
+    cjet_f = collapsed_jet(f, derivative_order, (mock_x,))
+
+    report_pytrees_nonclose(std_f(primals, series), cjet_f(primals, series))
 
 
 def test_collapsed_jet_rejects_order_below_2():

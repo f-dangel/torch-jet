@@ -16,7 +16,6 @@ from torch import (
     zeros,
     zeros_like,
 )
-from torch.func import vmap
 from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
 
@@ -358,31 +357,24 @@ def _compare_collapsed_vs_standard(f, mock_args_fn, K):
     mock_x = zeros(*shape, dtype=float64)
     R = 2
     E = rand(R, *shape, dtype=float64)
-
-    # Standard: jet + vmap + sum
-    jet_f = jet.jet(f, K, (mock_x,))
     z = zeros_like(x)
 
-    def single_jet(x1):
-        taylor_coeffs = ((x1,) + tuple(z for _ in range(K - 1)),)
-        return jet_f((x,), taylor_coeffs)
-
-    vmapped = vmap(
-        single_jet, randomness="different", out_dims=(None, tuple(0 for _ in range(K)))
-    )
-    F0_std, Fs_std = vmapped(E)
-    FK_std_summed = Fs_std[K - 1].sum(0)
-
-    # Collapsed: single call
-    cjet_f = collapsed_jet(f, K, (mock_x,))
+    # Build series in collapsed convention
     batched_series = tuple(
         (E,) if i == 0 else (zeros(R, *shape, dtype=float64),) for i in range(K - 1)
     )
-    collapsed_series = ((zeros_like(x),),)
-    F0_col, Fs_col = cjet_f((x,), batched_series + collapsed_series)
+    series = batched_series + ((z,),)
+
+    # Standard: jet + vmap + sum (via uncollapsed wrapper)
+    std_f = jet._make_uncollapsed_cjet(f, K, (mock_x,), randomization=None)
+    F0_std, Fs_std = std_f((x,), series)
+
+    # Collapsed: single call
+    cjet_f = collapsed_jet(f, K, (mock_x,))
+    F0_col, Fs_col = cjet_f((x,), series)
 
     report_nonclose(F0_std, F0_col, name="Primals")
-    report_nonclose(FK_std_summed, Fs_col[K - 1], name=f"Collapsed K={K} coefficient")
+    report_nonclose(Fs_std[K - 1], Fs_col[K - 1], name=f"Collapsed K={K} coefficient")
 
 
 @mark.parametrize("derivative_order", [2, 3, 4], ids=["K=2", "K=3", "K=4"])

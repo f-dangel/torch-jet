@@ -10,32 +10,30 @@ from torch.fx import GraphModule
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
 
-from jet.collapsed_jet_interpreter import (
-    CollapsedJetInterpreter,
-    _transpose_collapsed_output,
-)
+from jet.collapsed_jet_interpreter import CollapsedJetInterpreter
+from jet.collapsed_operations import CollapsedJetTuple
 from jet.jet_interpreter import JetInterpreter
 from jet.operations import JetTuple
 from jet.tracing import capture_graph
 from jet.utils import Value
 
+_JetTypes = (JetTuple, CollapsedJetTuple)
+
 
 def _is_jet_or_tensor(x: Any) -> bool:
-    """Return True for JetTuples and plain tensors (pytree leaves for transposition)."""
-    return isinstance(x, (JetTuple, Tensor))
+    """Return True for JetTuples/CollapsedJetTuples and plain tensors."""
+    return isinstance(x, (*_JetTypes, Tensor))
 
 
 def _transpose_jet_output(result: Any, derivative_order: int) -> tuple[Any, ...]:
     """Transpose a pytree-of-JetTuples into a tuple-of-pytrees.
 
-    When the traced function returns a pytree (tuple, dict, etc.), the
-    interpreter produces that same pytree structure but with ``JetTuple``
-    leaves.  This helper transposes the structure so that we get one pytree
-    per Taylor order.
+    Works for both ``JetTuple`` and ``CollapsedJetTuple`` leaves.
 
     Args:
         result: The pytree returned by the interpreter, whose leaves are
-            ``JetTuple`` instances (or plain tensors for constant outputs).
+            ``JetTuple`` or ``CollapsedJetTuple`` instances (or plain tensors
+            for constant outputs).
         derivative_order: The derivative order of the Taylor expansion.
 
     Returns:
@@ -49,7 +47,7 @@ def _transpose_jet_output(result: Any, derivative_order: int) -> tuple[Any, ...]
             [
                 (
                     node[order]
-                    if isinstance(node, JetTuple)
+                    if isinstance(node, _JetTypes)
                     else (node if order == 0 else zeros_like(node))
                 )
                 for node in flat_tree
@@ -325,7 +323,7 @@ def collapsed_jet(
             (flat_primals[i], *(fs[i] for fs in flat_series)) for i in range(num_leaves)
         ]
         result = interp.run(*input_tuples)
-        all_orders = _transpose_collapsed_output(result, derivative_order)
+        all_orders = _transpose_jet_output(result, derivative_order)
         return all_orders[0], all_orders[1:]
 
     return cjet_f

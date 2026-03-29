@@ -11,7 +11,7 @@ At each nonlinear operation, the K-th output coefficient is computed as:
 """
 
 from scipy.special import comb
-from torch import addmm, matmul, mm, ops, relu
+from torch import addmm, matmul, mm, ops
 from torch.func import vmap
 from torch.utils._pytree import register_pytree_node
 
@@ -256,151 +256,6 @@ def cjet_sum(self, dim, keepdim=False, *, derivative_order):
     return _apply_linear(self, derivative_order, lambda x: x.sum(pos))
 
 
-def cjet_mean(self, dim, keepdim=False, *, derivative_order):
-    """Collapsed jet rule for ``aten.mean``."""
-    return _apply_linear(
-        self, derivative_order, lambda x: ops.aten.mean.dim(x, dim, keepdim)
-    )
-
-
-# ---------------------------------------------------------------------------
-# Piecewise linear (relu) -- mask from primal broadcasts to all shapes
-# ---------------------------------------------------------------------------
-
-
-def cjet_relu(self, *, derivative_order):
-    """Collapsed jet rule for ``aten.relu``."""
-    K = derivative_order
-    primal = relu(self[0])
-    mask = (self[0] > 0).to(self[0].dtype)
-    coeffs = tuple(self[k] * mask for k in range(1, K + 1))
-    return CollapsedJetTuple((primal, *coeffs))
-
-
-# ---------------------------------------------------------------------------
-# Convolution (linear in input; vmap for batched coefficients)
-# ---------------------------------------------------------------------------
-
-
-def cjet_convolution(
-    self,
-    weight,
-    bias,
-    stride,
-    padding,
-    dilation,
-    transposed,
-    output_padding,
-    groups,
-    *,
-    derivative_order,
-):
-    """Collapsed jet rule for ``aten.convolution``."""
-    K = derivative_order
-    primal = ops.aten.convolution.default(
-        self[0],
-        weight,
-        bias,
-        stride,
-        padding,
-        dilation,
-        transposed,
-        output_padding,
-        groups,
-    )
-
-    def op(x):
-        return ops.aten.convolution.default(
-            x,
-            weight,
-            None,
-            stride,
-            padding,
-            dilation,
-            transposed,
-            output_padding,
-            groups,
-        )
-
-    coeffs = _apply_linear_coeffs(self, K, op)
-    return CollapsedJetTuple((primal, *coeffs))
-
-
-# ---------------------------------------------------------------------------
-# Batch normalization (eval mode -- scale broadcasts correctly)
-# ---------------------------------------------------------------------------
-
-
-def cjet_native_batch_norm(
-    self,
-    weight,
-    bias,
-    running_mean,
-    running_var,
-    training,
-    momentum,
-    eps,
-    *,
-    derivative_order,
-):
-    """Collapsed jet rule for ``aten.native_batch_norm``."""
-    if training:
-        raise NotImplementedError("Only eval-mode BatchNorm is supported.")
-    K = derivative_order
-    bn_result = ops.aten.native_batch_norm.default(
-        self[0],
-        weight,
-        bias,
-        running_mean,
-        running_var,
-        training,
-        momentum,
-        eps,
-    )
-    primal_out = bn_result[0]
-    invstd = 1.0 / (running_var + eps).sqrt()
-    scale = weight * invstd if weight is not None else invstd
-    shape = [1] * self[0].ndim
-    shape[1] = -1
-    scale = scale.reshape(shape)
-    coeffs = tuple(self[k] * scale for k in range(1, K + 1))
-    return (CollapsedJetTuple((primal_out, *coeffs)), bn_result[1], bn_result[2])
-
-
-# ---------------------------------------------------------------------------
-# MaxPool2d (index-based gather; vmap for batched coefficients)
-# ---------------------------------------------------------------------------
-
-
-def cjet_max_pool2d_with_indices(
-    self,
-    kernel_size,
-    stride=(),
-    padding=(0, 0),
-    dilation=(1, 1),
-    ceil_mode=False,
-    *,
-    derivative_order,
-):
-    """Collapsed jet rule for ``aten.max_pool2d_with_indices``."""
-    K = derivative_order
-    values, indices = ops.aten.max_pool2d_with_indices.default(
-        self[0],
-        kernel_size,
-        stride,
-        padding,
-        dilation,
-        ceil_mode,
-    )
-    flat_indices = indices.flatten(2)
-
-    def op(x):
-        return x.flatten(2).gather(2, flat_indices).view_as(values)
-
-    coeffs = _apply_linear_coeffs(self, K, op)
-    return (CollapsedJetTuple((values, *coeffs)), indices)
-
-
 # ---------------------------------------------------------------------------
 # COLLAPSED_MAPPING
 # ---------------------------------------------------------------------------
@@ -426,13 +281,4 @@ COLLAPSED_MAPPING = {
     ops.aten.squeeze.dim: cjet_squeeze,
     # Reductions
     ops.aten.sum.dim_IntList: cjet_sum,
-    ops.aten.mean.dim: cjet_mean,
-    # Piecewise linear
-    ops.aten.relu.default: cjet_relu,
-    # Convolution
-    ops.aten.convolution.default: cjet_convolution,
-    # Batch normalization
-    ops.aten.native_batch_norm.default: cjet_native_batch_norm,
-    # MaxPool2d
-    ops.aten.max_pool2d_with_indices.default: cjet_max_pool2d_with_indices,
 }

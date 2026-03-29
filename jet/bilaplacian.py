@@ -90,8 +90,7 @@ def bilaplacian(
         >>> f = Sequential(Linear(3, 1), Tanh())
         >>> x0 = rand(3)
         >>> # Compute the Bilaplacian via Taylor mode
-        >>> bilap_f = bilaplacian(f, zeros(3))
-        >>> bilap = bilap_f(x0)
+        >>> bilap = bilaplacian(f, zeros(3))(x0)
         >>> assert bilap.shape == f(x0).shape
         >>> # Compute the Bilaplacian with PyTorch's autodiff
         >>> laplacian_pt = lambda x: hessian(f)(x).squeeze(0).trace().unsqueeze(0)

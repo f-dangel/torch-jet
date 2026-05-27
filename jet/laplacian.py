@@ -127,7 +127,7 @@ def laplacian(
         X1 = apply_weightings(x, V)
         z = zeros_like(x)
 
-        F0, (F1, F2) = cjet_f((x,), ((X1,), (z,)))
+        F0, (F1, F2) = cjet_f((x,), ((X1, z),))
 
         if randomization is not None:
             monte_carlo_scaling = 1.0 / randomization[1]

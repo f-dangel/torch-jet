@@ -296,12 +296,14 @@ def collapsed_jet(
 ) -> Callable[..., tuple[Value, ...]]:
     """Overload f with collapsed Taylor-mode equivalent.
 
-    Same API as ``jet()``, but expects mixed-shape series (orders 1..K):
-      - series[0..K-2] (orders 1..K-1): tensors with leading batch dim R
-      - series[K-1] (order K): tensors without batch dim (collapsed)
+    Same API as ``jet()`` — arg-major ``(primals, taylor_coeffs)`` where
+    ``taylor_coeffs[arg][order]`` holds the order-1..K coefficients of each
+    argument — but with mixed shapes across orders:
+      - orders 1..K-1: tensors with a leading direction dim R
+      - order K: tensors without the R dim (already collapsed)
 
     The K-th output coefficient is automatically collapsed (summed over
-    directions), so no ``.sum(0)`` or PullSum graph rewrites are needed.
+    directions).
 
     Raises:
         ValueError: If ``derivative_order < 2`` (collapsing requires at least
@@ -324,11 +326,25 @@ def collapsed_jet(
 
     interp = CollapsedJetInterpreter(mod, derivative_order)
 
-    def cjet_f(primals, series):
+    def cjet_f(primals, taylor_coeffs):
         flat_primals = tree_flatten(primals)[0]
-        flat_series = [tree_flatten(s)[0] for s in series]
+        flat_taylor_coeffs_by_order = [
+            [
+                coefficient
+                for arg_taylor_coeffs in taylor_coeffs
+                for coefficient in tree_flatten(arg_taylor_coeffs[order])[0]
+            ]
+            for order in range(derivative_order)
+        ]
         input_tuples = [
-            (flat_primals[i], *(fs[i] for fs in flat_series)) for i in range(num_leaves)
+            (
+                flat_primals[i],
+                *(
+                    coeffs_at_order[i]
+                    for coeffs_at_order in flat_taylor_coeffs_by_order
+                ),
+            )
+            for i in range(num_leaves)
         ]
         result = interp.run(*input_tuples)
         all_orders = _transpose_jet_output(result, derivative_order)
@@ -341,9 +357,10 @@ def _make_uncollapsed_cjet(f, derivative_order, mock_args, randomization):
     """Build a collapsed_jet-compatible function using standard jet + vmap + sum.
 
     The returned function has the same calling convention as ``collapsed_jet``:
-    it accepts ``(primals, series)`` where ``series[0..K-2]`` (orders 1..K-1)
-    are batched and ``series[K-1]`` (order K) is collapsed, and returns output
-    with the K-th coefficient already summed over directions.
+    it accepts arg-major ``(primals, taylor_coeffs)`` where, for each argument,
+    coefficients of orders 1..K-1 are batched (leading direction dim R) and the
+    order-K coefficient is collapsed (no R dim), and returns output with the
+    K-th coefficient already summed over directions.
 
     Supports pytree inputs and outputs, matching the generality of ``jet()``
     and ``collapsed_jet()``.
@@ -361,7 +378,12 @@ def _make_uncollapsed_cjet(f, derivative_order, mock_args, randomization):
     jet_f = jet(f, K, mock_args)
     num_args = len(mock_args)
 
-    def cjet_f(primals, series):
+    def cjet_f(primals, taylor_coeffs):
+        # Transpose arg-major taylor_coeffs[arg][order] to order-major series[order].
+        series = tuple(
+            tuple(taylor_coeffs[arg][order] for arg in range(num_args))
+            for order in range(K)
+        )
         # Flatten batched series entries (orders 1..K-1) for vmap
         batched_flat = []
         batched_specs = []

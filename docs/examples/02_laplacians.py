@@ -324,16 +324,10 @@ assert hessian_trace_laplacian.allclose(lap_collapsed(x)[2])
 # There is quite some stuff going on here. Let's try to break down the essential
 # differences between these three graphs.
 #
-# First, we can look at the graph sizes:
-
-print(f"1) Captured: {len(lap_traced.graph.nodes)} nodes")
-print(f"2) Standard simplifications: {len(lap_standard.graph.nodes)} nodes")
-print(f"3) Collapsed Taylor mode: {len(lap_collapsed.graph.nodes)} nodes")
-
-# %%
-#
-# We can see that the number of nodes decreases, and this is a first performance
-# indicator.
+# You might expect collapsing to shrink the graph, but it does *not* reduce the node
+# count — it can even add a few nodes. Collapsing's benefit is not fewer graph nodes
+# but *smaller tensors flowing through them* (detailed below): so graph size is a poor
+# performance proxy here, and the run-time benchmark further below is the real indicator.
 
 # %%
 #

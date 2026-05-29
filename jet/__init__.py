@@ -14,7 +14,7 @@ from jet.collapsed_jet_interpreter import CollapsedJetInterpreter
 from jet.collapsed_operations import CollapsedJetTuple
 from jet.jet_interpreter import JetInterpreter
 from jet.operations import JetTuple
-from jet.tracing import capture_flat_graph
+from jet.tracing import _assert_traceable_signature, capture_flat_graph
 from jet.utils import Value
 
 _JetTypes = (JetTuple, CollapsedJetTuple)
@@ -47,38 +47,6 @@ def _is_jet_leaf(x: Any, derivative_order: int | None = None) -> bool:
     ):
         return False
     return derivative_order is None or len(x) == derivative_order + 1
-
-
-def _assert_supported_signature(mock_args: tuple[Any, ...]) -> None:
-    """Reject the one argument signature that ``make_fx`` mistraces.
-
-    ``make_fx`` misreads a two-argument call whose first argument is tuple-rooted
-    and whose second is a ``dict`` as an ``(args, kwargs)`` call and emits a
-    broken input template (pytorch/pytorch#185640). Because a tensor argument
-    becomes a tuple-rooted jet ``(primal, c_1, ...)``, both ``f(tensor, dict)``
-    and ``f(tuple, dict)`` trip it. Every other signature -- a lone ``dict``, a
-    ``dict`` first, three or more arguments, or ``list`` + ``dict`` -- traces
-    correctly, as do ``dict`` outputs.
-
-    Args:
-        mock_args: Mock arguments, one per argument of the traced function.
-
-    Raises:
-        NotImplementedError: If the signature is the unsupported
-            ``(tensor-or-tuple, dict)``.
-    """
-    if (
-        len(mock_args) == 2
-        and isinstance(mock_args[0], (Tensor, tuple))
-        and isinstance(mock_args[1], dict)
-    ):
-        raise NotImplementedError(
-            "jet transforms cannot trace a two-argument function whose first "
-            "argument is a tensor/tuple and whose second is a dict, due to a "
-            "make_fx codegen bug (pytorch/pytorch#185640). Work around it by "
-            "putting the dict argument first, adding another argument, or "
-            "bundling the arguments into a single tuple/list."
-        )
 
 
 def _normalize_output(result: Any, derivative_order: int) -> Any:
@@ -116,8 +84,9 @@ def jet(
     """Overload a function with its Taylor-mode equivalent.
 
     ``Any`` in the type signatures denotes a *pytree of tensors*, i.e. an
-    arbitrarily nested structure of ``Tensor``, ``tuple``, or ``list`` whose
-    leaves are tensors. ``dict`` containers are not supported (see *Raises*).
+    arbitrarily nested structure of ``Tensor``, ``tuple``, ``list``, or ``dict``
+    whose leaves are tensors. The one unsupported argument signature is
+    documented under *Raises*.
 
     Args:
         f: Function to overload. May accept and return pytrees of tensors.
@@ -158,7 +127,7 @@ def jet(
             >>> vx, vy = Tensor([1.0, 0.0, 0.0]), Tensor([0.0, 1.0, 0.0])
             >>> f0, f1 = jet1_f((x, vx), (y, vy))
     """
-    _assert_supported_signature(mock_primals)
+    _assert_traceable_signature(mock_primals)
     mod, _ = capture_flat_graph(f, mock_primals)
 
     interp = JetInterpreter(mod, derivative_order)
@@ -347,7 +316,7 @@ def collapsed_jet(
         raise ValueError(
             f"collapsed_jet requires derivative_order >= 2, got {derivative_order}."
         )
-    _assert_supported_signature(mock_args)
+    _assert_traceable_signature(mock_args)
     mod, _ = capture_flat_graph(f, mock_args)
 
     interp = CollapsedJetInterpreter(mod, derivative_order)

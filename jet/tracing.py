@@ -66,6 +66,37 @@ def capture_flat_graph(
     return capture_graph(flat_f, *flat_mocks), len(flat_mocks)
 
 
+def _assert_traceable_signature(args: tuple[Any, ...]) -> None:
+    """Reject the argument signature that ``make_fx`` mistraces.
+
+    ``make_fx`` misreads a two-argument call whose first argument is tuple-rooted
+    and whose second is a ``dict`` as an ``(args, kwargs)`` call and emits a
+    broken input template (pytorch/pytorch#185640). Every other signature -- a
+    lone ``dict``, a ``dict`` first, three or more arguments, or ``list`` +
+    ``dict`` -- traces correctly, as do ``dict`` outputs.
+
+    Args:
+        args: The positional arguments that will be passed to the traced
+            function (e.g. ``mock_args``).
+
+    Raises:
+        NotImplementedError: If the signature is the unsupported
+            ``(tensor-or-tuple, dict)``.
+    """
+    if (
+        len(args) == 2
+        and isinstance(args[0], (Tensor, tuple))
+        and isinstance(args[1], dict)
+    ):
+        raise NotImplementedError(
+            "make_fx cannot trace a two-argument function whose first argument "
+            "is a tensor/tuple and whose second is a dict, due to a codegen bug "
+            "(pytorch/pytorch#185640). Work around it by putting the dict "
+            "argument first, adding another argument, or bundling the arguments "
+            "into a single tuple/list."
+        )
+
+
 def _replace_inplace_ops(mod: GraphModule) -> None:
     """Replace in-place operations with their out-of-place equivalents.
 

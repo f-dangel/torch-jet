@@ -10,7 +10,7 @@ Taylor-expanded arguments from constants.
 
 from typing import Any
 
-from torch.fx import GraphModule, Interpreter
+from torch.fx import Interpreter
 from torch.fx.node import Argument, Target
 
 from jet.operations import MAPPING, JetTuple
@@ -23,22 +23,12 @@ class JetInterpreter(Interpreter):
     positional argument is a ``JetTuple`` (i.e. a Taylor-expanded value). If so,
     it dispatches to the corresponding jet operation from
     ``jet.operations.MAPPING``; otherwise it falls through to the original
-    ATen operation.
+    ATen operation. The Taylor-expansion order ``K`` is inferred inside each
+    jet op from its arguments (a ``JetTuple`` is ``(primal, c_1, ..., c_K)``).
 
     Args:
         module: The traced computation graph module to interpret.
-        derivative_order: The order of the Taylor expansion.
     """
-
-    def __init__(self, module: GraphModule, derivative_order: int):
-        """Initialize the JetInterpreter.
-
-        Args:
-            module: The traced computation graph module to interpret.
-            derivative_order: The order of the Taylor expansion.
-        """
-        super().__init__(module)
-        self.derivative_order = derivative_order
 
     def placeholder(
         self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Any]
@@ -86,5 +76,5 @@ class JetInterpreter(Interpreter):
                 raise NotImplementedError(
                     f"Jet dispatch does not support kwargs for {target} (got {kwargs})."
                 )
-            return MAPPING[target](*args, derivative_order=self.derivative_order)
+            return MAPPING[target](*args)
         return super().call_function(target, args, kwargs)

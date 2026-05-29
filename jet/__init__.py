@@ -144,7 +144,7 @@ def jet(
     """
     mod = capture_flat_graph(f, mock_primals)
 
-    interp = JetInterpreter(mod, derivative_order)
+    interp = JetInterpreter(mod)
 
     def jet_f(*args: Any) -> Any:
         return _run_jet_interpreter(interp, args, derivative_order)

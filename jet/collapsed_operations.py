@@ -43,6 +43,38 @@ register_pytree_node(
 )
 
 
+def _cjet_order(*args: Primal | CollapsedJetTuple | float | int) -> int:
+    """Infer the Taylor-expansion order ``K`` from the first ``CollapsedJetTuple``.
+
+    Mirrors :func:`jet.operations._jet_order` for the collapsed jet primitives.
+    A ``CollapsedJetTuple`` is exactly ``(primal, c_1, ..., c_K)`` (with the
+    last coefficient already summed over directions), so ``K = len(jet) - 1``.
+    The interpreter only dispatches collapsed jet ops when at least one
+    positional argument is a ``CollapsedJetTuple``; we scan ``args`` because
+    binary ops may have a scalar/constant first operand and ``cjet_addmm``'s
+    bias is never a jet.
+
+    Args:
+        *args: Positional arguments of a collapsed jet op; at least one must be
+            a ``CollapsedJetTuple``.
+
+    Returns:
+        The Taylor-expansion order ``K``.
+
+    Raises:
+        TypeError: If no positional argument is a ``CollapsedJetTuple``.
+    """
+    for arg in args:
+        if isinstance(arg, CollapsedJetTuple):
+            K = len(arg) - 1
+            assert all(
+                not isinstance(other, CollapsedJetTuple) or len(other) - 1 == K
+                for other in args
+            ), "all CollapsedJetTuple arguments must share the same derivative order"
+            return K
+    raise TypeError("_cjet_order: no CollapsedJetTuple in positional arguments")
+
+
 # ---------------------------------------------------------------------------
 # Helpers: apply a linear op with vmap for batched coefficients
 # ---------------------------------------------------------------------------

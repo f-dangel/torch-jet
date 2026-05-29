@@ -31,6 +31,36 @@ register_pytree_node(
 )
 
 
+def _jet_order(*args: Value) -> int:
+    """Infer the Taylor-expansion order ``K`` from the first ``JetTuple`` arg.
+
+    A ``JetTuple`` is exactly ``(primal, c_1, ..., c_K)``, so ``K = len(jet) - 1``.
+    The interpreter only dispatches jet ops when at least one positional arg is
+    a ``JetTuple``, so this never fails in practice. We scan ``args`` (not
+    ``args[0]``) because binary ops may receive a scalar/constant first operand
+    and ``jet_addmm``'s bias is never a jet.
+
+    Args:
+        *args: Positional arguments of a jet op; at least one must be a
+            ``JetTuple``.
+
+    Returns:
+        The Taylor-expansion order ``K``.
+
+    Raises:
+        TypeError: If no positional argument is a ``JetTuple``.
+    """
+    for arg in args:
+        if isinstance(arg, JetTuple):
+            K = len(arg) - 1
+            assert all(
+                not isinstance(other, JetTuple) or len(other) - 1 == K
+                for other in args
+            ), "all JetTuple arguments must share the same derivative order"
+            return K
+    raise TypeError("_jet_order: no JetTuple in positional arguments")
+
+
 def _partition_term(
     vs: tuple[Primal, ...], sigma: tuple[int, ...], dn: dict[int, Primal]
 ) -> Value | None:

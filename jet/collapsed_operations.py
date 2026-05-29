@@ -85,10 +85,11 @@ def _collapsed_leibniz(self, other, K, binary_op):
             if K >= 2:
                 nonlinear = None
                 for j in range(1, K):
-                    term_j = comb(K, j, exact=True) * binary_op(self[j], other[K - j])
                     # Sum out the direction dim R per term so the accumulator (and
-                    # the tensors flowing through the traced graph) stay small.
-                    term_j = term_j.sum(0)
+                    # downstream traced-graph tensors) stay small.
+                    term_j = comb(K, j, exact=True) * binary_op(
+                        self[j], other[K - j]
+                    ).sum(0)
                     nonlinear = term_j if nonlinear is None else nonlinear + term_j
                 s_out += (linear + nonlinear,)
             else:

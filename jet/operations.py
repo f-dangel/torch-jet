@@ -179,6 +179,10 @@ def _cos_derivatives(x0: Primal, K: int) -> tuple[Primal, dict[int, Primal]]:
 
 def _tanh_derivatives(x0: Primal, K: int) -> tuple[Primal, dict[int, Primal]]:
     """Compute ``tanh(x0)`` and its derivatives up to order *K*."""
+    # Use the explicit form of the derivative polynomials for tanh from "Derivative
+    # polynomials for tanh, tan, sech and sec in explicit form" by Boyadzhiev (2006)
+    # (https://www.fq.math.ca/Papers1/45-4/quartboyadzhiev04_2007.pdf);
+    # see also this answer: https://math.stackexchange.com/a/4226178
     tanh_x0 = tanh(x0)
     d = {0: tanh_x0}
     if K >= 1:
@@ -188,6 +192,7 @@ def _tanh_derivatives(x0: Primal, K: int) -> tuple[Primal, dict[int, Primal]]:
         if K >= 2:
             for k in range(2, K + 1):
                 tanh_dec_powers[k] = tanh_dec**k
+        # Equations (3.3) and (3.4) from the above paper
         for m in range(1, K + 1):
             term = None
             for k in range(1, m + 1):

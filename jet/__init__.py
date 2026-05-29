@@ -266,9 +266,7 @@ def rev_jet(
 
 
 def collapsed_jet(
-    f: Callable[..., Value],
-    derivative_order: int,
-    mock_args: tuple[Any, ...],
+    f: Callable[..., Value], derivative_order: int, mock_args: tuple[Any, ...]
 ) -> Callable[..., tuple[Value, ...]]:
     """Overload ``f`` with its collapsed Taylor-mode equivalent.
 
@@ -325,7 +323,12 @@ def collapsed_jet(
     return cjet_f
 
 
-def _make_uncollapsed_cjet(f, derivative_order, mock_args, randomization):
+def _make_uncollapsed_cjet(
+    f: Callable[..., Value],
+    derivative_order: int,
+    mock_args: tuple[Any, ...],
+    randomization: tuple[str, int] | None,
+) -> Callable[..., tuple[Value, ...]]:
     """Build a collapsed_jet-compatible function using standard jet + vmap + sum.
 
     The returned function has the same calling convention as ``collapsed_jet``:

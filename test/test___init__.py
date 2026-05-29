@@ -298,6 +298,22 @@ ALL_CASES = JET_CASES + [
             [rand(4).double(), rand(4).double()],
         ),
     },
+    # dict inputs in supported positions (single dict arg, and dict first)
+    {
+        "id": "dict-in-single",
+        "f": lambda d: sin(d["a"]) * d["b"],
+        "mock_args_fn": lambda: (
+            {"a": rand(4).double(), "b": rand(4).double()},
+        ),
+    },
+    {
+        "id": "dict-first",
+        "f": lambda params, x: params["scale"] * sin(x) + params["bias"],
+        "mock_args_fn": lambda: (
+            {"scale": rand(3).double(), "bias": rand(3).double()},
+            rand(3).double(),
+        ),
+    },
     # pytree-output: Tensor -> PyTree
     {
         "id": "tuple-sin-cos",
@@ -455,15 +471,23 @@ def test_collapsed_jet_rejects_order_below_2():
         collapsed_jet(sin, 0, (zeros(3),))
 
 
-def test_jet_rejects_dict_arguments():
-    """Reject dict arguments in jet and collapsed_jet (make_fx limitation)."""
+def test_jet_rejects_unsupported_tuple_dict_signature():
+    """Reject only the (tensor/tuple, dict) two-argument signature (make_fx bug).
+
+    All other dict signatures are supported, so they must not raise.
+    """
     from pytest import raises
 
+    # Unsupported: two args, first tensor/tuple, second dict.
     f = lambda x, params: x * params["a"]  # noqa: E731
-    mock_args = (zeros(3), {"a": zeros(3)})
-
     with raises(NotImplementedError, match="dict"):
-        jet.jet(f, 2, mock_args)
-
+        jet.jet(f, 2, (zeros(3), {"a": zeros(3)}))
     with raises(NotImplementedError, match="dict"):
-        collapsed_jet(f, 2, mock_args)
+        collapsed_jet(f, 2, (zeros(3), {"a": zeros(3)}))
+
+    # Supported dict signatures must not raise.
+    jet.jet(lambda d: d["a"] * 2, 2, ({"a": zeros(3)},))  # single dict arg
+    jet.jet(lambda d, x: d["a"] + x, 2, ({"a": zeros(3)}, zeros(3)))  # dict first
+    jet.jet(  # three args with a trailing dict
+        lambda x, y, d: x + y + d["a"], 2, (zeros(3), zeros(3), {"a": zeros(3)})
+    )

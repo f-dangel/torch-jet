@@ -313,46 +313,43 @@ else:
 #
 ### Pytree Inputs and Outputs
 #
-# ``jet`` also supports functions whose inputs and outputs are pytrees of tensors.
-# Inputs must use ``tuple``/``list`` containers: ``dict`` *arguments* are not
-# supported due to a ``make_fx`` codegen bug
-# (`pytorch/pytorch#185640 <https://github.com/pytorch/pytorch/issues/185640>`_)
-# and raise a clear error. Outputs, however, may be any pytree, including
-# ``dict``. As an example, consider a function that takes a list ``[x, y]`` and
-# returns a dict with entries ``"mul"`` and ``"sub"``:
+# ``jet`` also supports functions whose inputs and outputs are arbitrary pytrees
+# (nested ``tuple``, ``list``, and ``dict`` containers with tensor leaves). As an
+# example, consider a function that takes a dict with entries ``"x"`` and ``"y"``
+# and returns a dict with entries ``"mul"`` and ``"sub"``:
 
 
-def f_pytree(inputs: list[Tensor]) -> dict[str, Tensor]:
-    """A function with list input and dict output.
+def f_pytree(inputs: dict[str, Tensor]) -> dict[str, Tensor]:
+    """A function with dict input and dict output.
 
     Args:
-        inputs: A list ``[x, y]`` of two tensors.
+        inputs: A dict with keys ``"x"`` and ``"y"``, each a tensor.
 
     Returns:
         A dict with ``"mul" = x * y`` and ``"sub" = x - y``.
     """
-    x, y = inputs
+    x, y = inputs["x"], inputs["y"]
     return {"mul": x * y, "sub": x - y}
 
 
-mock_inputs = [rand(2), rand(2)]
+mock_inputs = {"x": rand(2), "y": rand(2)}
 f_pytree_jet = jet(f_pytree, 1, (mock_inputs,))
 
 # %%
 #
 # The jet of a pytree argument follows the same pytree structure as the argument
 # itself, with every tensor leaf replaced by its ``(primal, c_1, ..., c_K)`` jet
-# tuple. Since ``f_pytree`` takes a single list argument, we pass a single list
-# whose two leaves are each a ``(primal, c_1)`` tuple (one Taylor coefficient,
-# since ``derivative_order=1``):
+# tuple. Since ``f_pytree`` takes a single dict argument, we pass a single dict
+# whose ``"x"`` and ``"y"`` leaves are each a ``(primal, c_1)`` tuple (one Taylor
+# coefficient, since ``derivative_order=1``):
 
-inputs = [rand(2), rand(2)]
-d_inputs = [ones_like(inputs[0]), zeros_like(inputs[1])]
+inputs = {"x": rand(2), "y": rand(2)}
+d_inputs = {"x": ones_like(inputs["x"]), "y": zeros_like(inputs["y"])}
 
-jet_inputs = [
-    (inputs[0], d_inputs[0]),
-    (inputs[1], d_inputs[1]),
-]
+jet_inputs = {
+    "x": (inputs["x"], d_inputs["x"]),
+    "y": (inputs["y"], d_inputs["y"]),
+}
 out = f_pytree_jet(jet_inputs)
 
 # %%
@@ -364,8 +361,8 @@ print(f"output keys: {list(out.keys())}")
 print(f"out['mul'][1] = {out['mul'][1]}  (= dx/dt * y + x * dy/dt = 1 * y + x * 0 = y)")
 print(f"out['sub'][1] = {out['sub'][1]}  (= dx/dt - dy/dt = 1 - 0 = 1)")
 
-assert out["mul"][1].allclose(inputs[1]), f"out['mul'][1] = {out['mul'][1]} != y"
-assert out["sub"][1].allclose(ones_like(inputs[0])), "out['sub'][1] != 1"
+assert out["mul"][1].allclose(inputs["y"]), f"out['mul'][1] = {out['mul'][1]} != y"
+assert out["sub"][1].allclose(ones_like(inputs["x"])), "out['sub'][1] != 1"
 
 # %%
 #

@@ -49,31 +49,36 @@ def _is_jet_leaf(x: Any, derivative_order: int | None = None) -> bool:
     return derivative_order is None or len(x) == derivative_order + 1
 
 
-def _assert_no_dicts(obj: Any) -> None:
-    """Raise if ``obj`` contains a ``dict`` anywhere in its pytree structure.
+def _assert_supported_signature(mock_args: tuple[Any, ...]) -> None:
+    """Reject the one argument signature that ``make_fx`` mistraces.
 
-    ``jet`` traces with ``make_fx``, whose codegen mishandles a ``dict`` argument
-    that follows a ``tuple``/``list`` argument (it drops keys, producing a broken
-    graph -- see pytorch/pytorch#185640). Since every jet bundles its coefficients
-    into a tuple, any ``dict`` argument trips this, so we only support ``tuple``
-    and ``list`` containers for arguments and reject ``dict`` early. (Outputs are
-    unaffected and may be any pytree.)
+    ``make_fx`` misreads a two-argument call whose first argument is tuple-rooted
+    and whose second is a ``dict`` as an ``(args, kwargs)`` call and emits a
+    broken input template (pytorch/pytorch#185640). Because a tensor argument
+    becomes a tuple-rooted jet ``(primal, c_1, ...)``, both ``f(tensor, dict)``
+    and ``f(tuple, dict)`` trip it. Every other signature -- a lone ``dict``, a
+    ``dict`` first, three or more arguments, or ``list`` + ``dict`` -- traces
+    correctly, as do ``dict`` outputs.
 
     Args:
-        obj: A pytree of tensors (e.g. the mock arguments) to validate.
+        mock_args: Mock arguments, one per argument of the traced function.
 
     Raises:
-        NotImplementedError: If a ``dict`` is found anywhere in ``obj``.
+        NotImplementedError: If the signature is the unsupported
+            ``(tensor-or-tuple, dict)``.
     """
-    if isinstance(obj, dict):
+    if (
+        len(mock_args) == 2
+        and isinstance(mock_args[0], (Tensor, tuple))
+        and isinstance(mock_args[1], dict)
+    ):
         raise NotImplementedError(
-            "jet transforms do not support dict arguments due to a make_fx "
-            "tracing limitation (its codegen drops dict keys). Use tuples or "
-            "lists instead."
+            "jet transforms cannot trace a two-argument function whose first "
+            "argument is a tensor/tuple and whose second is a dict, due to a "
+            "make_fx codegen bug (pytorch/pytorch#185640). Work around it by "
+            "putting the dict argument first, adding another argument, or "
+            "bundling the arguments into a single tuple/list."
         )
-    if isinstance(obj, (tuple, list)):
-        for entry in obj:
-            _assert_no_dicts(entry)
 
 
 def _normalize_output(result: Any, derivative_order: int) -> Any:
@@ -130,9 +135,10 @@ def jet(
         tuple ``(f_0, f_1, ..., f_K)``.
 
     Raises:
-        NotImplementedError: If ``mock_primals`` contains a ``dict``. ``make_fx``
-            mishandles ``dict`` placeholders, so only ``tuple``/``list``
-            containers are supported.
+        NotImplementedError: If ``f`` takes exactly two arguments where the first
+            is a tensor/tuple and the second is a ``dict`` (``make_fx`` mistraces
+            this signature; see pytorch/pytorch#185640). All other signatures,
+            including ``dict`` arguments elsewhere and ``dict`` outputs, work.
 
     Examples:
         **Single-input**::
@@ -152,7 +158,7 @@ def jet(
             >>> vx, vy = Tensor([1.0, 0.0, 0.0]), Tensor([0.0, 1.0, 0.0])
             >>> f0, f1 = jet1_f((x, vx), (y, vy))
     """
-    _assert_no_dicts(mock_primals)
+    _assert_supported_signature(mock_primals)
     mod, _ = capture_flat_graph(f, mock_primals)
 
     interp = JetInterpreter(mod, derivative_order)
@@ -333,14 +339,15 @@ def collapsed_jet(
     Raises:
         ValueError: If ``derivative_order < 2`` (collapsing requires at least
             one batched coefficient to carry direction information).
-        NotImplementedError: If ``mock_args`` contains a ``dict`` (only
-            ``tuple``/``list`` containers are supported).
+        NotImplementedError: If ``f`` takes exactly two arguments where the first
+            is a tensor/tuple and the second is a ``dict`` (see
+            pytorch/pytorch#185640).
     """
     if derivative_order < 2:
         raise ValueError(
             f"collapsed_jet requires derivative_order >= 2, got {derivative_order}."
         )
-    _assert_no_dicts(mock_args)
+    _assert_supported_signature(mock_args)
     mod, _ = capture_flat_graph(f, mock_args)
 
     interp = CollapsedJetInterpreter(mod, derivative_order)

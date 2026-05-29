@@ -32,9 +32,30 @@ register_pytree_node(
 def _partition_term(
     vs: tuple[Primal, ...], sigma: tuple[int, ...], dn: dict[int, Primal]
 ) -> Value | None:
-    """Compute one term of the Faà di Bruno sum for a given partition.
+    r"""Compute one term of the Faà di Bruno sum for a given partition.
 
-    Returns ``None`` when ``dn[len(sigma)]`` is ``None``.
+    In Faà di Bruno's formula, the order-``k`` Taylor coefficient of the
+    composition ``f(g(x))`` is a sum over the integer partitions of ``k``. A
+    partition ``sigma`` is a tuple of part sizes summing to ``k``. Its number of
+    blocks ``len(sigma)`` selects the outer derivative ``dn[len(sigma)]``, while
+    each part of size ``i`` contributes a factor of the inner coefficient
+    ``vs[i - 1]`` (the order-``i`` coefficient). Repeated parts of the same size
+    are raised to the corresponding power, and the product is weighted by the
+    combinatorial multiplicity ``nu`` of the partition (the number of set
+    partitions of ``{1, ..., k}`` whose block sizes are ``sigma``).
+
+    Args:
+        vs: The incoming (inner) Taylor coefficients, indexed by order minus one,
+            i.e. ``vs[i - 1]`` is the order-``i`` coefficient.
+        sigma: An integer partition of the output order, given as a tuple of part
+            sizes (e.g. ``(2, 1, 1)`` for order 4 split into three blocks).
+        dn: A dictionary mapping a degree to the outer function's derivative of
+            that degree.
+
+    Returns:
+        The partition's contribution to the Faà di Bruno sum, or ``None`` when
+        the required outer derivative ``dn[len(sigma)]`` is ``None`` (a
+        structurally vanishing term that callers skip).
     """
     if dn[len(sigma)] is None:
         return None

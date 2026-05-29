@@ -49,6 +49,17 @@ def _is_jet_leaf(x: Any, derivative_order: int | None = None) -> bool:
     return derivative_order is None or len(x) == derivative_order + 1
 
 
+def _make_zero_jet(primal: Tensor, derivative_order: int) -> tuple[Tensor, ...]:
+    """Build a jet leaf ``(primal, 0, 0, ..., 0)`` whose K zero coefficients alias.
+
+    Sharing one ``zeros_like`` across all coefficient slots collapses K identical
+    ops down to one in the captured FX graph (relevant inside ``jet_f``, which is
+    traced under ``make_fx``).
+    """
+    zero = zeros_like(primal)
+    return (primal, *([zero] * derivative_order))
+
+
 def _normalize_output(result: Any, derivative_order: int) -> Any:
     """Convert the interpreter's pytree-of-jets into a pytree of plain tuples.
 
@@ -70,7 +81,7 @@ def _normalize_output(result: Any, derivative_order: int) -> Any:
     leaves = [
         tuple(node)
         if isinstance(node, _JetTypes)
-        else (node, *(zeros_like(node) for _ in range(derivative_order)))
+        else _make_zero_jet(node, derivative_order)
         for node in flat
     ]
     return tree_unflatten(leaves, spec)

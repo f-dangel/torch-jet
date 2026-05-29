@@ -56,10 +56,6 @@ def capture_flat_graph(
 
     Returns:
         The traced graph module over flat tensor inputs.
-
-    Raises:
-        NotImplementedError: If ``mock_args`` is the ``(tensor-or-tuple, dict)``
-            signature that ``make_fx`` mistraces (see ``_assert_traceable_signature``).
     """
     _assert_traceable_signature(mock_args)
     flat_mocks, in_spec = tree_flatten(mock_args)

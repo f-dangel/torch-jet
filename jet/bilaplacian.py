@@ -76,10 +76,6 @@ def bilaplacian(
     Returns:
         A ``GraphModule`` that maps ``x → bilap(f(x))``.
 
-    Raises:
-        ValueError: If the provided distribution is not supported or if the number
-            of samples is not positive.
-
     Examples:
         >>> from torch import manual_seed, rand, zeros
         >>> from torch.func import hessian

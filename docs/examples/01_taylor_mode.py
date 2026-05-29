@@ -286,7 +286,9 @@ jet_u = jet(u, 2, (t_val, x_val))
 # **Computing** $\partial_{xx} u$. We set $t_1 = 0$, $x_1 = 1$, $t_2 = 0$, $x_2 = 0$
 # so that $f_2 = \partial_{xx} u$:
 
-_, _, d2u_dx2 = jet_u((t_val, zt, zt), (x_val, ones_like(x_val), zx))
+t1, t2 = zt, zt  # t_1 = 0, t_2 = 0
+x1, x2 = ones_like(x_val), zx  # x_1 = 1, x_2 = 0
+_, _, d2u_dx2 = jet_u((t_val, t1, t2), (x_val, x1, x2))
 
 d2u_dx2_exact = -cos(t_val) * sin(x_val)
 if d2u_dx2.allclose(d2u_dx2_exact):
@@ -299,7 +301,9 @@ else:
 # Similarly, $\partial_{tt} u$ is obtained with $t_1 = 1$, $x_1 = 0$.
 # Let's verify the wave equation $\partial_{tt} u = \partial_{xx} u$:
 
-_, _, d2u_dt2 = jet_u((t_val, ones_like(t_val), zt), (x_val, zx, zx))
+t1, t2 = ones_like(t_val), zt  # t_1 = 1, t_2 = 0
+x1, x2 = zx, zx  # x_1 = 0, x_2 = 0
+_, _, d2u_dt2 = jet_u((t_val, t1, t2), (x_val, x1, x2))
 
 if d2u_dt2.allclose(d2u_dx2):
     print("Wave equation verified: ∂²u/∂t² = ∂²u/∂x²!")

@@ -70,21 +70,24 @@ def f_multiply(x: Tensor) -> Tensor:
 
 def _deep_pytree_f(
     x: Tensor, params: list[Tensor | list[Tensor]]
-) -> tuple[Tensor, list[Tensor]]:
-    """Function with deeply nested tuple/list input and different output structure.
+) -> tuple[Tensor, dict[str, Tensor]]:
+    """Function with deeply nested input/output of different structure.
+
+    The input uses ``tuple``/``list`` containers (``dict`` arguments are
+    unsupported); the output mixes a ``tuple`` with a ``dict``.
 
     Args:
         x: Input tensor.
         params: Nested pytree ``[Tensor, [Tensor, Tensor]]`` (``[w, [b0, b1]]``).
 
     Returns:
-        A pytree ``(Tensor, [Tensor, Tensor])`` with different structure from the
-        input.
+        A pytree ``(Tensor, {"a": Tensor, "b": Tensor})`` with different structure
+        from the input.
     """
     w = params[0]
     b0, b1 = params[1]
     h = sin(x) * w
-    return (h + b0, [cos(h) * b1, tanh(h + b0 + b1)])
+    return (h + b0, {"a": cos(h) * b1, "b": tanh(h + b0 + b1)})
 
 
 def _deep_pytree_mock_args_fn() -> tuple[Tensor, list[Tensor | list[Tensor]]]:
@@ -302,8 +305,8 @@ ALL_CASES = JET_CASES + [
         "mock_args_fn": lambda: (rand(3).double(),),
     },
     {
-        "id": "list-sin-cos-out",
-        "f": lambda x: [sin(x), cos(x)],
+        "id": "dict-sin-cos-out",
+        "f": lambda x: {"sin": sin(x), "cos": cos(x)},
         "mock_args_fn": lambda: (rand(3).double(),),
     },
     # multi-input, pytree-output: (Tensor, Tensor) -> PyTree
@@ -313,13 +316,13 @@ ALL_CASES = JET_CASES + [
         "mock_args_fn": lambda: (rand(4).double(), rand(4).double()),
     },
     {
-        "id": "multi-in-list-out",
-        "f": lambda x, y: [x + y, x * y],
+        "id": "multi-in-dict-out",
+        "f": lambda x, y: {"sum": x + y, "prod": x * y},
         "mock_args_fn": lambda: (rand(4).double(), rand(4).double()),
     },
-    # deeply nested tuple/list containers with different input/output structure
+    # deeply nested containers with different input/output structure
     {
-        "id": "nested-list-in-tuple-list-out",
+        "id": "nested-list-in-tuple-dict-out",
         "f": _deep_pytree_f,
         "mock_args_fn": _deep_pytree_mock_args_fn,
     },

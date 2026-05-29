@@ -52,10 +52,12 @@ def _is_jet_leaf(x: Any, derivative_order: int | None = None) -> bool:
 def _assert_no_dicts(obj: Any) -> None:
     """Raise if ``obj`` contains a ``dict`` anywhere in its pytree structure.
 
-    ``jet`` traces with ``make_fx``, whose codegen mishandles ``dict`` pytree
-    placeholders (it silently drops keys, producing a broken graph). We therefore
-    only support ``tuple`` and ``list`` containers and reject ``dict`` early with
-    a clear message.
+    ``jet`` traces with ``make_fx``, whose codegen mishandles a ``dict`` argument
+    that follows a ``tuple``/``list`` argument (it drops keys, producing a broken
+    graph -- see pytorch/pytorch#185640). Since every jet bundles its coefficients
+    into a tuple, any ``dict`` argument trips this, so we only support ``tuple``
+    and ``list`` containers for arguments and reject ``dict`` early. (Outputs are
+    unaffected and may be any pytree.)
 
     Args:
         obj: A pytree of tensors (e.g. the mock arguments) to validate.

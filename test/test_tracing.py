@@ -50,10 +50,10 @@ def test_capture_graph_replaces_squeeze_():
     reason=(
         "make_fx codegen mishandles a dict positional arg that follows a "
         "tuple/list positional arg: it drops dict keys, producing a graph that "
-        "raises at call time. Because every jet wraps its leaves in tuples, this "
-        "blocks dict arguments in the jet transforms (see jet._assert_no_dicts). "
-        "When PyTorch fixes this, the test will XPASS (strict) and signal that "
-        "the dict restriction can be lifted."
+        "raises at call time (pytorch/pytorch#185640). Because every jet wraps "
+        "its leaves in tuples, this blocks dict arguments in the jet transforms "
+        "(see jet._assert_no_dicts). When PyTorch fixes this, the test will XPASS "
+        "(strict) and signal that the dict restriction can be lifted."
     ),
 )
 def test_make_fx_supports_dict_arg_after_tuple_arg():

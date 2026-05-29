@@ -313,23 +313,26 @@ else:
 #
 ### Pytree Inputs and Outputs
 #
-# ``jet`` also supports functions whose inputs and outputs are pytrees built from
-# nested ``tuple`` and ``list`` containers with tensor leaves (``dict`` is not
-# supported, see the limitations below). As an example, consider a function that
-# takes a list ``[x, y]`` and returns a tuple ``(x * y, x - y)``:
+# ``jet`` also supports functions whose inputs and outputs are pytrees of tensors.
+# Inputs must use ``tuple``/``list`` containers: ``dict`` *arguments* are not
+# supported due to a ``make_fx`` codegen bug
+# (`pytorch/pytorch#185640 <https://github.com/pytorch/pytorch/issues/185640>`_)
+# and raise a clear error. Outputs, however, may be any pytree, including
+# ``dict``. As an example, consider a function that takes a list ``[x, y]`` and
+# returns a dict with entries ``"mul"`` and ``"sub"``:
 
 
-def f_pytree(inputs: list[Tensor]) -> tuple[Tensor, Tensor]:
-    """A function with list input and tuple output.
+def f_pytree(inputs: list[Tensor]) -> dict[str, Tensor]:
+    """A function with list input and dict output.
 
     Args:
         inputs: A list ``[x, y]`` of two tensors.
 
     Returns:
-        A tuple ``(x * y, x - y)``.
+        A dict with ``"mul" = x * y`` and ``"sub" = x - y``.
     """
     x, y = inputs
-    return (x * y, x - y)
+    return {"mul": x * y, "sub": x - y}
 
 
 mock_inputs = [rand(2), rand(2)]
@@ -350,19 +353,19 @@ jet_inputs = [
     (inputs[0], d_inputs[0]),
     (inputs[1], d_inputs[1]),
 ]
-mul, sub = f_pytree_jet(jet_inputs)
+out = f_pytree_jet(jet_inputs)
 
 # %%
 #
-# The output mirrors ``f_pytree``'s output structure (a tuple), with each leaf a
+# The output mirrors ``f_pytree``'s output structure (a dict), with each leaf a
 # ``(f_0, f_1)`` jet tuple:
 
-print(f"mul[0] = {mul[0]}")
-print(f"mul[1] = {mul[1]}  (= dx/dt * y + x * dy/dt = 1 * y + x * 0 = y)")
-print(f"sub[1] = {sub[1]}  (= dx/dt - dy/dt = 1 - 0 = 1)")
+print(f"output keys: {list(out.keys())}")
+print(f"out['mul'][1] = {out['mul'][1]}  (= dx/dt * y + x * dy/dt = 1 * y + x * 0 = y)")
+print(f"out['sub'][1] = {out['sub'][1]}  (= dx/dt - dy/dt = 1 - 0 = 1)")
 
-assert mul[1].allclose(inputs[1]), f"mul[1] = {mul[1]} != y"
-assert sub[1].allclose(ones_like(inputs[0])), "sub[1] != 1"
+assert out["mul"][1].allclose(inputs[1]), f"out['mul'][1] = {out['mul'][1]} != y"
+assert out["sub"][1].allclose(ones_like(inputs[0])), "out['sub'][1] != 1"
 
 # %%
 #
@@ -498,38 +501,3 @@ with raises(RuntimeError):
 # This is a fundamental limitation of ``make_fx`` tracing and cannot be fixed at the
 # moment. It may be possible to support in the future if control flow operators are
 # added to PyTorch's tracing mechanism.
-#
-#### Dict Arguments
-#
-# **`jet` does not support `dict` arguments.**
-#
-# Inputs and outputs may be arbitrary pytrees of ``tuple`` and ``list`` containers,
-# but **not** ``dict``. This is due to a ``make_fx`` codegen bug: when a ``dict``
-# positional argument follows a ``tuple``/``list`` argument, the generated graph
-# drops the ``dict``'s keys and raises at call time. Since every jet bundles its
-# Taylor coefficients into a tuple, any ``dict`` argument triggers this. ``jet``
-# therefore rejects ``dict`` arguments with a clear error:
-
-
-def f_dict(x: Tensor, params: dict[str, Tensor]) -> Tensor:
-    """Function with a dict argument (unsupported).
-
-    Args:
-        x: Input tensor.
-        params: A dict with key ``"w"``.
-
-    Returns:
-        The product ``x * params["w"]``.
-    """
-    return x * params["w"]
-
-
-with raises(NotImplementedError):
-    jet(f_dict, 2, (rand(3), {"w": rand(3)}))  # crashes: dict argument
-
-# %%
-#
-# The limitation is tracked by a regression test
-# (``test_make_fx_supports_dict_arg_after_tuple_arg`` in ``test/test_tracing.py``),
-# which will start passing once PyTorch fixes the underlying ``make_fx`` bug —
-# signaling that ``dict`` support can be re-enabled.

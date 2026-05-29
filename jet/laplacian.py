@@ -19,7 +19,7 @@ def laplacian(
     weighting: tuple[Callable[[Tensor, Tensor], Tensor], int] | None = None,
     use_collapsing: bool = True,
 ) -> GraphModule:
-    r"""Transform f into a function that computes (f(x), jac(f(x)), lap(f(x))).
+    r"""Transform f into a function that computes lap(f(x)).
 
     The Laplacian of a function $f(\mathbf{x}) \in \mathbb{R}$ with
     $\mathbf{x} \in \mathbb{R}^D$ is defined as the Hessian trace, or
@@ -57,7 +57,7 @@ def laplacian(
             2-jets over all directions via ``vmap`` and sums afterward.
 
     Returns:
-        A ``GraphModule`` that maps ``x → (f(x), jac(f(x)), lap(f(x)))``.
+        A ``GraphModule`` that maps ``x → lap(f(x))``.
 
     Raises:
         ValueError: If the provided distribution is not supported or if the number
@@ -72,7 +72,7 @@ def laplacian(
         >>> f = Sequential(Linear(3, 1), Tanh())
         >>> x0 = rand(3)
         >>> # Compute the Laplacian via Taylor mode
-        >>> _, _, lap = laplacian(f, zeros(3))(x0)
+        >>> lap = laplacian(f, zeros(3))(x0)
         >>> assert lap.shape == f(x0).shape
         >>> # Compute the Laplacian with PyTorch's autodiff (Hessian trace)
         >>> lap_pt = hessian(f)(x0).squeeze(0).trace().unsqueeze(0)
@@ -99,7 +99,7 @@ def laplacian(
         else _make_uncollapsed_cjet(f, 2, (mock_x,), randomization)
     )
 
-    def lap_f(x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+    def lap_f(x: Tensor) -> Tensor:
         """Compute the (weighted and/or randomized) Laplacian of f at x.
 
         Args:
@@ -107,8 +107,8 @@ def laplacian(
                 passed to `laplacian`.
 
         Returns:
-            Tuple containing the function value, the weighted and/or
-                randomized Jacobian, and the Laplacian.
+            The (weighted and/or randomized) Laplacian. Has the same shape as
+                ``f(x)``.
 
         Raises:
             ValueError: If the input shape does not match the mock input shape.
@@ -127,12 +127,12 @@ def laplacian(
         X1 = apply_weightings(x, V)
         z = zeros_like(x)
 
-        F0, (F1, F2) = cjet_f((x,), ((X1, z),))
+        _, (_, F2) = cjet_f((x,), ((X1, z),))
 
         if randomization is not None:
             monte_carlo_scaling = 1.0 / randomization[1]
             F2 = F2 * monte_carlo_scaling
 
-        return F0, F1, F2
+        return F2
 
     return capture_graph(lap_f, mock_x)

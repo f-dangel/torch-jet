@@ -258,16 +258,15 @@ def laplacian_function(
 
     elif strategy in {"jet_naive", "jet_simplified"}:
         use_collapsing = strategy == "jet_simplified"
-        lap_fn = jet_laplacian(
+        laplacian = jet_laplacian(
             f,
             dummy_x,
             randomization=randomization,
             weighting=weighting,
             use_collapsing=use_collapsing,
         )
-        common_subexpression_elimination(lap_fn.graph)
-        lap_fn.recompile()
-        laplacian = lambda x: lap_fn(x)[2]  # noqa: E731
+        common_subexpression_elimination(laplacian.graph)
+        laplacian.recompile()
 
     else:
         raise ValueError(f"Unsupported {strategy=}. {SUPPORTED_STRATEGIES=}.")

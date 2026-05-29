@@ -147,9 +147,7 @@ def test_Laplacian(
 
     # Using a manually-vmapped jet
     weighting = get_weighting(x, weights)
-    _, _, lap_fn = jet_laplacian(
-        f, x, weighting=weighting, use_collapsing=use_collapsing
-    )(x)
+    lap_fn = jet_laplacian(f, x, weighting=weighting, use_collapsing=use_collapsing)(x)
     assert lap_rev.allclose(lap_fn), "Functorch and jet Laplacians do not match."
 
 
@@ -190,7 +188,7 @@ def test_Laplacian_randomization(
 
     converged = _check_mc_convergence(
         lap,
-        lambda idx: run_seeded(lap_fn, idx, x)[2],
+        lambda idx: run_seeded(lap_fn, idx, x),
         chunk_size,
         max_num_chunks,
         target_rel_error,

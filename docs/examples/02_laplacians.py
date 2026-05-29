@@ -308,7 +308,7 @@ assert hessian_trace_laplacian.allclose(lap_standard(x))
 # coefficient.
 
 lap_collapsed = laplacian(f, x)
-_, _, collapsed_laplacian = lap_collapsed(x)
+collapsed_laplacian = lap_collapsed(x)
 assert hessian_trace_laplacian.allclose(collapsed_laplacian)
 
 # Graph 3: Collapsed Taylor mode, simplified with CSE + DCE
@@ -317,7 +317,7 @@ lap_collapsed.recompile()
 visualize_graph(
     lap_collapsed, path.join(GALLERYDIR, "02_laplacian_collapsed.png"), use_custom=True
 )
-assert hessian_trace_laplacian.allclose(lap_collapsed(x)[2])
+assert hessian_trace_laplacian.allclose(lap_collapsed(x))
 
 # %%
 #
@@ -405,7 +405,7 @@ assert reference.allclose(nested, **tols)
 standard = compute_batched_standard_laplacian(X)
 assert reference.allclose(standard, **tols)
 
-collapsed = compute_batched_collapsed_laplacian(X)[2]
+collapsed = compute_batched_collapsed_laplacian(X)
 assert reference.allclose(collapsed, **tols)
 
 # %%

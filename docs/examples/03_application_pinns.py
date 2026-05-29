@@ -192,7 +192,7 @@ X_boundary = sample_boundary()
 # as well as the Poisson equation's right-hand side.
 
 
-# Function that computes three numbers, the last is the neural networks Laplacian
+# Function that computes the neural network's Laplacian
 lap_f = laplacian(f, zeros(2, dtype=DTYPE))  # uses collapsed Taylor mode
 common_subexpression_elimination(lap_f.graph)  # CSE + dead code elimination
 lap_f.recompile()
@@ -228,7 +228,7 @@ def compute_loss(return_residual: bool = False) -> Tensor | tuple[Tensor, Tensor
         residual. The loss has shape `[1]`, the residual `[N_interior + N_boundary]`.
     """
     boundary_residual = f(X_boundary) / sqrt(N_boundary)
-    interior_residual = (lap_f(X_interior)[2] + rhs(X_interior)) / sqrt(N_interior)
+    interior_residual = (lap_f(X_interior) + rhs(X_interior)) / sqrt(N_interior)
     residual = cat([interior_residual, boundary_residual])
     loss = 0.5 * (residual**2).sum()
     return (loss, residual) if return_residual else loss

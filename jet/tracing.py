@@ -41,7 +41,7 @@ def capture_graph(
 
 def capture_flat_graph(
     f: Callable[..., Any], mock_args: tuple[Any, ...]
-) -> tuple[GraphModule, int]:
+) -> GraphModule:
     """Capture the compute graph of ``f`` over its flattened pytree leaves.
 
     ``make_fx`` creates one symbolic proxy per positional tensor argument and
@@ -55,15 +55,19 @@ def capture_flat_graph(
             args, provided as a tuple. Only shapes and dtypes matter.
 
     Returns:
-        A tuple ``(mod, num_leaves)`` with the traced graph module over flat
-        tensor inputs and the number of tensor leaves.
+        The traced graph module over flat tensor inputs.
+
+    Raises:
+        NotImplementedError: If ``mock_args`` is the ``(tensor-or-tuple, dict)``
+            signature that ``make_fx`` mistraces (see ``_assert_traceable_signature``).
     """
+    _assert_traceable_signature(mock_args)
     flat_mocks, in_spec = tree_flatten(mock_args)
 
     def flat_f(*flat_tensors: Tensor) -> Any:
         return f(*tree_unflatten(list(flat_tensors), in_spec))
 
-    return capture_graph(flat_f, *flat_mocks), len(flat_mocks)
+    return capture_graph(flat_f, *flat_mocks)
 
 
 def _assert_traceable_signature(args: tuple[Any, ...]) -> None:

@@ -18,41 +18,13 @@ from torch import (
 )
 from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
-from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
+from torch.utils._pytree import tree_map
 
 import jet
 from jet import collapsed_jet, rev_jet
 from test.utils import report_pytrees_nonclose
 
 INF = float("inf")
-
-
-def _to_jet_args(
-    primals: tuple[Any, ...], taylor_coeffs: tuple[tuple[Any, ...], ...]
-) -> tuple[Any, ...]:
-    """Combine arg-major primals + taylor_coeffs into per-arg pytrees of jets.
-
-    Each tensor leaf of argument ``a`` becomes a tuple ``(primal, c_1, ..., c_K)``
-    with ``c_order = taylor_coeffs[a][order - 1]``, matching the calling
-    convention of ``jet``/``collapsed_jet``/``rev_jet``.
-
-    Args:
-        primals: Tuple of primal pytrees, one per argument.
-        taylor_coeffs: Arg-major coefficients ``taylor_coeffs[arg][order]``.
-
-    Returns:
-        A tuple with one pytree-of-jets per argument.
-    """
-    args = []
-    for primal_tree, coeff_trees in zip(primals, taylor_coeffs):
-        flat_primals, spec = tree_flatten(primal_tree)
-        flat_coeffs = [tree_flatten(coeff_tree)[0] for coeff_tree in coeff_trees]
-        leaves = [
-            (flat_primals[i], *(coeffs[i] for coeffs in flat_coeffs))
-            for i in range(len(flat_primals))
-        ]
-        args.append(tree_unflatten(leaves, spec))
-    return tuple(args)
 
 
 def f_multiply(x: Tensor) -> Tensor:
@@ -362,18 +334,19 @@ def test_jet(config: dict[str, Any], derivative_order: int):
 
     manual_seed(42)
     primals = config["mock_args_fn"]()
-    num_args = len(mock_primals)
-    taylor_coeffs_by_order = tuple(
+    # Build the new-convention args: one pytree per argument of f, with each
+    # tensor leaf zipped into a (primal, c_1, ..., c_K) jet tuple.
+    coeffs_by_order = [
         config["mock_args_fn"]() for _ in range(derivative_order)
-    )
-    taylor_coeffs = tuple(
-        tuple(
-            taylor_coeffs_by_order[order][arg_idx] for order in range(derivative_order)
+    ]
+    args = tuple(
+        tree_map(
+            lambda *ts: tuple(ts),
+            primals[arg_idx],
+            *(coeffs_by_order[order][arg_idx] for order in range(derivative_order)),
         )
-        for arg_idx in range(num_args)
+        for arg_idx in range(len(primals))
     )
-
-    args = _to_jet_args(primals, taylor_coeffs)
 
     jet_f = jet.jet(f, derivative_order, mock_primals)
     jet_out = jet_f(*args)
@@ -387,10 +360,14 @@ def test_jet(config: dict[str, Any], derivative_order: int):
 def _setup_collapsed_jet_args(
     config: dict[str, Any], derivative_order: int, R: int = 2
 ):
-    """Set up primals and arg-major taylor_coeffs for collapsed jet testing.
+    """Set up mock args and jet args (new convention) for collapsed jet testing.
 
-    Supports pytree inputs: each argument in ``mock_args`` can be an
-    arbitrary pytree of tensors.
+    Each tensor leaf of every argument is bundled into a jet tuple
+    ``(primal, c_1, ..., c_K)`` with the collapsed-jet shape convention:
+
+    - ``c_1`` carries the ``R`` directions (shape ``(R, *)``);
+    - ``c_2..c_{K-1}`` are batched zeros (shape ``(R, *)``);
+    - ``c_K`` is the collapsed zero (shape ``(*)``, no ``R`` dim).
 
     Args:
         config: Configuration dictionary with ``"f"`` and ``"mock_args_fn"`` keys.
@@ -398,10 +375,10 @@ def _setup_collapsed_jet_args(
         R: Number of random directions. Default: ``2``.
 
     Returns:
-        Tuple ``(f, mock_args, primals, taylor_coeffs)`` ready for both
-        ``collapsed_jet`` and ``_make_uncollapsed_cjet``. ``taylor_coeffs`` is
-        arg-major (``taylor_coeffs[arg][order]``) with orders 1..K-1 batched
-        over R directions and order K collapsed.
+        Tuple ``(f, mock_args, args)`` ready for both ``collapsed_jet`` and
+        ``_make_uncollapsed_cjet``: ``mock_args`` is the tracing template (zero
+        tensors), and ``args`` is a tuple of pytrees -- one per argument of
+        ``f`` -- whose tensor leaves are the jet tuples.
     """
     K = derivative_order
     f = config["f"]
@@ -411,30 +388,20 @@ def _setup_collapsed_jet_args(
         f = f.double()
 
     manual_seed(42)
-    primals = tree_map(lambda t: rand(*t.shape, dtype=float64), mock_args)
+
+    def make_jet_leaf(primal_meta: Tensor) -> tuple[Tensor, ...]:
+        primal = rand(*primal_meta.shape, dtype=float64)
+        coeffs = [rand(R, *primal.shape, dtype=float64)]  # c_1: batched directions
+        coeffs += [  # c_2..c_{K-1}: batched zeros
+            zeros(R, *primal.shape, dtype=float64) for _ in range(K - 2)
+        ]
+        coeffs.append(zeros_like(primal))  # c_K: collapsed zero
+        return (primal, *coeffs)
+
+    args = tuple(tree_map(make_jet_leaf, arg_template) for arg_template in mock_args)
     mock_args = tree_map(lambda t: zeros(*t.shape, dtype=float64), mock_args)
 
-    def batched(t):
-        return rand(R, *t.shape, dtype=float64)
-
-    def batched_zero(t):
-        return zeros(R, *t.shape, dtype=float64)
-
-    def order_coeff(arg_tree, order):
-        # Order 1 carries the directions; orders 2..K-1 are batched zeros;
-        # order K is collapsed (no R dim).
-        if order == 0:
-            return tree_map(batched, arg_tree)
-        if order < K - 1:
-            return tree_map(batched_zero, arg_tree)
-        return tree_map(zeros_like, arg_tree)
-
-    taylor_coeffs = tuple(
-        tuple(order_coeff(arg_tree, order) for order in range(K))
-        for arg_tree in mock_args
-    )
-
-    return f, mock_args, primals, taylor_coeffs
+    return f, mock_args, args
 
 
 @mark.parametrize("derivative_order", [2, 3, 4], ids=["K=2", "K=3", "K=4"])
@@ -446,11 +413,7 @@ def test_collapsed_jet(config: dict[str, Any], derivative_order: int):
         config: Configuration dictionary of the test case.
         derivative_order: The order of the jet to compute.
     """
-    f, mock_args, primals, taylor_coeffs = _setup_collapsed_jet_args(
-        config, derivative_order
-    )
-
-    args = _to_jet_args(primals, taylor_coeffs)
+    f, mock_args, args = _setup_collapsed_jet_args(config, derivative_order)
 
     std_f = jet._make_uncollapsed_cjet(
         f, derivative_order, mock_args, randomization=None

@@ -89,6 +89,40 @@ def _apply_linear_coeffs(
     return tuple(op(c) for c in self[1:])
 
 
+def _leibniz(
+    self: JetTuple,
+    other: JetTuple,
+    binary_op: Callable[[Primal, Primal], Primal],
+) -> JetTuple:
+    """Apply the Leibniz product rule for a bilinear ``binary_op``.
+
+    The k-th coefficient of ``binary_op(self, other)`` (treated as functions of
+    ``t``) is ``sum_{j=0}^{k} C(k, j) * binary_op(self[j], other[k - j])``.
+    Both jet operands must share the same Taylor-expansion order ``K``; it is
+    inferred as ``K = len(self) - 1``. Mirrors
+    :func:`jet.collapsed_operations._collapsed_leibniz` (which additionally
+    collapses the K-th coefficient over directions).
+
+    Args:
+        self: The first operand jet.
+        other: The second operand jet (same length as ``self``).
+        binary_op: A bilinear function from two coefficient tensors to a tensor
+            (e.g. elementwise ``*``, or ``torch.mm``).
+
+    Returns:
+        The value and its Taylor coefficients, of length ``K + 1``.
+    """
+    K = len(self) - 1
+    s_out = ()
+    for k in range(K + 1):
+        term = None
+        for j in range(k + 1):
+            term_j = comb(k, j, exact=True) * binary_op(self[j], other[k - j])
+            term = term_j if term is None else term + term_j
+        s_out = s_out + (term,)
+    return JetTuple(s_out)
+
+
 def _partition_term(
     vs: tuple[Primal, ...], sigma: tuple[int, ...], dn: dict[int, Primal]
 ) -> Value | None:
@@ -442,20 +476,11 @@ def jet_mul(
     Returns:
         The value and its Taylor coefficients.
     """
-    K = _jet_order(self, other)
     self_is_jet = isinstance(self, JetTuple)
     other_is_jet = isinstance(other, JetTuple)
 
     if self_is_jet and other_is_jet:
-        s_out = ()
-        for k in range(K + 1):
-            term = None
-            for j in range(k + 1):
-                term_j = comb(k, j, exact=True) * self[j] * other[k - j]
-                term = term_j if term is None else term + term_j
-            s_out = s_out + (term,)
-        return JetTuple(s_out)
-
+        return _leibniz(self, other, lambda a, b: a * b)
     elif self_is_jet:
         return _apply_linear(self, lambda c: other * c)
     else:
@@ -478,20 +503,11 @@ def jet_mm(
     Returns:
         The value and its Taylor coefficients.
     """
-    K = _jet_order(self, mat2)
     self_is_jet = isinstance(self, JetTuple)
     mat2_is_jet = isinstance(mat2, JetTuple)
 
     if self_is_jet and mat2_is_jet:
-        s_out = ()
-        for k in range(K + 1):
-            term = None
-            for j in range(k + 1):
-                term_j = comb(k, j, exact=True) * mm(self[j], mat2[k - j])
-                term = term_j if term is None else term + term_j
-            s_out = s_out + (term,)
-        return JetTuple(s_out)
-
+        return _leibniz(self, mat2, mm)
     elif self_is_jet:
         return _apply_linear(self, lambda c: mm(c, mat2))
     else:
@@ -519,19 +535,12 @@ def jet_addmm(
             "Expected a constant Tensor."
         )
 
-    K = _jet_order(mat1, mat2)
     mat1_is_jet = isinstance(mat1, JetTuple)
     mat2_is_jet = isinstance(mat2, JetTuple)
 
     if mat1_is_jet and mat2_is_jet:
-        s_out = (addmm(self, mat1[0], mat2[0]),)
-        for k in range(1, K + 1):
-            term = None
-            for j in range(k + 1):
-                term_j = comb(k, j, exact=True) * mm(mat1[j], mat2[k - j])
-                term = term_j if term is None else term + term_j
-            s_out = s_out + (term,)
-        return JetTuple(s_out)
+        leibniz = _leibniz(mat1, mat2, mm)
+        return JetTuple((addmm(self, mat1[0], mat2[0]), *leibniz[1:]))
 
     elif mat1_is_jet:
         primal = addmm(self, mat1[0], mat2)

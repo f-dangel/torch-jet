@@ -104,7 +104,7 @@ def _partition_term(
 
 
 def _collapsed_highest_order(
-    vs: tuple[Primal, ...], K: int, dn: dict[int, Primal]
+    vs: tuple[Primal, ...], dn: dict[int, Primal]
 ) -> Value:
     """Compute the collapsed (summed) highest-order Faà di Bruno coefficient.
 
@@ -113,13 +113,13 @@ def _collapsed_highest_order(
     dimension *R*).
 
     Args:
-        vs: The incoming Taylor coefficients.
-        K: The derivative order (= highest order to compute).
+        vs: The incoming Taylor coefficients (length ``K``).
         dn: A dictionary mapping the degree to the function's derivative.
 
     Returns:
         The collapsed highest-order coefficient.
     """
+    K = len(vs)
     linear_term = dn[1] * vs[K - 1] if dn[1] is not None else None
     nonlinear_term = None
     for sigma in integer_partitions(K):
@@ -142,15 +142,13 @@ def _collapsed_highest_order(
 
 def _faa_di_bruno(
     vs: tuple[Primal, ...],
-    derivative_order: int,
     dn: dict[int, Primal],
     collapsed: bool = False,
 ) -> list[Value]:
     """Apply Faà di Bruno's formula for elementwise functions.
 
     Args:
-        vs: The incoming Taylor coefficients.
-        derivative_order: The order of the Taylor expansion.
+        vs: The incoming Taylor coefficients (length ``K``).
         dn: A dictionary mapping the degree to the function's derivative.
         collapsed: If ``True``, treat ``vs[-1]`` as a collapsed (already
             summed) coefficient and ``vs[0:-1]`` as batched with a leading
@@ -162,12 +160,12 @@ def _faa_di_bruno(
     Returns:
         The outgoing Taylor coefficients.
     """
-    K = derivative_order
+    K = len(vs)
     vs_out = []
     for k in range(K):
         order = k + 1
         if order == K and collapsed:
-            vs_out.append(_collapsed_highest_order(vs, K, dn))
+            vs_out.append(_collapsed_highest_order(vs, dn))
         else:
             result = None
             for sigma in integer_partitions(order):
@@ -304,7 +302,7 @@ def _jet_elementwise(
     K = _jet_order(self)
     self0, vs = self[0], self[1:]
     primal, dn = deriv_fn(self0, K)
-    vs_out = _faa_di_bruno(vs, K, dn)
+    vs_out = _faa_di_bruno(vs, dn)
     return JetTuple((primal, *vs_out))
 
 
@@ -347,7 +345,7 @@ def jet_pow(self: JetTuple, exponent: float | int) -> JetTuple:
     self0, vs = self[0], self[1:]
     pow_self0, dpow = _pow_derivatives(self0, exponent, K)
 
-    vs_out = _faa_di_bruno(vs, K, dpow)
+    vs_out = _faa_di_bruno(vs, dpow)
 
     return JetTuple((pow_self0, *vs_out))
 

@@ -154,7 +154,7 @@ def _cjet_elementwise(
     """Generic collapsed elementwise using shared helpers."""
     self0, vs = self[0], self[1:]
     primal, dn = deriv_fn(self0, derivative_order)
-    vs_out = _faa_di_bruno(vs, derivative_order, dn, collapsed=True)
+    vs_out = _faa_di_bruno(vs, dn, collapsed=True)
     return CollapsedJetTuple((primal, *vs_out))
 
 
@@ -187,7 +187,7 @@ def cjet_pow(
     assert isinstance(exponent, (float, int))
     self0, vs = self[0], self[1:]
     primal, dpow = _pow_derivatives(self0, exponent, derivative_order)
-    vs_out = _faa_di_bruno(vs, derivative_order, dpow, collapsed=True)
+    vs_out = _faa_di_bruno(vs, dpow, collapsed=True)
     return CollapsedJetTuple((primal, *vs_out))
 
 

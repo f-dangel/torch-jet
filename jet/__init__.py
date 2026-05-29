@@ -292,7 +292,6 @@ def collapsed_jet(
     f: Callable[..., Value],
     derivative_order: int,
     mock_args: tuple,
-    verbose: bool = False,
 ) -> Callable[..., tuple[Value, ...]]:
     """Overload f with collapsed Taylor-mode equivalent.
 
@@ -321,8 +320,6 @@ def collapsed_jet(
         return f(*args)
 
     mod = capture_graph(flat_f, *flat_mocks)
-    if verbose:
-        print(f"Traced graph:\n{mod.graph}")
 
     interp = CollapsedJetInterpreter(mod, derivative_order)
 

@@ -1,5 +1,7 @@
 """Implementation of AD primitives in Taylor-mode arithmetic."""
 
+from typing import Callable
+
 from scipy.special import comb, factorial, stirling2
 from torch import addmm, cos, mm, ops, sigmoid, sin, tanh, zeros_like
 from torch.utils._pytree import register_pytree_node
@@ -254,76 +256,46 @@ def _pow_derivatives(
 # --- Elementwise unary ---
 
 
-def jet_sin(self: JetTuple, *, derivative_order: int) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.sin(self)``.
+def _jet_elementwise(
+    self: JetTuple,
+    derivative_order: int,
+    deriv_fn: Callable[[Primal, int], tuple[Primal, dict[int, Primal]]],
+) -> JetTuple:
+    """Generic elementwise jet rule using shared derivative helpers.
 
     Args:
         self: The primal and its Taylor coefficients.
         derivative_order: The order of the Taylor expansion.
+        deriv_fn: Returns the primal and the function's derivatives ``dn`` at
+            the primal, e.g. ``_sin_derivatives``.
 
     Returns:
         The value and its Taylor coefficients.
     """
     self0, vs = self[0], self[1:]
-    sin_self0, dsin = _sin_derivatives(self0, derivative_order)
+    primal, dn = deriv_fn(self0, derivative_order)
+    vs_out = _faa_di_bruno(vs, derivative_order, dn)
+    return JetTuple((primal, *vs_out))
 
-    vs_out = _faa_di_bruno(vs, derivative_order, dsin)
 
-    return JetTuple((sin_self0, *vs_out))
+def jet_sin(self: JetTuple, *, derivative_order: int) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.sin(self)``."""
+    return _jet_elementwise(self, derivative_order, _sin_derivatives)
 
 
 def jet_cos(self: JetTuple, *, derivative_order: int) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.cos(self)``.
-
-    Args:
-        self: The primal and its Taylor coefficients.
-        derivative_order: The order of the Taylor expansion.
-
-    Returns:
-        The value and its Taylor coefficients.
-    """
-    self0, vs = self[0], self[1:]
-    cos_self0, dcos = _cos_derivatives(self0, derivative_order)
-
-    vs_out = _faa_di_bruno(vs, derivative_order, dcos)
-
-    return JetTuple((cos_self0, *vs_out))
+    """Taylor-mode arithmetic for ``aten.cos(self)``."""
+    return _jet_elementwise(self, derivative_order, _cos_derivatives)
 
 
 def jet_tanh(self: JetTuple, *, derivative_order: int) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.tanh(self)``.
-
-    Args:
-        self: The primal and its Taylor coefficients.
-        derivative_order: The order of the Taylor expansion.
-
-    Returns:
-        The value and its Taylor coefficients.
-    """
-    self0, vs = self[0], self[1:]
-    tanh_self0, dtanh = _tanh_derivatives(self0, derivative_order)
-
-    vs_out = _faa_di_bruno(vs, derivative_order, dtanh)
-
-    return JetTuple((tanh_self0, *vs_out))
+    """Taylor-mode arithmetic for ``aten.tanh(self)``."""
+    return _jet_elementwise(self, derivative_order, _tanh_derivatives)
 
 
 def jet_sigmoid(self: JetTuple, *, derivative_order: int) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.sigmoid(self)``.
-
-    Args:
-        self: The primal and its Taylor coefficients.
-        derivative_order: The order of the Taylor expansion.
-
-    Returns:
-        The value and its Taylor coefficients.
-    """
-    self0, vs = self[0], self[1:]
-    sigmoid_self0, dsigmoid = _sigmoid_derivatives(self0, derivative_order)
-
-    vs_out = _faa_di_bruno(vs, derivative_order, dsigmoid)
-
-    return JetTuple((sigmoid_self0, *vs_out))
+    """Taylor-mode arithmetic for ``aten.sigmoid(self)``."""
+    return _jet_elementwise(self, derivative_order, _sigmoid_derivatives)
 
 
 # --- Power ---

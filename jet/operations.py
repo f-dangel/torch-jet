@@ -31,34 +31,44 @@ register_pytree_node(
 )
 
 
-def _jet_order(*args: Value) -> int:
-    """Infer the Taylor-expansion order ``K`` from the first ``JetTuple`` arg.
+def _order(args: tuple[Value, ...], jet_type: type) -> int:
+    """Infer the Taylor-expansion order ``K`` from the first jet-typed arg.
 
-    A ``JetTuple`` is exactly ``(primal, c_1, ..., c_K)``, so ``K = len(jet) - 1``.
-    The interpreter only dispatches jet ops when at least one positional arg is
-    a ``JetTuple``, so this never fails in practice. We scan ``args`` (not
-    ``args[0]``) because binary ops may receive a scalar/constant first operand
-    and ``jet_addmm``'s bias is never a jet.
+    A jet (whether ``JetTuple`` or ``CollapsedJetTuple``) is exactly
+    ``(primal, c_1, ..., c_K)``, so ``K = len(jet) - 1``. The interpreter only
+    dispatches jet ops when at least one positional arg is of ``jet_type``, so
+    this never fails in practice. We scan ``args`` (not ``args[0]``) because
+    binary ops may receive a scalar/constant first operand and ``addmm``'s bias
+    is never a jet.
 
     Args:
-        *args: Positional arguments of a jet op; at least one must be a
-            ``JetTuple``.
+        args: Positional arguments of a jet op.
+        jet_type: The jet tuple subclass to match (``JetTuple`` for standard
+            Taylor mode, ``CollapsedJetTuple`` for collapsed).
 
     Returns:
         The Taylor-expansion order ``K``.
 
     Raises:
-        TypeError: If no positional argument is a ``JetTuple``.
+        TypeError: If no positional argument is an instance of ``jet_type``.
     """
     for arg in args:
-        if isinstance(arg, JetTuple):
+        if isinstance(arg, jet_type):
             K = len(arg) - 1
             assert all(
-                not isinstance(other, JetTuple) or len(other) - 1 == K
+                not isinstance(other, jet_type) or len(other) - 1 == K
                 for other in args
-            ), "all JetTuple arguments must share the same derivative order"
+            ), (
+                f"all {jet_type.__name__} arguments must share the same "
+                "derivative order"
+            )
             return K
-    raise TypeError("_jet_order: no JetTuple in positional arguments")
+    raise TypeError(f"_order: no {jet_type.__name__} in positional arguments")
+
+
+def _jet_order(*args: Value) -> int:
+    """Infer ``K`` from the first ``JetTuple`` positional arg. See :func:`_order`."""
+    return _order(args, JetTuple)
 
 
 def _apply_linear(self: JetTuple, op: Callable[[Primal], Primal]) -> JetTuple:

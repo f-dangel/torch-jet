@@ -1,7 +1,7 @@
 """Implementation of AD primitives in Taylor-mode arithmetic."""
 
 from scipy.special import comb, factorial, stirling2
-from torch import addmm, cos, mm, mul, ops, sigmoid, sin, tanh, zeros_like
+from torch import addmm, cos, mm, ops, sigmoid, sin, tanh, zeros_like
 from torch.utils._pytree import register_pytree_node
 
 from jet.utils import (
@@ -65,8 +65,8 @@ def _partition_term(
     ]
     term = vs_contract[0]
     for v in vs_contract[1:]:
-        term = mul(term, v)
-    term = mul(term, dn[len(sigma)])
+        term = term * v
+    term = term * dn[len(sigma)]
     nu = multiplicity(sigma)
     return nu * term if nu != 1.0 else term
 
@@ -88,7 +88,7 @@ def _collapsed_highest_order(
     Returns:
         The collapsed highest-order coefficient.
     """
-    linear_term = mul(dn[1], vs[K - 1]) if dn[1] is not None else None
+    linear_term = dn[1] * vs[K - 1] if dn[1] is not None else None
     nonlinear_term = None
     for sigma in integer_partitions(K):
         if sigma == (K,):

@@ -6,18 +6,22 @@ traced graph, dispatching to collapsed jet operations from
 ``jet.collapsed_operations``.
 """
 
-from torch.fx import GraphModule, Interpreter
+from torch.fx import Interpreter
 
 from jet.collapsed_operations import COLLAPSED_MAPPING, CollapsedJetTuple
 
 
 class CollapsedJetInterpreter(Interpreter):
-    """Interpreter that propagates CollapsedJetTuples through a traced graph."""
+    """Interpreter that propagates CollapsedJetTuples through a traced graph.
 
-    def __init__(self, module: GraphModule, derivative_order: int):
-        """Initialize with a graph module and derivative order."""
-        super().__init__(module)
-        self.derivative_order = derivative_order
+    For each ``call_function`` node, the interpreter checks whether any
+    positional argument is a ``CollapsedJetTuple`` (i.e. a Taylor-expanded
+    value). If so, it dispatches to the corresponding collapsed jet operation
+    from ``jet.collapsed_operations.COLLAPSED_MAPPING``; otherwise it falls
+    through to the original ATen operation. The Taylor-expansion order ``K``
+    is inferred inside each collapsed jet op from its arguments (a
+    ``CollapsedJetTuple`` is ``(primal, c_1, ..., c_K)``).
+    """
 
     def placeholder(self, target, args, kwargs):
         """Wrap placeholder values in a CollapsedJetTuple."""
@@ -30,7 +34,5 @@ class CollapsedJetInterpreter(Interpreter):
         if has_jet_arg:
             if target not in COLLAPSED_MAPPING:
                 raise NotImplementedError(f"No collapsed jet rule for {target}.")
-            return COLLAPSED_MAPPING[target](
-                *args, derivative_order=self.derivative_order
-            )
+            return COLLAPSED_MAPPING[target](*args)
         return super().call_function(target, args, kwargs)

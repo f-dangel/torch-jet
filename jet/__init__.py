@@ -325,7 +325,7 @@ def collapsed_jet(
         )
     mod = capture_flat_graph(f, mock_args)
 
-    interp = CollapsedJetInterpreter(mod, derivative_order)
+    interp = CollapsedJetInterpreter(mod)
 
     def cjet_f(*args: Any) -> Any:
         return _run_jet_interpreter(interp, args, derivative_order)

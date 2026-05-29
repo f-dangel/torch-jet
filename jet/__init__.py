@@ -14,7 +14,7 @@ from jet.collapsed_jet_interpreter import CollapsedJetInterpreter
 from jet.collapsed_operations import CollapsedJetTuple
 from jet.jet_interpreter import JetInterpreter
 from jet.operations import JetTuple
-from jet.tracing import _assert_traceable_signature, capture_flat_graph
+from jet.tracing import capture_flat_graph
 from jet.utils import Value
 
 _JetTypes = (JetTuple, CollapsedJetTuple)
@@ -120,8 +120,7 @@ def jet(
             >>> vx, vy = Tensor([1.0, 0.0, 0.0]), Tensor([0.0, 1.0, 0.0])
             >>> f0, f1 = jet1_f((x, vx), (y, vy))
     """
-    _assert_traceable_signature(mock_primals)
-    mod, _ = capture_flat_graph(f, mock_primals)
+    mod = capture_flat_graph(f, mock_primals)
 
     interp = JetInterpreter(mod, derivative_order)
 
@@ -306,8 +305,7 @@ def collapsed_jet(
         raise ValueError(
             f"collapsed_jet requires derivative_order >= 2, got {derivative_order}."
         )
-    _assert_traceable_signature(mock_args)
-    mod, _ = capture_flat_graph(f, mock_args)
+    mod = capture_flat_graph(f, mock_args)
 
     interp = CollapsedJetInterpreter(mod, derivative_order)
 
@@ -379,13 +377,9 @@ def _make_uncollapsed_cjet(
         result = vmapped(*batched_flat)
 
         # De-batch order 0 (identical across directions) and collapse order K.
-        out_leaves, out_spec = tree_flatten(
-            result, is_leaf=lambda x: _is_jet_leaf(x, K)
-        )
-        collapsed_leaves = [
-            (leaf[0][0], *(leaf[order] for order in range(1, K)), leaf[K].sum(0))
-            for leaf in out_leaves
-        ]
-        return tree_unflatten(collapsed_leaves, out_spec)
+        def _collapse_leaf(leaf: tuple[Tensor, ...]) -> tuple[Tensor, ...]:
+            return (leaf[0][0], *leaf[1:K], leaf[K].sum(0))
+
+        return tree_map(_collapse_leaf, result, is_leaf=lambda x: _is_jet_leaf(x, K))
 
     return cjet_f

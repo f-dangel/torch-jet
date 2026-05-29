@@ -32,7 +32,7 @@ def _set_up_taylor_coefficients(x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
     i_idx, j_idx = mask.nonzero(as_tuple=True)
     C2 = (3 * E[i_idx] + E[j_idx]).reshape(D * (D - 1), *in_shape)
 
-    i_idx, j_idx = triu_indices(D, D, offset=1)
+    i_idx, j_idx = triu_indices(D, D, offset=1, device=x.device)
     C3 = (2 * E[i_idx] + 2 * E[j_idx]).reshape(D * (D - 1) // 2, *in_shape)
 
     return C1, C2, C3

@@ -197,6 +197,7 @@ def _tanh_derivatives(x0: Primal, K: int) -> tuple[Primal, dict[int, Primal]]:
         # Equations (3.3) and (3.4) from the above paper
         for m in range(1, K + 1):
             term = None
+            # Use that the Stirling number S(m>0, 0) = 0 to start the summation at 1
             for k in range(1, m + 1):
                 scale = factorial(k, exact=True) / 2**k * stirling2(m, k, exact=True)
                 term_k = (

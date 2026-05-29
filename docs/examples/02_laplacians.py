@@ -328,6 +328,9 @@ assert hessian_trace_laplacian.allclose(lap_collapsed(x)[2])
 # count — it can even add a few nodes. Collapsing's benefit is not fewer graph nodes
 # but *smaller tensors flowing through them* (detailed below): so graph size is a poor
 # performance proxy here, and the run-time benchmark further below is the real indicator.
+# You can already get a rough sense of this from the graphs below: the collapsed graph
+# has `sum` nodes further up (rather than a single `sum` at the very end), each summing
+# out one axis, so the tensors flowing through the downstream nodes are smaller.
 
 # %%
 #

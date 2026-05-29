@@ -2,7 +2,7 @@
 
 from typing import Any, Callable
 
-from pytest import mark
+from pytest import mark, raises
 from torch import (
     Tensor,
     cos,
@@ -462,8 +462,6 @@ def test_collapsed_jet(config: dict[str, Any], derivative_order: int):
 
 def test_collapsed_jet_rejects_order_below_2():
     """collapsed_jet raises ValueError for derivative_order < 2."""
-    from pytest import raises
-
     with raises(ValueError, match="derivative_order >= 2"):
         collapsed_jet(sin, 1, (zeros(3),))
 
@@ -476,13 +474,12 @@ def test_jet_rejects_unsupported_tuple_dict_signature():
 
     All other dict signatures are supported, so they must not raise.
     """
-    from pytest import raises
-
     # Unsupported: two args, first tensor/tuple, second dict.
     f = lambda x, params: x * params["a"]  # noqa: E731
-    with raises(NotImplementedError, match="dict"):
+    match = r"pytorch/pytorch#185640"  # pin to the tracked upstream issue
+    with raises(NotImplementedError, match=match):
         jet.jet(f, 2, (zeros(3), {"a": zeros(3)}))
-    with raises(NotImplementedError, match="dict"):
+    with raises(NotImplementedError, match=match):
         collapsed_jet(f, 2, (zeros(3), {"a": zeros(3)}))
 
     # Supported dict signatures must not raise.

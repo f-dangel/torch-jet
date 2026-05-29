@@ -14,7 +14,7 @@ from jet.collapsed_jet_interpreter import CollapsedJetInterpreter
 from jet.collapsed_operations import CollapsedJetTuple
 from jet.jet_interpreter import JetInterpreter
 from jet.operations import JetTuple
-from jet.tracing import capture_graph
+from jet.tracing import build_input_tuples, capture_flat_graph
 from jet.utils import Value
 
 _JetTypes = (JetTuple, CollapsedJetTuple)
@@ -104,39 +104,16 @@ def jet(
             >>> vx, vy = Tensor([1.0, 0.0, 0.0]), Tensor([0.0, 1.0, 0.0])
             >>> f0, (f1,) = jet1_f((x, y), ((vx,), (vy,)))
     """
-    flat_mock_primals, in_spec = tree_flatten(mock_primals)
-    num_leaves = len(flat_mock_primals)
-
-    def flat_f(*flat_tensors: Tensor) -> Any:
-        args = tree_unflatten(list(flat_tensors), in_spec)
-        return f(*args)
-
-    mod = capture_graph(flat_f, *flat_mock_primals)
+    mod, num_leaves = capture_flat_graph(f, mock_primals)
 
     interp = JetInterpreter(mod, derivative_order)
 
     def jet_f(
         primals: tuple[Any, ...], taylor_coeffs: tuple[tuple[Any, ...], ...]
     ) -> tuple[Any, tuple[Any, ...]]:
-        flat_primals = tree_flatten(primals)[0]
-        flat_taylor_coeffs_by_order = [
-            [
-                coefficient
-                for arg_taylor_coeffs in taylor_coeffs
-                for coefficient in tree_flatten(arg_taylor_coeffs[order])[0]
-            ]
-            for order in range(derivative_order)
-        ]
-        input_tuples = [
-            (
-                flat_primals[i],
-                *(
-                    coeffs_at_order[i]
-                    for coeffs_at_order in flat_taylor_coeffs_by_order
-                ),
-            )
-            for i in range(num_leaves)
-        ]
+        input_tuples = build_input_tuples(
+            primals, taylor_coeffs, num_leaves, derivative_order
+        )
         output = interp.run(*input_tuples)
         output = _transpose_jet_output(output, derivative_order)
         return output[0], output[1:]
@@ -333,37 +310,14 @@ def collapsed_jet(
         raise ValueError(
             f"collapsed_jet requires derivative_order >= 2, got {derivative_order}."
         )
-    flat_mocks, in_spec = tree_flatten(mock_args)
-    num_leaves = len(flat_mocks)
-
-    def flat_f(*flat_tensors):
-        args = tree_unflatten(list(flat_tensors), in_spec)
-        return f(*args)
-
-    mod = capture_graph(flat_f, *flat_mocks)
+    mod, num_leaves = capture_flat_graph(f, mock_args)
 
     interp = CollapsedJetInterpreter(mod, derivative_order)
 
     def cjet_f(primals, taylor_coeffs):
-        flat_primals = tree_flatten(primals)[0]
-        flat_taylor_coeffs_by_order = [
-            [
-                coefficient
-                for arg_taylor_coeffs in taylor_coeffs
-                for coefficient in tree_flatten(arg_taylor_coeffs[order])[0]
-            ]
-            for order in range(derivative_order)
-        ]
-        input_tuples = [
-            (
-                flat_primals[i],
-                *(
-                    coeffs_at_order[i]
-                    for coeffs_at_order in flat_taylor_coeffs_by_order
-                ),
-            )
-            for i in range(num_leaves)
-        ]
+        input_tuples = build_input_tuples(
+            primals, taylor_coeffs, num_leaves, derivative_order
+        )
         result = interp.run(*input_tuples)
         all_orders = _transpose_jet_output(result, derivative_order)
         return all_orders[0], all_orders[1:]

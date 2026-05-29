@@ -26,7 +26,7 @@ from torch.nn import Linear, Sequential, Tanh
 from jet.bilaplacian import bilaplacian as jet_bilaplacian
 from jet.exp.utils import measure_peak_memory, measure_time, to_string
 from jet.laplacian import laplacian as jet_laplacian
-from jet.simplify import simplify
+from jet.simplify import common_subexpression_elimination
 from jet.utils import run_seeded, sample
 from jet.weighted_laplacian import get_weighting
 
@@ -221,11 +221,10 @@ def laplacian_function(
             the Laplacian. The following strategies are supported:
             - `'hessian_trace'`: The Laplacian is computed by tracing the Hessian.
               The Hessian is computed via forward-over-reverse mode autodiff.
-            - `'jet_naive'`: The Laplacian is computed using jets. The computation graph
-                is simplified by propagating replication nodes.
-            - `'jet_simplified'`: The Laplacian is computed using Taylor mode. The
-              computation graph is simplified by propagating replications down, and
-              summations up, the computation graph.
+            - `'jet_naive'`: The Laplacian is computed using standard (non-collapsed)
+              Taylor mode with vmap + sum.
+            - `'jet_simplified'`: The Laplacian is computed using collapsed Taylor mode
+              with CSE and dead code elimination.
         randomization: If not `None`, a tuple containing the distribution type and
             number of samples for randomized Laplacian. The first element is the
             distribution type (e.g., 'normal', 'rademacher'), and the second is the
@@ -258,12 +257,16 @@ def laplacian_function(
             )
 
     elif strategy in {"jet_naive", "jet_simplified"}:
-        lap_fn = jet_laplacian(
-            f, dummy_x, randomization=randomization, weighting=weighting
+        use_collapsing = strategy == "jet_simplified"
+        laplacian = jet_laplacian(
+            f,
+            dummy_x,
+            randomization=randomization,
+            weighting=weighting,
+            use_collapsing=use_collapsing,
         )
-        pull_sum = strategy == "jet_simplified"
-        lap_fn = simplify(lap_fn, dummy_x, pull_sum=pull_sum)
-        laplacian = lambda x: lap_fn(x)[2]  # noqa: E731
+        common_subexpression_elimination(laplacian.graph)
+        laplacian.recompile()
 
     else:
         raise ValueError(f"Unsupported {strategy=}. {SUPPORTED_STRATEGIES=}.")
@@ -335,11 +338,10 @@ def bilaplacian_function(
             - `'hessian_trace'`: The Bi-Laplacian is computed by computing the tensor
               of fourth-order derivatives, then summing the necessary entries. The
               derivative tensor is computed as Hessian of the Hessian with PyTorch.
-            - `'jet_naive'`: The Bi-Laplacian is computed using jets. The computation
-                graph is simplified by propagating replication nodes.
-            - `'jet_simplified'`: The Bi-Laplacian is computed using Taylor mode. The
-                computation graph is simplified by propagating replications down, and
-                summations up, the computation graph.
+            - `'jet_naive'`: The Bi-Laplacian is computed using standard (non-collapsed)
+              Taylor mode with vmap + sum.
+            - `'jet_simplified'`: The Bi-Laplacian is computed using collapsed Taylor
+              mode with CSE and dead code elimination.
         randomization: If not `None`, a tuple containing the distribution type and
             number of samples for randomized Bi-Laplacian. The first element is the
             distribution type (e.g., 'normal'), and the second is the number of samples
@@ -364,9 +366,15 @@ def bilaplacian_function(
             )
 
     elif strategy in {"jet_naive", "jet_simplified"}:
-        bilap_fn = jet_bilaplacian(f, dummy_x, randomization=randomization)
-        pull_sum = strategy == "jet_simplified"
-        bilap_fn = simplify(bilap_fn, dummy_x, pull_sum=pull_sum)
+        use_collapsing = strategy == "jet_simplified"
+        bilap_fn = jet_bilaplacian(
+            f,
+            dummy_x,
+            randomization=randomization,
+            use_collapsing=use_collapsing,
+        )
+        common_subexpression_elimination(bilap_fn.graph)
+        bilap_fn.recompile()
 
     else:
         raise ValueError(f"Unsupported strategy: {strategy}.")

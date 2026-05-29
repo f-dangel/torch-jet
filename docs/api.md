@@ -2,7 +2,9 @@
 
 ### ::: jet.jet
 
-### ::: jet.simplify.simplify
+### ::: jet.collapsed_jet
+
+### ::: jet.simplify.common_subexpression_elimination
 
 ### ::: jet.laplacian.laplacian
 

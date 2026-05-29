@@ -33,7 +33,8 @@ from torch.nn import Linear, Sequential, Tanh
 from tueplots import bundles
 
 import jet
-from jet.simplify import simplify
+from jet.laplacian import laplacian
+from jet.simplify import common_subexpression_elimination
 from jet.tracing import capture_graph
 from jet.utils import visualize_graph
 
@@ -280,8 +281,7 @@ else:
 
 # %%
 #
-# Now, let's look at three different graphs which will become clear in a moment
-# (we evaluated approaches 2 and 3 in our paper).
+# Now, let's look at two different graphs which will become clear in a moment.
 
 # Graph 1: Simply capture the function that computes the Laplacian
 lap_traced = capture_graph(lap_fn, x)
@@ -290,16 +290,30 @@ visualize_graph(
 )
 assert hessian_trace_laplacian.allclose(lap_traced(x))
 
-# Graph 2: Standard simplifications (dead code elimination, CSE, but no collapsing)
-lap_standard = simplify(lap_fn, x, pull_sum=False)
+# Graph 2: Standard simplifications (dead code elimination, CSE)
+lap_standard = capture_graph(lap_fn, x)
+common_subexpression_elimination(lap_standard.graph)
+lap_standard.recompile()
 visualize_graph(
     lap_standard, path.join(GALLERYDIR, "02_laplacian_standard.png"), use_custom=True
 )
 assert hessian_trace_laplacian.allclose(lap_standard(x))
 
-# Graph 3: Collapsing simplifications — pull summations up the graph to directly
-# propagate sums of Taylor coefficients
-lap_collapsed = simplify(lap_fn, x, pull_sum=True)
+# %%
+#
+# Now let's build the collapsed version using the `laplacian()` function transform,
+# which uses a `CollapsedJetInterpreter` under the hood. Instead of propagating `D`
+# full 2-jets (one per basis direction) and summing at the end, the interpreter
+# propagates a single "collapsed jet" that directly tracks the summed second-order
+# coefficient.
+
+lap_collapsed = laplacian(f, x)
+collapsed_laplacian = lap_collapsed(x)
+assert hessian_trace_laplacian.allclose(collapsed_laplacian)
+
+# Graph 3: Collapsed Taylor mode, simplified with CSE + DCE
+common_subexpression_elimination(lap_collapsed.graph)
+lap_collapsed.recompile()
 visualize_graph(
     lap_collapsed, path.join(GALLERYDIR, "02_laplacian_collapsed.png"), use_custom=True
 )
@@ -310,16 +324,13 @@ assert hessian_trace_laplacian.allclose(lap_collapsed(x))
 # There is quite some stuff going on here. Let's try to break down the essential
 # differences between these three graphs.
 #
-# First, we can look at the graph sizes:
-
-print(f"1) Captured: {len(lap_traced.graph.nodes)} nodes")
-print(f"2) Standard simplifications: {len(lap_standard.graph.nodes)} nodes")
-print(f"3) Collapsing simplifications: {len(lap_collapsed.graph.nodes)} nodes")
-
-# %%
-#
-# We can see that the number of nodes decreases, and this is a first performance
-# indicator.
+# You might expect collapsing to shrink the graph, but it does *not* reduce the node
+# count — it can even add a few nodes. Collapsing's benefit is not fewer graph nodes
+# but *smaller tensors flowing through them* (detailed below): so graph size is a poor
+# performance proxy here, and the run-time benchmark further below is the real indicator.
+# You can already get a rough sense of this from the graphs below: the collapsed graph
+# has `sum` nodes further up (rather than a single `sum` at the very end), each summing
+# out one axis, so the tensors flowing through the downstream nodes are smaller.
 
 # %%
 #
@@ -327,8 +338,8 @@ print(f"3) Collapsing simplifications: {len(lap_collapsed.graph.nodes)} nodes")
 # `sum` nodes are highlighted in orange-red to make them easy to track across
 # the three graphs.
 #
-# | Captured | Standard simplifications | Collapsing simplifications |
-# |:--------:|:------------------------:|:---------------------------|
+# | Captured | Standard simplifications | Collapsed Taylor mode |
+# |:--------:|:------------------------:|:---------------------:|
 # | ![](02_laplacian_module.png) | ![](02_laplacian_standard.png) | ![](02_laplacian_collapsed.png) |
 #
 # - Graph 1 (**Captured**) is the raw traced graph. It has a `sum`
@@ -339,27 +350,12 @@ print(f"3) Collapsing simplifications: {len(lap_collapsed.graph.nodes)} nodes")
 #   subexpression elimination (CSE), but does not collapse Taylor mode. Note that
 #   the `sum` node remains at the bottom of the graph.
 #
-# - Graph 3 (**Collapsing simplifications**) goes one step further and
+# - Graph 3 (**Collapsed Taylor mode**) goes one step further and
 #   performs the 'collapsing' of Taylor mode we present in our paper.
-#
-#     The input to the `sum` node at the end of Graph 2 is the output of a linear
-#     operation, something like
-#     ```python
-#     laplacian = sum(linear(Z, weight)) # standard: D matvecs
-#     ```
-#     *The crucial insight from our paper is that the `sum` can be propagated up the
-#     graph!* For our example, we can first sum, then apply the linear operation, as
-#     this is mathematically equivalent, but cheaper:
-#     ```python
-#     laplacian = linear(sum(Z), weight) # collapsed: 1 matvec
-#     ```
-#     In the graph perspective, we have 'pulled' the `sum` node (orange-red) up the
-#     graph. We can repeat this procedure until we run out of possible
-#     simplifications. Effectively, this 'collapses' the Taylor coefficients we
-#     propagate forward; hence the name 'collapsed Taylor mode'.
-#
-# In summary, collapsing reduces what gets propagated from $D$ second-order Taylor
-# coefficients (shape `[D, D]`) to their sum (shape `[D]`).
+#   Instead of computing all `D` second-order Taylor coefficients and summing them
+#   at the end, the collapsed interpreter directly propagates the summed coefficient.
+#   This reduces what gets propagated from $D$ second-order Taylor
+#   coefficients (shape `[D, D]`) to their sum (shape `[D]`).
 #
 ### Batching
 #

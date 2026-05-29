@@ -3,9 +3,10 @@
 from typing import Callable
 
 from torch import Tensor, eye, zeros_like
-from torch.func import vmap
+from torch.fx import GraphModule
 
-import jet
+from jet import _make_uncollapsed_cjet, collapsed_jet
+from jet.tracing import capture_graph
 from jet.utils import sample, validate_randomization
 
 SUPPORTED_DISTRIBUTIONS = ["normal", "rademacher"]
@@ -16,8 +17,9 @@ def laplacian(
     mock_x: Tensor,
     randomization: tuple[str, int] | None = None,
     weighting: tuple[Callable[[Tensor, Tensor], Tensor], int] | None = None,
-) -> Callable[[Tensor], tuple[Tensor, Tensor, Tensor]]:
-    r"""Transform f into a function that computes (f(x), jac(f(x)), lap(f(x))).
+    use_collapsing: bool = True,
+) -> GraphModule:
+    r"""Transform f into a function that computes lap(f(x)).
 
     The Laplacian of a function $f(\mathbf{x}) \in \mathbb{R}$ with
     $\mathbf{x} \in \mathbb{R}^D$ is defined as the Hessian trace, or
@@ -49,9 +51,13 @@ def laplacian(
             `[*D, rank_C]` while V is `[K, rank_C]` with arbitrary `K`. The second
             entry specifies `rank_C`. If `None`, then the weightings correspond to
             the identity matrix (i.e. computing the standard Laplacian).
+        use_collapsing: Whether to use collapsed Taylor mode. If ``True``
+            (default), uses a ``CollapsedJetInterpreter`` that directly propagates
+            the summed second-order coefficient. If ``False``, propagates full
+            2-jets over all directions via ``vmap`` and sums afterward.
 
     Returns:
-        A function `lap_f(x)` that returns `(f(x), jac(f(x)), lap(f(x)))`.
+        A ``GraphModule`` that maps ``x → lap(f(x))``.
 
     Raises:
         ValueError: If the provided distribution is not supported or if the number
@@ -66,7 +72,7 @@ def laplacian(
         >>> f = Sequential(Linear(3, 1), Tanh())
         >>> x0 = rand(3)
         >>> # Compute the Laplacian via Taylor mode
-        >>> _, _, lap = laplacian(f, zeros(3))(x0)
+        >>> lap = laplacian(f, zeros(3))(x0)
         >>> assert lap.shape == f(x0).shape
         >>> # Compute the Laplacian with PyTorch's autodiff (Hessian trace)
         >>> lap_pt = hessian(f)(x0).squeeze(0).trace().unsqueeze(0)
@@ -86,9 +92,14 @@ def laplacian(
         if weighting is None
         else weighting[0]
     )
-    jet_f = jet.jet(f, 2, (mock_x,))
 
-    def lap_f(x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+    cjet_f = (
+        collapsed_jet(f, 2, (mock_x,))
+        if use_collapsing
+        else _make_uncollapsed_cjet(f, 2, (mock_x,), randomization)
+    )
+
+    def lap_f(x: Tensor) -> Tensor:
         """Compute the (weighted and/or randomized) Laplacian of f at x.
 
         Args:
@@ -96,8 +107,8 @@ def laplacian(
                 passed to `laplacian`.
 
         Returns:
-            Tuple containing the function value, the weighted and/or
-                randomized Jacobian, and the Laplacian.
+            The (weighted and/or randomized) Laplacian. Has the same shape as
+                ``f(x)``.
 
         Raises:
             ValueError: If the input shape does not match the mock input shape.
@@ -114,17 +125,14 @@ def laplacian(
             else sample(x, randomization[0], shape)
         )
         X1 = apply_weightings(x, V)
+        z = zeros_like(x)
 
-        vmapped = vmap(
-            lambda x1: jet_f((x,), ((x1, zeros_like(x)),)),
-            randomness="error" if randomization is None else "different",
-            out_dims=(None, (0, 0)),
-        )
-        F0, (F1, F2) = vmapped(X1)
+        _, (_, F2) = cjet_f((x,), ((X1, z),))
+
         if randomization is not None:
-            # Monte Carlo averaging: scale by 1 / number of samples
             monte_carlo_scaling = 1.0 / randomization[1]
             F2 = F2 * monte_carlo_scaling
-        return F0, F1, F2.sum(0)
 
-    return lap_f
+        return F2
+
+    return capture_graph(lap_f, mock_x)

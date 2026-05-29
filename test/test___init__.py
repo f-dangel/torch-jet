@@ -3,12 +3,25 @@
 from typing import Any, Callable
 
 from pytest import mark
-from torch import Tensor, cos, float64, manual_seed, rand, sigmoid, sin, tanh, tensor
-from torch.nn import Linear, Sequential, Tanh
+from torch import (
+    Tensor,
+    cos,
+    float64,
+    manual_seed,
+    rand,
+    sigmoid,
+    sin,
+    tanh,
+    tensor,
+    zeros,
+    zeros_like,
+)
+from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
+from torch.utils._pytree import tree_map
 
 import jet
-from jet import rev_jet
+from jet import collapsed_jet, rev_jet
 from test.utils import report_pytrees_nonclose
 
 INF = float("inf")
@@ -319,3 +332,90 @@ def test_jet(config: dict[str, Any], derivative_order: int):
     rev_jet_out = rev_jet_f(primals, taylor_coeffs)
 
     report_pytrees_nonclose(jet_out, rev_jet_out)
+
+
+def _setup_collapsed_jet_args(
+    config: dict[str, Any], derivative_order: int, R: int = 2
+):
+    """Set up primals and arg-major taylor_coeffs for collapsed jet testing.
+
+    Supports pytree inputs: each argument in ``mock_args`` can be an
+    arbitrary pytree of tensors.
+
+    Args:
+        config: Configuration dictionary with ``"f"`` and ``"mock_args_fn"`` keys.
+        derivative_order: The order of the Taylor expansion (K >= 2).
+        R: Number of random directions. Default: ``2``.
+
+    Returns:
+        Tuple ``(f, mock_args, primals, taylor_coeffs)`` ready for both
+        ``collapsed_jet`` and ``_make_uncollapsed_cjet``. ``taylor_coeffs`` is
+        arg-major (``taylor_coeffs[arg][order]``) with orders 1..K-1 batched
+        over R directions and order K collapsed.
+    """
+    K = derivative_order
+    f = config["f"]
+    mock_args = config["mock_args_fn"]()
+
+    if isinstance(f, Module):
+        f = f.double()
+
+    manual_seed(42)
+    primals = tree_map(lambda t: rand(*t.shape, dtype=float64), mock_args)
+    mock_args = tree_map(lambda t: zeros(*t.shape, dtype=float64), mock_args)
+
+    def batched(t):
+        return rand(R, *t.shape, dtype=float64)
+
+    def batched_zero(t):
+        return zeros(R, *t.shape, dtype=float64)
+
+    def order_coeff(arg_tree, order):
+        # Order 1 carries the directions; orders 2..K-1 are batched zeros;
+        # order K is collapsed (no R dim).
+        if order == 0:
+            return tree_map(batched, arg_tree)
+        if order < K - 1:
+            return tree_map(batched_zero, arg_tree)
+        return tree_map(zeros_like, arg_tree)
+
+    taylor_coeffs = tuple(
+        tuple(order_coeff(arg_tree, order) for order in range(K))
+        for arg_tree in mock_args
+    )
+
+    return f, mock_args, primals, taylor_coeffs
+
+
+@mark.parametrize("derivative_order", [2, 3, 4], ids=["K=2", "K=3", "K=4"])
+@mark.parametrize("config", ALL_CASES, ids=ALL_CASES_IDS)
+def test_collapsed_jet(config: dict[str, Any], derivative_order: int):
+    """Collapsed jet matches standard jet + vmap + sum.
+
+    Args:
+        config: Configuration dictionary of the test case.
+        derivative_order: The order of the jet to compute.
+    """
+    f, mock_args, primals, taylor_coeffs = _setup_collapsed_jet_args(
+        config, derivative_order
+    )
+
+    std_f = jet._make_uncollapsed_cjet(
+        f, derivative_order, mock_args, randomization=None
+    )
+    cjet_f = collapsed_jet(f, derivative_order, mock_args)
+
+    report_pytrees_nonclose(
+        std_f(primals, taylor_coeffs), cjet_f(primals, taylor_coeffs)
+    )
+
+
+def test_collapsed_jet_rejects_order_below_2():
+    """collapsed_jet raises ValueError for derivative_order < 2."""
+    from pytest import raises
+
+    with raises(ValueError, match="derivative_order >= 2"):
+        collapsed_jet(sin, 1, (zeros(3),))
+
+    with raises(ValueError, match="derivative_order >= 2"):
+        collapsed_jet(sin, 0, (zeros(3),))

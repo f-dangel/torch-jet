@@ -76,6 +76,19 @@ def _normalize_output(result: Any, derivative_order: int) -> Any:
     return tree_unflatten(leaves, spec)
 
 
+def _run_jet_interpreter(
+    interp: JetInterpreter | CollapsedJetInterpreter,
+    args: tuple[Any, ...],
+    derivative_order: int,
+) -> Any:
+    """Flatten jet-leaved ``args``, run them through ``interp``, normalize the output."""
+    leaves, _ = tree_flatten(
+        args, is_leaf=lambda x: _is_jet_leaf(x, derivative_order)
+    )
+    result = interp.run(*leaves)
+    return _normalize_output(result, derivative_order)
+
+
 def jet(
     f: Callable[..., Any],
     derivative_order: int,
@@ -125,11 +138,7 @@ def jet(
     interp = JetInterpreter(mod, derivative_order)
 
     def jet_f(*args: Any) -> Any:
-        leaves, _ = tree_flatten(
-            args, is_leaf=lambda x: _is_jet_leaf(x, derivative_order)
-        )
-        result = interp.run(*leaves)
-        return _normalize_output(result, derivative_order)
+        return _run_jet_interpreter(interp, args, derivative_order)
 
     mock_jets = tree_map(
         lambda t: (t, *(zeros_like(t) for _ in range(derivative_order))),
@@ -310,11 +319,7 @@ def collapsed_jet(
     interp = CollapsedJetInterpreter(mod, derivative_order)
 
     def cjet_f(*args: Any) -> Any:
-        leaves, _ = tree_flatten(
-            args, is_leaf=lambda x: _is_jet_leaf(x, derivative_order)
-        )
-        result = interp.run(*leaves)
-        return _normalize_output(result, derivative_order)
+        return _run_jet_interpreter(interp, args, derivative_order)
 
     return cjet_f
 

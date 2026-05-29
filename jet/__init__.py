@@ -10,7 +10,6 @@ from torch.fx import GraphModule
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
 
-from jet.collapsed_jet_interpreter import CollapsedJetInterpreter
 from jet.collapsed_operations import CollapsedJetTuple
 from jet.jet_interpreter import JetInterpreter
 from jet.operations import JetTuple
@@ -88,7 +87,7 @@ def _normalize_output(result: Any, derivative_order: int) -> Any:
 
 
 def _run_jet_interpreter(
-    interp: JetInterpreter | CollapsedJetInterpreter,
+    interp: JetInterpreter,
     args: tuple[Any, ...],
     derivative_order: int,
 ) -> Any:
@@ -325,7 +324,7 @@ def collapsed_jet(
         )
     mod = capture_flat_graph(f, mock_args)
 
-    interp = CollapsedJetInterpreter(mod)
+    interp = JetInterpreter(mod, collapsed=True)
 
     def cjet_f(*args: Any) -> Any:
         return _run_jet_interpreter(interp, args, derivative_order)

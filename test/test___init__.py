@@ -274,9 +274,7 @@ ALL_CASES = JET_CASES + [
     {
         "id": "dict-in-single",
         "f": lambda d: sin(d["a"]) * d["b"],
-        "mock_args_fn": lambda: (
-            {"a": rand(4).double(), "b": rand(4).double()},
-        ),
+        "mock_args_fn": lambda: ({"a": rand(4).double(), "b": rand(4).double()},),
     },
     {
         "id": "dict-first",
@@ -336,9 +334,7 @@ def test_jet(config: dict[str, Any], derivative_order: int):
     primals = config["mock_args_fn"]()
     # Build the new-convention args: one pytree per argument of f, with each
     # tensor leaf zipped into a (primal, c_1, ..., c_K) jet tuple.
-    coeffs_by_order = [
-        config["mock_args_fn"]() for _ in range(derivative_order)
-    ]
+    coeffs_by_order = [config["mock_args_fn"]() for _ in range(derivative_order)]
     args = tuple(
         tree_map(
             lambda *ts: tuple(ts),

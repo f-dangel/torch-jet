@@ -93,9 +93,7 @@ def _run_jet_interpreter(
     derivative_order: int,
 ) -> Any:
     """Flatten jet-leaved ``args``, run them through ``interp``, normalize the output."""
-    leaves, _ = tree_flatten(
-        args, is_leaf=lambda x: _is_jet_leaf(x, derivative_order)
-    )
+    leaves, _ = tree_flatten(args, is_leaf=lambda x: _is_jet_leaf(x, derivative_order))
     result = interp.run(*leaves)
     return _normalize_output(result, derivative_order)
 

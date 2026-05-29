@@ -24,8 +24,7 @@ def _set_up_taylor_coefficients(x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
     """
     in_shape = x.shape
     D = x.numel()
-    in_meta = {"dtype": x.dtype, "device": x.device}
-    E = eye(D, **in_meta)
+    E = eye(D, dtype=x.dtype, device=x.device)
 
     C1 = (4 * E).reshape(D, *in_shape)
 

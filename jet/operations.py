@@ -207,6 +207,9 @@ def _tanh_derivatives(x0: Primal, K: int) -> tuple[Primal, dict[int, Primal]]:
 
 def _sigmoid_derivatives(x0: Primal, K: int) -> tuple[Primal, dict[int, Primal]]:
     """Compute ``sigmoid(x0)`` and its derivatives up to order *K*."""
+    # Use the Stirling form of the sigmoid derivatives, see Equation 20
+    # of "On the Derivatives of the Sigmoid" by Minai and Williams (1993)
+    # (https://eecs.ceas.uc.edu/~minaiaa/papers/minai_sigmoids_NN93.pdf)
     sigmoid_x0 = sigmoid(x0)
     d = {0: sigmoid_x0}
     if K >= 1:

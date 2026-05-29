@@ -95,11 +95,14 @@ def _collapsed_highest_order(
             continue
         term = _partition_term(vs, sigma, dn)
         if term is not None:
+            # Sum out the direction dim R per term so the accumulator (and the
+            # tensors flowing through the traced graph) stay small.
+            term = term.sum(0)
             nonlinear_term = term if nonlinear_term is None else nonlinear_term + term
     if nonlinear_term is not None and linear_term is not None:
-        return linear_term + nonlinear_term.sum(0)
+        return linear_term + nonlinear_term
     elif nonlinear_term is not None:
-        return nonlinear_term.sum(0)
+        return nonlinear_term
     elif linear_term is not None:
         return linear_term
     return zeros_like(dn[0])

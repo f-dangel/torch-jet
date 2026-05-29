@@ -85,8 +85,7 @@ def jet(
 
     ``Any`` in the type signatures denotes a *pytree of tensors*, i.e. an
     arbitrarily nested structure of ``Tensor``, ``tuple``, ``list``, or ``dict``
-    whose leaves are tensors. The one unsupported argument signature is
-    documented under *Raises*.
+    whose leaves are tensors.
 
     Args:
         f: Function to overload. May accept and return pytrees of tensors.
@@ -102,12 +101,6 @@ def jet(
         its ``K = derivative_order`` Taylor coefficients. Returns a pytree
         mirroring ``f``'s output structure, with each tensor leaf replaced by a
         tuple ``(f_0, f_1, ..., f_K)``.
-
-    Raises:
-        NotImplementedError: If ``f`` takes exactly two arguments where the first
-            is a tensor/tuple and the second is a ``dict`` (``make_fx`` mistraces
-            this signature; see pytorch/pytorch#185640). All other signatures,
-            including ``dict`` arguments elsewhere and ``dict`` outputs, work.
 
     Examples:
         **Single-input**::
@@ -308,9 +301,6 @@ def collapsed_jet(
     Raises:
         ValueError: If ``derivative_order < 2`` (collapsing requires at least
             one batched coefficient to carry direction information).
-        NotImplementedError: If ``f`` takes exactly two arguments where the first
-            is a tensor/tuple and the second is a ``dict`` (see
-            pytorch/pytorch#185640).
     """
     if derivative_order < 2:
         raise ValueError(

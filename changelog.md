@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- **Backward-incompatible.** Bundle each argument's primal with its Taylor
+  coefficients. The transforms `jet()`, `collapsed_jet()`, and `rev_jet()` now
+  take one argument per argument of `f`, where each tensor leaf is a tuple
+  `(x_0, x_1, ..., x_K)` (primal followed by Taylor coefficients), and return a
+  pytree mirroring `f`'s output with each leaf a tuple `(f_0, f_1, ..., f_K)`.
+  This replaces the previous arg-major `jet_f(primals, taylor_coeffs)` /
+  `(primals_out, taylor_coeffs_out)` convention—a jet is now a single
+  self-contained object. Inputs and outputs may be arbitrary
+  `tuple`/`list`/`dict` pytrees. For a 3-jet of a two-argument function
+  `f(x, y)`:
+
+  ```python
+  # before: arg-major (primals, taylor_coeffs) -> (primals_out, taylor_coeffs_out)
+  f0, (f1, f2, f3) = jet_f((x, y), ((x1, x2, x3), (y1, y2, y3)))
+
+  # after: one (primal, *coeffs) jet per argument -> one (f0, *coeffs) jet out
+  f0, f1, f2, f3 = jet_f((x, x1, x2, x3), (y, y1, y2, y3))
+  ```
+
+  ([PR](https://github.com/f-dangel/torch-jet/pull/130))
+
 - Add a `collapsed_jet()` transform for collapsed Taylor mode. It has the same
   calling convention as `jet()` but collapses (sums over directions) the
   highest-order coefficient as it propagates, so intermediate tensors—and the

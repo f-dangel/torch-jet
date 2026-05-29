@@ -14,7 +14,7 @@ from jet.collapsed_jet_interpreter import CollapsedJetInterpreter
 from jet.collapsed_operations import CollapsedJetTuple
 from jet.jet_interpreter import JetInterpreter
 from jet.operations import JetTuple
-from jet.tracing import build_input_tuples, capture_flat_graph
+from jet.tracing import capture_flat_graph
 from jet.utils import Value
 
 _JetTypes = (JetTuple, CollapsedJetTuple)
@@ -25,37 +25,77 @@ def _is_jet_or_tensor(x: Any) -> bool:
     return isinstance(x, (*_JetTypes, Tensor))
 
 
-def _transpose_jet_output(result: Any, derivative_order: int) -> tuple[Any, ...]:
-    """Transpose a pytree-of-JetTuples into a tuple-of-pytrees.
+def _is_jet_leaf(x: Any, derivative_order: int | None = None) -> bool:
+    """Return whether ``x`` is a jet-leaf: a tuple of ``(primal, c_1, ..., c_K)``.
 
-    Works for both ``JetTuple`` and ``CollapsedJetTuple`` leaves.
+    In the input pytrees, every tensor leaf is replaced by such a tuple, while
+    pytree containers (tuple/list/dict) only ever hold jet-leaves -- never bare
+    tensors. Hence "a tuple whose elements are all tensors" unambiguously
+    distinguishes a jet-leaf from a container.
+
+    Args:
+        x: The candidate pytree node.
+        derivative_order: The order ``K`` of the Taylor expansion. If given, the
+            tuple must have exactly ``K + 1`` entries; if ``None``, any non-empty
+            tuple of tensors qualifies (used when ``K`` is inferred from input).
+
+    Returns:
+        ``True`` if ``x`` is a jet-leaf, ``False`` otherwise.
+    """
+    if not (
+        isinstance(x, tuple) and len(x) >= 1 and all(isinstance(e, Tensor) for e in x)
+    ):
+        return False
+    return derivative_order is None or len(x) == derivative_order + 1
+
+
+def _make_zero_jet(primal: Tensor, derivative_order: int) -> tuple[Tensor, ...]:
+    """Build a jet leaf ``(primal, 0, 0, ..., 0)`` whose K zero coefficients alias.
+
+    Sharing one ``zeros_like`` across all coefficient slots collapses K identical
+    ops down to one in the captured FX graph (relevant inside ``jet_f``, which is
+    traced under ``make_fx``).
+    """
+    zero = zeros_like(primal)
+    return (primal, *([zero] * derivative_order))
+
+
+def _normalize_output(result: Any, derivative_order: int) -> Any:
+    """Convert the interpreter's pytree-of-jets into a pytree of plain tuples.
+
+    Each ``JetTuple``/``CollapsedJetTuple`` leaf becomes a plain
+    ``(f_0, f_1, ..., f_K)`` tuple. Constant outputs (plain tensors that do not
+    depend on the inputs) are expanded to ``(c, 0, ..., 0)`` so that every output
+    leaf has the same ``(primal, *coeffs)`` shape.
 
     Args:
         result: The pytree returned by the interpreter, whose leaves are
-            ``JetTuple`` or ``CollapsedJetTuple`` instances (or plain tensors
-            for constant outputs).
-        derivative_order: The derivative order of the Taylor expansion.
+            ``JetTuple``/``CollapsedJetTuple`` instances or plain tensors.
+        derivative_order: The order ``K`` of the Taylor expansion.
 
     Returns:
-        A tuple ``(f0, f1, ..., fk)`` where each ``fi`` has the same pytree
-        structure as *result* but with plain tensor leaves corresponding to
-        the *i*-th Taylor coefficient.
+        A pytree with the same structure as ``result`` whose leaves are plain
+        ``(primal, c_1, ..., c_K)`` tuples.
     """
-    flat_tree, out_spec = tree_flatten(result, is_leaf=_is_jet_or_tensor)
-    return tuple(
-        tree_unflatten(
-            [
-                (
-                    node[order]
-                    if isinstance(node, _JetTypes)
-                    else (node if order == 0 else zeros_like(node))
-                )
-                for node in flat_tree
-            ],
-            out_spec,
-        )
-        for order in range(derivative_order + 1)
-    )
+    flat, spec = tree_flatten(result, is_leaf=_is_jet_or_tensor)
+    leaves = [
+        tuple(node)
+        if isinstance(node, _JetTypes)
+        else _make_zero_jet(node, derivative_order)
+        for node in flat
+    ]
+    return tree_unflatten(leaves, spec)
+
+
+def _run_jet_interpreter(
+    interp: JetInterpreter | CollapsedJetInterpreter,
+    args: tuple[Any, ...],
+    derivative_order: int,
+) -> Any:
+    """Flatten jet-leaved ``args``, run them through ``interp``, normalize the output."""
+    leaves, _ = tree_flatten(args, is_leaf=lambda x: _is_jet_leaf(x, derivative_order))
+    result = interp.run(*leaves)
+    return _normalize_output(result, derivative_order)
 
 
 def jet(
@@ -66,8 +106,8 @@ def jet(
     """Overload a function with its Taylor-mode equivalent.
 
     ``Any`` in the type signatures denotes a *pytree of tensors*, i.e. an
-    arbitrarily nested structure of ``Tensor``, ``tuple``, ``list``, or
-    ``dict`` whose leaves are tensors.
+    arbitrarily nested structure of ``Tensor``, ``tuple``, ``list``, or ``dict``
+    whose leaves are tensors.
 
     Args:
         f: Function to overload. May accept and return pytrees of tensors.
@@ -77,14 +117,12 @@ def jet(
             Only shapes matter, not the actual values.
 
     Returns:
-        A ``GraphModule`` ``jet_f(primals, taylor_coeffs)`` where
-        ``taylor_coeffs``
-        is a tuple with one entry per argument, each containing
-        ``derivative_order`` Taylor coefficients (following
-        `JAX's convention <https://docs.jax.dev/en/latest/jax.experimental.jet.html>`_).
-        Returns ``(primals_out, taylor_coeffs_out)`` where ``primals_out`` has
-        the same pytree structure as ``f``'s output and ``taylor_coeffs_out``
-        is a tuple of ``derivative_order`` pytrees with the same structure.
+        A ``GraphModule`` ``jet_f(*args)`` taking one positional argument per
+        argument of ``f``. Each argument is a pytree whose tensor leaves are
+        replaced by a tuple ``(primal, c_1, ..., c_K)`` bundling the primal with
+        its ``K = derivative_order`` Taylor coefficients. Returns a pytree
+        mirroring ``f``'s output structure, with each tensor leaf replaced by a
+        tuple ``(f_0, f_1, ..., f_K)``.
 
     Examples:
         **Single-input**::
@@ -93,7 +131,7 @@ def jet(
             >>> from jet import jet
             >>> jet2_f = jet(sin, 2, (zeros(1),))
             >>> x0, x1, x2 = Tensor([0.123]), Tensor([-0.456]), Tensor([0.789])
-            >>> f0, (f1, f2) = jet2_f((x0,), ((x1, x2),))
+            >>> f0, f1, f2 = jet2_f((x0, x1, x2))
 
         **Multi-input**::
 
@@ -102,51 +140,45 @@ def jet(
             >>> jet1_f = jet(f, 1, (zeros(3), zeros(3)))
             >>> x, y = Tensor([0.1, 0.2, 0.3]), Tensor([0.4, 0.5, 0.6])
             >>> vx, vy = Tensor([1.0, 0.0, 0.0]), Tensor([0.0, 1.0, 0.0])
-            >>> f0, (f1,) = jet1_f((x, y), ((vx,), (vy,)))
+            >>> f0, f1 = jet1_f((x, vx), (y, vy))
     """
-    mod, num_leaves = capture_flat_graph(f, mock_primals)
+    mod = capture_flat_graph(f, mock_primals)
 
     interp = JetInterpreter(mod, derivative_order)
 
-    def jet_f(
-        primals: tuple[Any, ...], taylor_coeffs: tuple[tuple[Any, ...], ...]
-    ) -> tuple[Any, tuple[Any, ...]]:
-        input_tuples = build_input_tuples(
-            primals, taylor_coeffs, num_leaves, derivative_order
-        )
-        output = interp.run(*input_tuples)
-        output = _transpose_jet_output(output, derivative_order)
-        return output[0], output[1:]
+    def jet_f(*args: Any) -> Any:
+        return _run_jet_interpreter(interp, args, derivative_order)
 
-    mock_taylor_coeffs = tuple(
-        tuple(tree_map(zeros_like, arg) for _ in range(derivative_order))
-        for arg in mock_primals
+    mock_jets = tree_map(
+        lambda t: (t, *(zeros_like(t) for _ in range(derivative_order))),
+        mock_primals,
     )
-    return make_fx(jet_f)(mock_primals, mock_taylor_coeffs)
+    return make_fx(jet_f)(*mock_jets)
 
 
 def rev_jet(
     f: Callable[..., Any],
     derivative_order: int | None = None,
     detach: bool = True,
-) -> Callable[
-    [tuple[Any, ...], tuple[tuple[Any, ...], ...]], tuple[Any, tuple[Any, ...]]
-]:
+) -> Callable[..., Any]:
     """Implement Taylor-mode via nested reverse-mode autodiff.
 
     Serves as a reference implementation for testing ``jet``. See :func:`jet`
-    for a description of the ``Any`` pytree convention used in the type
-    signatures.
+    for a description of the pytree-of-jets convention used by the returned
+    function.
 
     Args:
         f: Function to overload. May accept and return pytrees of tensors.
-        derivative_order: Order of the Taylor expansion. Default: ``None``.
+        derivative_order: Order of the Taylor expansion. If ``None`` (default),
+            it is inferred from the input jets.
         detach: Whether to detach the output from the computation graph.
             Default: ``True``.
 
     Returns:
-        A function ``jet_f(primals, taylor_coeffs)`` that returns
-        ``(primals_out, taylor_coeffs_out)``.
+        A function ``jet_f(*args)`` with the same convention as :func:`jet`: one
+        positional argument per argument of ``f``, each a pytree whose tensor
+        leaves are tuples ``(primal, c_1, ..., c_K)``; returns a pytree mirroring
+        ``f``'s output with each tensor leaf replaced by ``(f_0, f_1, ..., f_K)``.
     """
     grad_kwargs = {
         "allow_unused": True,
@@ -168,40 +200,30 @@ def rev_jet(
         return grad(f, X, **grad_kwargs)[0] if f.requires_grad else zeros_like(X)
 
     def jet_f(
-        primals: tuple[Any, ...],
-        taylor_coeffs: tuple[tuple[Any, ...], ...],
-        *,
+        *args: Any,
         derivative_order: int | None = derivative_order,
-    ) -> tuple[Any, tuple[Any, ...]]:
+    ) -> Any:
         """Compute the function and its Taylor coefficients.
 
         Args:
-            primals: Tuple of primal values matching ``f``'s positional args.
-            taylor_coeffs: Tuple with one entry per argument, each containing
-                ``derivative_order`` Taylor coefficients.
-            derivative_order: Order of the Taylor expansion.
+            args: One positional argument per argument of ``f``, each a pytree
+                whose tensor leaves are ``(primal, c_1, ..., c_K)`` tuples.
+            derivative_order: Order of the Taylor expansion. If ``None``, it is
+                inferred from the input jets.
 
         Returns:
-            ``(primals_out, taylor_coeffs_out)`` where *primals_out* has the
-            pytree structure of ``f``'s output and *taylor_coeffs_out* is a
-            tuple of ``derivative_order`` pytrees with the same structure.
+            A pytree mirroring ``f``'s output structure, with each tensor leaf
+            replaced by a tuple ``(f_0, f_1, ..., f_K)``.
         """
+        leaves, in_spec = tree_flatten(
+            args, is_leaf=lambda x: _is_jet_leaf(x, derivative_order)
+        )
         if derivative_order is None:
-            derivative_order = len(taylor_coeffs[0])
-        else:
-            assert all(
-                len(arg_taylor_coeffs) == derivative_order
-                for arg_taylor_coeffs in taylor_coeffs
-            )
+            derivative_order = len(leaves[0]) - 1
 
-        primals, in_spec = tree_flatten(primals)
+        primals = [leaf[0] for leaf in leaves]
         taylor_coeffs_by_order = [
-            [
-                coefficient
-                for arg_taylor_coeffs in taylor_coeffs
-                for coefficient in tree_flatten(arg_taylor_coeffs[order])[0]
-            ]
-            for order in range(derivative_order)
+            [leaf[order + 1] for leaf in leaves] for order in range(derivative_order)
         ]
         ref_tensor = primals[0]
 
@@ -246,21 +268,17 @@ def rev_jet(
                         dnf_dt.detach() if detach else dnf_dt
                     )
 
-        primals_out = tree_unflatten(
-            [f_path.detach() if detach else f_path for f_path in f_paths], out_spec
-        )
-
-        taylor_coeffs_out = tuple(
-            tree_unflatten(
-                [
-                    (coeffs.detach() if detach else coeffs).reshape_as(f_path)
-                    for coeffs, f_path in zip(flat_taylor_coeffs_out[order], f_paths)
-                ],
-                out_spec,
+        out_jets = [
+            (
+                f_path.detach() if detach else f_path,
+                *(
+                    flat_taylor_coeffs_out[order][path_idx].reshape_as(f_path)
+                    for order in range(derivative_order)
+                ),
             )
-            for order in range(derivative_order)
-        )
-        return primals_out, taylor_coeffs_out
+            for path_idx, f_path in enumerate(f_paths)
+        ]
+        return tree_unflatten(out_jets, out_spec)
 
     return jet_f
 
@@ -270,12 +288,10 @@ def collapsed_jet(
 ) -> Callable[..., tuple[Value, ...]]:
     """Overload ``f`` with its collapsed Taylor-mode equivalent.
 
-    Like :func:`jet`, the returned function takes arg-major
-    ``(primals, taylor_coeffs)`` input (`JAX's convention
-    <https://docs.jax.dev/en/latest/jax.experimental.jet.html>`_), where
-    ``taylor_coeffs[arg][order]`` holds the order-1..K coefficient of each
-    argument. Unlike :func:`jet`, the coefficients have mixed shapes across
-    orders:
+    Like :func:`jet`, the returned function takes one positional argument per
+    argument of ``f``; each is a pytree whose tensor leaves are replaced by a
+    tuple ``(primal, c_1, ..., c_K)``. Unlike :func:`jet`, the coefficients have
+    mixed shapes across orders:
 
     - orders 1..K-1: tensors with a leading direction dimension ``R``,
     - order K: tensors without the ``R`` dimension (already collapsed, i.e.
@@ -294,11 +310,10 @@ def collapsed_jet(
             Only shapes matter, not the actual values.
 
     Returns:
-        A function ``cjet_f(primals, taylor_coeffs)`` returning
-        ``(primals_out, taylor_coeffs_out)``, where ``primals_out`` has the
-        same pytree structure as ``f``'s output and ``taylor_coeffs_out`` is a
-        tuple of ``derivative_order`` coefficients. Orders 1..K-1 carry the
-        leading ``R`` dimension; order K is collapsed.
+        A function ``cjet_f(*args)`` returning a pytree mirroring ``f``'s output
+        structure, with each tensor leaf replaced by a tuple
+        ``(f_0, f_1, ..., f_K)``. Orders 1..K-1 carry the leading ``R``
+        dimension; order K is collapsed.
 
     Raises:
         ValueError: If ``derivative_order < 2`` (collapsing requires at least
@@ -308,17 +323,12 @@ def collapsed_jet(
         raise ValueError(
             f"collapsed_jet requires derivative_order >= 2, got {derivative_order}."
         )
-    mod, num_leaves = capture_flat_graph(f, mock_args)
+    mod = capture_flat_graph(f, mock_args)
 
     interp = CollapsedJetInterpreter(mod, derivative_order)
 
-    def cjet_f(primals, taylor_coeffs):
-        input_tuples = build_input_tuples(
-            primals, taylor_coeffs, num_leaves, derivative_order
-        )
-        result = interp.run(*input_tuples)
-        all_orders = _transpose_jet_output(result, derivative_order)
-        return all_orders[0], all_orders[1:]
+    def cjet_f(*args: Any) -> Any:
+        return _run_jet_interpreter(interp, args, derivative_order)
 
     return cjet_f
 
@@ -332,10 +342,11 @@ def _make_uncollapsed_cjet(
     """Build a collapsed_jet-compatible function using standard jet + vmap + sum.
 
     The returned function has the same calling convention as ``collapsed_jet``:
-    it accepts arg-major ``(primals, taylor_coeffs)`` where, for each argument,
-    coefficients of orders 1..K-1 are batched (leading direction dim R) and the
-    order-K coefficient is collapsed (no R dim), and returns output with the
-    K-th coefficient already summed over directions.
+    it accepts one positional argument per argument of ``f``, each a pytree whose
+    tensor leaves are tuples ``(primal, c_1, ..., c_K)`` where coefficients of
+    orders 1..K-1 are batched (leading direction dim R) and the order-K
+    coefficient is collapsed (no R dim). It returns output with the K-th
+    coefficient already summed over directions.
 
     Supports pytree inputs and outputs, matching the generality of ``jet()``
     and ``collapsed_jet()``.
@@ -351,49 +362,38 @@ def _make_uncollapsed_cjet(
     """
     K = derivative_order
     jet_f = jet(f, K, mock_args)
-    num_args = len(mock_args)
 
-    def cjet_f(primals, taylor_coeffs):
-        # Transpose arg-major taylor_coeffs[arg][order] to order-major series[order].
-        series = tuple(
-            tuple(taylor_coeffs[arg][order] for arg in range(num_args))
-            for order in range(K)
-        )
-        # Flatten batched series entries (orders 1..K-1) for vmap
-        batched_flat = []
-        batched_specs = []
-        for order in range(K - 1):
-            flat, spec = tree_flatten(series[order])
-            batched_flat.extend(flat)
-            batched_specs.append((len(flat), spec))
+    def cjet_f(*args: Any) -> Any:
+        leaves, in_spec = tree_flatten(args, is_leaf=lambda x: _is_jet_leaf(x, K))
+        num_leaves = len(leaves)
+        primals = [leaf[0] for leaf in leaves]
+        collapsed = [leaf[K] for leaf in leaves]
+        # Batched coefficients (orders 1..K-1) carry the leading direction dim R.
+        batched_flat = [leaf[order] for leaf in leaves for order in range(1, K)]
 
-        collapsed = series[K - 1]
-
-        def single_direction(*flat_batched):
-            # Reconstruct per-order pytrees from flat batched leaves
-            idx = 0
-            all_orders = []
-            for n_leaves, spec in batched_specs:
-                all_orders.append(
-                    tree_unflatten(list(flat_batched[idx : idx + n_leaves]), spec)
+        def single_direction(*flat_batched: Tensor) -> Any:
+            # Rebuild per-leaf jets from this direction's batched coefficients,
+            # reusing the shared (un-batched) collapsed order-K coefficient.
+            per_leaf_jets = [
+                (
+                    primals[i],
+                    *flat_batched[i * (K - 1) : (i + 1) * (K - 1)],
+                    collapsed[i],
                 )
-                idx += n_leaves
-            all_orders.append(collapsed)
-
-            # Transpose: series[order][arg] -> taylor_coeffs[arg][order]
-            taylor_coeffs = tuple(
-                tuple(all_orders[order][arg_idx] for order in range(K))
-                for arg_idx in range(num_args)
-            )
-            return jet_f(primals, taylor_coeffs)
+                for i in range(num_leaves)
+            ]
+            return jet_f(*tree_unflatten(per_leaf_jets, in_spec))
 
         vmapped = vmap(
             single_direction,
             randomness="error" if randomization is None else "different",
-            out_dims=(None, tuple(0 for _ in range(K))),
         )
-        F0, Fs = vmapped(*batched_flat)
-        FK_summed = tree_map(lambda t: t.sum(0), Fs[-1])
-        return F0, (*Fs[:-1], FK_summed)
+        result = vmapped(*batched_flat)
+
+        # De-batch order 0 (identical across directions) and collapse order K.
+        def _collapse_leaf(leaf: tuple[Tensor, ...]) -> tuple[Tensor, ...]:
+            return (leaf[0][0], *leaf[1:K], leaf[K].sum(0))
+
+        return tree_map(_collapse_leaf, result, is_leaf=lambda x: _is_jet_leaf(x, K))
 
     return cjet_f

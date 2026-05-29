@@ -96,9 +96,10 @@ _ = manual_seed(0)  # make deterministic
 # **In code,** the `jet` library offers a function transformation
 # `jet(f, derivative_order, mock_primals)` that takes a function $f$, a
 # derivative order, and mock primal inputs, and returns a new function
-# `jet_f(primals, taylor_coeffs)` that returns
-# `(primals_out, taylor_coeffs_out)` — the function value and its Taylor
-# coefficients up to that derivative order.
+# `jet_f(*args)` taking one argument per argument of $f$. Each argument bundles
+# a primal with its Taylor coefficients into a tuple `(x_0, x_1, ..., x_K)`, and
+# the output mirrors this: each result is a tuple `(f_0, f_1, ..., f_K)` holding
+# the function value and its Taylor coefficients up to that derivative order.
 
 # %%
 #
@@ -127,7 +128,7 @@ _ = manual_seed(0)  # make deterministic
 f = sin  # propagates x₀ ↦ f(x₀)
 derivative_order = 2
 x = rand(1)
-f_jet = jet(f, derivative_order, (x,))  # propagates (x₀, (x₁, x₂)) ↦ (f₀, (f₁, f₂))
+f_jet = jet(f, derivative_order, (x,))  # propagates (x₀, x₁, x₂) ↦ (f₀, f₁, f₂)
 
 # Set up the Taylor coefficients to compute the second derivative
 
@@ -136,7 +137,7 @@ x1 = ones_like(x)
 x2 = zeros_like(x)
 
 # Evaluate the second derivative
-f0, (f1, f2) = f_jet((x0,), ((x1, x2),))
+f0, f1, f2 = f_jet((x0, x1, x2))
 
 # %%
 #
@@ -212,7 +213,7 @@ d2_diag = zeros_like(x)
 for d in range(D):
     x1 = zeros_like(x)
     x1[d] = 1.0  # d-th canonical basis vector
-    f0, (f1, f2) = f_jet((x0,), ((x1, x2),))
+    f0, f1, f2 = f_jet((x0, x1, x2))
     d2_diag[d] = f2
 
 # %%
@@ -238,24 +239,24 @@ else:
 # multiple variables such as time and space.
 #
 # For a function with multiple arguments, ``mock_primals`` is a tuple that matches the
-# function's positional arguments, and the jet is called with
-# ``(primals, taylor_coeffs)`` where each entry in ``taylor_coeffs`` groups
-# Taylor coefficients **per argument** across derivative orders.
+# function's positional arguments, and the jet is called as ``jet_f(*args)`` with one
+# argument per argument of $f$. Each argument bundles its primal with its Taylor
+# coefficients as a tuple ``(x_0, x_1, ..., x_K)``.
 #
 # .. note::
 #
 #    **Comparison with JAX's Taylor mode.**
 #    `JAX's jet <https://docs.jax.dev/en/latest/jax.experimental.jet.html>`_
-#    uses the signature ``jet(fun, primals, series)`` where ``series`` is grouped
-#    **per argument** — each element is a tuple of that argument's Taylor
-#    coefficients across orders. ``torch-jet`` follows the same grouping, but
-#    names that argument ``taylor_coeffs``.
+#    uses the signature ``jet(fun, primals, series)`` where ``primals`` and
+#    ``series`` are kept as *separate* arguments. ``torch-jet`` instead bundles
+#    each primal with its Taylor coefficients into a single ``(x_0, x_1, ...)``
+#    tuple per argument, so a jet is one self-contained object.
 #
-#    The key difference is that ``torch-jet`` uses a two-step API: first
+#    A further difference is that ``torch-jet`` uses a two-step API: first
 #    ``jet_f = jet(f, derivative_order, mock_primals)`` traces the function, then
-#    ``jet_f(primals, taylor_coeffs)`` evaluates it. This separates tracing
-#    (which can be expensive) from evaluation, allowing the traced jet to be
-#    reused across multiple inputs.
+#    ``jet_f(*args)`` evaluates it. This separates tracing (which can be
+#    expensive) from evaluation, allowing the traced jet to be reused across
+#    multiple inputs.
 #
 # As a concrete example, consider the function
 # $u(t, x) = \cos(t) \sin(x)$, which is a solution to the 1-D wave equation
@@ -276,18 +277,19 @@ def u(t: Tensor, x: Tensor) -> Tensor:
     return cos(t) * sin(x)
 
 
-t_val, x_val = rand(1), rand(1)  # evaluation point
-zt, zx = zeros_like(t_val), zeros_like(x_val)  # zero Taylor coefficients
-jet_u = jet(u, 2, (t_val, x_val))
+t0, x0 = rand(1), rand(1)  # evaluation point
+u_jet = jet(u, 2, (t0, x0))
 
 # %%
 #
 # **Computing** $\partial_{xx} u$. We set $t_1 = 0$, $x_1 = 1$, $t_2 = 0$, $x_2 = 0$
 # so that $f_2 = \partial_{xx} u$:
 
-_, (_, d2u_dx2) = jet_u((t_val, x_val), ((zt, zt), (ones_like(x_val), zx)))
+t1, t2 = zeros_like(t0), zeros_like(t0)  # t_1 = 0, t_2 = 0
+x1, x2 = ones_like(x0), zeros_like(x0)  # x_1 = 1, x_2 = 0
+_, _, d2u_dx2 = u_jet((t0, t1, t2), (x0, x1, x2))
 
-d2u_dx2_exact = -cos(t_val) * sin(x_val)
+d2u_dx2_exact = -cos(t0) * sin(x0)
 if d2u_dx2.allclose(d2u_dx2_exact):
     print("∂²u/∂x² matches analytical value!")
 else:
@@ -298,7 +300,9 @@ else:
 # Similarly, $\partial_{tt} u$ is obtained with $t_1 = 1$, $x_1 = 0$.
 # Let's verify the wave equation $\partial_{tt} u = \partial_{xx} u$:
 
-_, (_, d2u_dt2) = jet_u((t_val, x_val), ((ones_like(t_val), zt), (zx, zx)))
+t1, t2 = ones_like(t0), zeros_like(t0)  # t_1 = 1, t_2 = 0
+x1, x2 = zeros_like(x0), zeros_like(x0)  # x_1 = 0, x_2 = 0
+_, _, d2u_dt2 = u_jet((t0, t1, t2), (x0, x1, x2))
 
 if d2u_dt2.allclose(d2u_dx2):
     print("Wave equation verified: ∂²u/∂t² = ∂²u/∂x²!")
@@ -310,9 +314,9 @@ else:
 ### Pytree Inputs and Outputs
 #
 # ``jet`` also supports functions whose inputs and outputs are arbitrary pytrees
-# (nested combinations of tuples, lists, and dicts with tensor leaves). As an example,
-# consider a function that takes a dict with entries ``"x"`` and ``"y"`` and returns
-# a dict with entries ``"mul"`` and ``"sub"``:
+# (nested ``tuple``, ``list``, and ``dict`` containers with tensor leaves). As an
+# example, consider a function that takes a dict with entries ``"x"`` and ``"y"``
+# and returns a dict with entries ``"mul"`` and ``"sub"``:
 
 
 def f_pytree(inputs: dict[str, Tensor]) -> dict[str, Tensor]:
@@ -329,31 +333,36 @@ def f_pytree(inputs: dict[str, Tensor]) -> dict[str, Tensor]:
 
 
 mock_inputs = {"x": rand(2), "y": rand(2)}
-jet_pytree = jet(f_pytree, 1, (mock_inputs,))
+f_pytree_jet = jet(f_pytree, 1, (mock_inputs,))
 
 # %%
 #
-# The primals and Taylor coefficients follow the same pytree structure as the
-# arguments. Since ``f_pytree`` has a single argument (a dict), ``primals`` is a
-# 1-tuple containing that dict, and ``taylor_coeffs`` has one entry (for that
-# argument) with one Taylor coefficient (since ``derivative_order=1``):
+# The jet of a pytree argument follows the same pytree structure as the argument
+# itself, with every tensor leaf replaced by its ``(primal, c_1, ..., c_K)`` jet
+# tuple. Since ``f_pytree`` takes a single dict argument, we pass a single dict
+# whose ``"x"`` and ``"y"`` leaves are each a ``(primal, c_1)`` tuple (one Taylor
+# coefficient, since ``derivative_order=1``):
 
 inputs = {"x": rand(2), "y": rand(2)}
 d_inputs = {"x": ones_like(inputs["x"]), "y": zeros_like(inputs["y"])}
 
-f0, (f1,) = jet_pytree((inputs,), ((d_inputs,),))
+jet_inputs = {
+    "x": (inputs["x"], d_inputs["x"]),
+    "y": (inputs["y"], d_inputs["y"]),
+}
+out = f_pytree_jet(jet_inputs)
 
 # %%
 #
-# The output is also a pytree (dict) at each order:
+# The output mirrors ``f_pytree``'s output structure (a dict), with each leaf a
+# ``(f_0, f_1)`` jet tuple:
 
-print(f"f0 keys: {list(f0.keys())}, f1 keys: {list(f1.keys())}")
-print(f"f0['mul'] = {f0['mul']}")
-print(f"f1['mul'] = {f1['mul']}  (= dx/dt * y + x * dy/dt = 1 * y + x * 0 = y)")
-print(f"f1['sub'] = {f1['sub']}  (= dx/dt - dy/dt = 1 - 0 = 1)")
+print(f"output keys: {list(out.keys())}")
+print(f"out['mul'][1] = {out['mul'][1]}  (= dx/dt * y + x * dy/dt = 1 * y + x * 0 = y)")
+print(f"out['sub'][1] = {out['sub'][1]}  (= dx/dt - dy/dt = 1 - 0 = 1)")
 
-assert f1["mul"].allclose(inputs["y"]), f"f1['mul'] = {f1['mul']} != y"
-assert f1["sub"].allclose(ones_like(inputs["x"])), f"f1['sub'] = {f1['sub']} != 1"
+assert out["mul"][1].allclose(inputs["y"]), f"out['mul'][1] = {out['mul'][1]} != y"
+assert out["sub"][1].allclose(ones_like(inputs["x"])), "out['sub'][1] != 1"
 
 # %%
 #

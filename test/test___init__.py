@@ -2,7 +2,7 @@
 
 from typing import Any, Callable
 
-from pytest import mark
+from pytest import mark, raises
 from torch import (
     Tensor,
     cos,
@@ -41,24 +41,28 @@ def f_multiply(x: Tensor) -> Tensor:
 
 
 def _deep_pytree_f(
-    x: Tensor, params: dict[str, Tensor | list[Tensor]]
+    x: Tensor, params: list[Tensor | list[Tensor]]
 ) -> tuple[Tensor, dict[str, Tensor]]:
-    """Function with deeply nested dict/list input and different output structure.
+    """Function with deeply nested input/output of different structure.
+
+    The input uses ``tuple``/``list`` containers (``dict`` arguments are
+    unsupported); the output mixes a ``tuple`` with a ``dict``.
 
     Args:
         x: Input tensor.
-        params: Nested pytree ``{"w": Tensor, "bs": [Tensor, Tensor]}``.
+        params: Nested pytree ``[Tensor, [Tensor, Tensor]]`` (``[w, [b0, b1]]``).
 
     Returns:
-        A pytree ``(Tensor, {"a": Tensor, "b": Tensor})`` with different
-        structure from the input.
+        A pytree ``(Tensor, {"a": Tensor, "b": Tensor})`` with different structure
+        from the input.
     """
-    h = sin(x) * params["w"]
-    b0, b1 = params["bs"][0], params["bs"][1]
+    w = params[0]
+    b0, b1 = params[1]
+    h = sin(x) * w
     return (h + b0, {"a": cos(h) * b1, "b": tanh(h + b0 + b1)})
 
 
-def _deep_pytree_mock_args_fn() -> tuple[Tensor, dict[str, Tensor | list[Tensor]]]:
+def _deep_pytree_mock_args_fn() -> tuple[Tensor, list[Tensor | list[Tensor]]]:
     """Create mock arguments for :func:`_deep_pytree_f`.
 
     Returns:
@@ -66,7 +70,7 @@ def _deep_pytree_mock_args_fn() -> tuple[Tensor, dict[str, Tensor | list[Tensor]
     """
     return (
         rand(3).double(),
-        {"w": rand(3).double(), "bs": [rand(3).double(), rand(3).double()]},
+        [rand(3).double(), [rand(3).double(), rand(3).double()]],
     )
 
 
@@ -251,19 +255,33 @@ ALL_CASES = JET_CASES + [
     },
     # pytree-input: PyTree -> Tensor
     {
-        "id": "dict-linear",
-        "f": lambda x, params: x @ params["w"] + params["b"],
+        "id": "list-linear",
+        "f": lambda x, params: x @ params[0] + params[1],
         "mock_args_fn": lambda: (
             rand(3).double(),
-            {"w": rand(3, 2).double(), "b": rand(2).double()},
+            [rand(3, 2).double(), rand(2).double()],
         ),
     },
     {
-        "id": "dict-sin-cos",
-        "f": lambda x, params: sin(x) * params["scale"] + params["bias"],
+        "id": "list-sin-cos",
+        "f": lambda x, params: sin(x) * params[0] + params[1],
         "mock_args_fn": lambda: (
             rand(4).double(),
-            {"scale": rand(4).double(), "bias": rand(4).double()},
+            [rand(4).double(), rand(4).double()],
+        ),
+    },
+    # dict inputs in supported positions (single dict arg, and dict first)
+    {
+        "id": "dict-in-single",
+        "f": lambda d: sin(d["a"]) * d["b"],
+        "mock_args_fn": lambda: ({"a": rand(4).double(), "b": rand(4).double()},),
+    },
+    {
+        "id": "dict-first",
+        "f": lambda params, x: params["scale"] * sin(x) + params["bias"],
+        "mock_args_fn": lambda: (
+            {"scale": rand(3).double(), "bias": rand(3).double()},
+            rand(3).double(),
         ),
     },
     # pytree-output: Tensor -> PyTree
@@ -288,9 +306,9 @@ ALL_CASES = JET_CASES + [
         "f": lambda x, y: {"sum": x + y, "prod": x * y},
         "mock_args_fn": lambda: (rand(4).double(), rand(4).double()),
     },
-    # deeply nested mixed containers with different input/output structure
+    # deeply nested containers with different input/output structure
     {
-        "id": "nested-dict-list-in-tuple-dict-out",
+        "id": "nested-list-in-tuple-dict-out",
         "f": _deep_pytree_f,
         "mock_args_fn": _deep_pytree_mock_args_fn,
     },
@@ -314,22 +332,23 @@ def test_jet(config: dict[str, Any], derivative_order: int):
 
     manual_seed(42)
     primals = config["mock_args_fn"]()
-    num_args = len(mock_primals)
-    taylor_coeffs_by_order = tuple(
-        config["mock_args_fn"]() for _ in range(derivative_order)
-    )
-    taylor_coeffs = tuple(
-        tuple(
-            taylor_coeffs_by_order[order][arg_idx] for order in range(derivative_order)
+    # Build the new-convention args: one pytree per argument of f, with each
+    # tensor leaf zipped into a (primal, c_1, ..., c_K) jet tuple.
+    coeffs_by_order = [config["mock_args_fn"]() for _ in range(derivative_order)]
+    args = tuple(
+        tree_map(
+            lambda *ts: tuple(ts),
+            primals[arg_idx],
+            *(coeffs_by_order[order][arg_idx] for order in range(derivative_order)),
         )
-        for arg_idx in range(num_args)
+        for arg_idx in range(len(primals))
     )
 
     jet_f = jet.jet(f, derivative_order, mock_primals)
-    jet_out = jet_f(primals, taylor_coeffs)
+    jet_out = jet_f(*args)
 
     rev_jet_f = rev_jet(f, derivative_order)
-    rev_jet_out = rev_jet_f(primals, taylor_coeffs)
+    rev_jet_out = rev_jet_f(*args)
 
     report_pytrees_nonclose(jet_out, rev_jet_out)
 
@@ -337,10 +356,14 @@ def test_jet(config: dict[str, Any], derivative_order: int):
 def _setup_collapsed_jet_args(
     config: dict[str, Any], derivative_order: int, R: int = 2
 ):
-    """Set up primals and arg-major taylor_coeffs for collapsed jet testing.
+    """Set up mock args and jet args (new convention) for collapsed jet testing.
 
-    Supports pytree inputs: each argument in ``mock_args`` can be an
-    arbitrary pytree of tensors.
+    Each tensor leaf of every argument is bundled into a jet tuple
+    ``(primal, c_1, ..., c_K)`` with the collapsed-jet shape convention:
+
+    - ``c_1`` carries the ``R`` directions (shape ``(R, *)``);
+    - ``c_2..c_{K-1}`` are batched zeros (shape ``(R, *)``);
+    - ``c_K`` is the collapsed zero (shape ``(*)``, no ``R`` dim).
 
     Args:
         config: Configuration dictionary with ``"f"`` and ``"mock_args_fn"`` keys.
@@ -348,10 +371,10 @@ def _setup_collapsed_jet_args(
         R: Number of random directions. Default: ``2``.
 
     Returns:
-        Tuple ``(f, mock_args, primals, taylor_coeffs)`` ready for both
-        ``collapsed_jet`` and ``_make_uncollapsed_cjet``. ``taylor_coeffs`` is
-        arg-major (``taylor_coeffs[arg][order]``) with orders 1..K-1 batched
-        over R directions and order K collapsed.
+        Tuple ``(f, mock_args, args)`` ready for both ``collapsed_jet`` and
+        ``_make_uncollapsed_cjet``: ``mock_args`` is the tracing template (zero
+        tensors), and ``args`` is a tuple of pytrees -- one per argument of
+        ``f`` -- whose tensor leaves are the jet tuples.
     """
     K = derivative_order
     f = config["f"]
@@ -361,30 +384,20 @@ def _setup_collapsed_jet_args(
         f = f.double()
 
     manual_seed(42)
-    primals = tree_map(lambda t: rand(*t.shape, dtype=float64), mock_args)
+
+    def make_jet_leaf(primal_meta: Tensor) -> tuple[Tensor, ...]:
+        primal = rand(*primal_meta.shape, dtype=float64)
+        coeffs = [rand(R, *primal.shape, dtype=float64)]  # c_1: batched directions
+        coeffs += [  # c_2..c_{K-1}: batched zeros
+            zeros(R, *primal.shape, dtype=float64) for _ in range(K - 2)
+        ]
+        coeffs.append(zeros_like(primal))  # c_K: collapsed zero
+        return (primal, *coeffs)
+
+    args = tuple(tree_map(make_jet_leaf, arg_template) for arg_template in mock_args)
     mock_args = tree_map(lambda t: zeros(*t.shape, dtype=float64), mock_args)
 
-    def batched(t):
-        return rand(R, *t.shape, dtype=float64)
-
-    def batched_zero(t):
-        return zeros(R, *t.shape, dtype=float64)
-
-    def order_coeff(arg_tree, order):
-        # Order 1 carries the directions; orders 2..K-1 are batched zeros;
-        # order K is collapsed (no R dim).
-        if order == 0:
-            return tree_map(batched, arg_tree)
-        if order < K - 1:
-            return tree_map(batched_zero, arg_tree)
-        return tree_map(zeros_like, arg_tree)
-
-    taylor_coeffs = tuple(
-        tuple(order_coeff(arg_tree, order) for order in range(K))
-        for arg_tree in mock_args
-    )
-
-    return f, mock_args, primals, taylor_coeffs
+    return f, mock_args, args
 
 
 @mark.parametrize("derivative_order", [2, 3, 4], ids=["K=2", "K=3", "K=4"])
@@ -396,26 +409,41 @@ def test_collapsed_jet(config: dict[str, Any], derivative_order: int):
         config: Configuration dictionary of the test case.
         derivative_order: The order of the jet to compute.
     """
-    f, mock_args, primals, taylor_coeffs = _setup_collapsed_jet_args(
-        config, derivative_order
-    )
+    f, mock_args, args = _setup_collapsed_jet_args(config, derivative_order)
 
     std_f = jet._make_uncollapsed_cjet(
         f, derivative_order, mock_args, randomization=None
     )
     cjet_f = collapsed_jet(f, derivative_order, mock_args)
 
-    report_pytrees_nonclose(
-        std_f(primals, taylor_coeffs), cjet_f(primals, taylor_coeffs)
-    )
+    report_pytrees_nonclose(std_f(*args), cjet_f(*args))
 
 
 def test_collapsed_jet_rejects_order_below_2():
     """collapsed_jet raises ValueError for derivative_order < 2."""
-    from pytest import raises
-
     with raises(ValueError, match="derivative_order >= 2"):
         collapsed_jet(sin, 1, (zeros(3),))
 
     with raises(ValueError, match="derivative_order >= 2"):
         collapsed_jet(sin, 0, (zeros(3),))
+
+
+def test_jet_rejects_unsupported_tuple_dict_signature():
+    """Reject only the (tensor/tuple, dict) two-argument signature (make_fx bug).
+
+    All other dict signatures are supported, so they must not raise.
+    """
+    # Unsupported: two args, first tensor/tuple, second dict.
+    f = lambda x, params: x * params["a"]  # noqa: E731
+    match = r"pytorch/pytorch#185640"  # pin to the tracked upstream issue
+    with raises(NotImplementedError, match=match):
+        jet.jet(f, 2, (zeros(3), {"a": zeros(3)}))
+    with raises(NotImplementedError, match=match):
+        collapsed_jet(f, 2, (zeros(3), {"a": zeros(3)}))
+
+    # Supported dict signatures must not raise.
+    jet.jet(lambda d: d["a"] * 2, 2, ({"a": zeros(3)},))  # single dict arg
+    jet.jet(lambda d, x: d["a"] + x, 2, ({"a": zeros(3)}, zeros(3)))  # dict first
+    jet.jet(  # three args with a trailing dict
+        lambda x, y, d: x + y + d["a"], 2, (zeros(3), zeros(3), {"a": zeros(3)})
+    )

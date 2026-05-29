@@ -59,10 +59,6 @@ def laplacian(
     Returns:
         A ``GraphModule`` that maps ``x → lap(f(x))``.
 
-    Raises:
-        ValueError: If the provided distribution is not supported or if the number
-            of samples is not positive.
-
     Examples:
         >>> from torch import manual_seed, rand, zeros
         >>> from torch.func import hessian
@@ -127,7 +123,7 @@ def laplacian(
         X1 = apply_weightings(x, V)
         z = zeros_like(x)
 
-        _, (_, F2) = cjet_f((x,), ((X1, z),))
+        _, _, F2 = cjet_f((x, X1, z))
 
         if randomization is not None:
             monte_carlo_scaling = 1.0 / randomization[1]

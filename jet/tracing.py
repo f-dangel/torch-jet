@@ -41,7 +41,7 @@ def capture_graph(
 
 def capture_flat_graph(
     f: Callable[..., Any], mock_args: tuple[Any, ...]
-) -> tuple[GraphModule, int]:
+) -> GraphModule:
     """Capture the compute graph of ``f`` over its flattened pytree leaves.
 
     ``make_fx`` creates one symbolic proxy per positional tensor argument and
@@ -55,52 +55,46 @@ def capture_flat_graph(
             args, provided as a tuple. Only shapes and dtypes matter.
 
     Returns:
-        A tuple ``(mod, num_leaves)`` with the traced graph module over flat
-        tensor inputs and the number of tensor leaves.
+        The traced graph module over flat tensor inputs.
     """
+    _assert_traceable_signature(mock_args)
     flat_mocks, in_spec = tree_flatten(mock_args)
 
     def flat_f(*flat_tensors: Tensor) -> Any:
         return f(*tree_unflatten(list(flat_tensors), in_spec))
 
-    return capture_graph(flat_f, *flat_mocks), len(flat_mocks)
+    return capture_graph(flat_f, *flat_mocks)
 
 
-def build_input_tuples(
-    primals: tuple[Any, ...],
-    taylor_coeffs: tuple[tuple[Any, ...], ...],
-    num_leaves: int,
-    derivative_order: int,
-) -> list[tuple[Tensor, ...]]:
-    """Assemble per-leaf ``(primal, *coeffs)`` tuples for the jet interpreter.
+def _assert_traceable_signature(args: tuple[Any, ...]) -> None:
+    """Reject the argument signature that ``make_fx`` mistraces.
 
-    Flattens the arg-major ``primals`` and ``taylor_coeffs`` pytrees and regroups
-    them by tensor leaf, so each leaf gets a tuple of its primal followed by its
-    ``derivative_order`` Taylor coefficients (in increasing order).
+    ``make_fx`` misreads a two-argument call whose first argument is tuple-rooted
+    and whose second is a ``dict`` as an ``(args, kwargs)`` call and emits a
+    broken input template (pytorch/pytorch#185640). Every other signature -- a
+    lone ``dict``, a ``dict`` first, three or more arguments, or ``list`` +
+    ``dict`` -- traces correctly, as do ``dict`` outputs.
 
     Args:
-        primals: Tuple of primal values matching the traced function's arguments.
-        taylor_coeffs: Arg-major coefficients, where ``taylor_coeffs[arg][order]``
-            holds the order-1..K coefficient of each argument.
-        num_leaves: Number of tensor leaves across all arguments.
-        derivative_order: Order ``K`` of the Taylor expansion.
+        args: The positional arguments that will be passed to the traced
+            function (e.g. ``mock_args``).
 
-    Returns:
-        A list of ``num_leaves`` tuples, each ``(primal, coeff_1, ..., coeff_K)``.
+    Raises:
+        NotImplementedError: If the signature is the unsupported
+            ``(tensor-or-tuple, dict)``.
     """
-    flat_primals = tree_flatten(primals)[0]
-    flat_by_order = [
-        [
-            coefficient
-            for arg_taylor_coeffs in taylor_coeffs
-            for coefficient in tree_flatten(arg_taylor_coeffs[order])[0]
-        ]
-        for order in range(derivative_order)
-    ]
-    return [
-        (flat_primals[i], *(coeffs_at_order[i] for coeffs_at_order in flat_by_order))
-        for i in range(num_leaves)
-    ]
+    if (
+        len(args) == 2
+        and isinstance(args[0], (Tensor, tuple))
+        and isinstance(args[1], dict)
+    ):
+        raise NotImplementedError(
+            "make_fx cannot trace a two-argument function whose first argument "
+            "is a tensor/tuple and whose second is a dict, due to a codegen bug "
+            "(pytorch/pytorch#185640). Work around it by putting the dict "
+            "argument first, adding another argument, or bundling the arguments "
+            "into a single tuple/list."
+        )
 
 
 def _replace_inplace_ops(mod: GraphModule) -> None:

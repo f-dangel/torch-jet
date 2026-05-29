@@ -12,6 +12,7 @@ explicitly replacing ``squeeze_.dim`` after tracing, ensuring the resulting
 graph is fully functional.
 """
 
+from pytest import mark
 from torch import ops, rand
 from torch.func import functionalize
 from torch.fx.experimental.proxy_tensor import make_fx
@@ -42,3 +43,31 @@ def test_capture_graph_replaces_squeeze_():
     x = rand(3)
     mod = capture_graph(f, x)
     assert not _uses_squeeze_inplace(mod)
+
+
+@mark.xfail(
+    strict=True,
+    reason=(
+        "make_fx mistraces tuple-then-dict positional args "
+        "(pytorch/pytorch#185640); strict xpass signals that the upstream fix "
+        "lifts the jet dict restriction."
+    ),
+)
+def test_make_fx_supports_dict_arg_after_tuple_arg():
+    """make_fx should handle a dict positional arg following a tuple arg.
+
+    Minimal reproduction of the limitation that forces the jet transforms to
+    reject ``dict`` arguments: a function whose first positional arg is a tuple
+    and whose second is a dict. ``make_fx`` builds a broken input-reconstruction
+    template for the dict (dropping keys), so calling the traced module fails.
+    """
+
+    def f(a: tuple, d: dict):
+        return a[0] + d["x"] + d["y"]
+
+    mock = ((rand(2),), {"x": rand(2), "y": rand(2)})
+    graph = make_fx(f)(*mock)
+
+    args = ((rand(2),), {"x": rand(2), "y": rand(2)})
+    expected = args[0][0] + args[1]["x"] + args[1]["y"]
+    assert graph(*args).allclose(expected)

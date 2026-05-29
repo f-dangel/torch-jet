@@ -12,8 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add a `collapsed_jet()` transform for collapsed Taylor mode. It has the same
   calling convention as `jet()` but collapses (sums over directions) the
   highest-order coefficient as it propagates, so intermediate tensors—and the
-  resulting compute graph—stay smaller. `laplacian()` and `bilaplacian()` now
-  use it by default
+  resulting compute graph—stay smaller. This replaces the old
+  `simplify(jet(...))` workflow: collapsing now happens inside the interpreter,
+  so you no longer need a separate simplification pass to shrink the graph.
+  `laplacian()` and `bilaplacian()` now use it by default
   ([PR](https://github.com/f-dangel/torch-jet/pull/129))
 
 - **Backward-incompatible.** Replace `Laplacian` and `Bilaplacian` `nn.Module`s

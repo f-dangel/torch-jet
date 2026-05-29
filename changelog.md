@@ -18,10 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `(primals_out, taylor_coeffs_out)` convention—a jet is now a single
   self-contained object. For example, `jet_f((x0,), ((x1, x2),))` becomes
   `jet_f((x0, x1, x2))`. Inputs and outputs may be arbitrary `tuple`/`list`/`dict`
-  pytrees, with one exception: a two-argument function whose first argument is a
-  tensor/tuple and whose second is a `dict` is rejected with a clear error, due
-  to a `make_fx` codegen bug
-  ([pytorch/pytorch#185640](https://github.com/pytorch/pytorch/issues/185640))
+  pytrees
   ([PR](https://github.com/f-dangel/torch-jet/pull/130))
 
 - Add a `collapsed_jet()` transform for collapsed Taylor mode. It has the same

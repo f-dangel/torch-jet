@@ -61,6 +61,34 @@ def _jet_order(*args: Value) -> int:
     raise TypeError("_jet_order: no JetTuple in positional arguments")
 
 
+def _apply_linear(self: JetTuple, op: Callable[[Primal], Primal]) -> JetTuple:
+    """Apply a linear ``op`` coefficient-wise to every entry of ``self``.
+
+    Linear ops commute with the Taylor expansion, so the result's coefficients
+    are just ``op`` applied to each input coefficient. Mirrors the analogous
+    helper in :mod:`jet.collapsed_operations` (which additionally vmaps over
+    the batched direction dim ``R``).
+
+    Args:
+        self: The primal and its Taylor coefficients.
+        op: A linear function from a single coefficient tensor to a tensor.
+
+    Returns:
+        The value and its Taylor coefficients, with ``op`` applied to each.
+    """
+    return JetTuple(op(c) for c in self)
+
+
+def _apply_linear_coeffs(
+    self: JetTuple, op: Callable[[Primal], Primal]
+) -> tuple[Primal, ...]:
+    """Apply a linear ``op`` to coefficients 1..K of ``self`` (skipping the primal).
+
+    Used by ops that handle the primal separately (e.g. ``jet_addmm``'s bias).
+    """
+    return tuple(op(c) for c in self[1:])
+
+
 def _partition_term(
     vs: tuple[Primal, ...], sigma: tuple[int, ...], dn: dict[int, Primal]
 ) -> Value | None:
@@ -366,20 +394,15 @@ def jet_add(
     Returns:
         The value and its Taylor coefficients.
     """
-    K = _jet_order(self, other)
     self_is_jet = isinstance(self, JetTuple)
     other_is_jet = isinstance(other, JetTuple)
 
     if self_is_jet and other_is_jet:
-        return JetTuple(self[k] + other[k] for k in range(K + 1))
+        return JetTuple(s + o for s, o in zip(self, other))
     elif self_is_jet:
-        return JetTuple(
-            (self[0] + other,) + tuple(self[k] for k in range(1, K + 1))
-        )
+        return JetTuple((self[0] + other, *self[1:]))
     else:
-        return JetTuple(
-            (other[0] + self,) + tuple(other[k] for k in range(1, K + 1))
-        )
+        return JetTuple((other[0] + self, *other[1:]))
 
 
 def jet_sub(
@@ -395,20 +418,15 @@ def jet_sub(
     Returns:
         The value and its Taylor coefficients.
     """
-    K = _jet_order(self, other)
     self_is_jet = isinstance(self, JetTuple)
     other_is_jet = isinstance(other, JetTuple)
 
     if self_is_jet and other_is_jet:
-        return JetTuple(self[k] - other[k] for k in range(K + 1))
+        return JetTuple(s - o for s, o in zip(self, other))
     elif self_is_jet:
-        return JetTuple(
-            (self[0] - other,) + tuple(self[k] for k in range(1, K + 1))
-        )
+        return JetTuple((self[0] - other, *self[1:]))
     else:
-        return JetTuple(
-            (self - other[0],) + tuple(-other[k] for k in range(1, K + 1))
-        )
+        return JetTuple((self - other[0], *(-c for c in other[1:])))
 
 
 def jet_mul(
@@ -439,9 +457,9 @@ def jet_mul(
         return JetTuple(s_out)
 
     elif self_is_jet:
-        return JetTuple(other * self[k] for k in range(K + 1))
+        return _apply_linear(self, lambda c: other * c)
     else:
-        return JetTuple(self * other[k] for k in range(K + 1))
+        return _apply_linear(other, lambda c: self * c)
 
 
 # --- Linear decomposition ---
@@ -475,9 +493,9 @@ def jet_mm(
         return JetTuple(s_out)
 
     elif self_is_jet:
-        return JetTuple(mm(self[k], mat2) for k in range(K + 1))
+        return _apply_linear(self, lambda c: mm(c, mat2))
     else:
-        return JetTuple(mm(self, mat2[k]) for k in range(K + 1))
+        return _apply_linear(mat2, lambda c: mm(self, c))
 
 
 def jet_addmm(
@@ -516,14 +534,14 @@ def jet_addmm(
         return JetTuple(s_out)
 
     elif mat1_is_jet:
+        primal = addmm(self, mat1[0], mat2)
         return JetTuple(
-            (addmm(self, mat1[0], mat2),)
-            + tuple(mm(mat1[k], mat2) for k in range(1, K + 1))
+            (primal, *_apply_linear_coeffs(mat1, lambda c: mm(c, mat2)))
         )
     else:
+        primal = addmm(self, mat1, mat2[0])
         return JetTuple(
-            (addmm(self, mat1, mat2[0]),)
-            + tuple(mm(mat1, mat2[k]) for k in range(1, K + 1))
+            (primal, *_apply_linear_coeffs(mat2, lambda c: mm(mat1, c)))
         )
 
 
@@ -537,8 +555,7 @@ def jet_view(self: JetTuple, size: list[int]) -> JetTuple:
     Returns:
         The value and its Taylor coefficients, each reshaped.
     """
-    K = _jet_order(self)
-    return JetTuple(ops.aten.view.default(self[k], size) for k in range(K + 1))
+    return _apply_linear(self, lambda c: ops.aten.view.default(c, size))
 
 
 def jet_unsqueeze(self: JetTuple, dim: int) -> JetTuple:
@@ -551,8 +568,7 @@ def jet_unsqueeze(self: JetTuple, dim: int) -> JetTuple:
     Returns:
         The value and its Taylor coefficients, each unsqueezed.
     """
-    K = _jet_order(self)
-    return JetTuple(ops.aten.unsqueeze.default(self[k], dim) for k in range(K + 1))
+    return _apply_linear(self, lambda c: ops.aten.unsqueeze.default(c, dim))
 
 
 def jet_squeeze(self: JetTuple, dim: int) -> JetTuple:
@@ -565,8 +581,7 @@ def jet_squeeze(self: JetTuple, dim: int) -> JetTuple:
     Returns:
         The value and its Taylor coefficients, each squeezed.
     """
-    K = _jet_order(self)
-    return JetTuple(ops.aten.squeeze.dim(self[k], dim) for k in range(K + 1))
+    return _apply_linear(self, lambda c: ops.aten.squeeze.dim(c, dim))
 
 
 # --- Sum (dim reduction) ---
@@ -592,9 +607,8 @@ def jet_sum(
     """
     if keepdim:
         raise NotImplementedError("keepdim=True is not supported.")
-    K = _jet_order(self)
     pos = dim[0] if isinstance(dim, list) else dim
-    return JetTuple(self[k].sum(pos) for k in range(K + 1))
+    return _apply_linear(self, lambda c: c.sum(pos))
 
 
 MAPPING = {

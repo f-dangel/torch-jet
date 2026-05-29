@@ -18,13 +18,41 @@ from torch import (
 )
 from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
-from torch.utils._pytree import tree_map
+from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
 
 import jet
 from jet import collapsed_jet, rev_jet
 from test.utils import report_pytrees_nonclose
 
 INF = float("inf")
+
+
+def _to_jet_args(
+    primals: tuple[Any, ...], taylor_coeffs: tuple[tuple[Any, ...], ...]
+) -> tuple[Any, ...]:
+    """Combine arg-major primals + taylor_coeffs into per-arg pytrees of jets.
+
+    Each tensor leaf of argument ``a`` becomes a tuple ``(primal, c_1, ..., c_K)``
+    with ``c_order = taylor_coeffs[a][order - 1]``, matching the calling
+    convention of ``jet``/``collapsed_jet``/``rev_jet``.
+
+    Args:
+        primals: Tuple of primal pytrees, one per argument.
+        taylor_coeffs: Arg-major coefficients ``taylor_coeffs[arg][order]``.
+
+    Returns:
+        A tuple with one pytree-of-jets per argument.
+    """
+    args = []
+    for primal_tree, coeff_trees in zip(primals, taylor_coeffs):
+        flat_primals, spec = tree_flatten(primal_tree)
+        flat_coeffs = [tree_flatten(coeff_tree)[0] for coeff_tree in coeff_trees]
+        leaves = [
+            (flat_primals[i], *(coeffs[i] for coeffs in flat_coeffs))
+            for i in range(len(flat_primals))
+        ]
+        args.append(tree_unflatten(leaves, spec))
+    return tuple(args)
 
 
 def f_multiply(x: Tensor) -> Tensor:
@@ -325,11 +353,13 @@ def test_jet(config: dict[str, Any], derivative_order: int):
         for arg_idx in range(num_args)
     )
 
+    args = _to_jet_args(primals, taylor_coeffs)
+
     jet_f = jet.jet(f, derivative_order, mock_primals)
-    jet_out = jet_f(primals, taylor_coeffs)
+    jet_out = jet_f(*args)
 
     rev_jet_f = rev_jet(f, derivative_order)
-    rev_jet_out = rev_jet_f(primals, taylor_coeffs)
+    rev_jet_out = rev_jet_f(*args)
 
     report_pytrees_nonclose(jet_out, rev_jet_out)
 
@@ -400,14 +430,14 @@ def test_collapsed_jet(config: dict[str, Any], derivative_order: int):
         config, derivative_order
     )
 
+    args = _to_jet_args(primals, taylor_coeffs)
+
     std_f = jet._make_uncollapsed_cjet(
         f, derivative_order, mock_args, randomization=None
     )
     cjet_f = collapsed_jet(f, derivative_order, mock_args)
 
-    report_pytrees_nonclose(
-        std_f(primals, taylor_coeffs), cjet_f(primals, taylor_coeffs)
-    )
+    report_pytrees_nonclose(std_f(*args), cjet_f(*args))
 
 
 def test_collapsed_jet_rejects_order_below_2():

@@ -123,7 +123,7 @@ def bilaplacian(
         z = zeros_like(x)
         R = X1.shape[0]
         Z = zeros(R, *in_shape, dtype=x.dtype, device=x.device)
-        _, (_, _, _, F4) = cjet_f((x,), ((X1, Z, Z, z),))
+        _, _, _, _, F4 = cjet_f((x, X1, Z, Z, z))
         return F4
 
     def bilap_f(x: Tensor) -> Tensor:

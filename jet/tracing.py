@@ -66,43 +66,6 @@ def capture_flat_graph(
     return capture_graph(flat_f, *flat_mocks), len(flat_mocks)
 
 
-def build_input_tuples(
-    primals: tuple[Any, ...],
-    taylor_coeffs: tuple[tuple[Any, ...], ...],
-    num_leaves: int,
-    derivative_order: int,
-) -> list[tuple[Tensor, ...]]:
-    """Assemble per-leaf ``(primal, *coeffs)`` tuples for the jet interpreter.
-
-    Flattens the arg-major ``primals`` and ``taylor_coeffs`` pytrees and regroups
-    them by tensor leaf, so each leaf gets a tuple of its primal followed by its
-    ``derivative_order`` Taylor coefficients (in increasing order).
-
-    Args:
-        primals: Tuple of primal values matching the traced function's arguments.
-        taylor_coeffs: Arg-major coefficients, where ``taylor_coeffs[arg][order]``
-            holds the order-1..K coefficient of each argument.
-        num_leaves: Number of tensor leaves across all arguments.
-        derivative_order: Order ``K`` of the Taylor expansion.
-
-    Returns:
-        A list of ``num_leaves`` tuples, each ``(primal, coeff_1, ..., coeff_K)``.
-    """
-    flat_primals = tree_flatten(primals)[0]
-    flat_by_order = [
-        [
-            coefficient
-            for arg_taylor_coeffs in taylor_coeffs
-            for coefficient in tree_flatten(arg_taylor_coeffs[order])[0]
-        ]
-        for order in range(derivative_order)
-    ]
-    return [
-        (flat_primals[i], *(coeffs_at_order[i] for coeffs_at_order in flat_by_order))
-        for i in range(num_leaves)
-    ]
-
-
 def _replace_inplace_ops(mod: GraphModule) -> None:
     """Replace in-place operations with their out-of-place equivalents.
 

@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   self-contained object. For example, `jet_f((x0,), ((x1, x2),))` becomes
   `jet_f((x0, x1, x2))`. `jet()` now returns a plain callable (still backed by
   an FX graph, recoverable via `capture_graph`) rather than a `GraphModule`
-  ([PR](https://github.com/f-dangel/torch-jet/pull/PRNUM))
+  ([PR](https://github.com/f-dangel/torch-jet/pull/130))
 
 - Add a `collapsed_jet()` transform for collapsed Taylor mode. It has the same
   calling convention as `jet()` but collapses (sums over directions) the

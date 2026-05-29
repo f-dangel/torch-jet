@@ -15,7 +15,6 @@ _INPLACE_TO_FUNCTIONAL = {
     ops.aten.squeeze_.dim: ops.aten.squeeze.dim,
 }
 
-#: Standardized ``make_fx`` configuration used by every trace in ``jet``.
 #: Fake-tensor mode skips kernel execution and just propagates shape/dtype,
 #: cutting trace time substantially on deep models. ``_allow_non_fake_inputs``
 #: is needed because callers' modules close over real ``nn.Parameter`` tensors.

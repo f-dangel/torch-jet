@@ -291,18 +291,39 @@ def rev_jet(
 def collapsed_jet(
     f: Callable[..., Value],
     derivative_order: int,
-    mock_args: tuple,
+    mock_args: tuple[Any, ...],
 ) -> Callable[..., tuple[Value, ...]]:
-    """Overload f with collapsed Taylor-mode equivalent.
+    """Overload ``f`` with its collapsed Taylor-mode equivalent.
 
-    Same API as ``jet()`` — arg-major ``(primals, taylor_coeffs)`` where
-    ``taylor_coeffs[arg][order]`` holds the order-1..K coefficients of each
-    argument — but with mixed shapes across orders:
-      - orders 1..K-1: tensors with a leading direction dim R
-      - order K: tensors without the R dim (already collapsed)
+    Like :func:`jet`, the returned function takes arg-major
+    ``(primals, taylor_coeffs)`` input (`JAX's convention
+    <https://docs.jax.dev/en/latest/jax.experimental.jet.html>`_), where
+    ``taylor_coeffs[arg][order]`` holds the order-1..K coefficient of each
+    argument. Unlike :func:`jet`, the coefficients have mixed shapes across
+    orders:
 
-    The K-th output coefficient is automatically collapsed (summed over
-    directions).
+    - orders 1..K-1: tensors with a leading direction dimension ``R``,
+    - order K: tensors without the ``R`` dimension (already collapsed, i.e.
+      summed over the directions).
+
+    The K-th output coefficient is likewise returned collapsed. This exploits
+    that the highest-order coefficient enters linearly, so it can be summed
+    eagerly to propagate smaller tensors through the graph.
+
+    Args:
+        f: Function to overload. May accept and return pytrees of tensors.
+        derivative_order: The order ``K`` of the Taylor expansion. Must be
+            ``>= 2``.
+        mock_args: Mock input tensors (or pytrees of tensors) for tracing,
+            provided as a tuple matching the positional arguments of ``f``.
+            Only shapes matter, not the actual values.
+
+    Returns:
+        A function ``cjet_f(primals, taylor_coeffs)`` returning
+        ``(primals_out, taylor_coeffs_out)``, where ``primals_out`` has the
+        same pytree structure as ``f``'s output and ``taylor_coeffs_out`` is a
+        tuple of ``derivative_order`` coefficients. Orders 1..K-1 carry the
+        leading ``R`` dimension; order K is collapsed.
 
     Raises:
         ValueError: If ``derivative_order < 2`` (collapsing requires at least

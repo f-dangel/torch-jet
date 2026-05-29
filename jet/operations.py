@@ -289,44 +289,43 @@ def _pow_derivatives(
 
 def _jet_elementwise(
     self: JetTuple,
-    derivative_order: int,
     deriv_fn: Callable[[Primal, int], tuple[Primal, dict[int, Primal]]],
 ) -> JetTuple:
     """Generic elementwise jet rule using shared derivative helpers.
 
     Args:
         self: The primal and its Taylor coefficients.
-        derivative_order: The order of the Taylor expansion.
         deriv_fn: Returns the primal and the function's derivatives ``dn`` at
             the primal, e.g. ``_sin_derivatives``.
 
     Returns:
         The value and its Taylor coefficients.
     """
+    K = _jet_order(self)
     self0, vs = self[0], self[1:]
-    primal, dn = deriv_fn(self0, derivative_order)
-    vs_out = _faa_di_bruno(vs, derivative_order, dn)
+    primal, dn = deriv_fn(self0, K)
+    vs_out = _faa_di_bruno(vs, K, dn)
     return JetTuple((primal, *vs_out))
 
 
 def jet_sin(self: JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.sin(self)``."""
-    return _jet_elementwise(self, _jet_order(self), _sin_derivatives)
+    return _jet_elementwise(self, _sin_derivatives)
 
 
 def jet_cos(self: JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.cos(self)``."""
-    return _jet_elementwise(self, _jet_order(self), _cos_derivatives)
+    return _jet_elementwise(self, _cos_derivatives)
 
 
 def jet_tanh(self: JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.tanh(self)``."""
-    return _jet_elementwise(self, _jet_order(self), _tanh_derivatives)
+    return _jet_elementwise(self, _tanh_derivatives)
 
 
 def jet_sigmoid(self: JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.sigmoid(self)``."""
-    return _jet_elementwise(self, _jet_order(self), _sigmoid_derivatives)
+    return _jet_elementwise(self, _sigmoid_derivatives)
 
 
 # --- Power ---

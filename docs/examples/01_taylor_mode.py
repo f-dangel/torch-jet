@@ -279,7 +279,7 @@ def u(t: Tensor, x: Tensor) -> Tensor:
 
 t_val, x_val = rand(1), rand(1)  # evaluation point
 zt, zx = zeros_like(t_val), zeros_like(x_val)  # zero Taylor coefficients
-jet_u = jet(u, 2, (t_val, x_val))
+u_jet = jet(u, 2, (t_val, x_val))
 
 # %%
 #
@@ -288,7 +288,7 @@ jet_u = jet(u, 2, (t_val, x_val))
 
 t1, t2 = zt, zt  # t_1 = 0, t_2 = 0
 x1, x2 = ones_like(x_val), zx  # x_1 = 1, x_2 = 0
-_, _, d2u_dx2 = jet_u((t_val, t1, t2), (x_val, x1, x2))
+_, _, d2u_dx2 = u_jet((t_val, t1, t2), (x_val, x1, x2))
 
 d2u_dx2_exact = -cos(t_val) * sin(x_val)
 if d2u_dx2.allclose(d2u_dx2_exact):
@@ -303,7 +303,7 @@ else:
 
 t1, t2 = ones_like(t_val), zt  # t_1 = 1, t_2 = 0
 x1, x2 = zx, zx  # x_1 = 0, x_2 = 0
-_, _, d2u_dt2 = jet_u((t_val, t1, t2), (x_val, x1, x2))
+_, _, d2u_dt2 = u_jet((t_val, t1, t2), (x_val, x1, x2))
 
 if d2u_dt2.allclose(d2u_dx2):
     print("Wave equation verified: ∂²u/∂t² = ∂²u/∂x²!")
@@ -334,7 +334,7 @@ def f_pytree(inputs: list[Tensor]) -> tuple[Tensor, Tensor]:
 
 
 mock_inputs = [rand(2), rand(2)]
-jet_pytree = jet(f_pytree, 1, (mock_inputs,))
+f_pytree_jet = jet(f_pytree, 1, (mock_inputs,))
 
 # %%
 #
@@ -351,7 +351,7 @@ jet_inputs = [
     (inputs[0], d_inputs[0]),
     (inputs[1], d_inputs[1]),
 ]
-mul, sub = jet_pytree(jet_inputs)
+mul, sub = f_pytree_jet(jet_inputs)
 
 # %%
 #

@@ -35,8 +35,9 @@ def report_nonclose(
 def _assert_specs_compatible(spec1: TreeSpec, spec2: TreeSpec, name: str = "") -> None:
     """Assert two tree specs are structurally compatible.
 
-    Tolerates ``dict`` vs ``immutable_dict`` differences introduced by
-    ``make_fx`` tracing by normalizing container type names before comparing.
+    Tolerates ``list``/``dict`` vs ``immutable_list``/``immutable_dict``
+    differences introduced by ``make_fx`` tracing by normalizing container type
+    names before comparing.
 
     Args:
         spec1: First tree spec.
@@ -48,8 +49,15 @@ def _assert_specs_compatible(spec1: TreeSpec, spec2: TreeSpec, name: str = "") -
     """
     if spec1 == spec2:
         return
-    s1 = str(spec1).replace("immutable_dict", "dict")
-    s2 = str(spec2).replace("immutable_dict", "dict")
+
+    def _normalize(spec: TreeSpec) -> str:
+        return (
+            str(spec)
+            .replace("immutable_dict", "dict")
+            .replace("immutable_list", "list")
+        )
+
+    s1, s2 = _normalize(spec1), _normalize(spec2)
     assert s1 == s2, f"{name} tree structure mismatch: {spec1} vs {spec2}"
 
 

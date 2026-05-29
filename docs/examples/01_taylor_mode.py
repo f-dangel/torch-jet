@@ -310,57 +310,56 @@ else:
 #
 ### Pytree Inputs and Outputs
 #
-# ``jet`` also supports functions whose inputs and outputs are arbitrary pytrees
-# (nested combinations of tuples, lists, and dicts with tensor leaves). As an example,
-# consider a function that takes a dict with entries ``"x"`` and ``"y"`` and returns
-# a dict with entries ``"mul"`` and ``"sub"``:
+# ``jet`` also supports functions whose inputs and outputs are pytrees built from
+# nested ``tuple`` and ``list`` containers with tensor leaves (``dict`` is not
+# supported, see the limitations below). As an example, consider a function that
+# takes a list ``[x, y]`` and returns a tuple ``(x * y, x - y)``:
 
 
-def f_pytree(inputs: dict[str, Tensor]) -> dict[str, Tensor]:
-    """A function with dict input and dict output.
+def f_pytree(inputs: list[Tensor]) -> tuple[Tensor, Tensor]:
+    """A function with list input and tuple output.
 
     Args:
-        inputs: A dict with keys ``"x"`` and ``"y"``, each a tensor.
+        inputs: A list ``[x, y]`` of two tensors.
 
     Returns:
-        A dict with ``"mul" = x * y`` and ``"sub" = x - y``.
+        A tuple ``(x * y, x - y)``.
     """
-    x, y = inputs["x"], inputs["y"]
-    return {"mul": x * y, "sub": x - y}
+    x, y = inputs
+    return (x * y, x - y)
 
 
-mock_inputs = {"x": rand(2), "y": rand(2)}
+mock_inputs = [rand(2), rand(2)]
 jet_pytree = jet(f_pytree, 1, (mock_inputs,))
 
 # %%
 #
 # The jet of a pytree argument follows the same pytree structure as the argument
 # itself, with every tensor leaf replaced by its ``(primal, c_1, ..., c_K)`` jet
-# tuple. Since ``f_pytree`` takes a single dict argument, we pass a single dict
-# whose ``"x"`` and ``"y"`` leaves are each a ``(primal, c_1)`` tuple (one Taylor
-# coefficient, since ``derivative_order=1``):
+# tuple. Since ``f_pytree`` takes a single list argument, we pass a single list
+# whose two leaves are each a ``(primal, c_1)`` tuple (one Taylor coefficient,
+# since ``derivative_order=1``):
 
-inputs = {"x": rand(2), "y": rand(2)}
-d_inputs = {"x": ones_like(inputs["x"]), "y": zeros_like(inputs["y"])}
+inputs = [rand(2), rand(2)]
+d_inputs = [ones_like(inputs[0]), zeros_like(inputs[1])]
 
-jet_inputs = {
-    "x": (inputs["x"], d_inputs["x"]),
-    "y": (inputs["y"], d_inputs["y"]),
-}
-out = jet_pytree(jet_inputs)
+jet_inputs = [
+    (inputs[0], d_inputs[0]),
+    (inputs[1], d_inputs[1]),
+]
+mul, sub = jet_pytree(jet_inputs)
 
 # %%
 #
-# The output mirrors ``f_pytree``'s output structure (a dict), with each leaf a
+# The output mirrors ``f_pytree``'s output structure (a tuple), with each leaf a
 # ``(f_0, f_1)`` jet tuple:
 
-print(f"output keys: {list(out.keys())}")
-print(f"out['mul'][0] = {out['mul'][0]}")
-print(f"out['mul'][1] = {out['mul'][1]}  (= dx/dt * y + x * dy/dt = 1 * y + x * 0 = y)")
-print(f"out['sub'][1] = {out['sub'][1]}  (= dx/dt - dy/dt = 1 - 0 = 1)")
+print(f"mul[0] = {mul[0]}")
+print(f"mul[1] = {mul[1]}  (= dx/dt * y + x * dy/dt = 1 * y + x * 0 = y)")
+print(f"sub[1] = {sub[1]}  (= dx/dt - dy/dt = 1 - 0 = 1)")
 
-assert out["mul"][1].allclose(inputs["y"]), f"out['mul'][1] = {out['mul'][1]} != y"
-assert out["sub"][1].allclose(ones_like(inputs["x"])), "out['sub'][1] != 1"
+assert mul[1].allclose(inputs[1]), f"mul[1] = {mul[1]} != y"
+assert sub[1].allclose(ones_like(inputs[0])), "sub[1] != 1"
 
 # %%
 #
@@ -377,16 +376,14 @@ assert out["sub"][1].allclose(ones_like(inputs["x"])), "out['sub'][1] != 1"
 # `jet` uses `make_fx` to capture the function's ATen-level compute graph, then
 # runs it through a `JetInterpreter` that dispatches jet operations (e.g.
 # `jet_linear`, `jet_tanh`) in place of the original ATen ops. The interpreter
-# output is traced again with `make_fx`, so the returned `jet_f` bakes the fully
-# unrolled jet computation into an FX graph. You can recover that graph from any
-# jet function by tracing it with `capture_graph`, just like the original `f`:
+# output is traced again with `make_fx` so that `jet` returns a
+# `torch.fx.GraphModule` containing the fully unrolled jet computation.
 #
 # Let's visualize both the original function's compute graph and the jet function:
 
 mod = capture_graph(f, x)
 visualize_graph(mod, path.join(GALLERYDIR, "01_f.png"))
-f_jet_graph = capture_graph(f_jet, (x, ones_like(x), zeros_like(x)))
-visualize_graph(f_jet_graph, path.join(GALLERYDIR, "01_f_jet.png"))
+visualize_graph(f_jet, path.join(GALLERYDIR, "01_f_jet.png"))
 
 # %%
 #
@@ -498,3 +495,38 @@ with raises(RuntimeError):
 # This is a fundamental limitation of ``make_fx`` tracing and cannot be fixed at the
 # moment. It may be possible to support in the future if control flow operators are
 # added to PyTorch's tracing mechanism.
+#
+#### Dict Arguments
+#
+# **`jet` does not support `dict` arguments.**
+#
+# Inputs and outputs may be arbitrary pytrees of ``tuple`` and ``list`` containers,
+# but **not** ``dict``. This is due to a ``make_fx`` codegen bug: when a ``dict``
+# positional argument follows a ``tuple``/``list`` argument, the generated graph
+# drops the ``dict``'s keys and raises at call time. Since every jet bundles its
+# Taylor coefficients into a tuple, any ``dict`` argument triggers this. ``jet``
+# therefore rejects ``dict`` arguments with a clear error:
+
+
+def f_dict(x: Tensor, params: dict[str, Tensor]) -> Tensor:
+    """Function with a dict argument (unsupported).
+
+    Args:
+        x: Input tensor.
+        params: A dict with key ``"w"``.
+
+    Returns:
+        The product ``x * params["w"]``.
+    """
+    return x * params["w"]
+
+
+with raises(NotImplementedError):
+    jet(f_dict, 2, (rand(3), {"w": rand(3)}))  # crashes: dict argument
+
+# %%
+#
+# The limitation is tracked by a regression test
+# (``test_make_fx_supports_dict_arg_after_tuple_arg`` in ``test/test_tracing.py``),
+# which will start passing once PyTorch fixes the underlying ``make_fx`` bug —
+# signaling that ``dict`` support can be re-enabled.

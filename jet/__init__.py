@@ -6,6 +6,7 @@ from typing import Any, Callable
 from torch import Tensor, tensor, zeros_like
 from torch.autograd import grad
 from torch.func import vmap
+from torch.fx import GraphModule
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
 
@@ -48,6 +49,31 @@ def _is_jet_leaf(x: Any, derivative_order: int | None = None) -> bool:
     return derivative_order is None or len(x) == derivative_order + 1
 
 
+def _assert_no_dicts(obj: Any) -> None:
+    """Raise if ``obj`` contains a ``dict`` anywhere in its pytree structure.
+
+    ``jet`` traces with ``make_fx``, whose codegen mishandles ``dict`` pytree
+    placeholders (it silently drops keys, producing a broken graph). We therefore
+    only support ``tuple`` and ``list`` containers and reject ``dict`` early with
+    a clear message.
+
+    Args:
+        obj: A pytree of tensors (e.g. the mock arguments) to validate.
+
+    Raises:
+        NotImplementedError: If a ``dict`` is found anywhere in ``obj``.
+    """
+    if isinstance(obj, dict):
+        raise NotImplementedError(
+            "jet transforms do not support dict arguments due to a make_fx "
+            "tracing limitation (its codegen drops dict keys). Use tuples or "
+            "lists instead."
+        )
+    if isinstance(obj, (tuple, list)):
+        for entry in obj:
+            _assert_no_dicts(entry)
+
+
 def _normalize_output(result: Any, derivative_order: int) -> Any:
     """Convert the interpreter's pytree-of-jets into a pytree of plain tuples.
 
@@ -79,12 +105,12 @@ def jet(
     f: Callable[..., Any],
     derivative_order: int,
     mock_primals: tuple[Any, ...],
-) -> Callable[..., Any]:
+) -> GraphModule:
     """Overload a function with its Taylor-mode equivalent.
 
     ``Any`` in the type signatures denotes a *pytree of tensors*, i.e. an
-    arbitrarily nested structure of ``Tensor``, ``tuple``, ``list``, or
-    ``dict`` whose leaves are tensors.
+    arbitrarily nested structure of ``Tensor``, ``tuple``, or ``list`` whose
+    leaves are tensors. ``dict`` containers are not supported (see *Raises*).
 
     Args:
         f: Function to overload. May accept and return pytrees of tensors.
@@ -94,13 +120,17 @@ def jet(
             Only shapes matter, not the actual values.
 
     Returns:
-        A function ``jet_f(*args)`` taking one positional argument per argument
-        of ``f``. Each argument is a pytree whose tensor leaves are replaced by a
-        tuple ``(primal, c_1, ..., c_K)`` bundling the primal with its
-        ``K = derivative_order`` Taylor coefficients. Returns a pytree mirroring
-        ``f``'s output structure, with each tensor leaf replaced by a tuple
-        ``(f_0, f_1, ..., f_K)``. The jet computation is baked into an FX graph
-        via ``make_fx``.
+        A ``GraphModule`` ``jet_f(*args)`` taking one positional argument per
+        argument of ``f``. Each argument is a pytree whose tensor leaves are
+        replaced by a tuple ``(primal, c_1, ..., c_K)`` bundling the primal with
+        its ``K = derivative_order`` Taylor coefficients. Returns a pytree
+        mirroring ``f``'s output structure, with each tensor leaf replaced by a
+        tuple ``(f_0, f_1, ..., f_K)``.
+
+    Raises:
+        NotImplementedError: If ``mock_primals`` contains a ``dict``. ``make_fx``
+            mishandles ``dict`` placeholders, so only ``tuple``/``list``
+            containers are supported.
 
     Examples:
         **Single-input**::
@@ -120,14 +150,12 @@ def jet(
             >>> vx, vy = Tensor([1.0, 0.0, 0.0]), Tensor([0.0, 1.0, 0.0])
             >>> f0, f1 = jet1_f((x, vx), (y, vy))
     """
+    _assert_no_dicts(mock_primals)
     mod, _ = capture_flat_graph(f, mock_primals)
 
     interp = JetInterpreter(mod, derivative_order)
 
-    # ``make_fx`` is traced over a single-tuple-arg function: its variadic-arg
-    # codegen mishandles top-level pytree placeholders, whereas a single nested
-    # tuple traces cleanly. The returned ``jet_f`` bridges the ``*args`` API.
-    def traced_jet_f(args: tuple[Any, ...]) -> Any:
+    def jet_f(*args: Any) -> Any:
         leaves, _ = tree_flatten(
             args, is_leaf=lambda x: _is_jet_leaf(x, derivative_order)
         )
@@ -138,12 +166,7 @@ def jet(
         lambda t: (t, *(zeros_like(t) for _ in range(derivative_order))),
         mock_primals,
     )
-    graph_jet_f = make_fx(traced_jet_f)(mock_jets)
-
-    def jet_f(*args: Any) -> Any:
-        return graph_jet_f(args)
-
-    return jet_f
+    return make_fx(jet_f)(*mock_jets)
 
 
 def rev_jet(
@@ -308,11 +331,14 @@ def collapsed_jet(
     Raises:
         ValueError: If ``derivative_order < 2`` (collapsing requires at least
             one batched coefficient to carry direction information).
+        NotImplementedError: If ``mock_args`` contains a ``dict`` (only
+            ``tuple``/``list`` containers are supported).
     """
     if derivative_order < 2:
         raise ValueError(
             f"collapsed_jet requires derivative_order >= 2, got {derivative_order}."
         )
+    _assert_no_dicts(mock_args)
     mod, _ = capture_flat_graph(f, mock_args)
 
     interp = CollapsedJetInterpreter(mod, derivative_order)

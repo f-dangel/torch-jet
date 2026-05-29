@@ -69,24 +69,25 @@ def f_multiply(x: Tensor) -> Tensor:
 
 
 def _deep_pytree_f(
-    x: Tensor, params: dict[str, Tensor | list[Tensor]]
-) -> tuple[Tensor, dict[str, Tensor]]:
-    """Function with deeply nested dict/list input and different output structure.
+    x: Tensor, params: list[Tensor | list[Tensor]]
+) -> tuple[Tensor, list[Tensor]]:
+    """Function with deeply nested tuple/list input and different output structure.
 
     Args:
         x: Input tensor.
-        params: Nested pytree ``{"w": Tensor, "bs": [Tensor, Tensor]}``.
+        params: Nested pytree ``[Tensor, [Tensor, Tensor]]`` (``[w, [b0, b1]]``).
 
     Returns:
-        A pytree ``(Tensor, {"a": Tensor, "b": Tensor})`` with different
-        structure from the input.
+        A pytree ``(Tensor, [Tensor, Tensor])`` with different structure from the
+        input.
     """
-    h = sin(x) * params["w"]
-    b0, b1 = params["bs"][0], params["bs"][1]
-    return (h + b0, {"a": cos(h) * b1, "b": tanh(h + b0 + b1)})
+    w = params[0]
+    b0, b1 = params[1]
+    h = sin(x) * w
+    return (h + b0, [cos(h) * b1, tanh(h + b0 + b1)])
 
 
-def _deep_pytree_mock_args_fn() -> tuple[Tensor, dict[str, Tensor | list[Tensor]]]:
+def _deep_pytree_mock_args_fn() -> tuple[Tensor, list[Tensor | list[Tensor]]]:
     """Create mock arguments for :func:`_deep_pytree_f`.
 
     Returns:
@@ -94,7 +95,7 @@ def _deep_pytree_mock_args_fn() -> tuple[Tensor, dict[str, Tensor | list[Tensor]
     """
     return (
         rand(3).double(),
-        {"w": rand(3).double(), "bs": [rand(3).double(), rand(3).double()]},
+        [rand(3).double(), [rand(3).double(), rand(3).double()]],
     )
 
 
@@ -279,19 +280,19 @@ ALL_CASES = JET_CASES + [
     },
     # pytree-input: PyTree -> Tensor
     {
-        "id": "dict-linear",
-        "f": lambda x, params: x @ params["w"] + params["b"],
+        "id": "list-linear",
+        "f": lambda x, params: x @ params[0] + params[1],
         "mock_args_fn": lambda: (
             rand(3).double(),
-            {"w": rand(3, 2).double(), "b": rand(2).double()},
+            [rand(3, 2).double(), rand(2).double()],
         ),
     },
     {
-        "id": "dict-sin-cos",
-        "f": lambda x, params: sin(x) * params["scale"] + params["bias"],
+        "id": "list-sin-cos",
+        "f": lambda x, params: sin(x) * params[0] + params[1],
         "mock_args_fn": lambda: (
             rand(4).double(),
-            {"scale": rand(4).double(), "bias": rand(4).double()},
+            [rand(4).double(), rand(4).double()],
         ),
     },
     # pytree-output: Tensor -> PyTree
@@ -301,8 +302,8 @@ ALL_CASES = JET_CASES + [
         "mock_args_fn": lambda: (rand(3).double(),),
     },
     {
-        "id": "dict-sin-cos-out",
-        "f": lambda x: {"sin": sin(x), "cos": cos(x)},
+        "id": "list-sin-cos-out",
+        "f": lambda x: [sin(x), cos(x)],
         "mock_args_fn": lambda: (rand(3).double(),),
     },
     # multi-input, pytree-output: (Tensor, Tensor) -> PyTree
@@ -312,13 +313,13 @@ ALL_CASES = JET_CASES + [
         "mock_args_fn": lambda: (rand(4).double(), rand(4).double()),
     },
     {
-        "id": "multi-in-dict-out",
-        "f": lambda x, y: {"sum": x + y, "prod": x * y},
+        "id": "multi-in-list-out",
+        "f": lambda x, y: [x + y, x * y],
         "mock_args_fn": lambda: (rand(4).double(), rand(4).double()),
     },
-    # deeply nested mixed containers with different input/output structure
+    # deeply nested tuple/list containers with different input/output structure
     {
-        "id": "nested-dict-list-in-tuple-dict-out",
+        "id": "nested-list-in-tuple-list-out",
         "f": _deep_pytree_f,
         "mock_args_fn": _deep_pytree_mock_args_fn,
     },
@@ -449,3 +450,17 @@ def test_collapsed_jet_rejects_order_below_2():
 
     with raises(ValueError, match="derivative_order >= 2"):
         collapsed_jet(sin, 0, (zeros(3),))
+
+
+def test_jet_rejects_dict_arguments():
+    """Reject dict arguments in jet and collapsed_jet (make_fx limitation)."""
+    from pytest import raises
+
+    f = lambda x, params: x * params["a"]  # noqa: E731
+    mock_args = (zeros(3), {"a": zeros(3)})
+
+    with raises(NotImplementedError, match="dict"):
+        jet.jet(f, 2, mock_args)
+
+    with raises(NotImplementedError, match="dict"):
+        collapsed_jet(f, 2, mock_args)

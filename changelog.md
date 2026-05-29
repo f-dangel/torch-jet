@@ -17,8 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   This replaces the previous arg-major `jet_f(primals, taylor_coeffs)` /
   `(primals_out, taylor_coeffs_out)` convention—a jet is now a single
   self-contained object. For example, `jet_f((x0,), ((x1, x2),))` becomes
-  `jet_f((x0, x1, x2))`. `jet()` now returns a plain callable (still backed by
-  an FX graph, recoverable via `capture_graph`) rather than a `GraphModule`
+  `jet_f((x0, x1, x2))`. Inputs and outputs may be pytrees of `tuple`/`list`
+  containers; `dict` arguments are now rejected with a clear error due to a
+  `make_fx` codegen limitation
   ([PR](https://github.com/f-dangel/torch-jet/pull/130))
 
 - Add a `collapsed_jet()` transform for collapsed Taylor mode. It has the same

@@ -10,7 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added/New
 
 - **Backward-incompatible.** Rename the `use_collapsing` parameter on
-  `laplacian()` and `bilaplacian()` to `collapsed` (defaults unchanged)
+  `laplacian()` and `bilaplacian()` to `collapsed` (defaults unchanged).
+  Bundled with an internal cleanup of the jet op dispatch that merges the
+  two jet interpreters into one
   ([PR](https://github.com/f-dangel/torch-jet/pull/132))
 
 - **Backward-incompatible.** Bundle each argument's primal with its Taylor

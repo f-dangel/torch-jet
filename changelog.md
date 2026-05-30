@@ -67,6 +67,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Trace with fake tensors (`tracing_mode="fake"`, `_allow_non_fake_inputs=True`)
+  via a shared `_make_fx` partial in `jet/tracing.py`. Fake mode skips kernel
+  execution and just propagates shape/dtype, cutting trace time by ~20-40% on
+  deep MLPs
+  ([PR](https://github.com/f-dangel/torch-jet/pull/133))
+
 - **Backward-incompatible.** Remove the `verbose` argument from `jet()`.
   Replace `JetTransformer` (graph rewriting via `torch.fx.Transformer`) with
   `JetInterpreter` (execution-time dispatch via `torch.fx.Interpreter`).

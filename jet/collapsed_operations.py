@@ -88,24 +88,37 @@ def _collapsed_leibniz(
     self: CollapsedJetTuple,
     other: CollapsedJetTuple,
     binary_op: Callable[[Tensor, Tensor], Tensor],
-) -> CollapsedJetTuple:
-    """Leibniz product rule with collapsed K-th coefficient.
+) -> tuple[Tensor, ...]:
+    """Leibniz product rule with collapsed K-th coefficient (orders 1..K).
 
-    For orders 0..K-1: standard Leibniz.
+    Returns only coefficients 1..K; the caller handles the order-0 primal
+    explicitly (mirroring :func:`jet.operations._leibniz` — skipping k=0 here
+    avoids a wasted ``binary_op(self[0], other[0])`` node in the captured
+    graph when the caller is ``cjet_addmm`` and supplies its own
+    ``addmm``-based primal).
+
+    For orders 1..K-1: standard Leibniz.
     For order K: linear terms (using collapsed coefficients) +
                  nonlinear terms (using batched coefficients, summed over R).
-    Mirrors :func:`jet.operations._leibniz`; ``K`` is inferred as
-    ``len(self) - 1``.
+    ``K`` is inferred as ``len(self) - 1``; lengths are checked.
+
+    Raises:
+        ValueError: If ``self`` and ``other`` have different lengths.
     """
+    if len(self) != len(other):
+        raise ValueError(
+            f"_collapsed_leibniz: operands must share the same derivative "
+            f"order; got lengths {len(self)} and {len(other)}"
+        )
     K = len(self) - 1
-    s_out = ()
-    for k in range(K + 1):
+    coeffs = ()
+    for k in range(1, K + 1):
         if k < K:
             term = None
             for j in range(k + 1):
                 term_j = comb(k, j, exact=True) * binary_op(self[j], other[k - j])
                 term = term_j if term is None else term + term_j
-            s_out += (term,)
+            coeffs += (term,)
         else:
             linear = binary_op(self[0], other[K]) + binary_op(self[K], other[0])
             if K >= 2:
@@ -117,10 +130,10 @@ def _collapsed_leibniz(
                         self[j], other[K - j]
                     ).sum(0)
                     nonlinear = term_j if nonlinear is None else nonlinear + term_j
-                s_out += (linear + nonlinear,)
+                coeffs += (linear + nonlinear,)
             else:
-                s_out += (linear,)
-    return CollapsedJetTuple(s_out)
+                coeffs += (linear,)
+    return coeffs
 
 
 # ---------------------------------------------------------------------------
@@ -182,11 +195,13 @@ def cjet_add(
     self_is = isinstance(self, CollapsedJetTuple)
     other_is = isinstance(other, CollapsedJetTuple)
     if self_is and other_is:
-        return CollapsedJetTuple(s + o for s, o in zip(self, other))
+        _cjet_order(self, other)  # validates K-consistency, raises on mismatch
+        coeffs = (s + o for s, o in zip(self, other))
     elif self_is:
-        return CollapsedJetTuple((self[0] + other, *self[1:]))
+        coeffs = (self[0] + other, *self[1:])
     else:
-        return CollapsedJetTuple((other[0] + self, *other[1:]))
+        coeffs = (other[0] + self, *other[1:])
+    return CollapsedJetTuple(coeffs)
 
 
 def cjet_sub(
@@ -197,11 +212,13 @@ def cjet_sub(
     self_is = isinstance(self, CollapsedJetTuple)
     other_is = isinstance(other, CollapsedJetTuple)
     if self_is and other_is:
-        return CollapsedJetTuple(s - o for s, o in zip(self, other))
+        _cjet_order(self, other)  # validates K-consistency, raises on mismatch
+        coeffs = (s - o for s, o in zip(self, other))
     elif self_is:
-        return CollapsedJetTuple((self[0] - other, *self[1:]))
+        coeffs = (self[0] - other, *self[1:])
     else:
-        return CollapsedJetTuple((self - other[0], *(-c for c in other[1:])))
+        coeffs = (self - other[0], *(-c for c in other[1:]))
+    return CollapsedJetTuple(coeffs)
 
 
 def cjet_mul(
@@ -212,7 +229,10 @@ def cjet_mul(
     self_is = isinstance(self, CollapsedJetTuple)
     other_is = isinstance(other, CollapsedJetTuple)
     if self_is and other_is:
-        return _collapsed_leibniz(self, other, lambda a, b: a * b)
+        primal = self[0] * other[0]
+        return CollapsedJetTuple(
+            (primal, *_collapsed_leibniz(self, other, lambda a, b: a * b))
+        )
     elif self_is:
         return _apply_linear(self, lambda c: other * c)
     else:
@@ -231,7 +251,8 @@ def cjet_mm(
     self_is = isinstance(self, CollapsedJetTuple)
     mat2_is = isinstance(mat2, CollapsedJetTuple)
     if self_is and mat2_is:
-        return _collapsed_leibniz(self, mat2, matmul)
+        primal = matmul(self[0], mat2[0])
+        return CollapsedJetTuple((primal, *_collapsed_leibniz(self, mat2, matmul)))
     elif self_is:
         return _apply_linear(self, lambda c: mm(c, mat2))
     else:
@@ -252,8 +273,8 @@ def cjet_addmm(
     mat1_is = isinstance(mat1, CollapsedJetTuple)
     mat2_is = isinstance(mat2, CollapsedJetTuple)
     if mat1_is and mat2_is:
-        leibniz = _collapsed_leibniz(mat1, mat2, matmul)
-        return CollapsedJetTuple((addmm(self, mat1[0], mat2[0]), *leibniz[1:]))
+        primal = addmm(self, mat1[0], mat2[0])
+        return CollapsedJetTuple((primal, *_collapsed_leibniz(mat1, mat2, matmul)))
     elif mat1_is:
         primal = addmm(self, mat1[0], mat2)
         return CollapsedJetTuple(
@@ -298,7 +319,7 @@ def cjet_sum(
     """
     if keepdim:
         raise NotImplementedError("keepdim=True is not supported.")
-    (pos,) = dim if isinstance(dim, list) else (dim,)
+    (pos,) = (dim,) if isinstance(dim, int) else dim
     return _apply_linear(self, lambda x: x.sum(pos))
 
 

@@ -100,15 +100,21 @@ def _leibniz(
     self: JetTuple,
     other: JetTuple,
     binary_op: Callable[[Primal, Primal], Primal],
-) -> JetTuple:
-    """Apply the Leibniz product rule for a bilinear ``binary_op``.
+) -> tuple[Primal, ...]:
+    """Apply the Leibniz product rule for a bilinear ``binary_op`` (orders 1..K).
 
     The k-th coefficient of ``binary_op(self, other)`` (treated as functions of
-    ``t``) is ``sum_{j=0}^{k} C(k, j) * binary_op(self[j], other[k - j])``.
-    Both jet operands must share the same Taylor-expansion order ``K``; it is
-    inferred as ``K = len(self) - 1``. Mirrors
-    :func:`jet.collapsed_operations._collapsed_leibniz` (which additionally
-    collapses the K-th coefficient over directions).
+    ``t``) is ``sum_{j=0}^{k} C(k, j) * binary_op(self[j], other[k - j])``. This
+    helper returns only **coefficients 1..K**; the caller handles the order-0
+    coefficient (the primal) explicitly. For ``mul``/``mm`` that's just
+    ``binary_op(self[0], other[0])``; for ``addmm`` it's
+    ``addmm(bias, mat1[0], mat2[0])`` — skipping the k=0 term inside the helper
+    avoids tracing a wasted ``binary_op(self[0], other[0])`` node into the
+    captured FX graph.
+
+    Both operands must share the same Taylor-expansion order ``K``; ``K`` is
+    inferred as ``len(self) - 1`` and the lengths are checked. Mirrors
+    :func:`jet.collapsed_operations._collapsed_leibniz`.
 
     Args:
         self: The first operand jet.
@@ -117,17 +123,25 @@ def _leibniz(
             (e.g. elementwise ``*``, or ``torch.mm``).
 
     Returns:
-        The value and its Taylor coefficients, of length ``K + 1``.
+        The Taylor coefficients of orders 1..K (a tuple of length ``K``).
+
+    Raises:
+        ValueError: If ``self`` and ``other`` have different lengths.
     """
+    if len(self) != len(other):
+        raise ValueError(
+            f"_leibniz: operands must share the same derivative order; "
+            f"got lengths {len(self)} and {len(other)}"
+        )
     K = len(self) - 1
-    s_out = ()
-    for k in range(K + 1):
+    coeffs = ()
+    for k in range(1, K + 1):
         term = None
         for j in range(k + 1):
             term_j = comb(k, j, exact=True) * binary_op(self[j], other[k - j])
             term = term_j if term is None else term + term_j
-        s_out = s_out + (term,)
-    return JetTuple(s_out)
+        coeffs = coeffs + (term,)
+    return coeffs
 
 
 def _partition_term(
@@ -433,11 +447,13 @@ def jet_add(
     other_is_jet = isinstance(other, JetTuple)
 
     if self_is_jet and other_is_jet:
-        return JetTuple(s + o for s, o in zip(self, other))
+        _jet_order(self, other)  # validates K-consistency, raises on mismatch
+        coeffs = (s + o for s, o in zip(self, other))
     elif self_is_jet:
-        return JetTuple((self[0] + other, *self[1:]))
+        coeffs = (self[0] + other, *self[1:])
     else:
-        return JetTuple((other[0] + self, *other[1:]))
+        coeffs = (other[0] + self, *other[1:])
+    return JetTuple(coeffs)
 
 
 def jet_sub(
@@ -457,11 +473,13 @@ def jet_sub(
     other_is_jet = isinstance(other, JetTuple)
 
     if self_is_jet and other_is_jet:
-        return JetTuple(s - o for s, o in zip(self, other))
+        _jet_order(self, other)  # validates K-consistency, raises on mismatch
+        coeffs = (s - o for s, o in zip(self, other))
     elif self_is_jet:
-        return JetTuple((self[0] - other, *self[1:]))
+        coeffs = (self[0] - other, *self[1:])
     else:
-        return JetTuple((self - other[0], *(-c for c in other[1:])))
+        coeffs = (self - other[0], *(-c for c in other[1:]))
+    return JetTuple(coeffs)
 
 
 def jet_mul(self: Primal | JetTuple, other: Primal | JetTuple) -> JetTuple:
@@ -478,7 +496,8 @@ def jet_mul(self: Primal | JetTuple, other: Primal | JetTuple) -> JetTuple:
     other_is_jet = isinstance(other, JetTuple)
 
     if self_is_jet and other_is_jet:
-        return _leibniz(self, other, lambda a, b: a * b)
+        primal = self[0] * other[0]
+        return JetTuple((primal, *_leibniz(self, other, lambda a, b: a * b)))
     elif self_is_jet:
         return _apply_linear(self, lambda c: other * c)
     else:
@@ -502,7 +521,8 @@ def jet_mm(self: Primal | JetTuple, mat2: Primal | JetTuple) -> JetTuple:
     mat2_is_jet = isinstance(mat2, JetTuple)
 
     if self_is_jet and mat2_is_jet:
-        return _leibniz(self, mat2, mm)
+        primal = mm(self[0], mat2[0])
+        return JetTuple((primal, *_leibniz(self, mat2, mm)))
     elif self_is_jet:
         return _apply_linear(self, lambda c: mm(c, mat2))
     else:
@@ -532,9 +552,8 @@ def jet_addmm(
     mat2_is_jet = isinstance(mat2, JetTuple)
 
     if mat1_is_jet and mat2_is_jet:
-        leibniz = _leibniz(mat1, mat2, mm)
-        return JetTuple((addmm(self, mat1[0], mat2[0]), *leibniz[1:]))
-
+        primal = addmm(self, mat1[0], mat2[0])
+        return JetTuple((primal, *_leibniz(mat1, mat2, mm)))
     elif mat1_is_jet:
         primal = addmm(self, mat1[0], mat2)
         return JetTuple((primal, *_apply_linear_coeffs(mat1, lambda c: mm(c, mat2))))
@@ -603,7 +622,7 @@ def jet_sum(self: JetTuple, dim: list[int], keepdim: bool = False) -> JetTuple:
     """
     if keepdim:
         raise NotImplementedError("keepdim=True is not supported.")
-    (pos,) = dim if isinstance(dim, list) else (dim,)
+    (pos,) = (dim,) if isinstance(dim, int) else dim
     return _apply_linear(self, lambda c: c.sum(pos))
 
 

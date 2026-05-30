@@ -87,7 +87,6 @@ def _apply_linear_coeffs(
 def _collapsed_leibniz(
     self: CollapsedJetTuple,
     other: CollapsedJetTuple,
-    K: int,
     binary_op: Callable[[Tensor, Tensor], Tensor],
 ) -> CollapsedJetTuple:
     """Leibniz product rule with collapsed K-th coefficient.
@@ -95,7 +94,10 @@ def _collapsed_leibniz(
     For orders 0..K-1: standard Leibniz.
     For order K: linear terms (using collapsed coefficients) +
                  nonlinear terms (using batched coefficients, summed over R).
+    Mirrors :func:`jet.operations._leibniz`; ``K`` is inferred as
+    ``len(self) - 1``.
     """
+    K = len(self) - 1
     s_out = ()
     for k in range(K + 1):
         if k < K:
@@ -177,19 +179,14 @@ def cjet_add(
     other: Primal | CollapsedJetTuple | float | int,
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.add``."""
-    K = _cjet_order(self, other)
     self_is = isinstance(self, CollapsedJetTuple)
     other_is = isinstance(other, CollapsedJetTuple)
     if self_is and other_is:
-        return CollapsedJetTuple(self[k] + other[k] for k in range(K + 1))
+        return CollapsedJetTuple(s + o for s, o in zip(self, other))
     elif self_is:
-        return CollapsedJetTuple(
-            (self[0] + other,) + tuple(self[k] for k in range(1, K + 1))
-        )
+        return CollapsedJetTuple((self[0] + other, *self[1:]))
     else:
-        return CollapsedJetTuple(
-            (other[0] + self,) + tuple(other[k] for k in range(1, K + 1))
-        )
+        return CollapsedJetTuple((other[0] + self, *other[1:]))
 
 
 def cjet_sub(
@@ -197,19 +194,14 @@ def cjet_sub(
     other: Primal | CollapsedJetTuple | float | int,
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.sub``."""
-    K = _cjet_order(self, other)
     self_is = isinstance(self, CollapsedJetTuple)
     other_is = isinstance(other, CollapsedJetTuple)
     if self_is and other_is:
-        return CollapsedJetTuple(self[k] - other[k] for k in range(K + 1))
+        return CollapsedJetTuple(s - o for s, o in zip(self, other))
     elif self_is:
-        return CollapsedJetTuple(
-            (self[0] - other,) + tuple(self[k] for k in range(1, K + 1))
-        )
+        return CollapsedJetTuple((self[0] - other, *self[1:]))
     else:
-        return CollapsedJetTuple(
-            (self - other[0],) + tuple(-other[k] for k in range(1, K + 1))
-        )
+        return CollapsedJetTuple((self - other[0], *(-c for c in other[1:])))
 
 
 def cjet_mul(
@@ -217,15 +209,14 @@ def cjet_mul(
     other: Primal | CollapsedJetTuple,
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.mul``."""
-    K = _cjet_order(self, other)
     self_is = isinstance(self, CollapsedJetTuple)
     other_is = isinstance(other, CollapsedJetTuple)
     if self_is and other_is:
-        return _collapsed_leibniz(self, other, K, lambda a, b: a * b)
+        return _collapsed_leibniz(self, other, lambda a, b: a * b)
     elif self_is:
-        return CollapsedJetTuple(other * self[k] for k in range(K + 1))
+        return _apply_linear(self, lambda c: other * c)
     else:
-        return CollapsedJetTuple(self * other[k] for k in range(K + 1))
+        return _apply_linear(other, lambda c: self * c)
 
 
 # ---------------------------------------------------------------------------
@@ -234,42 +225,45 @@ def cjet_mul(
 
 
 def cjet_mm(
-    self: Primal | CollapsedJetTuple,
-    mat2: Primal | CollapsedJetTuple,
+    self: Primal | CollapsedJetTuple, mat2: Primal | CollapsedJetTuple
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.mm``."""
-    K = _cjet_order(self, mat2)
     self_is = isinstance(self, CollapsedJetTuple)
     mat2_is = isinstance(mat2, CollapsedJetTuple)
     if self_is and mat2_is:
-        return _collapsed_leibniz(self, mat2, K, matmul)
+        return _collapsed_leibniz(self, mat2, matmul)
     elif self_is:
-        return _apply_linear(self, lambda x: mm(x, mat2))
+        return _apply_linear(self, lambda c: mm(c, mat2))
     else:
-        return _apply_linear(mat2, lambda x: mm(self, x))
+        return _apply_linear(mat2, lambda c: mm(self, c))
 
 
 def cjet_addmm(
-    bias: Primal,
+    self: Primal,
     mat1: Primal | CollapsedJetTuple,
     mat2: Primal | CollapsedJetTuple,
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.addmm``."""
-    K = _cjet_order(mat1, mat2)
+    if isinstance(self, CollapsedJetTuple):
+        raise NotImplementedError(
+            "cjet_addmm does not support a Taylor-expanded bias (self). "
+            "Expected a constant Tensor."
+        )
     mat1_is = isinstance(mat1, CollapsedJetTuple)
     mat2_is = isinstance(mat2, CollapsedJetTuple)
     if mat1_is and mat2_is:
-        mm_jet = _collapsed_leibniz(mat1, mat2, K, matmul)
-        primal = addmm(bias, mat1[0], mat2[0])
-        return CollapsedJetTuple((primal,) + mm_jet[1:])
+        leibniz = _collapsed_leibniz(mat1, mat2, matmul)
+        return CollapsedJetTuple((addmm(self, mat1[0], mat2[0]), *leibniz[1:]))
     elif mat1_is:
-        primal = addmm(bias, mat1[0], mat2)
-        coeffs = _apply_linear_coeffs(mat1, lambda x: mm(x, mat2))
-        return CollapsedJetTuple((primal, *coeffs))
+        primal = addmm(self, mat1[0], mat2)
+        return CollapsedJetTuple(
+            (primal, *_apply_linear_coeffs(mat1, lambda c: mm(c, mat2)))
+        )
     else:
-        primal = addmm(bias, mat1, mat2[0])
-        coeffs = _apply_linear_coeffs(mat2, lambda x: mm(mat1, x))
-        return CollapsedJetTuple((primal, *coeffs))
+        primal = addmm(self, mat1, mat2[0])
+        return CollapsedJetTuple(
+            (primal, *_apply_linear_coeffs(mat2, lambda c: mm(mat1, c)))
+        )
 
 
 # ---------------------------------------------------------------------------

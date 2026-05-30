@@ -72,14 +72,14 @@ def bilaplacian(f: Callable[[Tensor], Tensor], x: Tensor) -> Tensor:
     return einsum(d4f(x), equation)
 
 
-@mark.parametrize("use_collapsing", [True, False], ids=["collapsed", "standard"])
+@mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
 @mark.parametrize("config", BILAPLACIAN_CASES, ids=BILAPLACIAN_IDS)
-def test_bilaplacian(config: dict[str, Any], use_collapsing: bool):
+def test_bilaplacian(config: dict[str, Any], collapsed: bool):
     """Compare Bi-Laplacian implementations.
 
     Args:
         config: Configuration dictionary of the test case.
-        use_collapsing: Whether to use collapsed Taylor mode.
+        collapsed: Whether to use collapsed Taylor mode.
     """
     f, x, _ = setup_case(config)
 
@@ -87,7 +87,7 @@ def test_bilaplacian(config: dict[str, Any], use_collapsing: bool):
     bilap_func = bilaplacian(f, x)
 
     # using jets
-    bilap_fn = jet_bilaplacian(f, x, use_collapsing=use_collapsing)
+    bilap_fn = jet_bilaplacian(f, x, collapsed=collapsed)
     bilap_jet = bilap_fn(x)
     report_nonclose(bilap_func, bilap_jet, name="functorch and jet Bi-Laplacians")
 

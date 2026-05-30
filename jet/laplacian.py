@@ -17,7 +17,7 @@ def laplacian(
     mock_x: Tensor,
     randomization: tuple[str, int] | None = None,
     weighting: tuple[Callable[[Tensor, Tensor], Tensor], int] | None = None,
-    use_collapsing: bool = True,
+    collapsed: bool = True,
 ) -> GraphModule:
     r"""Transform f into a function that computes lap(f(x)).
 
@@ -51,7 +51,7 @@ def laplacian(
             `[*D, rank_C]` while V is `[K, rank_C]` with arbitrary `K`. The second
             entry specifies `rank_C`. If `None`, then the weightings correspond to
             the identity matrix (i.e. computing the standard Laplacian).
-        use_collapsing: Whether to use collapsed Taylor mode. If ``True``
+        collapsed: Whether to use collapsed Taylor mode. If ``True``
             (default), uses the collapsed dispatch path
             (``JetInterpreter(..., collapsed=True)``) that directly propagates
             the summed second-order coefficient. If ``False``, propagates full
@@ -92,7 +92,7 @@ def laplacian(
 
     cjet_f = (
         collapsed_jet(f, 2, (mock_x,))
-        if use_collapsing
+        if collapsed
         else _make_uncollapsed_cjet(f, 2, (mock_x,), randomization)
     )
 

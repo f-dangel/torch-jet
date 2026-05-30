@@ -32,14 +32,12 @@ register_pytree_node(
 
 
 def _order(args: tuple[Value, ...], jet_type: type) -> int:
-    """Infer the Taylor-expansion order ``K`` from the first jet-typed arg.
+    """Infer the Taylor-expansion order ``K`` from the jet-typed positional args.
 
     A jet (whether ``JetTuple`` or ``CollapsedJetTuple``) is exactly
-    ``(primal, c_1, ..., c_K)``, so ``K = len(jet) - 1``. The interpreter only
-    dispatches jet ops when at least one positional arg is of ``jet_type``, so
-    this never fails in practice. We scan ``args`` (not ``args[0]``) because
-    binary ops may receive a scalar/constant first operand and ``addmm``'s bias
-    is never a jet.
+    ``(primal, c_1, ..., c_K)``, so ``K = len(jet) - 1``. Collects ``K`` from
+    every ``jet_type`` argument in a single pass and requires exactly one
+    distinct value.
 
     Args:
         args: Positional arguments of a jet op.
@@ -51,19 +49,20 @@ def _order(args: tuple[Value, ...], jet_type: type) -> int:
 
     Raises:
         TypeError: If no positional argument is an instance of ``jet_type``.
+        ValueError: If two or more ``jet_type`` arguments have different lengths
+            (inconsistent Taylor-expansion orders).
     """
-    for arg in args:
-        if isinstance(arg, jet_type):
-            K = len(arg) - 1
-            assert all(
-                not isinstance(other, jet_type) or len(other) - 1 == K
-                for other in args
-            ), (
-                f"all {jet_type.__name__} arguments must share the same "
-                "derivative order"
-            )
-            return K
-    raise TypeError(f"_order: no {jet_type.__name__} in positional arguments")
+    Ks = {len(arg) - 1 for arg in args if isinstance(arg, jet_type)}
+    if not Ks:
+        raise TypeError(
+            f"_order: no {jet_type.__name__} in positional arguments"
+        )
+    if len(Ks) > 1:
+        raise ValueError(
+            f"all {jet_type.__name__} arguments must share the same derivative "
+            f"order; got {sorted(Ks)}"
+        )
+    return Ks.pop()
 
 
 def _jet_order(*args: Value) -> int:

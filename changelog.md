@@ -9,22 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
-- **Backward-incompatible.** Rename the `use_collapsing` parameter to
-  `collapsed` on `laplacian()` and `bilaplacian()` so the name matches the
-  `collapsed` flag on the (now-merged) jet interpreter. Defaults unchanged
-  (`collapsed=True`)
-  ([PR](https://github.com/f-dangel/torch-jet/pull/132))
-
-- Internal refactor of the jet operations and interpreter (no public API
-  change beyond the `use_collapsing` rename above): infer the Taylor-expansion
-  order `K = len(jet) - 1` inside each op instead of threading a redundant
-  `derivative_order` kwarg through ~30 functions; merge `JetInterpreter` and
-  `CollapsedJetInterpreter` into a single class with a `collapsed: bool = False`
-  flag; extract shared helpers (`_apply_linear`, `_apply_linear_coeffs`,
-  `_leibniz`, `_order`) so jet and collapsed primitives have parallel
-  implementations; tighten validation (length-mismatch and dict-argument
-  errors raise `ValueError`/`NotImplementedError` instead of relying on
-  `assert`)
+- **Backward-incompatible.** Rename the `use_collapsing` parameter on
+  `laplacian()` and `bilaplacian()` to `collapsed` (defaults unchanged)
   ([PR](https://github.com/f-dangel/torch-jet/pull/132))
 
 - **Backward-incompatible.** Bundle each argument's primal with its Taylor

@@ -66,7 +66,7 @@ def _order(args: tuple[Value, ...], jet_type: type) -> int:
 
 
 def _jet_order(*args: Value) -> int:
-    """Infer ``K`` from the first ``JetTuple`` positional arg. See :func:`_order`."""
+    """Infer ``K`` from all ``JetTuple`` positional args. See :func:`_order`."""
     return _order(args, JetTuple)
 
 

@@ -45,7 +45,7 @@ register_pytree_node(
 
 
 def _cjet_order(*args: Primal | CollapsedJetTuple | float | int) -> int:
-    """Infer ``K`` from the first ``CollapsedJetTuple`` positional arg.
+    """Infer ``K`` from all ``CollapsedJetTuple`` positional args.
 
     Thin wrapper around :func:`jet.operations._order` that pre-binds the jet
     type to ``CollapsedJetTuple``.

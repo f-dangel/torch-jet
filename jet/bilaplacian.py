@@ -42,7 +42,7 @@ def bilaplacian(
     f: Callable[[Tensor], Tensor],
     mock_x: Tensor,
     randomization: tuple[str, int] | None = None,
-    use_collapsing: bool = True,
+    collapsed: bool = True,
 ) -> GraphModule:
     r"""Transform f into a function that computes the Bi-Laplacian.
 
@@ -68,8 +68,9 @@ def bilaplacian(
             will be computed using Monte-Carlo sampling. The first element is the
             distribution type (must be 'normal'), and the second is the number of
             samples to use. Default is `None`.
-        use_collapsing: Whether to use collapsed Taylor mode. If ``True``
-            (default), uses a ``CollapsedJetInterpreter`` that directly propagates
+        collapsed: Whether to use collapsed Taylor mode. If ``True``
+            (default), uses the collapsed dispatch path
+            (``JetInterpreter(..., collapsed=True)``) that directly propagates
             the summed fourth-order coefficient. If ``False``, propagates full
             4-jets over all directions via ``vmap`` and sums afterward.
 
@@ -102,7 +103,7 @@ def bilaplacian(
 
     cjet_f = (
         collapsed_jet(f, derivative_order, (mock_x,))
-        if use_collapsing
+        if collapsed
         else _make_uncollapsed_cjet(f, derivative_order, (mock_x,), randomization)
     )
 

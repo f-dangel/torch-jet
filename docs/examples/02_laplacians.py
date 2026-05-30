@@ -302,8 +302,8 @@ assert hessian_trace_laplacian.allclose(lap_standard(x))
 # %%
 #
 # Now let's build the collapsed version using the `laplacian()` function transform,
-# which uses a `CollapsedJetInterpreter` under the hood. Instead of propagating `D`
-# full 2-jets (one per basis direction) and summing at the end, the interpreter
+# which runs the interpreter in collapsed mode under the hood. Instead of propagating
+# `D` full 2-jets (one per basis direction) and summing at the end, the interpreter
 # propagates a single "collapsed jet" that directly tracks the summed second-order
 # coefficient.
 

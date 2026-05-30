@@ -257,13 +257,13 @@ def laplacian_function(
             )
 
     elif strategy in {"jet_naive", "jet_simplified"}:
-        use_collapsing = strategy == "jet_simplified"
+        collapsed = strategy == "jet_simplified"
         laplacian = jet_laplacian(
             f,
             dummy_x,
             randomization=randomization,
             weighting=weighting,
-            use_collapsing=use_collapsing,
+            collapsed=collapsed,
         )
         common_subexpression_elimination(laplacian.graph)
         laplacian.recompile()
@@ -366,12 +366,12 @@ def bilaplacian_function(
             )
 
     elif strategy in {"jet_naive", "jet_simplified"}:
-        use_collapsing = strategy == "jet_simplified"
+        collapsed = strategy == "jet_simplified"
         bilap_fn = jet_bilaplacian(
             f,
             dummy_x,
             randomization=randomization,
-            use_collapsing=use_collapsing,
+            collapsed=collapsed,
         )
         common_subexpression_elimination(bilap_fn.graph)
         bilap_fn.recompile()

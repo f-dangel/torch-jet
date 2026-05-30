@@ -31,6 +31,119 @@ register_pytree_node(
 )
 
 
+def _order(args: tuple[Value, ...], jet_type: type) -> int:
+    """Infer the Taylor-expansion order ``K`` from the jet-typed positional args.
+
+    A jet (whether ``JetTuple`` or ``CollapsedJetTuple``) is exactly
+    ``(primal, c_1, ..., c_K)``, so ``K = len(jet) - 1``. Collects ``K`` from
+    every ``jet_type`` argument in a single pass and requires exactly one
+    distinct value.
+
+    Args:
+        args: Positional arguments of a jet op.
+        jet_type: The jet tuple subclass to match (``JetTuple`` for standard
+            Taylor mode, ``CollapsedJetTuple`` for collapsed).
+
+    Returns:
+        The Taylor-expansion order ``K``.
+
+    Raises:
+        TypeError: If no positional argument is an instance of ``jet_type``.
+        ValueError: If two or more ``jet_type`` arguments have different lengths
+            (inconsistent Taylor-expansion orders).
+    """
+    Ks = {len(arg) - 1 for arg in args if isinstance(arg, jet_type)}
+    if not Ks:
+        raise TypeError(f"_order: no {jet_type.__name__} in positional arguments")
+    if len(Ks) > 1:
+        raise ValueError(
+            f"all {jet_type.__name__} arguments must share the same derivative "
+            f"order; got {sorted(Ks)}"
+        )
+    return Ks.pop()
+
+
+def _jet_order(*args: Value) -> int:
+    """Infer ``K`` from all ``JetTuple`` positional args. See :func:`_order`."""
+    return _order(args, JetTuple)
+
+
+def _apply_linear(self: JetTuple, op: Callable[[Primal], Primal]) -> JetTuple:
+    """Apply a linear ``op`` coefficient-wise to every entry of ``self``.
+
+    Linear ops commute with the Taylor expansion, so the result's coefficients
+    are just ``op`` applied to each input coefficient. Mirrors the analogous
+    helper in :mod:`jet.collapsed_operations` (which additionally vmaps over
+    the batched direction dim ``R``).
+
+    Args:
+        self: The primal and its Taylor coefficients.
+        op: A linear function from a single coefficient tensor to a tensor.
+
+    Returns:
+        The value and its Taylor coefficients, with ``op`` applied to each.
+    """
+    return JetTuple(op(c) for c in self)
+
+
+def _apply_linear_coeffs(
+    self: JetTuple, op: Callable[[Primal], Primal]
+) -> tuple[Primal, ...]:
+    """Apply a linear ``op`` to coefficients 1..K of ``self`` (skipping the primal).
+
+    Used by ops that handle the primal separately (e.g. ``jet_addmm``'s bias).
+    """
+    return tuple(op(c) for c in self[1:])
+
+
+def _leibniz(
+    self: JetTuple,
+    other: JetTuple,
+    binary_op: Callable[[Primal, Primal], Primal],
+) -> tuple[Primal, ...]:
+    """Apply the Leibniz product rule for a bilinear ``binary_op`` (orders 1..K).
+
+    The k-th coefficient of ``binary_op(self, other)`` (treated as functions of
+    ``t``) is ``sum_{j=0}^{k} C(k, j) * binary_op(self[j], other[k - j])``. This
+    helper returns only **coefficients 1..K**; the caller handles the order-0
+    coefficient (the primal) explicitly. For ``mul``/``mm`` that's just
+    ``binary_op(self[0], other[0])``; for ``addmm`` it's
+    ``addmm(bias, mat1[0], mat2[0])`` — skipping the k=0 term inside the helper
+    avoids tracing a wasted ``binary_op(self[0], other[0])`` node into the
+    captured FX graph.
+
+    Both operands must share the same Taylor-expansion order ``K``; ``K`` is
+    inferred as ``len(self) - 1`` and the lengths are checked. Mirrors
+    :func:`jet.collapsed_operations._collapsed_leibniz`.
+
+    Args:
+        self: The first operand jet.
+        other: The second operand jet (same length as ``self``).
+        binary_op: A bilinear function from two coefficient tensors to a tensor
+            (e.g. elementwise ``*``, or ``torch.mm``).
+
+    Returns:
+        The Taylor coefficients of orders 1..K (a tuple of length ``K``).
+
+    Raises:
+        ValueError: If ``self`` and ``other`` have different lengths.
+    """
+    if len(self) != len(other):
+        raise ValueError(
+            f"_leibniz: operands must share the same derivative order; "
+            f"got lengths {len(self)} and {len(other)}"
+        )
+    K = len(self) - 1
+    coeffs = ()
+    for k in range(1, K + 1):
+        term = None
+        for j in range(k + 1):
+            term_j = comb(k, j, exact=True) * binary_op(self[j], other[k - j])
+            term = term_j if term is None else term + term_j
+        coeffs = coeffs + (term,)
+    return coeffs
+
+
 def _partition_term(
     vs: tuple[Primal, ...], sigma: tuple[int, ...], dn: dict[int, Primal]
 ) -> Value | None:
@@ -73,9 +186,7 @@ def _partition_term(
     return nu * term if nu != 1.0 else term
 
 
-def _collapsed_highest_order(
-    vs: tuple[Primal, ...], K: int, dn: dict[int, Primal]
-) -> Value:
+def _collapsed_highest_order(vs: tuple[Primal, ...], dn: dict[int, Primal]) -> Value:
     """Compute the collapsed (summed) highest-order Faà di Bruno coefficient.
 
     Separates the linear contribution (which multiplies the collapsed input)
@@ -83,13 +194,13 @@ def _collapsed_highest_order(
     dimension *R*).
 
     Args:
-        vs: The incoming Taylor coefficients.
-        K: The derivative order (= highest order to compute).
+        vs: The incoming Taylor coefficients (length ``K``).
         dn: A dictionary mapping the degree to the function's derivative.
 
     Returns:
         The collapsed highest-order coefficient.
     """
+    K = len(vs)
     linear_term = dn[1] * vs[K - 1] if dn[1] is not None else None
     nonlinear_term = None
     for sigma in integer_partitions(K):
@@ -112,15 +223,13 @@ def _collapsed_highest_order(
 
 def _faa_di_bruno(
     vs: tuple[Primal, ...],
-    derivative_order: int,
     dn: dict[int, Primal],
     collapsed: bool = False,
 ) -> list[Value]:
     """Apply Faà di Bruno's formula for elementwise functions.
 
     Args:
-        vs: The incoming Taylor coefficients.
-        derivative_order: The order of the Taylor expansion.
+        vs: The incoming Taylor coefficients (length ``K``).
         dn: A dictionary mapping the degree to the function's derivative.
         collapsed: If ``True``, treat ``vs[-1]`` as a collapsed (already
             summed) coefficient and ``vs[0:-1]`` as batched with a leading
@@ -132,12 +241,12 @@ def _faa_di_bruno(
     Returns:
         The outgoing Taylor coefficients.
     """
-    K = derivative_order
+    K = len(vs)
     vs_out = []
     for k in range(K):
         order = k + 1
         if order == K and collapsed:
-            vs_out.append(_collapsed_highest_order(vs, K, dn))
+            vs_out.append(_collapsed_highest_order(vs, dn))
         else:
             result = None
             for sigma in integer_partitions(order):
@@ -259,69 +368,62 @@ def _pow_derivatives(
 
 def _jet_elementwise(
     self: JetTuple,
-    derivative_order: int,
     deriv_fn: Callable[[Primal, int], tuple[Primal, dict[int, Primal]]],
 ) -> JetTuple:
     """Generic elementwise jet rule using shared derivative helpers.
 
     Args:
         self: The primal and its Taylor coefficients.
-        derivative_order: The order of the Taylor expansion.
         deriv_fn: Returns the primal and the function's derivatives ``dn`` at
             the primal, e.g. ``_sin_derivatives``.
 
     Returns:
         The value and its Taylor coefficients.
     """
+    K = _jet_order(self)
     self0, vs = self[0], self[1:]
-    primal, dn = deriv_fn(self0, derivative_order)
-    vs_out = _faa_di_bruno(vs, derivative_order, dn)
+    primal, dn = deriv_fn(self0, K)
+    vs_out = _faa_di_bruno(vs, dn)
     return JetTuple((primal, *vs_out))
 
 
-def jet_sin(self: JetTuple, *, derivative_order: int) -> JetTuple:
+def jet_sin(self: JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.sin(self)``."""
-    return _jet_elementwise(self, derivative_order, _sin_derivatives)
+    return _jet_elementwise(self, _sin_derivatives)
 
 
-def jet_cos(self: JetTuple, *, derivative_order: int) -> JetTuple:
+def jet_cos(self: JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.cos(self)``."""
-    return _jet_elementwise(self, derivative_order, _cos_derivatives)
+    return _jet_elementwise(self, _cos_derivatives)
 
 
-def jet_tanh(self: JetTuple, *, derivative_order: int) -> JetTuple:
+def jet_tanh(self: JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.tanh(self)``."""
-    return _jet_elementwise(self, derivative_order, _tanh_derivatives)
+    return _jet_elementwise(self, _tanh_derivatives)
 
 
-def jet_sigmoid(self: JetTuple, *, derivative_order: int) -> JetTuple:
+def jet_sigmoid(self: JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.sigmoid(self)``."""
-    return _jet_elementwise(self, derivative_order, _sigmoid_derivatives)
+    return _jet_elementwise(self, _sigmoid_derivatives)
 
 
 # --- Power ---
 
 
-def jet_pow(
-    self: JetTuple, exponent: float | int, *, derivative_order: int
-) -> JetTuple:
+def jet_pow(self: JetTuple, exponent: float | int) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.pow(self, exponent)``.
 
     Args:
         self: The primal and its Taylor coefficients.
         exponent: The scalar exponent.
-        derivative_order: The order of the Taylor expansion.
 
     Returns:
         The value and its Taylor coefficients.
     """
     assert isinstance(exponent, (float, int))
-
     self0, vs = self[0], self[1:]
-    pow_self0, dpow = _pow_derivatives(self0, exponent, derivative_order)
-
-    vs_out = _faa_di_bruno(vs, derivative_order, dpow)
-
+    pow_self0, dpow = _pow_derivatives(self0, exponent, _jet_order(self))
+    vs_out = _faa_di_bruno(vs, dpow)
     return JetTuple((pow_self0, *vs_out))
 
 
@@ -331,15 +433,12 @@ def jet_pow(
 def jet_add(
     self: Primal | JetTuple | float | int,
     other: Primal | JetTuple | float | int,
-    *,
-    derivative_order: int,
 ) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.add(self, other)``.
 
     Args:
         self: The first operand and its Taylor coefficients, or a scalar.
         other: The second operand and its Taylor coefficients, or a scalar.
-        derivative_order: The order of the Taylor expansion.
 
     Returns:
         The value and its Taylor coefficients.
@@ -348,29 +447,24 @@ def jet_add(
     other_is_jet = isinstance(other, JetTuple)
 
     if self_is_jet and other_is_jet:
-        return JetTuple(self[k] + other[k] for k in range(derivative_order + 1))
+        _jet_order(self, other)  # validates K-consistency, raises on mismatch
+        coeffs = (s + o for s, o in zip(self, other))
     elif self_is_jet:
-        return JetTuple(
-            (self[0] + other,) + tuple(self[k] for k in range(1, derivative_order + 1))
-        )
+        coeffs = (self[0] + other, *self[1:])
     else:
-        return JetTuple(
-            (other[0] + self,) + tuple(other[k] for k in range(1, derivative_order + 1))
-        )
+        coeffs = (other[0] + self, *other[1:])
+    return JetTuple(coeffs)
 
 
 def jet_sub(
     self: Primal | JetTuple | float | int,
     other: Primal | JetTuple | float | int,
-    *,
-    derivative_order: int,
 ) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.sub(self, other)``.
 
     Args:
         self: The first operand and its Taylor coefficients, or a scalar.
         other: The second operand and its Taylor coefficients, or a scalar.
-        derivative_order: The order of the Taylor expansion.
 
     Returns:
         The value and its Taylor coefficients.
@@ -379,30 +473,21 @@ def jet_sub(
     other_is_jet = isinstance(other, JetTuple)
 
     if self_is_jet and other_is_jet:
-        return JetTuple(self[k] - other[k] for k in range(derivative_order + 1))
+        _jet_order(self, other)  # validates K-consistency, raises on mismatch
+        coeffs = (s - o for s, o in zip(self, other))
     elif self_is_jet:
-        return JetTuple(
-            (self[0] - other,) + tuple(self[k] for k in range(1, derivative_order + 1))
-        )
+        coeffs = (self[0] - other, *self[1:])
     else:
-        return JetTuple(
-            (self - other[0],)
-            + tuple(-other[k] for k in range(1, derivative_order + 1))
-        )
+        coeffs = (self - other[0], *(-c for c in other[1:]))
+    return JetTuple(coeffs)
 
 
-def jet_mul(
-    self: Primal | JetTuple,
-    other: Primal | JetTuple,
-    *,
-    derivative_order: int,
-) -> JetTuple:
+def jet_mul(self: Primal | JetTuple, other: Primal | JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.mul(self, other)``.
 
     Args:
         self: The first operand and its Taylor coefficients.
         other: The second operand and its Taylor coefficients.
-        derivative_order: The order of the Taylor expansion.
 
     Returns:
         The value and its Taylor coefficients.
@@ -411,36 +496,23 @@ def jet_mul(
     other_is_jet = isinstance(other, JetTuple)
 
     if self_is_jet and other_is_jet:
-        s_out = ()
-        for k in range(derivative_order + 1):
-            term = None
-            for j in range(k + 1):
-                term_j = comb(k, j, exact=True) * self[j] * other[k - j]
-                term = term_j if term is None else term + term_j
-            s_out = s_out + (term,)
-        return JetTuple(s_out)
-
+        primal = self[0] * other[0]
+        return JetTuple((primal, *_leibniz(self, other, lambda a, b: a * b)))
     elif self_is_jet:
-        return JetTuple(other * self[k] for k in range(derivative_order + 1))
+        return _apply_linear(self, lambda c: other * c)
     else:
-        return JetTuple(self * other[k] for k in range(derivative_order + 1))
+        return _apply_linear(other, lambda c: self * c)
 
 
 # --- Linear decomposition ---
 
 
-def jet_mm(
-    self: Primal | JetTuple,
-    mat2: Primal | JetTuple,
-    *,
-    derivative_order: int,
-) -> JetTuple:
+def jet_mm(self: Primal | JetTuple, mat2: Primal | JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.mm(self, mat2)``.
 
     Args:
         self: The first matrix and its Taylor coefficients.
         mat2: The second matrix and its Taylor coefficients.
-        derivative_order: The order of the Taylor expansion.
 
     Returns:
         The value and its Taylor coefficients.
@@ -449,27 +521,16 @@ def jet_mm(
     mat2_is_jet = isinstance(mat2, JetTuple)
 
     if self_is_jet and mat2_is_jet:
-        s_out = ()
-        for k in range(derivative_order + 1):
-            term = None
-            for j in range(k + 1):
-                term_j = comb(k, j, exact=True) * mm(self[j], mat2[k - j])
-                term = term_j if term is None else term + term_j
-            s_out = s_out + (term,)
-        return JetTuple(s_out)
-
+        primal = mm(self[0], mat2[0])
+        return JetTuple((primal, *_leibniz(self, mat2, mm)))
     elif self_is_jet:
-        return JetTuple(mm(self[k], mat2) for k in range(derivative_order + 1))
+        return _apply_linear(self, lambda c: mm(c, mat2))
     else:
-        return JetTuple(mm(self, mat2[k]) for k in range(derivative_order + 1))
+        return _apply_linear(mat2, lambda c: mm(self, c))
 
 
 def jet_addmm(
-    self: Primal,
-    mat1: Primal | JetTuple,
-    mat2: Primal | JetTuple,
-    *,
-    derivative_order: int,
+    self: Primal, mat1: Primal | JetTuple, mat2: Primal | JetTuple
 ) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.addmm(self, mat1, mat2)``.
 
@@ -477,7 +538,6 @@ def jet_addmm(
         self: The bias tensor. Must be a constant ``Tensor``, not a ``JetTuple``.
         mat1: The first matrix and its Taylor coefficients.
         mat2: The second matrix and its Taylor coefficients.
-        derivative_order: The order of the Taylor expansion.
 
     Returns:
         The value and its Taylor coefficients.
@@ -492,103 +552,78 @@ def jet_addmm(
     mat2_is_jet = isinstance(mat2, JetTuple)
 
     if mat1_is_jet and mat2_is_jet:
-        s_out = (addmm(self, mat1[0], mat2[0]),)
-        for k in range(1, derivative_order + 1):
-            term = None
-            for j in range(k + 1):
-                term_j = comb(k, j, exact=True) * mm(mat1[j], mat2[k - j])
-                term = term_j if term is None else term + term_j
-            s_out = s_out + (term,)
-        return JetTuple(s_out)
-
+        primal = addmm(self, mat1[0], mat2[0])
+        return JetTuple((primal, *_leibniz(mat1, mat2, mm)))
     elif mat1_is_jet:
-        return JetTuple(
-            (addmm(self, mat1[0], mat2),)
-            + tuple(mm(mat1[k], mat2) for k in range(1, derivative_order + 1))
-        )
+        primal = addmm(self, mat1[0], mat2)
+        return JetTuple((primal, *_apply_linear_coeffs(mat1, lambda c: mm(c, mat2))))
     else:
-        return JetTuple(
-            (addmm(self, mat1, mat2[0]),)
-            + tuple(mm(mat1, mat2[k]) for k in range(1, derivative_order + 1))
-        )
+        primal = addmm(self, mat1, mat2[0])
+        return JetTuple((primal, *_apply_linear_coeffs(mat2, lambda c: mm(mat1, c))))
 
 
-def jet_view(self: JetTuple, size: list[int], *, derivative_order: int) -> JetTuple:
+def jet_view(self: JetTuple, size: list[int]) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.view(self, size)``.
 
     Args:
         self: The primal and its Taylor coefficients.
         size: The target shape.
-        derivative_order: The order of the Taylor expansion.
 
     Returns:
         The value and its Taylor coefficients, each reshaped.
     """
-    return JetTuple(
-        ops.aten.view.default(self[k], size) for k in range(derivative_order + 1)
-    )
+    return _apply_linear(self, lambda c: ops.aten.view.default(c, size))
 
 
-def jet_unsqueeze(self: JetTuple, dim: int, *, derivative_order: int) -> JetTuple:
+def jet_unsqueeze(self: JetTuple, dim: int) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.unsqueeze(self, dim)``.
 
     Args:
         self: The primal and its Taylor coefficients.
         dim: The dimension to unsqueeze.
-        derivative_order: The order of the Taylor expansion.
 
     Returns:
         The value and its Taylor coefficients, each unsqueezed.
     """
-    return JetTuple(
-        ops.aten.unsqueeze.default(self[k], dim) for k in range(derivative_order + 1)
-    )
+    return _apply_linear(self, lambda c: ops.aten.unsqueeze.default(c, dim))
 
 
-def jet_squeeze(self: JetTuple, dim: int, *, derivative_order: int) -> JetTuple:
+def jet_squeeze(self: JetTuple, dim: int) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.squeeze(self, dim)``.
 
     Args:
         self: The primal and its Taylor coefficients.
         dim: The dimension to squeeze.
-        derivative_order: The order of the Taylor expansion.
 
     Returns:
         The value and its Taylor coefficients, each squeezed.
     """
-    return JetTuple(
-        ops.aten.squeeze.dim(self[k], dim) for k in range(derivative_order + 1)
-    )
+    return _apply_linear(self, lambda c: ops.aten.squeeze.dim(c, dim))
 
 
 # --- Sum (dim reduction) ---
 
 
-def jet_sum(
-    self: JetTuple,
-    dim: list[int],
-    keepdim: bool = False,
-    *,
-    derivative_order: int,
-) -> JetTuple:
+def jet_sum(self: JetTuple, dim: list[int], keepdim: bool = False) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.sum(self, dim, keepdim)``.
 
     Args:
         self: The primal and its Taylor coefficients.
-        dim: The dimensions along which to sum (list of ints).
+        dim: The dimension to sum along, as either an ``int`` or a 1-element
+            ``list[int]``. Multi-dimensional reductions are not supported.
         keepdim: Whether to keep the reduced dimension. Default: ``False``.
-        derivative_order: The order of the Taylor expansion.
 
     Returns:
         The value and its Taylor coefficients.
 
     Raises:
         NotImplementedError: If keepdim is True.
+        ValueError: If ``dim`` is a list with anything other than one element.
     """
     if keepdim:
         raise NotImplementedError("keepdim=True is not supported.")
-    pos = dim[0] if isinstance(dim, list) else dim
-    return JetTuple(self[k].sum(pos) for k in range(derivative_order + 1))
+    (pos,) = (dim,) if isinstance(dim, int) else dim
+    return _apply_linear(self, lambda c: c.sum(pos))
 
 
 MAPPING = {

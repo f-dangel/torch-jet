@@ -10,7 +10,6 @@ from torch.fx import GraphModule
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
 
-from jet.collapsed_jet_interpreter import CollapsedJetInterpreter
 from jet.collapsed_operations import CollapsedJetTuple
 from jet.jet_interpreter import JetInterpreter
 from jet.operations import JetTuple
@@ -88,7 +87,7 @@ def _normalize_output(result: Any, derivative_order: int) -> Any:
 
 
 def _run_jet_interpreter(
-    interp: JetInterpreter | CollapsedJetInterpreter,
+    interp: JetInterpreter,
     args: tuple[Any, ...],
     derivative_order: int,
 ) -> Any:
@@ -144,7 +143,7 @@ def jet(
     """
     mod = capture_flat_graph(f, mock_primals)
 
-    interp = JetInterpreter(mod, derivative_order)
+    interp = JetInterpreter(mod)
 
     def jet_f(*args: Any) -> Any:
         return _run_jet_interpreter(interp, args, derivative_order)
@@ -199,10 +198,7 @@ def rev_jet(
         """
         return grad(f, X, **grad_kwargs)[0] if f.requires_grad else zeros_like(X)
 
-    def jet_f(
-        *args: Any,
-        derivative_order: int | None = derivative_order,
-    ) -> Any:
+    def jet_f(*args: Any, derivative_order: int | None = derivative_order) -> Any:
         """Compute the function and its Taylor coefficients.
 
         Args:
@@ -325,7 +321,7 @@ def collapsed_jet(
         )
     mod = capture_flat_graph(f, mock_args)
 
-    interp = CollapsedJetInterpreter(mod, derivative_order)
+    interp = JetInterpreter(mod, collapsed=True)
 
     def cjet_f(*args: Any) -> Any:
         return _run_jet_interpreter(interp, args, derivative_order)

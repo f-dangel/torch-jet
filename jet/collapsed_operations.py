@@ -20,6 +20,7 @@ from torch.utils._pytree import register_pytree_node
 from jet.operations import (
     _cos_derivatives,
     _faa_di_bruno,
+    _order,
     _pow_derivatives,
     _sigmoid_derivatives,
     _sin_derivatives,
@@ -43,15 +44,25 @@ register_pytree_node(
 )
 
 
+def _cjet_order(*args: Primal | CollapsedJetTuple | float | int) -> int:
+    """Infer ``K`` from all ``CollapsedJetTuple`` positional args.
+
+    Thin wrapper around :func:`jet.operations._order` that pre-binds the jet
+    type to ``CollapsedJetTuple``.
+    """
+    return _order(args, CollapsedJetTuple)
+
+
 # ---------------------------------------------------------------------------
 # Helpers: apply a linear op with vmap for batched coefficients
 # ---------------------------------------------------------------------------
 
 
 def _apply_linear(
-    jet: CollapsedJetTuple, K: int, op: Callable[[Tensor], Tensor]
+    jet: CollapsedJetTuple, op: Callable[[Tensor], Tensor]
 ) -> CollapsedJetTuple:
     """Apply a linear *op* to every entry of *jet*, vmapping batched ones."""
+    K = len(jet) - 1
     results = [op(jet[0])]
     vop = vmap(op)
     for k in range(1, K + 1):
@@ -60,9 +71,10 @@ def _apply_linear(
 
 
 def _apply_linear_coeffs(
-    jet: CollapsedJetTuple, K: int, op: Callable[[Tensor], Tensor]
+    jet: CollapsedJetTuple, op: Callable[[Tensor], Tensor]
 ) -> tuple[Tensor, ...]:
     """Apply *op* to coefficients 1..K only, vmapping batched ones."""
+    K = len(jet) - 1
     vop = vmap(op)
     return tuple(vop(jet[k]) if k < K else op(jet[k]) for k in range(1, K + 1))
 
@@ -75,23 +87,38 @@ def _apply_linear_coeffs(
 def _collapsed_leibniz(
     self: CollapsedJetTuple,
     other: CollapsedJetTuple,
-    K: int,
     binary_op: Callable[[Tensor, Tensor], Tensor],
-) -> CollapsedJetTuple:
-    """Leibniz product rule with collapsed K-th coefficient.
+) -> tuple[Tensor, ...]:
+    """Leibniz product rule with collapsed K-th coefficient (orders 1..K).
 
-    For orders 0..K-1: standard Leibniz.
+    Returns only coefficients 1..K; the caller handles the order-0 primal
+    explicitly (mirroring :func:`jet.operations._leibniz` — skipping k=0 here
+    avoids a wasted ``binary_op(self[0], other[0])`` node in the captured
+    graph when the caller is ``cjet_addmm`` and supplies its own
+    ``addmm``-based primal).
+
+    For orders 1..K-1: standard Leibniz.
     For order K: linear terms (using collapsed coefficients) +
                  nonlinear terms (using batched coefficients, summed over R).
+    ``K`` is inferred as ``len(self) - 1``; lengths are checked.
+
+    Raises:
+        ValueError: If ``self`` and ``other`` have different lengths.
     """
-    s_out = ()
-    for k in range(K + 1):
+    if len(self) != len(other):
+        raise ValueError(
+            f"_collapsed_leibniz: operands must share the same derivative "
+            f"order; got lengths {len(self)} and {len(other)}"
+        )
+    K = len(self) - 1
+    coeffs = ()
+    for k in range(1, K + 1):
         if k < K:
             term = None
             for j in range(k + 1):
                 term_j = comb(k, j, exact=True) * binary_op(self[j], other[k - j])
                 term = term_j if term is None else term + term_j
-            s_out += (term,)
+            coeffs += (term,)
         else:
             linear = binary_op(self[0], other[K]) + binary_op(self[K], other[0])
             if K >= 2:
@@ -103,10 +130,10 @@ def _collapsed_leibniz(
                         self[j], other[K - j]
                     ).sum(0)
                     nonlinear = term_j if nonlinear is None else nonlinear + term_j
-                s_out += (linear + nonlinear,)
+                coeffs += (linear + nonlinear,)
             else:
-                s_out += (linear,)
-    return CollapsedJetTuple(s_out)
+                coeffs += (linear,)
+    return coeffs
 
 
 # ---------------------------------------------------------------------------
@@ -116,46 +143,42 @@ def _collapsed_leibniz(
 
 def _cjet_elementwise(
     self: CollapsedJetTuple,
-    derivative_order: int,
     deriv_fn: Callable[[Primal, int], tuple[Primal, dict[int, Primal]]],
 ) -> CollapsedJetTuple:
     """Generic collapsed elementwise using shared helpers."""
+    K = _cjet_order(self)
     self0, vs = self[0], self[1:]
-    primal, dn = deriv_fn(self0, derivative_order)
-    vs_out = _faa_di_bruno(vs, derivative_order, dn, collapsed=True)
+    primal, dn = deriv_fn(self0, K)
+    vs_out = _faa_di_bruno(vs, dn, collapsed=True)
     return CollapsedJetTuple((primal, *vs_out))
 
 
-def cjet_sin(self: CollapsedJetTuple, *, derivative_order: int) -> CollapsedJetTuple:
+def cjet_sin(self: CollapsedJetTuple) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.sin``."""
-    return _cjet_elementwise(self, derivative_order, _sin_derivatives)
+    return _cjet_elementwise(self, _sin_derivatives)
 
 
-def cjet_cos(self: CollapsedJetTuple, *, derivative_order: int) -> CollapsedJetTuple:
+def cjet_cos(self: CollapsedJetTuple) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.cos``."""
-    return _cjet_elementwise(self, derivative_order, _cos_derivatives)
+    return _cjet_elementwise(self, _cos_derivatives)
 
 
-def cjet_tanh(self: CollapsedJetTuple, *, derivative_order: int) -> CollapsedJetTuple:
+def cjet_tanh(self: CollapsedJetTuple) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.tanh``."""
-    return _cjet_elementwise(self, derivative_order, _tanh_derivatives)
+    return _cjet_elementwise(self, _tanh_derivatives)
 
 
-def cjet_sigmoid(
-    self: CollapsedJetTuple, *, derivative_order: int
-) -> CollapsedJetTuple:
+def cjet_sigmoid(self: CollapsedJetTuple) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.sigmoid``."""
-    return _cjet_elementwise(self, derivative_order, _sigmoid_derivatives)
+    return _cjet_elementwise(self, _sigmoid_derivatives)
 
 
-def cjet_pow(
-    self: CollapsedJetTuple, exponent: float | int, *, derivative_order: int
-) -> CollapsedJetTuple:
+def cjet_pow(self: CollapsedJetTuple, exponent: float | int) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.pow``."""
     assert isinstance(exponent, (float, int))
     self0, vs = self[0], self[1:]
-    primal, dpow = _pow_derivatives(self0, exponent, derivative_order)
-    vs_out = _faa_di_bruno(vs, derivative_order, dpow, collapsed=True)
+    primal, dpow = _pow_derivatives(self0, exponent, _cjet_order(self))
+    vs_out = _faa_di_bruno(vs, dpow, collapsed=True)
     return CollapsedJetTuple((primal, *vs_out))
 
 
@@ -167,63 +190,53 @@ def cjet_pow(
 def cjet_add(
     self: Primal | CollapsedJetTuple | float | int,
     other: Primal | CollapsedJetTuple | float | int,
-    *,
-    derivative_order: int,
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.add``."""
-    K = derivative_order
     self_is = isinstance(self, CollapsedJetTuple)
     other_is = isinstance(other, CollapsedJetTuple)
     if self_is and other_is:
-        return CollapsedJetTuple(self[k] + other[k] for k in range(K + 1))
+        _cjet_order(self, other)  # validates K-consistency, raises on mismatch
+        coeffs = (s + o for s, o in zip(self, other))
     elif self_is:
-        return CollapsedJetTuple(
-            (self[0] + other,) + tuple(self[k] for k in range(1, K + 1))
-        )
+        coeffs = (self[0] + other, *self[1:])
     else:
-        return CollapsedJetTuple(
-            (other[0] + self,) + tuple(other[k] for k in range(1, K + 1))
-        )
+        coeffs = (other[0] + self, *other[1:])
+    return CollapsedJetTuple(coeffs)
 
 
 def cjet_sub(
     self: Primal | CollapsedJetTuple | float | int,
     other: Primal | CollapsedJetTuple | float | int,
-    *,
-    derivative_order: int,
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.sub``."""
-    K = derivative_order
     self_is = isinstance(self, CollapsedJetTuple)
     other_is = isinstance(other, CollapsedJetTuple)
     if self_is and other_is:
-        return CollapsedJetTuple(self[k] - other[k] for k in range(K + 1))
+        _cjet_order(self, other)  # validates K-consistency, raises on mismatch
+        coeffs = (s - o for s, o in zip(self, other))
     elif self_is:
-        return CollapsedJetTuple(
-            (self[0] - other,) + tuple(self[k] for k in range(1, K + 1))
-        )
+        coeffs = (self[0] - other, *self[1:])
     else:
-        return CollapsedJetTuple(
-            (self - other[0],) + tuple(-other[k] for k in range(1, K + 1))
-        )
+        coeffs = (self - other[0], *(-c for c in other[1:]))
+    return CollapsedJetTuple(coeffs)
 
 
 def cjet_mul(
     self: Primal | CollapsedJetTuple,
     other: Primal | CollapsedJetTuple,
-    *,
-    derivative_order: int,
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.mul``."""
-    K = derivative_order
     self_is = isinstance(self, CollapsedJetTuple)
     other_is = isinstance(other, CollapsedJetTuple)
     if self_is and other_is:
-        return _collapsed_leibniz(self, other, K, lambda a, b: a * b)
+        primal = self[0] * other[0]
+        return CollapsedJetTuple(
+            (primal, *_collapsed_leibniz(self, other, lambda a, b: a * b))
+        )
     elif self_is:
-        return CollapsedJetTuple(other * self[k] for k in range(K + 1))
+        return _apply_linear(self, lambda c: other * c)
     else:
-        return CollapsedJetTuple(self * other[k] for k in range(K + 1))
+        return _apply_linear(other, lambda c: self * c)
 
 
 # ---------------------------------------------------------------------------
@@ -232,46 +245,46 @@ def cjet_mul(
 
 
 def cjet_mm(
-    self: Primal | CollapsedJetTuple,
-    mat2: Primal | CollapsedJetTuple,
-    *,
-    derivative_order: int,
+    self: Primal | CollapsedJetTuple, mat2: Primal | CollapsedJetTuple
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.mm``."""
-    K = derivative_order
     self_is = isinstance(self, CollapsedJetTuple)
     mat2_is = isinstance(mat2, CollapsedJetTuple)
     if self_is and mat2_is:
-        return _collapsed_leibniz(self, mat2, K, matmul)
+        primal = matmul(self[0], mat2[0])
+        return CollapsedJetTuple((primal, *_collapsed_leibniz(self, mat2, matmul)))
     elif self_is:
-        return _apply_linear(self, K, lambda x: mm(x, mat2))
+        return _apply_linear(self, lambda c: mm(c, mat2))
     else:
-        return _apply_linear(mat2, K, lambda x: mm(self, x))
+        return _apply_linear(mat2, lambda c: mm(self, c))
 
 
 def cjet_addmm(
-    bias: Primal,
+    self: Primal,
     mat1: Primal | CollapsedJetTuple,
     mat2: Primal | CollapsedJetTuple,
-    *,
-    derivative_order: int,
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.addmm``."""
-    K = derivative_order
+    if isinstance(self, CollapsedJetTuple):
+        raise NotImplementedError(
+            "cjet_addmm does not support a Taylor-expanded bias (self). "
+            "Expected a constant Tensor."
+        )
     mat1_is = isinstance(mat1, CollapsedJetTuple)
     mat2_is = isinstance(mat2, CollapsedJetTuple)
     if mat1_is and mat2_is:
-        mm_jet = _collapsed_leibniz(mat1, mat2, K, matmul)
-        primal = addmm(bias, mat1[0], mat2[0])
-        return CollapsedJetTuple((primal,) + mm_jet[1:])
+        primal = addmm(self, mat1[0], mat2[0])
+        return CollapsedJetTuple((primal, *_collapsed_leibniz(mat1, mat2, matmul)))
     elif mat1_is:
-        primal = addmm(bias, mat1[0], mat2)
-        coeffs = _apply_linear_coeffs(mat1, K, lambda x: mm(x, mat2))
-        return CollapsedJetTuple((primal, *coeffs))
+        primal = addmm(self, mat1[0], mat2)
+        return CollapsedJetTuple(
+            (primal, *_apply_linear_coeffs(mat1, lambda c: mm(c, mat2)))
+        )
     else:
-        primal = addmm(bias, mat1, mat2[0])
-        coeffs = _apply_linear_coeffs(mat2, K, lambda x: mm(mat1, x))
-        return CollapsedJetTuple((primal, *coeffs))
+        primal = addmm(self, mat1, mat2[0])
+        return CollapsedJetTuple(
+            (primal, *_apply_linear_coeffs(mat2, lambda c: mm(mat1, c)))
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -279,43 +292,35 @@ def cjet_addmm(
 # ---------------------------------------------------------------------------
 
 
-def cjet_view(
-    self: CollapsedJetTuple, size: list[int], *, derivative_order: int
-) -> CollapsedJetTuple:
+def cjet_view(self: CollapsedJetTuple, size: list[int]) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.view``."""
-    return _apply_linear(
-        self, derivative_order, lambda x: ops.aten.view.default(x, size)
-    )
+    return _apply_linear(self, lambda x: ops.aten.view.default(x, size))
 
 
-def cjet_unsqueeze(
-    self: CollapsedJetTuple, dim: int, *, derivative_order: int
-) -> CollapsedJetTuple:
+def cjet_unsqueeze(self: CollapsedJetTuple, dim: int) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.unsqueeze``."""
-    return _apply_linear(
-        self, derivative_order, lambda x: ops.aten.unsqueeze.default(x, dim)
-    )
+    return _apply_linear(self, lambda x: ops.aten.unsqueeze.default(x, dim))
 
 
-def cjet_squeeze(
-    self: CollapsedJetTuple, dim: int, *, derivative_order: int
-) -> CollapsedJetTuple:
+def cjet_squeeze(self: CollapsedJetTuple, dim: int) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.squeeze``."""
-    return _apply_linear(self, derivative_order, lambda x: ops.aten.squeeze.dim(x, dim))
+    return _apply_linear(self, lambda x: ops.aten.squeeze.dim(x, dim))
 
 
 def cjet_sum(
     self: CollapsedJetTuple,
     dim: list[int] | int,
     keepdim: bool = False,
-    *,
-    derivative_order: int,
 ) -> CollapsedJetTuple:
-    """Collapsed jet rule for ``aten.sum``."""
+    """Collapsed jet rule for ``aten.sum``.
+
+    ``dim`` must be an ``int`` or a 1-element ``list[int]`` (multi-dim
+    reductions are not supported); a longer list raises ``ValueError``.
+    """
     if keepdim:
         raise NotImplementedError("keepdim=True is not supported.")
-    pos = dim[0] if isinstance(dim, list) else dim
-    return _apply_linear(self, derivative_order, lambda x: x.sum(pos))
+    (pos,) = (dim,) if isinstance(dim, int) else dim
+    return _apply_linear(self, lambda x: x.sum(pos))
 
 
 # ---------------------------------------------------------------------------

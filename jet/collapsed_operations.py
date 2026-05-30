@@ -158,14 +158,11 @@ def cjet_sigmoid(self: CollapsedJetTuple) -> CollapsedJetTuple:
     return _cjet_elementwise(self, _sigmoid_derivatives)
 
 
-def cjet_pow(
-    self: CollapsedJetTuple, exponent: float | int
-) -> CollapsedJetTuple:
+def cjet_pow(self: CollapsedJetTuple, exponent: float | int) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.pow``."""
     assert isinstance(exponent, (float, int))
-    K = _cjet_order(self)
     self0, vs = self[0], self[1:]
-    primal, dpow = _pow_derivatives(self0, exponent, K)
+    primal, dpow = _pow_derivatives(self0, exponent, _cjet_order(self))
     vs_out = _faa_di_bruno(vs, dpow, collapsed=True)
     return CollapsedJetTuple((primal, *vs_out))
 
@@ -280,23 +277,17 @@ def cjet_addmm(
 # ---------------------------------------------------------------------------
 
 
-def cjet_view(
-    self: CollapsedJetTuple, size: list[int]
-) -> CollapsedJetTuple:
+def cjet_view(self: CollapsedJetTuple, size: list[int]) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.view``."""
     return _apply_linear(self, lambda x: ops.aten.view.default(x, size))
 
 
-def cjet_unsqueeze(
-    self: CollapsedJetTuple, dim: int
-) -> CollapsedJetTuple:
+def cjet_unsqueeze(self: CollapsedJetTuple, dim: int) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.unsqueeze``."""
     return _apply_linear(self, lambda x: ops.aten.unsqueeze.default(x, dim))
 
 
-def cjet_squeeze(
-    self: CollapsedJetTuple, dim: int
-) -> CollapsedJetTuple:
+def cjet_squeeze(self: CollapsedJetTuple, dim: int) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.squeeze``."""
     return _apply_linear(self, lambda x: ops.aten.squeeze.dim(x, dim))
 

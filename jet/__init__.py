@@ -198,10 +198,7 @@ def rev_jet(
         """
         return grad(f, X, **grad_kwargs)[0] if f.requires_grad else zeros_like(X)
 
-    def jet_f(
-        *args: Any,
-        derivative_order: int | None = derivative_order,
-    ) -> Any:
+    def jet_f(*args: Any, derivative_order: int | None = derivative_order) -> Any:
         """Compute the function and its Taylor coefficients.
 
         Args:

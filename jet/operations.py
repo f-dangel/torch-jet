@@ -54,9 +54,7 @@ def _order(args: tuple[Value, ...], jet_type: type) -> int:
     """
     Ks = {len(arg) - 1 for arg in args if isinstance(arg, jet_type)}
     if not Ks:
-        raise TypeError(
-            f"_order: no {jet_type.__name__} in positional arguments"
-        )
+        raise TypeError(f"_order: no {jet_type.__name__} in positional arguments")
     if len(Ks) > 1:
         raise ValueError(
             f"all {jet_type.__name__} arguments must share the same derivative "
@@ -174,9 +172,7 @@ def _partition_term(
     return nu * term if nu != 1.0 else term
 
 
-def _collapsed_highest_order(
-    vs: tuple[Primal, ...], dn: dict[int, Primal]
-) -> Value:
+def _collapsed_highest_order(vs: tuple[Primal, ...], dn: dict[int, Primal]) -> Value:
     """Compute the collapsed (summed) highest-order Faà di Bruno coefficient.
 
     Separates the linear contribution (which multiplies the collapsed input)
@@ -411,13 +407,9 @@ def jet_pow(self: JetTuple, exponent: float | int) -> JetTuple:
         The value and its Taylor coefficients.
     """
     assert isinstance(exponent, (float, int))
-    K = _jet_order(self)
-
     self0, vs = self[0], self[1:]
-    pow_self0, dpow = _pow_derivatives(self0, exponent, K)
-
+    pow_self0, dpow = _pow_derivatives(self0, exponent, _jet_order(self))
     vs_out = _faa_di_bruno(vs, dpow)
-
     return JetTuple((pow_self0, *vs_out))
 
 
@@ -472,10 +464,7 @@ def jet_sub(
         return JetTuple((self - other[0], *(-c for c in other[1:])))
 
 
-def jet_mul(
-    self: Primal | JetTuple,
-    other: Primal | JetTuple,
-) -> JetTuple:
+def jet_mul(self: Primal | JetTuple, other: Primal | JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.mul(self, other)``.
 
     Args:
@@ -499,10 +488,7 @@ def jet_mul(
 # --- Linear decomposition ---
 
 
-def jet_mm(
-    self: Primal | JetTuple,
-    mat2: Primal | JetTuple,
-) -> JetTuple:
+def jet_mm(self: Primal | JetTuple, mat2: Primal | JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.mm(self, mat2)``.
 
     Args:
@@ -524,9 +510,7 @@ def jet_mm(
 
 
 def jet_addmm(
-    self: Primal,
-    mat1: Primal | JetTuple,
-    mat2: Primal | JetTuple,
+    self: Primal, mat1: Primal | JetTuple, mat2: Primal | JetTuple
 ) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.addmm(self, mat1, mat2)``.
 
@@ -553,14 +537,10 @@ def jet_addmm(
 
     elif mat1_is_jet:
         primal = addmm(self, mat1[0], mat2)
-        return JetTuple(
-            (primal, *_apply_linear_coeffs(mat1, lambda c: mm(c, mat2)))
-        )
+        return JetTuple((primal, *_apply_linear_coeffs(mat1, lambda c: mm(c, mat2))))
     else:
         primal = addmm(self, mat1, mat2[0])
-        return JetTuple(
-            (primal, *_apply_linear_coeffs(mat2, lambda c: mm(mat1, c)))
-        )
+        return JetTuple((primal, *_apply_linear_coeffs(mat2, lambda c: mm(mat1, c))))
 
 
 def jet_view(self: JetTuple, size: list[int]) -> JetTuple:
@@ -605,11 +585,7 @@ def jet_squeeze(self: JetTuple, dim: int) -> JetTuple:
 # --- Sum (dim reduction) ---
 
 
-def jet_sum(
-    self: JetTuple,
-    dim: list[int],
-    keepdim: bool = False,
-) -> JetTuple:
+def jet_sum(self: JetTuple, dim: list[int], keepdim: bool = False) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.sum(self, dim, keepdim)``.
 
     Args:

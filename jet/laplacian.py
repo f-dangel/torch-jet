@@ -52,7 +52,8 @@ def laplacian(
             entry specifies `rank_C`. If `None`, then the weightings correspond to
             the identity matrix (i.e. computing the standard Laplacian).
         use_collapsing: Whether to use collapsed Taylor mode. If ``True``
-            (default), uses a ``CollapsedJetInterpreter`` that directly propagates
+            (default), uses the collapsed dispatch path
+            (``JetInterpreter(..., collapsed=True)``) that directly propagates
             the summed second-order coefficient. If ``False``, propagates full
             2-jets over all directions via ``vmap`` and sums afterward.
 

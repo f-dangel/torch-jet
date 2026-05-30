@@ -69,7 +69,8 @@ def bilaplacian(
             distribution type (must be 'normal'), and the second is the number of
             samples to use. Default is `None`.
         use_collapsing: Whether to use collapsed Taylor mode. If ``True``
-            (default), uses a ``CollapsedJetInterpreter`` that directly propagates
+            (default), uses the collapsed dispatch path
+            (``JetInterpreter(..., collapsed=True)``) that directly propagates
             the summed fourth-order coefficient. If ``False``, propagates full
             4-jets over all directions via ``vmap`` and sums afterward.
 

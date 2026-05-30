@@ -59,9 +59,10 @@ def _cjet_order(*args: Primal | CollapsedJetTuple | float | int) -> int:
 
 
 def _apply_linear(
-    jet: CollapsedJetTuple, K: int, op: Callable[[Tensor], Tensor]
+    jet: CollapsedJetTuple, op: Callable[[Tensor], Tensor]
 ) -> CollapsedJetTuple:
     """Apply a linear *op* to every entry of *jet*, vmapping batched ones."""
+    K = len(jet) - 1
     results = [op(jet[0])]
     vop = vmap(op)
     for k in range(1, K + 1):
@@ -70,9 +71,10 @@ def _apply_linear(
 
 
 def _apply_linear_coeffs(
-    jet: CollapsedJetTuple, K: int, op: Callable[[Tensor], Tensor]
+    jet: CollapsedJetTuple, op: Callable[[Tensor], Tensor]
 ) -> tuple[Tensor, ...]:
     """Apply *op* to coefficients 1..K only, vmapping batched ones."""
+    K = len(jet) - 1
     vop = vmap(op)
     return tuple(vop(jet[k]) if k < K else op(jet[k]) for k in range(1, K + 1))
 
@@ -245,9 +247,9 @@ def cjet_mm(
     if self_is and mat2_is:
         return _collapsed_leibniz(self, mat2, K, matmul)
     elif self_is:
-        return _apply_linear(self, K, lambda x: mm(x, mat2))
+        return _apply_linear(self, lambda x: mm(x, mat2))
     else:
-        return _apply_linear(mat2, K, lambda x: mm(self, x))
+        return _apply_linear(mat2, lambda x: mm(self, x))
 
 
 def cjet_addmm(
@@ -265,11 +267,11 @@ def cjet_addmm(
         return CollapsedJetTuple((primal,) + mm_jet[1:])
     elif mat1_is:
         primal = addmm(bias, mat1[0], mat2)
-        coeffs = _apply_linear_coeffs(mat1, K, lambda x: mm(x, mat2))
+        coeffs = _apply_linear_coeffs(mat1, lambda x: mm(x, mat2))
         return CollapsedJetTuple((primal, *coeffs))
     else:
         primal = addmm(bias, mat1, mat2[0])
-        coeffs = _apply_linear_coeffs(mat2, K, lambda x: mm(mat1, x))
+        coeffs = _apply_linear_coeffs(mat2, lambda x: mm(mat1, x))
         return CollapsedJetTuple((primal, *coeffs))
 
 
@@ -282,24 +284,21 @@ def cjet_view(
     self: CollapsedJetTuple, size: list[int]
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.view``."""
-    K = _cjet_order(self)
-    return _apply_linear(self, K, lambda x: ops.aten.view.default(x, size))
+    return _apply_linear(self, lambda x: ops.aten.view.default(x, size))
 
 
 def cjet_unsqueeze(
     self: CollapsedJetTuple, dim: int
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.unsqueeze``."""
-    K = _cjet_order(self)
-    return _apply_linear(self, K, lambda x: ops.aten.unsqueeze.default(x, dim))
+    return _apply_linear(self, lambda x: ops.aten.unsqueeze.default(x, dim))
 
 
 def cjet_squeeze(
     self: CollapsedJetTuple, dim: int
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.squeeze``."""
-    K = _cjet_order(self)
-    return _apply_linear(self, K, lambda x: ops.aten.squeeze.dim(x, dim))
+    return _apply_linear(self, lambda x: ops.aten.squeeze.dim(x, dim))
 
 
 def cjet_sum(
@@ -310,9 +309,8 @@ def cjet_sum(
     """Collapsed jet rule for ``aten.sum``."""
     if keepdim:
         raise NotImplementedError("keepdim=True is not supported.")
-    K = _cjet_order(self)
     pos = dim[0] if isinstance(dim, list) else dim
-    return _apply_linear(self, K, lambda x: x.sum(pos))
+    return _apply_linear(self, lambda x: x.sum(pos))
 
 
 # ---------------------------------------------------------------------------

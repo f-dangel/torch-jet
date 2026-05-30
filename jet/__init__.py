@@ -7,13 +7,12 @@ from torch import Tensor, tensor, zeros_like
 from torch.autograd import grad
 from torch.func import vmap
 from torch.fx import GraphModule
-from torch.fx.experimental.proxy_tensor import make_fx
 from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
 
 from jet.collapsed_operations import CollapsedJetTuple
 from jet.jet_interpreter import JetInterpreter
 from jet.operations import JetTuple
-from jet.tracing import capture_flat_graph
+from jet.tracing import _make_fx, capture_flat_graph
 from jet.utils import Value
 
 _JetTypes = (JetTuple, CollapsedJetTuple)
@@ -152,7 +151,7 @@ def jet(
         lambda t: (t, *(zeros_like(t) for _ in range(derivative_order))),
         mock_primals,
     )
-    return make_fx(jet_f)(*mock_jets)
+    return _make_fx(jet_f)(*mock_jets)
 
 
 def rev_jet(

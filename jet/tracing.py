@@ -1,5 +1,6 @@
 """Utility functions for capturing compute graphs in PyTorch."""
 
+from functools import partial
 from typing import Any, Callable
 
 from torch import Tensor, ops
@@ -13,6 +14,11 @@ from torch.utils._pytree import tree_flatten, tree_unflatten
 _INPLACE_TO_FUNCTIONAL = {
     ops.aten.squeeze_.dim: ops.aten.squeeze.dim,
 }
+
+#: Fake-tensor mode skips kernel execution and just propagates shape/dtype,
+#: cutting trace time substantially on deep models. ``_allow_non_fake_inputs``
+#: is needed because callers' modules close over real ``nn.Parameter`` tensors.
+_make_fx = partial(make_fx, tracing_mode="fake", _allow_non_fake_inputs=True)
 
 
 def capture_graph(
@@ -32,7 +38,7 @@ def capture_graph(
     Returns:
         The traced module with the captured compute graph.
     """
-    mod = make_fx(functionalize(f))(*mock_args)
+    mod = _make_fx(functionalize(f))(*mock_args)
     _replace_inplace_ops(mod)
     mod.graph.eliminate_dead_code()
     mod.recompile()

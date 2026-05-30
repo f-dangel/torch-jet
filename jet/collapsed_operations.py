@@ -297,10 +297,14 @@ def cjet_sum(
     dim: list[int] | int,
     keepdim: bool = False,
 ) -> CollapsedJetTuple:
-    """Collapsed jet rule for ``aten.sum``."""
+    """Collapsed jet rule for ``aten.sum``.
+
+    ``dim`` must be an ``int`` or a 1-element ``list[int]`` (multi-dim
+    reductions are not supported); a longer list raises ``ValueError``.
+    """
     if keepdim:
         raise NotImplementedError("keepdim=True is not supported.")
-    pos = dim[0] if isinstance(dim, list) else dim
+    (pos,) = dim if isinstance(dim, list) else (dim,)
     return _apply_linear(self, lambda x: x.sum(pos))
 
 

@@ -590,7 +590,8 @@ def jet_sum(self: JetTuple, dim: list[int], keepdim: bool = False) -> JetTuple:
 
     Args:
         self: The primal and its Taylor coefficients.
-        dim: The dimensions along which to sum (list of ints).
+        dim: The dimension to sum along, as either an ``int`` or a 1-element
+            ``list[int]``. Multi-dimensional reductions are not supported.
         keepdim: Whether to keep the reduced dimension. Default: ``False``.
 
     Returns:
@@ -598,10 +599,11 @@ def jet_sum(self: JetTuple, dim: list[int], keepdim: bool = False) -> JetTuple:
 
     Raises:
         NotImplementedError: If keepdim is True.
+        ValueError: If ``dim`` is a list with anything other than one element.
     """
     if keepdim:
         raise NotImplementedError("keepdim=True is not supported.")
-    pos = dim[0] if isinstance(dim, list) else dim
+    (pos,) = dim if isinstance(dim, list) else (dim,)
     return _apply_linear(self, lambda c: c.sum(pos))
 
 

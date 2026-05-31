@@ -125,8 +125,7 @@ print(hessian_trace_laplacian)
 #
 # Let's set up the jet function:
 
-derivative_order = 2
-f_jet = jet.jet(f, derivative_order, (x,))
+f_jet = jet.jet(f, (x,))
 
 # %%
 #
@@ -240,10 +239,9 @@ def make_laplacian(
     Returns:
         A function that computes the Laplacian of f at a given input.
     """
-    derivative_order = 2
     in_shape = mock_x.shape
     in_dim = mock_x.numel()
-    jet_f = jet.jet(f, derivative_order, (mock_x,))
+    jet_f = jet.jet(f, (mock_x,))
 
     def lap_f(x: Tensor) -> Tensor:
         """Compute the Laplacian.
@@ -284,14 +282,14 @@ else:
 # Now, let's look at two different graphs which will become clear in a moment.
 
 # Graph 1: Simply capture the function that computes the Laplacian
-lap_traced = capture_graph(lap_fn, x)
+lap_traced = capture_graph(lap_fn, (x,))
 visualize_graph(
     lap_traced, path.join(GALLERYDIR, "02_laplacian_module.png"), use_custom=True
 )
 assert hessian_trace_laplacian.allclose(lap_traced(x))
 
 # Graph 2: Standard simplifications (dead code elimination, CSE)
-lap_standard = capture_graph(lap_fn, x)
+lap_standard = capture_graph(lap_fn, (x,))
 common_subexpression_elimination(lap_standard.graph)
 lap_standard.recompile()
 visualize_graph(

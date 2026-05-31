@@ -91,9 +91,9 @@ def laplacian(
     )
 
     cjet_f = (
-        collapsed_jet(f, 2, (mock_x,))
+        collapsed_jet(f, (mock_x,))
         if collapsed
-        else _make_uncollapsed_cjet(f, 2, (mock_x,), randomization)
+        else _make_uncollapsed_cjet(f, (mock_x,), randomization)
     )
 
     def lap_f(x: Tensor) -> Tensor:
@@ -132,4 +132,4 @@ def laplacian(
 
         return F2
 
-    return capture_graph(lap_f, mock_x)
+    return capture_graph(lap_f, (mock_x,))

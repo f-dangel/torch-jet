@@ -344,10 +344,10 @@ def test_jet(config: dict[str, Any], derivative_order: int):
         for arg_idx in range(len(primals))
     )
 
-    jet_f = jet.jet(f, derivative_order, mock_primals)
+    jet_f = jet.jet(f, mock_primals)
     jet_out = jet_f(*args)
 
-    rev_jet_f = rev_jet(f, derivative_order)
+    rev_jet_f = rev_jet(f)
     rev_jet_out = rev_jet_f(*args)
 
     report_pytrees_nonclose(jet_out, rev_jet_out)
@@ -411,21 +411,24 @@ def test_collapsed_jet(config: dict[str, Any], derivative_order: int):
     """
     f, mock_args, args = _setup_collapsed_jet_args(config, derivative_order)
 
-    std_f = jet._make_uncollapsed_cjet(
-        f, derivative_order, mock_args, randomization=None
-    )
-    cjet_f = collapsed_jet(f, derivative_order, mock_args)
+    std_f = jet._make_uncollapsed_cjet(f, mock_args, randomization=None)
+    cjet_f = collapsed_jet(f, mock_args)
 
     report_pytrees_nonclose(std_f(*args), cjet_f(*args))
 
 
 def test_collapsed_jet_rejects_order_below_2():
-    """collapsed_jet raises ValueError for derivative_order < 2."""
-    with raises(ValueError, match="derivative_order >= 2"):
-        collapsed_jet(sin, 1, (zeros(3),))
+    """collapsed_jet raises ValueError at call time for K < 2."""
+    cjet_f = collapsed_jet(sin, (zeros(3),))
+    x = zeros(3)
 
-    with raises(ValueError, match="derivative_order >= 2"):
-        collapsed_jet(sin, 0, (zeros(3),))
+    # K=1: jet tuple has length 2 -> only a primal and one coefficient.
+    with raises(ValueError, match="collapsed mode requires K >= 2"):
+        cjet_f((x, x))
+
+    # K=0: jet tuple has length 1 -> only a primal.
+    with raises(ValueError, match="collapsed mode requires K >= 2"):
+        cjet_f((x,))
 
 
 def test_jet_rejects_unsupported_tuple_dict_signature():
@@ -437,13 +440,13 @@ def test_jet_rejects_unsupported_tuple_dict_signature():
     f = lambda x, params: x * params["a"]  # noqa: E731
     match = r"pytorch/pytorch#185640"  # pin to the tracked upstream issue
     with raises(NotImplementedError, match=match):
-        jet.jet(f, 2, (zeros(3), {"a": zeros(3)}))
+        jet.jet(f, (zeros(3), {"a": zeros(3)}))
     with raises(NotImplementedError, match=match):
-        collapsed_jet(f, 2, (zeros(3), {"a": zeros(3)}))
+        collapsed_jet(f, (zeros(3), {"a": zeros(3)}))
 
     # Supported dict signatures must not raise.
-    jet.jet(lambda d: d["a"] * 2, 2, ({"a": zeros(3)},))  # single dict arg
-    jet.jet(lambda d, x: d["a"] + x, 2, ({"a": zeros(3)}, zeros(3)))  # dict first
+    jet.jet(lambda d: d["a"] * 2, ({"a": zeros(3)},))  # single dict arg
+    jet.jet(lambda d, x: d["a"] + x, ({"a": zeros(3)}, zeros(3)))  # dict first
     jet.jet(  # three args with a trailing dict
-        lambda x, y, d: x + y + d["a"], 2, (zeros(3), zeros(3), {"a": zeros(3)})
+        lambda x, y, d: x + y + d["a"], (zeros(3), zeros(3), {"a": zeros(3)})
     )

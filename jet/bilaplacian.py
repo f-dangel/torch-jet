@@ -99,12 +99,10 @@ def bilaplacian(
 
     validate_randomization(randomization, SUPPORTED_DISTRIBUTIONS)
 
-    derivative_order = 4
-
     cjet_f = (
-        collapsed_jet(f, derivative_order, (mock_x,))
+        collapsed_jet(f, (mock_x,))
         if collapsed
-        else _make_uncollapsed_cjet(f, derivative_order, (mock_x,), randomization)
+        else _make_uncollapsed_cjet(f, (mock_x,), randomization)
     )
 
     def _eval_4jet(x: Tensor, X1: Tensor) -> Tensor:
@@ -167,4 +165,4 @@ def bilaplacian(
 
         return term1 + term2 + term3
 
-    return capture_graph(bilap_f, mock_x)
+    return capture_graph(bilap_f, (mock_x,))

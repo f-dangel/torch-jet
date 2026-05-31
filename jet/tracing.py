@@ -23,45 +23,31 @@ _make_fx = partial(make_fx, tracing_mode="fake", _allow_non_fake_inputs=True)
 
 def capture_graph(
     f: Module | Callable[..., Any] | GraphModule,
-    *mock_args: Tensor,
+    mock_args: tuple[Any, ...],
 ) -> GraphModule:
-    """Capture the compute graph of a function using make_fx.
-
-    The function is wrapped with ``functionalize`` and in-place operations are
-    replaced with their out-of-place equivalents, ensuring a purely functional
-    graph that is safe for transformations like common subexpression elimination.
-
-    Args:
-        f: The (graph) module or callable to trace.
-        *mock_args: Mock input tensors for tracing. Only shapes and dtypes matter.
-
-    Returns:
-        The traced module with the captured compute graph.
-    """
-    mod = _make_fx(functionalize(f))(*mock_args)
-    _replace_inplace_ops(mod)
-    mod.graph.eliminate_dead_code()
-    mod.recompile()
-    return mod
-
-
-def capture_flat_graph(
-    f: Callable[..., Any], mock_args: tuple[Any, ...]
-) -> GraphModule:
-    """Capture the compute graph of ``f`` over its flattened pytree leaves.
+    """Capture the compute graph of ``f`` as a ``GraphModule``.
 
     ``make_fx`` creates one symbolic proxy per positional tensor argument and
     cannot trace through nested pytree containers. This flattens ``mock_args``
-    into tensor leaves, wraps ``f`` in a shim that unflattens them back into the
-    original structure, and traces that shim.
+    into tensor leaves, wraps ``f`` in a shim that unflattens them back into
+    the original structure, and traces that shim. The shim is wrapped with
+    ``functionalize`` and in-place operations are replaced with their
+    out-of-place equivalents, producing a purely functional graph safe for
+    transformations like common subexpression elimination.
+
+    The returned ``GraphModule``'s ``forward`` takes the flat tensor leaves as
+    positional arguments (in pytree-flatten order); to call it with the
+    original pytree structure, flatten ``mock_args`` the same way.
 
     Args:
-        f: Function to trace. May accept pytrees of tensors as positional args.
+        f: Function, ``nn.Module``, or ``GraphModule`` to trace. May accept
+            pytrees of tensors as positional args.
         mock_args: Mock inputs (pytrees of tensors) matching ``f``'s positional
             args, provided as a tuple. Only shapes and dtypes matter.
 
     Returns:
-        The traced graph module over flat tensor inputs.
+        A ``GraphModule`` whose forward takes the flat tensor leaves of
+        ``mock_args`` in pytree order.
     """
     _assert_traceable_signature(mock_args)
     flat_mocks, in_spec = tree_flatten(mock_args)
@@ -69,7 +55,11 @@ def capture_flat_graph(
     def flat_f(*flat_tensors: Tensor) -> Any:
         return f(*tree_unflatten(list(flat_tensors), in_spec))
 
-    return capture_graph(flat_f, *flat_mocks)
+    mod = _make_fx(functionalize(flat_f))(*flat_mocks)
+    _replace_inplace_ops(mod)
+    mod.graph.eliminate_dead_code()
+    mod.recompile()
+    return mod
 
 
 def _assert_traceable_signature(args: tuple[Any, ...]) -> None:

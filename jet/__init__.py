@@ -14,7 +14,6 @@ from jet.operations import JetTuple
 from jet.tracing import capture_graph
 from jet.utils import Value
 
-
 # Internal jet types used by the interpreter for op dispatch. User-facing jet
 # leaves are always plain ``tuple``s; these subclasses appear only inside the
 # interpreter and are unwrapped at the output boundary by ``_normalize_output``.
@@ -84,8 +83,7 @@ def _validate_jet_leaf(
     """
     if not isinstance(arg, tuple):
         raise ValueError(
-            f"expected a jet tuple (primal, c_1, ..., c_K), got "
-            f"{type(arg).__name__}."
+            f"expected a jet tuple (primal, c_1, ..., c_K), got {type(arg).__name__}."
         )
     if len(arg) < 1:
         raise ValueError(

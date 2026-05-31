@@ -5,6 +5,7 @@ from typing import Any
 from pytest import mark
 from torch import manual_seed, rand, sigmoid, vmap
 from torch.nn import Linear, Sequential, Tanh
+from torch.testing import assert_close
 
 from jet.bilaplacian import (
     SUPPORTED_DISTRIBUTIONS as BILAPLACIAN_SUPPORTED_DISTRIBUTIONS,
@@ -17,7 +18,6 @@ from jet.exp.exp01_benchmark_laplacian.execute import (
 from jet.laplacian import SUPPORTED_DISTRIBUTIONS as LAPLACIAN_SUPPORTED_DISTRIBUTIONS
 from jet.utils import run_seeded
 from jet.weighted_laplacian import get_weighting
-from test.utils import setup_case
 from test.test_bilaplacian import bilaplacian
 from test.test_laplacian import (
     WEIGHT_IDS,
@@ -26,7 +26,7 @@ from test.test_laplacian import (
     get_coefficients,
     laplacian,
 )
-from torch.testing import assert_close
+from test.utils import setup_case
 
 STRATEGY_IDS = [f"strategy={s}" for s in SUPPORTED_STRATEGIES]
 LAPLACIAN_DISTRIBUTION_IDS = [

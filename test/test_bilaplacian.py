@@ -19,8 +19,8 @@ from torch.testing import assert_close
 from jet.bilaplacian import SUPPORTED_DISTRIBUTIONS
 from jet.bilaplacian import bilaplacian as jet_bilaplacian
 from jet.utils import run_seeded
-from test.utils import setup_case
 from test.test_laplacian import _check_mc_convergence
+from test.utils import setup_case
 
 DISTRIBUTIONS = SUPPORTED_DISTRIBUTIONS
 DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]

@@ -3,7 +3,6 @@
 import torch
 from torch import Tensor, arange
 from torch.fx import Graph, Node
-
 from torch.testing import assert_close
 
 from jet.simplify import common_subexpression_elimination

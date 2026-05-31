@@ -104,9 +104,7 @@ def collapsed_jet(
     eagerly to propagate smaller tensors through the graph.
 
     The returned callable is both ``K``-polymorphic (``K >= 2`` inferred per
-    call) and ``R``-polymorphic (any ``R`` per call). To freeze ``K`` and
-    ``R`` into an FX ``GraphModule``, apply :func:`capture_graph` to it
-    yourself.
+    call) and ``R``-polymorphic (any ``R`` per call).
 
     Args:
         f: Function to overload. May accept and return pytrees of tensors.

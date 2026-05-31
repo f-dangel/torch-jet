@@ -15,10 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   callable into a `GraphModule` for graph passes (CSE, etc.), apply
   `capture_graph` to it yourself — choosing when to freeze `K` (and, for
   `collapsed_jet`, the direction dim `R`). `capture_graph(f, mock_args)` now
-  takes one tuple of positional pytrees (was variadic tensors);
-  `capture_flat_graph` is removed (subsumed). Internally, the boundary now
-  eagerly validates inputs against `mock_args`, fixes the collapsed-mode
-  constant-output shape, and tightens type checks.
+  takes one tuple of positional pytrees (was variadic tensors) and returns
+  `(mod, in_spec)`; use `mod(*in_spec.flatten_up_to(args))` to call the
+  captured graph
+  ([PR](https://github.com/f-dangel/torch-jet/pull/134))
 
 - **Backward-incompatible.** Rename the `use_collapsing` parameter on
   `laplacian()` and `bilaplacian()` to `collapsed` (defaults unchanged).

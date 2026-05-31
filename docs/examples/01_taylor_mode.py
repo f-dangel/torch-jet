@@ -255,7 +255,8 @@ else:
 #    A further difference is that ``torch-jet`` uses a two-step API: first
 #    ``jet_f = jet(f, mock_primals)`` traces the function, then ``jet_f(*args)``
 #    evaluates it. This separates tracing (which can be expensive) from
-#    evaluation, allowing the traced jet to be reused across multiple inputs.
+#    evaluation, allowing the traced jet to be reused across multiple inputs
+#    and across any derivative order $K$ (inferred per call from the input).
 #
 # As a concrete example, consider the function
 # $u(t, x) = \cos(t) \sin(x)$, which is a solution to the 1-D wave equation
@@ -387,10 +388,10 @@ assert out["sub"][1].allclose(ones_like(inputs["x"])), "out['sub'][1] != 1"
 
 mod = capture_graph(f, (x,))
 visualize_graph(mod, path.join(GALLERYDIR, "01_f.png"))
-# Capture the jet's graph at K=2 by passing a representative mock jet tuple.
-mock_jet = (x, zeros_like(x), zeros_like(x))
-f_jet_mod = capture_graph(f_jet, (mock_jet,))
-visualize_graph(f_jet_mod, path.join(GALLERYDIR, "01_f_jet.png"))
+# Capture the jet's graph at K=2 by passing a representative mock 2-jet tuple.
+mock_2jet = (x, zeros_like(x), zeros_like(x))
+f_2jet_mod = capture_graph(f_jet, (mock_2jet,))
+visualize_graph(f_2jet_mod, path.join(GALLERYDIR, "01_f_jet.png"))
 
 # %%
 #

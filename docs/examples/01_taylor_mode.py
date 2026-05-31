@@ -128,7 +128,7 @@ _ = manual_seed(0)  # make deterministic
 # Define a function and obtain its jet function
 f = sin  # propagates x₀ ↦ f(x₀)
 x = rand(1)
-f_jet = jet(f, (x,))  # propagates (x₀, x₁, x₂) ↦ (f₀, f₁, f₂)
+f_jet = jet(f, (x,))  # propagates (x₀, x₁, ..., x_K) ↦ (f₀, f₁, ..., f_K)
 
 # Set up the Taylor coefficients to compute the second derivative
 

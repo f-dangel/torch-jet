@@ -35,19 +35,18 @@ def _validate_input_jet(
             (raised by ``tree_map``), if arity (``K``) is inconsistent across
             leaves, or if any coefficient has the wrong shape.
     """
-    leaves: list[tuple[Tensor, ...]] = []
+    mock_leaves, in_spec = tree_flatten(mock)
+    if not mock_leaves:
+        raise ValueError("No jet leaves found; mock_args has no tensors.")
+    # flatten_up_to raises Node type/arity mismatch if args' pytree structure
+    # diverges from mock's; at each tensor leaf in mock it takes the entire
+    # subtree at the corresponding position in args (i.e. the jet tuple).
+    arg_leaves = in_spec.flatten_up_to(args)
     K_seen: int | None = None
     R_seen: int | None = None
-
-    def _collect(mock_t: Tensor, arg: Any) -> None:
-        nonlocal K_seen, R_seen
+    for mock_t, arg in zip(mock_leaves, arg_leaves):
         K_seen, R_seen = _validate_jet_leaf(mock_t, arg, collapsed, K_seen, R_seen)
-        leaves.append(arg)
-
-    tree_map(_collect, mock, args, is_leaf=lambda x: isinstance(x, Tensor))
-    if K_seen is None:
-        raise ValueError("No jet leaves found; mock_args has no tensors.")
-    return leaves, K_seen, R_seen
+    return arg_leaves, K_seen, R_seen
 
 
 def _validate_jet_leaf(

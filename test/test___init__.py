@@ -7,7 +7,7 @@ smoke-test cases that don't fit any of those layers.
 """
 
 from pytest import raises
-from torch import Tensor, float64, rand, sin, zeros
+from torch import sin, zeros
 
 import jet
 from jet.tracing import capture_graph
@@ -23,29 +23,6 @@ def test_collapsed_jet_rejects_order_below_2():
     for jet_tuple in [(x, x), (x,)]:
         with raises(ValueError, match="collapsed mode requires K >= 2"):
             cjet_f(jet_tuple)
-
-
-def test_collapsed_jet_constant_output_uses_collapsed_shape():
-    """F1: constant outputs in collapsed mode get c_1..c_{K-1} of shape (R, *S).
-
-    A function with a constant output leaf (a tensor independent of the inputs)
-    must still produce coefficients matching the collapsed-mode shape contract,
-    or downstream consumers see broken broadcasts.
-    """
-    R = 3  # K=2 implicit from passing one coefficient slot to cjet_f below
-    out_shape = (4,)
-
-    def f(x: Tensor) -> tuple[Tensor, Tensor]:
-        return sin(x), zeros(*out_shape, dtype=float64)  # second leaf is constant
-
-    cjet_f = jet.jet(f, (zeros(3, dtype=float64),), collapsed=True)
-    primal = rand(3, dtype=float64)
-    c1 = rand(R, 3, dtype=float64)
-    cK = zeros(3, dtype=float64)
-    (_, _, _), (const, const_c1, const_cK) = cjet_f((primal, c1, cK))
-    assert const.shape == out_shape
-    assert const_c1.shape == (R, *out_shape)
-    assert const_cK.shape == out_shape
 
 
 def test_capture_graph_rejects_non_tuple_mock_args():

@@ -35,9 +35,30 @@ def capture_graph(
     out-of-place equivalents, producing a purely functional graph safe for
     transformations like common subexpression elimination.
 
-    The returned ``GraphModule``'s ``forward`` takes the flat tensor leaves as
-    positional arguments (in pytree-flatten order); to call it with the
-    original pytree structure, flatten ``mock_args`` the same way.
+    **Calling convention for the returned ``GraphModule``.** Inputs are
+    flattened, outputs are not. Concretely:
+
+    - ``forward`` takes the flat tensor leaves of ``mock_args`` as positional
+      arguments, in pytree-flatten order (dict keys in insertion order; tuple
+      and list elements in their natural order). This may **not** match
+      ``f``'s own signature -- if ``f(d, t)`` takes a dict-then-tensor, then
+      ``mod`` is called as ``mod(*d.values(), t)``, not ``mod(d, t)``.
+    - The output is whatever ``f`` returned (single tensor, tuple, dict,
+      arbitrary pytree). ``make_fx``'s pytree codegen reconstructs the
+      structure on each call; we do not normalize it.
+
+    To call the captured graph with the same shape ``f`` accepts, flatten
+    yourself::
+
+        from torch.utils._pytree import tree_flatten
+        mod = capture_graph(f, mock_args)
+        mod(*tree_flatten(args)[0])
+
+    This asymmetry is intentional: the returned ``GraphModule`` matches the
+    ``make_fx`` convention so it composes with other FX tooling
+    (``torch.compile``, AOTAutograd, custom passes) that expect a flat tensor
+    forward signature. Wrapping ``__call__`` to accept a pytree directly
+    would break that interop.
 
     Args:
         f: Function, ``nn.Module``, or ``GraphModule`` to trace. May accept
@@ -47,7 +68,8 @@ def capture_graph(
 
     Returns:
         A ``GraphModule`` whose forward takes the flat tensor leaves of
-        ``mock_args`` in pytree order.
+        ``mock_args`` in pytree-flatten order. See the calling-convention note
+        above.
 
     Raises:
         TypeError: If ``mock_args`` is not a ``tuple``, or if any leaf is not

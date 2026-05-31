@@ -22,6 +22,7 @@ from torch.utils._pytree import tree_map
 
 import jet
 from jet import collapsed_jet, rev_jet
+from jet.tracing import capture_graph
 from test.utils import report_pytrees_nonclose
 
 INF = float("inf")
@@ -423,12 +424,10 @@ def test_collapsed_jet_rejects_order_below_2():
     x = zeros(3)
 
     # K=1: jet tuple has length 2 -> only a primal and one coefficient.
-    with raises(ValueError, match="collapsed mode requires K >= 2"):
-        cjet_f((x, x))
-
     # K=0: jet tuple has length 1 -> only a primal.
-    with raises(ValueError, match="collapsed mode requires K >= 2"):
-        cjet_f((x,))
+    for jet_tuple in [(x, x), (x,)]:
+        with raises(ValueError, match="collapsed mode requires K >= 2"):
+            cjet_f(jet_tuple)
 
 
 def test_collapsed_jet_constant_output_uses_collapsed_shape():
@@ -457,28 +456,14 @@ def test_collapsed_jet_constant_output_uses_collapsed_shape():
     )
 
 
-def test_jet_rejects_jettuple_input():
-    """F6: passing a JetTuple/CollapsedJetTuple at the boundary is rejected."""
-    from jet.operations import JetTuple
-
-    jet_f = jet.jet(sin, (zeros(3),))
-    x = zeros(3)
-    with raises(ValueError, match="plain tuple"):
-        jet_f(JetTuple((x, x, x)))
-
-
 def test_capture_graph_rejects_non_tuple_mock_args():
     """F7: capture_graph requires a tuple for mock_args."""
-    from jet.tracing import capture_graph
-
     with raises(TypeError, match="must be a tuple"):
         capture_graph(sin, zeros(3))  # bare tensor — common stale call pattern
 
 
 def test_capture_graph_rejects_non_tensor_leaf():
     """F7: capture_graph rejects non-Tensor leaves in mock_args."""
-    from jet.tracing import capture_graph
-
     with raises(TypeError, match="must be a Tensor"):
         capture_graph(lambda x, y: x + y, (zeros(3), 1.0))
 

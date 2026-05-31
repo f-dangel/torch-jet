@@ -448,15 +448,9 @@ def test_collapsed_jet_constant_output_uses_collapsed_shape():
     c1 = rand(R, 3, dtype=float64)
     cK = zeros(3, dtype=float64)
     (_, _, _), (const, const_c1, const_cK) = cjet_f((primal, c1, cK))
-    assert const.shape == out_shape, (
-        f"constant primal shape {const.shape} != {out_shape}"
-    )
-    assert const_c1.shape == (R, *out_shape), (
-        f"constant c_1 shape {const_c1.shape} != (R={R}, *{out_shape})"
-    )
-    assert const_cK.shape == out_shape, (
-        f"constant c_K shape {const_cK.shape} != {out_shape} (collapsed slot)"
-    )
+    assert const.shape == out_shape
+    assert const_c1.shape == (R, *out_shape)
+    assert const_cK.shape == out_shape
 
 
 def test_capture_graph_rejects_non_tuple_mock_args():

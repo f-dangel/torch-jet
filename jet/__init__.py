@@ -164,7 +164,7 @@ def _make_jet_transform(
 
     def transformed(*args: Any) -> Any:
         leaves, K, R = _walk_and_validate(mock_args, args, collapsed=collapsed)
-        return interp.run(*leaves, derivative_order=K, num_collapsed_directions=R)
+        return interp.run(K, R, *leaves)
 
     return transformed
 

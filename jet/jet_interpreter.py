@@ -55,20 +55,20 @@ class JetInterpreter(Interpreter):
 
     def run(
         self,
-        *args: Any,
         derivative_order: int,
-        num_collapsed_directions: int | None,
+        collapsed_directions: int | None,
+        *args: Any,
         **kwargs: Any,
     ) -> Any:
         """Run the graph, then unwrap interpreter-internal jet types.
 
-        ``derivative_order`` (``K``) and ``num_collapsed_directions`` (``R``)
+        ``derivative_order`` (``K``) and ``collapsed_directions`` (``R``)
         come from the validator that already inspected ``args``; passing them
         explicitly avoids re-deriving them from ``args[0]`` here. Used by
         :meth:`_normalize` to expand constant outputs to the right shapes.
         """
         result = super().run(*args, **kwargs)
-        return self._normalize(result, derivative_order, num_collapsed_directions)
+        return self._normalize(result, derivative_order, collapsed_directions)
 
     def placeholder(
         self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Any]
@@ -116,7 +116,7 @@ class JetInterpreter(Interpreter):
         self,
         result: Any,
         derivative_order: int,
-        num_collapsed_directions: int | None,
+        collapsed_directions: int | None,
     ) -> Any:
         """Convert the pytree-of-jets into a pytree of plain tuples.
 
@@ -132,7 +132,7 @@ class JetInterpreter(Interpreter):
             if isinstance(node, _JetTypes)
             else (
                 node,
-                *self._zero_coeffs(node, derivative_order, num_collapsed_directions),
+                *self._zero_coeffs(node, derivative_order, collapsed_directions),
             )
             for node in flat
         ]
@@ -142,7 +142,7 @@ class JetInterpreter(Interpreter):
         self,
         primal: Tensor,
         derivative_order: int,
-        num_collapsed_directions: int | None,
+        collapsed_directions: int | None,
     ) -> list[Tensor]:
         """Build ``derivative_order`` zero-coefficients for a constant output leaf.
 
@@ -152,13 +152,13 @@ class JetInterpreter(Interpreter):
         """
         if not self.collapsed:
             return [zeros_like(primal) for _ in range(derivative_order)]
-        if num_collapsed_directions is None:
+        if collapsed_directions is None:
             raise ValueError(
                 "Constant output in collapsed mode requires R; the caller "
                 "should have derived it from a jet tuple input."
             )
         return [
-            primal.new_zeros(num_collapsed_directions, *primal.shape)
+            primal.new_zeros(collapsed_directions, *primal.shape)
             for _ in range(derivative_order - 1)
         ] + [zeros_like(primal)]
 

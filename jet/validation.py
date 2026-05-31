@@ -47,10 +47,11 @@ def validate_input_jet(
     """
     mock_leaves, in_spec = tree_flatten(mock)
     if not mock_leaves:
-        # Degenerate: capture_graph happily traces a zero-tensor-input function
-        # (e.g. `f({}) -> tensor(1.0)` produces a 0-placeholder graph emitting
-        # a constant). The interpreter would then receive K=R=None and crash
-        # deep inside `_zero_coeffs` with `range(None)`. Reject up front.
+        # capture_graph happily traces a zero-tensor-input function (e.g.
+        # `f({}) -> tensor(1.0)` produces a 0-placeholder graph emitting a
+        # constant), but a jet over such a function is meaningless: K and R
+        # would stay None and downstream code (e.g. ``range(K)`` inside
+        # ``_zero_coeffs``) would crash with TypeError. Reject up front.
         raise ValueError("No jet leaves found; mock_args has no tensors.")
     # flatten_up_to raises Node type/arity mismatch if args' pytree structure
     # diverges from mock's; at each tensor leaf in mock it takes the entire
@@ -60,9 +61,11 @@ def validate_input_jet(
     R_seen: int | None = None
     for mock_t, arg in zip(mock_leaves, arg_leaves):
         K_seen, R_seen = _validate_jet_leaf(mock_t, arg, collapsed, K_seen, R_seen)
-    # K_seen is non-None here: mock_leaves is non-empty (checked above), so the
-    # for-loop ran at least once and _validate_jet_leaf set K_seen on leaf 1.
-    assert K_seen is not None
+    if K_seen is None:
+        # Unreachable: mock_leaves is non-empty (checked above), so the
+        # for-loop ran at least once and _validate_jet_leaf set K_seen.
+        # Explicit raise (not assert) so the contract survives ``python -O``.
+        raise RuntimeError("internal: K_seen is None after validation loop.")
     return arg_leaves, K_seen, R_seen
 
 

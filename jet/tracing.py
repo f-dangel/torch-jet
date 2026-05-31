@@ -7,7 +7,6 @@ from torch import Tensor, ops
 from torch.func import functionalize
 from torch.fx import GraphModule
 from torch.fx.experimental.proxy_tensor import make_fx
-from torch.nn import Module
 from torch.utils._pytree import tree_flatten, tree_unflatten
 
 # Map in-place ATen ops to their out-of-place equivalents.
@@ -22,7 +21,7 @@ _make_fx = partial(make_fx, tracing_mode="fake", _allow_non_fake_inputs=True)
 
 
 def capture_graph(
-    f: Module | Callable[..., Any] | GraphModule,
+    f: Callable[..., Any],
     mock_args: tuple[Any, ...],
 ) -> GraphModule:
     """Capture the compute graph of ``f`` as a ``GraphModule``.
@@ -50,8 +49,8 @@ def capture_graph(
        tensor forward signature.
 
     Args:
-        f: Function, ``nn.Module``, or ``GraphModule`` to trace. May accept
-            pytrees of tensors as positional args.
+        f: Callable to trace (plain function, ``nn.Module``, ``GraphModule``,
+            etc.). May accept pytrees of tensors as positional args.
         mock_args: Mock inputs (pytrees of tensors) matching ``f``'s positional
             args, provided as a tuple. Only shapes and dtypes matter.
 

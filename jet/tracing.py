@@ -47,8 +47,7 @@ def capture_graph(
        This asymmetry is intentional: the returned ``GraphModule`` follows
        the ``make_fx`` convention so it composes with other FX tooling
        (``torch.compile``, AOTAutograd, custom passes) that expect a flat
-       tensor forward signature. Wrapping ``__call__`` to accept a pytree
-       directly would break that interop.
+       tensor forward signature.
 
     Args:
         f: Function, ``nn.Module``, or ``GraphModule`` to trace. May accept

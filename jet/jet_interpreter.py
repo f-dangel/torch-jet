@@ -126,7 +126,9 @@ class JetInterpreter(Interpreter):
         standard returns ``K`` zeros of the primal's shape; collapsed returns
         ``K - 1`` zeros of shape ``(R, *S)`` plus one zero of ``S``.
         """
-        flat, spec = tree_flatten(result, is_leaf=_is_jet_or_tensor)
+        flat, spec = tree_flatten(
+            result, is_leaf=lambda x: isinstance(x, (*_JetTypes, Tensor))
+        )
         leaves = [
             tuple(node)
             if isinstance(node, _JetTypes)
@@ -161,8 +163,3 @@ class JetInterpreter(Interpreter):
             primal.new_zeros(collapsed_directions, *primal.shape)
             for _ in range(derivative_order - 1)
         ] + [zeros_like(primal)]
-
-
-def _is_jet_or_tensor(x: Any) -> bool:
-    """Return True for ``JetTuple``/``CollapsedJetTuple`` and plain tensors."""
-    return isinstance(x, (*_JetTypes, Tensor))

@@ -52,39 +52,28 @@ class JetInterpreter(Interpreter):
         self.jet_type: type = CollapsedJetTuple if collapsed else JetTuple
         self.mapping: dict = COLLAPSED_MAPPING if collapsed else MAPPING
         self.label: str = "collapsed jet" if collapsed else "jet"
-        # Per-call state, reset in ``run()``. ``K`` (derivative order) is set
-        # from the first placeholder; ``R`` (collapsed direction dim) is set
-        # from the first batched coefficient seen in collapsed mode.
-        self._derivative_order: int | None = None
-        self._num_collapsed_directions: int | None = None
 
     def run(self, *args: Any, **kwargs: Any) -> Any:
-        """Run the graph, then unwrap interpreter-internal jet types."""
-        self._derivative_order = None
-        self._num_collapsed_directions = None
+        """Run the graph, then unwrap interpreter-internal jet types.
+
+        ``K`` (derivative order) and ``R`` (collapsed direction dim) are
+        derived from the input jet tuples and passed down to
+        :meth:`_normalize` for constant-output expansion. They are not stored
+        as instance state so each call is independent.
+        """
+        first_jet = args[0]
+        derivative_order = len(first_jet) - 1
+        num_collapsed_directions = (
+            first_jet[1].shape[0] if self.collapsed and derivative_order >= 2 else None
+        )
         result = super().run(*args, **kwargs)
-        return self._normalize(result)
+        return self._normalize(result, derivative_order, num_collapsed_directions)
 
     def placeholder(
         self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Any]
     ) -> Any:
-        """Wrap each placeholder value in ``self.jet_type``.
-
-        Also records ``K`` and (in collapsed mode) ``R`` so that constant
-        outputs in :meth:`_normalize` can be expanded to zero coefficients
-        with the right shapes.
-        """
+        """Wrap each placeholder value in ``self.jet_type``."""
         value = super().placeholder(target, args, kwargs)
-        if self._derivative_order is None:
-            self._derivative_order = len(value) - 1
-        if (
-            self.collapsed
-            and self._num_collapsed_directions is None
-            and len(value) >= 2
-        ):
-            # ``value`` is the user's jet tuple ``(primal, c_1, ..., c_K)``;
-            # ``c_1`` carries the leading direction dim ``R``.
-            self._num_collapsed_directions = value[1].shape[0]
         return self.jet_type(value)
 
     def call_function(
@@ -122,7 +111,12 @@ class JetInterpreter(Interpreter):
             return self.mapping[target](*args)
         return super().call_function(target, args, kwargs)
 
-    def _normalize(self, result: Any) -> Any:
+    def _normalize(
+        self,
+        result: Any,
+        derivative_order: int,
+        num_collapsed_directions: int | None,
+    ) -> Any:
         """Convert the pytree-of-jets into a pytree of plain tuples.
 
         Each ``self.jet_type`` leaf becomes a plain ``(f_0, ..., f_K)`` tuple.
@@ -135,29 +129,36 @@ class JetInterpreter(Interpreter):
         leaves = [
             tuple(node)
             if isinstance(node, _JetTypes)
-            else (node, *self._zero_coeffs(node))
+            else (
+                node,
+                *self._zero_coeffs(node, derivative_order, num_collapsed_directions),
+            )
             for node in flat
         ]
         return tree_unflatten(leaves, spec)
 
-    def _zero_coeffs(self, primal: Tensor) -> list[Tensor]:
-        """Build ``self._derivative_order`` zero-coefficients for a constant output leaf.
+    def _zero_coeffs(
+        self,
+        primal: Tensor,
+        derivative_order: int,
+        num_collapsed_directions: int | None,
+    ) -> list[Tensor]:
+        """Build ``derivative_order`` zero-coefficients for a constant output leaf.
 
         Each returned tensor is a distinct allocation; sharing one
         ``zeros_like`` across coefficient slots would make in-place mutation
         of one slot mutate all the others.
         """
-        K = self._derivative_order
         if not self.collapsed:
-            return [zeros_like(primal) for _ in range(K)]
-        if self._num_collapsed_directions is None:
+            return [zeros_like(primal) for _ in range(derivative_order)]
+        if num_collapsed_directions is None:
             raise ValueError(
-                "Constant output in collapsed mode requires R to be tracked; "
-                "the interpreter should have set it from a placeholder."
+                "Constant output in collapsed mode requires R; the caller "
+                "should have derived it from a jet tuple input."
             )
         return [
-            primal.new_zeros(self._num_collapsed_directions, *primal.shape)
-            for _ in range(K - 1)
+            primal.new_zeros(num_collapsed_directions, *primal.shape)
+            for _ in range(derivative_order - 1)
         ] + [zeros_like(primal)]
 
 

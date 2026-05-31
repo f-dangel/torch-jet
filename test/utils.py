@@ -8,8 +8,7 @@ from torch.utils._pytree import tree_map
 #: Sweep K at the collapsed-mode floor and a representative high order.
 #: Intermediate K values exercise the same code paths and don't earn their
 #: own coverage at the primitive / composition layer.
-K_MAX = 5
-K_VALUES = [2, K_MAX]
+K_VALUES = [2, 5]
 K_IDS = [f"K={k}" for k in K_VALUES]
 
 
@@ -24,21 +23,18 @@ def shapes(*shape_pairs) -> Callable[[], tuple[Tensor, ...]]:
 
 
 def setup_case(
-    config: dict[str, Any], vmapsize: int = 0, derivative_order: int | None = None
-) -> tuple[Callable[[Tensor], Tensor], Tensor, tuple[Tensor, ...]]:
-    """Instantiate the function, its input, and Taylor coefficients.
+    config: dict[str, Any], vmapsize: int = 0
+) -> tuple[Callable[[Tensor], Tensor], Tensor]:
+    """Instantiate the function and its input.
 
     Args:
         config: Configuration dictionary of the test case. Must have ``"f"``
             and ``"mock_args_fn"`` keys.
-        vmapsize: Whether to generate inputs and Taylor coefficients for a
-            vmap-ed operation. ``0`` means no vmap is applied. Default: ``0``.
-        derivative_order: The number of Taylor coefficients to generate. No
-            coefficients are generated if ``None``. Default: ``None``.
+        vmapsize: Whether to generate an input for a vmap-ed operation.
+            ``0`` means no vmap is applied. Default: ``0``.
 
     Returns:
-        Tuple containing the function, the input tensor, and the Taylor
-        coefficients. All are in double precision to avoid numerical issues.
+        Tuple ``(f, x)`` with ``x`` in ``float64`` to avoid numerical issues.
     """
     manual_seed(0)
     f = config["f"]
@@ -46,13 +42,10 @@ def setup_case(
     mock_args = config["mock_args_fn"]()
     arg_shape = mock_args[0].shape
     vmap_shape = arg_shape if vmapsize == 0 else (vmapsize, *arg_shape)
+    # ``.double()`` (not ``dtype=float64``) — the two paths consume different
+    # RNG bits, and the downstream MC tests are seeded against this draw.
     x = rand(*vmap_shape).double()
-    vs = (
-        ()
-        if derivative_order is None
-        else tuple(rand(*vmap_shape).double() for _ in range(derivative_order))
-    )
-    return f, x, vs
+    return f, x
 
 
 def make_standard_jet_args(
@@ -69,7 +62,7 @@ def make_standard_jet_args(
     def make_leaf(t: Tensor) -> tuple[Tensor, ...]:
         return tuple(rand_like(t) for _ in range(K + 1))
 
-    return tuple(tree_map(make_leaf, arg) for arg in mock_args)
+    return tree_map(make_leaf, mock_args)
 
 
 def make_collapsed_jet_args(
@@ -93,4 +86,13 @@ def make_collapsed_jet_args(
         c_K = zeros_like(primal)
         return (primal, c_1, *middle, c_K)
 
-    return tuple(tree_map(make_leaf, arg) for arg in mock_args)
+    return tree_map(make_leaf, mock_args)
+
+
+def make_jet_args(
+    mock_args: tuple[Any, ...], K: int, *, collapsed: bool, R: int = 2
+) -> tuple[Any, ...]:
+    """Dispatch to :func:`make_standard_jet_args` or :func:`make_collapsed_jet_args`."""
+    if collapsed:
+        return make_collapsed_jet_args(mock_args, K, R)
+    return make_standard_jet_args(mock_args, K)

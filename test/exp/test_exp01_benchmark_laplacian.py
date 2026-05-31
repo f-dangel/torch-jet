@@ -81,7 +81,7 @@ def test_laplacian_functions(
             used that has diagonal elements that are increments of 1 starting from 1.
         batch_size: The batch size to use for the test. `0` means no batching.
     """
-    f, x, _ = setup_case(config, vmapsize=batch_size)
+    f, x = setup_case(config, vmapsize=batch_size)
     is_batched = batch_size > 0
 
     C = (
@@ -125,7 +125,7 @@ def test_randomized_laplacian_functions_identical(
             unweighted. If `diagonal_increments`, a synthetic coefficient tensor is
             used that has diagonal elements that are increments of 1 starting from 1.
     """
-    f, x, _ = setup_case(config, vmapsize=batch_size)
+    f, x = setup_case(config, vmapsize=batch_size)
     is_batched = batch_size > 0
 
     randomization = (distribution, num_samples)
@@ -195,7 +195,7 @@ def test_randomized_laplacian_functions_converge(
         chunk_size: Number of samples per chunk. Default: `64`.
         target_rel_error: Target relative error for convergence. Default: `5e-2`.
     """
-    f, X, _ = setup_case(config, vmapsize=batch_size)
+    f, X = setup_case(config, vmapsize=batch_size)
     is_batched = batch_size > 0
 
     C = (
@@ -238,7 +238,7 @@ def test_bilaplacian_functions(config: dict[str, Any], strategy: str, batch_size
         strategy: The strategy to test.
         batch_size: The batch size to use for the test. `0` means no batching.
     """
-    f, x, _ = setup_case(config, vmapsize=batch_size)
+    f, x = setup_case(config, vmapsize=batch_size)
     is_batched = batch_size > 0
     bilap_func = lambda x: bilaplacian(f, x)  # noqa: E731
     bilap_func = vmap(bilap_func) if is_batched else bilap_func
@@ -267,7 +267,7 @@ def test_randomized_bilaplacian_functions_identical(
         batch_size: The batch size to use for the test. `0` means no batching.
         num_samples: Number of samples to draw. Default: `42`.
     """
-    f, x, _ = setup_case(config, vmapsize=batch_size)
+    f, x = setup_case(config, vmapsize=batch_size)
     is_batched = batch_size > 0
     randomization = (distribution, num_samples)
 
@@ -323,7 +323,7 @@ def test_randomized_bilaplacian_functions_converge(
         chunk_size: Number of samples per chunk. Default: `128`.
         target_rel_error: Target relative error for convergence. Default: `5e-2`.
     """
-    f, X, _ = setup_case(config, vmapsize=batch_size)
+    f, X = setup_case(config, vmapsize=batch_size)
     is_batched = batch_size > 0
     randomization = (distribution, chunk_size)
 

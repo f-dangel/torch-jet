@@ -27,6 +27,7 @@ from jet.bilaplacian import bilaplacian as jet_bilaplacian
 from jet.exp.utils import measure_peak_memory, measure_time, to_string
 from jet.laplacian import laplacian as jet_laplacian
 from jet.simplify import common_subexpression_elimination
+from jet.tracing import capture_graph
 from jet.utils import run_seeded, sample
 from jet.weighted_laplacian import get_weighting
 
@@ -265,6 +266,7 @@ def laplacian_function(
             weighting=weighting,
             collapsed=collapsed,
         )
+        laplacian, _ = capture_graph(laplacian, (dummy_x,))
         common_subexpression_elimination(laplacian.graph)
         laplacian.recompile()
 
@@ -373,6 +375,7 @@ def bilaplacian_function(
             randomization=randomization,
             collapsed=collapsed,
         )
+        bilap_fn, _ = capture_graph(bilap_fn, (dummy_x,))
         common_subexpression_elimination(bilap_fn.graph)
         bilap_fn.recompile()
 

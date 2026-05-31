@@ -7,8 +7,7 @@ from torch import Tensor, ops
 from torch.func import functionalize
 from torch.fx import GraphModule
 from torch.fx.experimental.proxy_tensor import make_fx
-from torch.nn import Module
-from torch.utils._pytree import tree_flatten, tree_unflatten
+from torch.utils._pytree import TreeSpec, tree_flatten, tree_unflatten
 
 # Map in-place ATen ops to their out-of-place equivalents.
 _INPLACE_TO_FUNCTIONAL = {
@@ -22,54 +21,58 @@ _make_fx = partial(make_fx, tracing_mode="fake", _allow_non_fake_inputs=True)
 
 
 def capture_graph(
-    f: Module | Callable[..., Any] | GraphModule,
-    *mock_args: Tensor,
-) -> GraphModule:
-    """Capture the compute graph of a function using make_fx.
+    f: Callable[..., Any],
+    mock_args: tuple[Any, ...],
+) -> tuple[GraphModule, TreeSpec]:
+    """Capture the compute graph of ``f`` as a ``GraphModule``.
 
-    The function is wrapped with ``functionalize`` and in-place operations are
-    replaced with their out-of-place equivalents, ensuring a purely functional
-    graph that is safe for transformations like common subexpression elimination.
+    The returned ``GraphModule``'s ``forward`` takes the flat tensor leaves
+    of ``mock_args`` as positional arguments -- ``make_fx`` cannot trace
+    through pytree containers, so ``mock_args`` is flattened and ``f`` is
+    traced over those flat leaves. To call the captured graph with ``f``'s
+    original pytree shape, use the second return value, ``in_spec``, to
+    flatten new arguments in the order the graph expects::
 
-    Args:
-        f: The (graph) module or callable to trace.
-        *mock_args: Mock input tensors for tracing. Only shapes and dtypes matter.
+        mod, in_spec = capture_graph(f, mock_args)
+        out = mod(*in_spec.flatten_up_to(args))
 
-    Returns:
-        The traced module with the captured compute graph.
-    """
-    mod = _make_fx(functionalize(f))(*mock_args)
-    _replace_inplace_ops(mod)
-    mod.graph.eliminate_dead_code()
-    mod.recompile()
-    return mod
-
-
-def capture_flat_graph(
-    f: Callable[..., Any], mock_args: tuple[Any, ...]
-) -> GraphModule:
-    """Capture the compute graph of ``f`` over its flattened pytree leaves.
-
-    ``make_fx`` creates one symbolic proxy per positional tensor argument and
-    cannot trace through nested pytree containers. This flattens ``mock_args``
-    into tensor leaves, wraps ``f`` in a shim that unflattens them back into the
-    original structure, and traces that shim.
+    Output structure is passed through unchanged -- whatever ``f`` returns
+    (single tensor, tuple, dict, arbitrary pytree), ``make_fx``'s pytree
+    codegen reconstructs on each call.
 
     Args:
-        f: Function to trace. May accept pytrees of tensors as positional args.
+        f: Callable to trace (plain function, ``nn.Module``, ``GraphModule``,
+            etc.). May accept pytrees of tensors as positional args.
         mock_args: Mock inputs (pytrees of tensors) matching ``f``'s positional
             args, provided as a tuple. Only shapes and dtypes matter.
 
     Returns:
-        The traced graph module over flat tensor inputs.
+        A pair ``(mod, in_spec)`` where ``mod`` is a ``GraphModule`` whose
+        forward takes the flat tensor leaves of ``mock_args``, and
+        ``in_spec`` is the ``TreeSpec`` of ``mock_args``. Use
+        ``in_spec.flatten_up_to(args)`` to obtain the flat leaves in the
+        order ``mod`` expects.
+
+    Raises:
+        TypeError: If ``mock_args`` is not a ``tuple``. Wrap a single
+            positional argument as ``(x,)``.
     """
+    if not isinstance(mock_args, tuple):
+        raise TypeError(
+            f"mock_args must be a tuple of f's positional arguments, got "
+            f"{type(mock_args).__name__}; wrap a single argument as ``(x,)``."
+        )
     _assert_traceable_signature(mock_args)
     flat_mocks, in_spec = tree_flatten(mock_args)
 
     def flat_f(*flat_tensors: Tensor) -> Any:
         return f(*tree_unflatten(list(flat_tensors), in_spec))
 
-    return capture_graph(flat_f, *flat_mocks)
+    mod = _make_fx(functionalize(flat_f))(*flat_mocks)
+    _replace_inplace_ops(mod)
+    mod.graph.eliminate_dead_code()
+    mod.recompile()
+    return mod, in_spec
 
 
 def _assert_traceable_signature(args: tuple[Any, ...]) -> None:

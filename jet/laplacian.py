@@ -3,10 +3,8 @@
 from typing import Callable
 
 from torch import Tensor, eye, zeros_like
-from torch.fx import GraphModule
 
 from jet import _make_uncollapsed_cjet, collapsed_jet
-from jet.tracing import capture_graph
 from jet.utils import sample, validate_randomization
 
 SUPPORTED_DISTRIBUTIONS = ["normal", "rademacher"]
@@ -18,7 +16,7 @@ def laplacian(
     randomization: tuple[str, int] | None = None,
     weighting: tuple[Callable[[Tensor, Tensor], Tensor], int] | None = None,
     collapsed: bool = True,
-) -> GraphModule:
+) -> Callable[[Tensor], Tensor]:
     r"""Transform f into a function that computes lap(f(x)).
 
     The Laplacian of a function $f(\mathbf{x}) \in \mathbb{R}$ with
@@ -58,7 +56,9 @@ def laplacian(
             2-jets over all directions via ``vmap`` and sums afterward.
 
     Returns:
-        A ``GraphModule`` that maps ``x → lap(f(x))``.
+        A plain Python callable ``lap_f(x)`` that maps ``x → lap(f(x))``.
+        To bake the operator into an FX ``GraphModule`` (for graph passes,
+        ``torch.compile``, etc.), apply :func:`capture_graph` yourself.
 
     Examples:
         >>> from torch import manual_seed, rand, zeros
@@ -91,9 +91,9 @@ def laplacian(
     )
 
     cjet_f = (
-        collapsed_jet(f, 2, (mock_x,))
+        collapsed_jet(f, (mock_x,))
         if collapsed
-        else _make_uncollapsed_cjet(f, 2, (mock_x,), randomization)
+        else _make_uncollapsed_cjet(f, (mock_x,), randomization)
     )
 
     def lap_f(x: Tensor) -> Tensor:
@@ -132,4 +132,4 @@ def laplacian(
 
         return F2
 
-    return capture_graph(lap_f, mock_x)
+    return lap_f

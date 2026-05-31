@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- **Backward-incompatible.** `jet()`, `collapsed_jet()`, `laplacian()`, and
+  `bilaplacian()` now return plain Python callables (was `GraphModule`).
+  `jet()` and `collapsed_jet()` also drop their `derivative_order` argument
+  (now inferred per call from the input jet tuples). To bake any of these
+  into a `GraphModule` for graph passes (CSE, `torch.compile`, etc.), apply
+  `capture_graph` to it yourself — graph capture is now a single explicit
+  step at the user's chosen point. `capture_graph(f, mock_args)` now takes
+  one tuple of positional pytrees (was variadic tensors) and returns
+  `(mod, in_spec)`; use `mod(*in_spec.flatten_up_to(args))` to call the
+  captured graph
+  ([PR](https://github.com/f-dangel/torch-jet/pull/134))
+
 - **Backward-incompatible.** Rename the `use_collapsing` parameter on
   `laplacian()` and `bilaplacian()` to `collapsed` (defaults unchanged).
   Bundled with an internal cleanup of the jet op dispatch that merges the
@@ -64,6 +76,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
+- Constant output leaves in collapsed mode are now wrapped with the correct
+  shape: coefficients `c_1..c_{K-1}` are `(R, *S)` and `c_K` is `S`. Previously
+  all zero coefficients were `S`-shaped, silently producing wrong shapes for
+  functions whose outputs include constants (e.g., `f(x) = (sin(x), ones(4))`)
+  ([PR](https://github.com/f-dangel/torch-jet/pull/134))
+
 - **Backward-incompatible.** `laplacian()` now returns only the Laplacian
   instead of the `(value, Jacobian, Laplacian)` tuple. Collapsing is now handled
   inside the interpreter rather than by PullSum graph rewrites, so `simplify()`
@@ -72,6 +90,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([PR](https://github.com/f-dangel/torch-jet/pull/129))
 
 ### Internal
+
+- Extract input validation into `jet/validation.py` (entry point:
+  `validate_input_jet`); the `JetInterpreter` now owns both ends of the
+  type boundary (wrapping inputs in `placeholder()`, unwrapping outputs in
+  `run()`) so `jet/__init__.py` no longer imports the internal
+  `JetTuple`/`CollapsedJetTuple` dispatch types
+  ([PR](https://github.com/f-dangel/torch-jet/pull/134))
 
 - Trace with fake tensors (`tracing_mode="fake"`, `_allow_non_fake_inputs=True`)
   via a shared `_make_fx` partial in `jet/tracing.py`. Fake mode skips kernel

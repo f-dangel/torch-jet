@@ -15,11 +15,15 @@ The same interpreter handles both standard and collapsed Taylor mode via the
 
 from typing import Any
 
+from torch import Tensor, zeros_like
 from torch.fx import GraphModule, Interpreter
 from torch.fx.node import Argument, Target
+from torch.utils._pytree import tree_map
 
 from jet.collapsed_operations import COLLAPSED_MAPPING, CollapsedJetTuple
 from jet.operations import MAPPING, JetTuple
+
+_JetTypes = (JetTuple, CollapsedJetTuple)
 
 
 class JetInterpreter(Interpreter):
@@ -44,9 +48,27 @@ class JetInterpreter(Interpreter):
     def __init__(self, module: GraphModule, collapsed: bool = False) -> None:
         """Initialize the JetInterpreter."""
         super().__init__(module)
+        self.collapsed: bool = collapsed
         self.jet_type: type = CollapsedJetTuple if collapsed else JetTuple
         self.mapping: dict = COLLAPSED_MAPPING if collapsed else MAPPING
         self.label: str = "collapsed jet" if collapsed else "jet"
+
+    def run(
+        self,
+        derivative_order: int,
+        collapsed_directions: int | None,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        """Run the graph, then unwrap interpreter-internal jet types.
+
+        ``derivative_order`` (``K``) and ``collapsed_directions`` (``R``)
+        come from the validator that already inspected ``args``; passing them
+        explicitly avoids re-deriving them from ``args[0]`` here. Used by
+        :meth:`_normalize` to expand constant outputs to the right shapes.
+        """
+        result = super().run(*args, **kwargs)
+        return self._normalize(result, derivative_order, collapsed_directions)
 
     def placeholder(
         self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Any]
@@ -89,3 +111,64 @@ class JetInterpreter(Interpreter):
                 )
             return self.mapping[target](*args)
         return super().call_function(target, args, kwargs)
+
+    def _normalize(
+        self,
+        result: Any,
+        derivative_order: int,
+        collapsed_directions: int | None,
+    ) -> Any:
+        """Convert the pytree-of-jets into a pytree of plain tuples.
+
+        Each ``self.jet_type`` leaf becomes a plain ``(f_0, ..., f_K)`` tuple.
+        Constant tensor leaves (outputs that do not depend on the inputs) are
+        expanded to zero-coefficient jets matching the mode's shape contract:
+        standard returns ``K`` zeros of the primal's shape; collapsed returns
+        ``K - 1`` zeros of shape ``(R, *S)`` plus one zero of ``S``.
+        """
+
+        def _normalize_leaf(node: Any) -> tuple[Tensor, ...]:
+            if isinstance(node, _JetTypes):
+                return tuple(node)
+            return (
+                node,
+                *self._zero_coeffs(node, derivative_order, collapsed_directions),
+            )
+
+        return tree_map(
+            _normalize_leaf,
+            result,
+            is_leaf=lambda x: isinstance(x, (*_JetTypes, Tensor)),
+        )
+
+    def _zero_coeffs(
+        self,
+        primal: Tensor,
+        derivative_order: int,
+        collapsed_directions: int | None,
+    ) -> list[Tensor]:
+        """Build ``derivative_order`` zero-coefficients for a constant output leaf.
+
+        Each returned tensor is a distinct allocation; sharing one
+        ``zeros_like`` across coefficient slots would make in-place mutation
+        of one slot mutate all the others.
+
+        Raises:
+            ValueError: If ``self.collapsed`` and ``collapsed_directions`` is
+                ``None``. The validator guarantees ``R`` is set for any
+                collapsed call (``K >= 2`` forces at least one batched
+                coefficient), so this should be unreachable from the public
+                API; an explicit raise (rather than ``assert``) keeps the
+                contract visible under ``python -O``.
+        """
+        if not self.collapsed:
+            return [zeros_like(primal) for _ in range(derivative_order)]
+        if collapsed_directions is None:
+            raise ValueError(
+                "Constant output in collapsed mode requires R; the caller "
+                "should have derived it from a jet tuple input."
+            )
+        return [
+            primal.new_zeros(collapsed_directions, *primal.shape)
+            for _ in range(derivative_order - 1)
+        ] + [zeros_like(primal)]

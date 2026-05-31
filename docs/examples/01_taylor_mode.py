@@ -94,12 +94,13 @@ _ = manual_seed(0)  # make deterministic
 # $(x_0, x_1, \dots)$, we can compute various derivatives!
 #
 # **In code,** the `jet` library offers a function transformation
-# `jet(f, derivative_order, mock_primals)` that takes a function $f$, a
-# derivative order, and mock primal inputs, and returns a new function
-# `jet_f(*args)` taking one argument per argument of $f$. Each argument bundles
-# a primal with its Taylor coefficients into a tuple `(x_0, x_1, ..., x_K)`, and
-# the output mirrors this: each result is a tuple `(f_0, f_1, ..., f_K)` holding
-# the function value and its Taylor coefficients up to that derivative order.
+# `jet(f, mock_args)` that takes a function $f$ and mock primal inputs and
+# returns a new function `jet_f(*args)` taking one argument per argument of
+# $f$. Each argument bundles a primal with its Taylor coefficients into a
+# tuple `(x_0, x_1, ..., x_K)`, and the output mirrors this: each result is a
+# tuple `(f_0, f_1, ..., f_K)` holding the function value and its Taylor
+# coefficients up to that derivative order. The order $K$ is inferred per
+# call from the input — the returned `jet_f` works at any $K$.
 
 # %%
 #
@@ -126,9 +127,8 @@ _ = manual_seed(0)  # make deterministic
 
 # Define a function and obtain its jet function
 f = sin  # propagates x₀ ↦ f(x₀)
-derivative_order = 2
 x = rand(1)
-f_jet = jet(f, derivative_order, (x,))  # propagates (x₀, x₁, x₂) ↦ (f₀, f₁, f₂)
+f_jet = jet(f, (x,))  # propagates (x₀, x₁, ..., x_K) ↦ (f₀, f₁, ..., f_K)
 
 # Set up the Taylor coefficients to compute the second derivative
 
@@ -201,7 +201,7 @@ else:
 D = 3
 f = Sequential(Linear(D, 1), Tanh())
 x = rand(D)
-f_jet = jet(f, 2, (x,))
+f_jet = jet(f, (x,))
 
 # constant Taylor coefficients
 x0 = x
@@ -238,7 +238,7 @@ else:
 # dealing with partial differential equations (PDEs) where the unknown depends on
 # multiple variables such as time and space.
 #
-# For a function with multiple arguments, ``mock_primals`` is a tuple that matches the
+# For a function with multiple arguments, ``mock_args`` is a tuple that matches the
 # function's positional arguments, and the jet is called as ``jet_f(*args)`` with one
 # argument per argument of $f$. Each argument bundles its primal with its Taylor
 # coefficients as a tuple ``(x_0, x_1, ..., x_K)``.
@@ -253,10 +253,10 @@ else:
 #    tuple per argument, so a jet is one self-contained object.
 #
 #    A further difference is that ``torch-jet`` uses a two-step API: first
-#    ``jet_f = jet(f, derivative_order, mock_primals)`` traces the function, then
-#    ``jet_f(*args)`` evaluates it. This separates tracing (which can be
-#    expensive) from evaluation, allowing the traced jet to be reused across
-#    multiple inputs.
+#    ``jet_f = jet(f, mock_args)`` traces the function, then ``jet_f(*args)``
+#    evaluates it. This separates tracing (which can be expensive) from
+#    evaluation, allowing the traced jet to be reused across multiple inputs
+#    and across any derivative order $K$ (inferred per call from the input).
 #
 # As a concrete example, consider the function
 # $u(t, x) = \cos(t) \sin(x)$, which is a solution to the 1-D wave equation
@@ -278,7 +278,7 @@ def u(t: Tensor, x: Tensor) -> Tensor:
 
 
 t0, x0 = rand(1), rand(1)  # evaluation point
-u_jet = jet(u, 2, (t0, x0))
+u_jet = jet(u, (t0, x0))
 
 # %%
 #
@@ -333,7 +333,7 @@ def f_pytree(inputs: dict[str, Tensor]) -> dict[str, Tensor]:
 
 
 mock_inputs = {"x": rand(2), "y": rand(2)}
-f_pytree_jet = jet(f_pytree, 1, (mock_inputs,))
+f_pytree_jet = jet(f_pytree, (mock_inputs,))
 
 # %%
 #
@@ -341,7 +341,7 @@ f_pytree_jet = jet(f_pytree, 1, (mock_inputs,))
 # itself, with every tensor leaf replaced by its ``(primal, c_1, ..., c_K)`` jet
 # tuple. Since ``f_pytree`` takes a single dict argument, we pass a single dict
 # whose ``"x"`` and ``"y"`` leaves are each a ``(primal, c_1)`` tuple (one Taylor
-# coefficient, since ``derivative_order=1``):
+# coefficient — the order ``K`` is inferred from the input):
 
 inputs = {"x": rand(2), "y": rand(2)}
 d_inputs = {"x": ones_like(inputs["x"]), "y": zeros_like(inputs["y"])}
@@ -378,15 +378,32 @@ assert out["sub"][1].allclose(ones_like(inputs["x"])), "out['sub'][1] != 1"
 #
 # `jet` uses `make_fx` to capture the function's ATen-level compute graph, then
 # runs it through a `JetInterpreter` that dispatches jet operations (e.g.
-# `jet_linear`, `jet_tanh`) in place of the original ATen ops. The interpreter
-# output is traced again with `make_fx` so that `jet` returns a
-# `torch.fx.GraphModule` containing the fully unrolled jet computation.
+# `jet_linear`, `jet_tanh`) in place of the original ATen ops. `jet` itself
+# returns a plain Python callable; we can optionally capture *its* graph with
+# `capture_graph` to obtain a `torch.fx.GraphModule` containing the fully
+# unrolled jet computation, suitable for graph-level passes like common
+# subexpression elimination.
 #
 # Let's visualize both the original function's compute graph and the jet function:
 
-mod = capture_graph(f, x)
+mod, in_spec = capture_graph(f, (x,))
 visualize_graph(mod, path.join(GALLERYDIR, "01_f.png"))
-visualize_graph(f_jet, path.join(GALLERYDIR, "01_f_jet.png"))
+f_val = mod(*in_spec.flatten_up_to((x,)))
+assert f_val.allclose(f(x))
+
+# Capture the jet's graph at K=2 by passing a representative mock 2-jet tuple.
+mock_2jet = (x, zeros_like(x), zeros_like(x))
+f_2jet_mod, in_spec = capture_graph(f_jet, (mock_2jet,))
+visualize_graph(f_2jet_mod, path.join(GALLERYDIR, "01_f_jet.png"))
+x_2jet = (x, ones_like(x), zeros_like(x))
+f_2jet_val = f_2jet_mod(*in_spec.flatten_up_to((x_2jet,)))
+assert f_2jet_val[2].allclose(f_jet(x_2jet)[2])
+
+# %%
+#
+# The returned ``GraphModule``'s ``forward`` takes the *flat* tensor leaves
+# of ``mock_args`` (not the original pytree). Use the second return value,
+# ``in_spec``, to flatten new arguments in the order the graph expects.
 
 # %%
 #
@@ -424,48 +441,11 @@ visualize_graph(f_jet, path.join(GALLERYDIR, "01_f_jet.png"))
 
 
 x_relu = rand(3)
+f_relu_jet = jet(lambda x: relu(x), (x_relu,))  # noqa: PLW0108
 with raises(NotImplementedError):
-    jet(lambda x: relu(x), 2, (x_relu,))  # noqa: PLW0108
+    f_relu_jet((x_relu, zeros_like(x_relu), zeros_like(x_relu)))
 
 # %%
-#
-# ---
-#
-# **With ``make_fx`` tracing, method calls are automatically handled.**
-#
-# Previously, ``jet`` only supported ``call_function`` nodes and would crash on
-# method calls like ``x.sin()``. With ``make_fx`` tracing, all operations are
-# decomposed into ATen-level function calls, so this limitation no longer exists.
-#
-# For example, the following works
-
-f = sin
-_ = jet(f, 2, (rand(3),))  # works because sin traces to aten.sin
-
-# %%
-#
-# and so does calling sin as a method, since ``make_fx`` decomposes both to the
-# same ATen operation:
-
-
-def f(x: Tensor) -> Tensor:
-    """Function that calls sin as a method.
-
-    Args:
-        x: Input tensor.
-
-    Returns:
-        The sine of x.
-    """
-    return x.sin()
-
-
-_ = jet(f, 2, (rand(3),))  # also works with make_fx tracing
-
-# %%
-#
-# This limitation is straightforward to address, but we currently off-load the burden
-# of calling functions in the supported way to the user.
 #
 #### Untraceable Functions
 #
@@ -491,7 +471,7 @@ def f(x: Tensor):
 
 
 with raises(RuntimeError):
-    jet(f, 2, (rand(3),))  # crashes because f cannot be traced
+    jet(f, (rand(3),))  # crashes because f cannot be traced
 
 # %%
 #

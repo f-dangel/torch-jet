@@ -56,7 +56,7 @@ def test_common_subexpression_elimination():
 
     x = arange(10)
 
-    f_traced = capture_graph(f, x)
+    f_traced, _ = capture_graph(f, (x,))
     f_x = f_traced(x)
     nodes_before = len(list(f_traced.graph.nodes))
     # make_fx produces ATen-level nodes; verify duplicate subexpressions exist

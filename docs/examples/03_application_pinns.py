@@ -33,6 +33,7 @@ from tueplots import bundles
 
 from jet.laplacian import laplacian
 from jet.simplify import common_subexpression_elimination
+from jet.tracing import capture_graph
 
 _ = manual_seed(42)  # make deterministic
 
@@ -194,7 +195,9 @@ X_boundary = sample_boundary()
 
 # Function that computes the neural network's Laplacian
 lap_f = laplacian(f, zeros(2, dtype=DTYPE))  # uses collapsed Taylor mode
-common_subexpression_elimination(lap_f.graph)  # CSE + dead code elimination
+# Capture the operator's graph so we can apply CSE + dead code elimination.
+lap_f, _ = capture_graph(lap_f, (zeros(2, dtype=DTYPE),))
+common_subexpression_elimination(lap_f.graph)
 lap_f.recompile()
 lap_f = vmap(lap_f)  # parallelized over data points
 

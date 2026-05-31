@@ -220,10 +220,23 @@ def _zero_coeffs(
     Standard mode returns ``K`` zeros of ``primal.shape``. Collapsed mode
     returns ``K - 1`` zeros of shape ``(R, *primal.shape)`` followed by one
     zero of ``primal.shape`` (the collapsed slot).
+
+    Each returned tensor is a distinct allocation; sharing one ``zeros_like``
+    across coefficient slots would make in-place mutation of one slot mutate
+    all the others.
+
+    ``R`` must be supplied in collapsed mode. The validator guarantees this
+    upstream (collapsed mode requires ``K >= 2`` and at least one jet leaf,
+    which ``_walk_and_validate`` uses to set ``R``); we raise rather than
+    ``assert`` so the contract survives ``python -O``.
     """
     if not collapsed:
-        return [zeros_like(primal)] * K
-    assert R is not None, "R must be supplied in collapsed mode"
+        return [zeros_like(primal) for _ in range(K)]
+    if R is None:
+        raise ValueError(
+            "_zero_coeffs(collapsed=True) requires R; the validator should "
+            "have supplied it."
+        )
     return [primal.new_zeros(R, *primal.shape) for _ in range(K - 1)] + [
         zeros_like(primal)
     ]

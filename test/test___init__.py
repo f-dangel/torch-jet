@@ -372,10 +372,10 @@ def _setup_collapsed_jet_args(
         R: Number of random directions. Default: ``2``.
 
     Returns:
-        Tuple ``(f, mock_args, args)`` ready for both ``collapsed_jet`` and
-        ``_make_uncollapsed_cjet``: ``mock_args`` is the tracing template (zero
-        tensors), and ``args`` is a tuple of pytrees -- one per argument of
-        ``f`` -- whose tensor leaves are the jet tuples.
+        Tuple ``(f, mock_args, args)`` ready for both ``jet(..., collapsed=True)``
+        and ``_uncollapsed_via_vmap``: ``mock_args`` is the tracing template
+        (zero tensors), and ``args`` is a tuple of pytrees -- one per argument
+        of ``f`` -- whose tensor leaves are the jet tuples.
     """
     K = derivative_order
     f = config["f"]

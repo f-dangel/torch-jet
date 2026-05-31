@@ -5,11 +5,18 @@ from typing import Any, Callable
 from torch import Tensor, float64, manual_seed, rand, rand_like, zeros, zeros_like
 from torch.utils._pytree import tree_map
 
-#: Sweep K at the collapsed-mode floor and a representative high order.
-#: Intermediate K values exercise the same code paths and don't earn their
-#: own coverage at the primitive / composition layer.
-K_VALUES = [2, 5]
+#: Standard-mode K sweep. ``K=0`` (primal-only) and ``K=1`` (Jacobian-vector
+#: product) are boundary cases that exercise the no-recursion branches of the
+#: jet rules; ``K=2`` is the collapsed-mode floor; ``K=5`` is a representative
+#: high order. Intermediate orders exercise the same code paths and don't
+#: earn their own coverage at the primitive / composition layer.
+K_VALUES = [0, 1, 2, 5]
 K_IDS = [f"K={k}" for k in K_VALUES]
+
+#: Collapsed-mode K sweep. Collapsed mode requires ``K >= 2``, so the
+#: standard-mode boundary cases ``K=0`` and ``K=1`` are not applicable.
+K_VALUES_COLLAPSED = [2, 5]
+K_IDS_COLLAPSED = [f"K={k}" for k in K_VALUES_COLLAPSED]
 
 
 def shape(*dims: int) -> Callable[[], tuple[Tensor]]:
@@ -48,38 +55,27 @@ def setup_case(
     return f, x
 
 
-def make_standard_jet_args(
-    mock_args: tuple[Any, ...], K: int, *, seed: int = 42
+def make_jet_args(
+    mock_args: tuple[Any, ...], K: int, *, collapsed: bool, R: int = 2
 ) -> tuple[Any, ...]:
-    """Build random standard-mode jet args matching ``mock_args``'s structure.
+    """Build random jet args matching ``mock_args``'s pytree structure.
 
     Each tensor leaf ``t`` in ``mock_args`` becomes a jet tuple
-    ``(rand(t.shape), c_1, ..., c_K)`` with all coefficients of shape
-    ``t.shape``.
+    ``(primal, c_1, ..., c_K)`` of tensors. Shape contract by mode:
+
+    - **standard** (``collapsed=False``): every ``c_k`` has shape ``t.shape``.
+      ``R`` is ignored.
+    - **collapsed** (``collapsed=True``): ``primal`` has shape ``t.shape``,
+      ``c_1..c_{K-1}`` have shape ``(R, *t.shape)`` (with ``c_2..c_{K-1}``
+      zero for simplicity), and ``c_K`` is zero of shape ``t.shape``. Only
+      the order-1 direction and the order-K collapsed slot are non-trivial
+      -- enough to exercise both shape contracts.
     """
-    manual_seed(seed)
+    manual_seed(42)
 
     def make_leaf(t: Tensor) -> tuple[Tensor, ...]:
-        return tuple(rand_like(t) for _ in range(K + 1))
-
-    return tree_map(make_leaf, mock_args)
-
-
-def make_collapsed_jet_args(
-    mock_args: tuple[Any, ...], K: int, R: int = 2, *, seed: int = 42
-) -> tuple[Any, ...]:
-    """Build collapsed-mode jet args matching ``mock_args``'s structure.
-
-    Each tensor leaf ``t`` in ``mock_args`` becomes a jet tuple
-    ``(primal, c_1, c_2, ..., c_{K-1}, c_K)`` where ``primal`` and ``c_1`` are
-    random, ``c_1..c_{K-1}`` carry the leading direction dim ``R``, and
-    ``c_K`` is zero (the collapsed slot). Coefficients of orders ``2..K-1``
-    are zero for simplicity -- only the order-1 direction and the order-K
-    collapsed slot need to be non-trivial to exercise both shape contracts.
-    """
-    manual_seed(seed)
-
-    def make_leaf(t: Tensor) -> tuple[Tensor, ...]:
+        if not collapsed:
+            return tuple(rand_like(t) for _ in range(K + 1))
         primal = rand_like(t)
         c_1 = rand(R, *t.shape, dtype=t.dtype)
         middle = [zeros(R, *t.shape, dtype=t.dtype) for _ in range(K - 2)]
@@ -87,12 +83,3 @@ def make_collapsed_jet_args(
         return (primal, c_1, *middle, c_K)
 
     return tree_map(make_leaf, mock_args)
-
-
-def make_jet_args(
-    mock_args: tuple[Any, ...], K: int, *, collapsed: bool, R: int = 2
-) -> tuple[Any, ...]:
-    """Dispatch to :func:`make_standard_jet_args` or :func:`make_collapsed_jet_args`."""
-    if collapsed:
-        return make_collapsed_jet_args(mock_args, K, R)
-    return make_standard_jet_args(mock_args, K)

@@ -17,28 +17,21 @@ Oracles:
   ``jet._uncollapsed_via_vmap(f, mock_args, randomization=None)``, which runs
   standard ``jet`` per direction and sums at order ``K``.
 
-``K`` is sampled at the collapsed-mode floor (``K=2``) and ``K_MAX=5``;
+``K`` is sampled at the collapsed-mode floor (``K=2``) and a high order ``K=5``;
 intermediate orders exercise the same code paths and don't need their own
 coverage at the primitive layer.
 """
 
 from typing import Any
 
-from pytest import mark
+from pytest import mark, skip
 from torch import addmm, float64, manual_seed, rand, sigmoid, sin, tanh, tensor
 from torch import cos as torch_cos
 from torch.testing import assert_close
 
 import jet
 from jet import rev_jet
-from test.utils import (
-    K_IDS,
-    K_VALUES,
-    make_collapsed_jet_args,
-    make_standard_jet_args,
-    shape,
-    shapes,
-)
+from test.utils import K_IDS, K_VALUES, make_jet_args, shape, shapes
 
 # Deterministic constants for ``_JC`` / ``_CJ`` branches. These are closed
 # over by the test ``f`` and become frozen constants in the captured graph.
@@ -102,30 +95,28 @@ PRIMITIVE_CASES = [
     {"id": "squeeze", "f": lambda x: x.squeeze(0), "mock_args_fn": shape(1, 4)},
 ]
 
-PRIMITIVE_IDS = [c["id"] for c in PRIMITIVE_CASES]
 
-
+@mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])
 @mark.parametrize("K", K_VALUES, ids=K_IDS)
-@mark.parametrize("config", PRIMITIVE_CASES, ids=PRIMITIVE_IDS)
-def test_primitive_standard(config: dict[str, Any], K: int):
-    """jet(primitive) matches rev_jet(primitive) on random inputs."""
+@mark.parametrize("config", PRIMITIVE_CASES, ids=lambda c: c["id"])
+def test_primitive(config: dict[str, Any], K: int, collapsed: bool):
+    """``jet(primitive)`` matches its mode-specific oracle.
+
+    Standard mode is compared against :func:`rev_jet`; collapsed mode against
+    :func:`jet._uncollapsed_via_vmap`, which runs standard ``jet`` per
+    direction and sums at order ``K``.
+    """
+    if collapsed and K < 2:
+        skip("collapsed mode requires K >= 2")
     f = config["f"]
     mock_args = config["mock_args_fn"]()
-    args = make_standard_jet_args(mock_args, K)
+    args = make_jet_args(mock_args, K, collapsed=collapsed)
+    oracle = (
+        jet._uncollapsed_via_vmap(f, mock_args, randomization=None)
+        if collapsed
+        else rev_jet(f)
+    )
 
-    jet_out = jet.jet(f, mock_args)(*args)
-    rev_out = rev_jet(f)(*args)
-    assert_close(jet_out, rev_out)
-
-
-@mark.parametrize("K", K_VALUES, ids=K_IDS)
-@mark.parametrize("config", PRIMITIVE_CASES, ids=PRIMITIVE_IDS)
-def test_primitive_collapsed(config: dict[str, Any], K: int):
-    """jet(primitive, collapsed=True) matches _uncollapsed_via_vmap oracle."""
-    f = config["f"]
-    mock_args = config["mock_args_fn"]()
-    args = make_collapsed_jet_args(mock_args, K)
-
-    cjet_out = jet.jet(f, mock_args, collapsed=True)(*args)
-    oracle_out = jet._uncollapsed_via_vmap(f, mock_args, randomization=None)(*args)
-    assert_close(cjet_out, oracle_out)
+    actual = jet.jet(f, mock_args, collapsed=collapsed)(*args)
+    expected = oracle(*args)
+    assert_close(actual, expected)

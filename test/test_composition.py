@@ -3,34 +3,34 @@
 These tests exercise the interpreter / tracing machinery's ability to thread
 jets through realistic compute graphs. They are NOT primitive coverage --
 each primitive's standalone correctness is in ``test_primitives.py``. The
-four fixtures cover the realistic-shape territory:
+fixtures cover the realistic-shape territory:
 
 1. **Scalar `R^n → R`** -- the canonical Laplacian shape.
 2. **Small MLP** -- the canonical PINN compute graph.
-3. **Deep pytree → pytree** -- exercises ``tuple``/``list``/``dict``
+3. **Batched MLP** -- the same MLP with a leading batch dim, the realistic
+   PINN shape.
+4. **Deep pytree → pytree** -- exercises ``tuple``/``list``/``dict``
    container handling on both input and output.
-4. **Multi-input** -- exercises the variadic positional path.
+5. **Multi-input** -- exercises the variadic positional path.
+6. **Multi-input → dict output** -- multi-input combined with pytree output.
+7. **Dict-only input** -- single dict positional argument.
+8. **Dict-first input** -- ``(dict, tensor)`` -- one of the make_fx-tricky
+   signatures that the rejection smoke (test___init__.py) carves around.
 
-Each fixture runs under both standard and collapsed mode at ``K ∈ {2, K_MAX}``.
+Each fixture runs in standard mode at ``K ∈ {0, 1, 2, 5}`` and in collapsed
+mode at ``K ∈ {2, 5}`` (collapsed mode requires ``K >= 2``).
 """
 
 from typing import Any
 
-from pytest import mark
+from pytest import mark, skip
 from torch import Tensor, cos, float64, manual_seed, rand, sin, tanh
 from torch.nn import Linear, Sequential, Tanh
 from torch.testing import assert_close
 
 import jet
 from jet import rev_jet
-from test.utils import (
-    K_IDS,
-    K_VALUES,
-    make_collapsed_jet_args,
-    make_standard_jet_args,
-    shape,
-    shapes,
-)
+from test.utils import K_IDS, K_VALUES, make_jet_args, shape, shapes
 
 # Module-level MLP so the captured graph is deterministic across runs.
 manual_seed(0)
@@ -69,6 +69,11 @@ COMPOSITION_CASES = [
         "mock_args_fn": shape(5),
     },
     {
+        "id": "mlp_batched",
+        "f": _MLP,
+        "mock_args_fn": shape(10, 5),
+    },
+    {
         "id": "deep_pytree",
         "f": _deep_pytree_f,
         "mock_args_fn": _deep_pytree_mock_args_fn,
@@ -78,32 +83,50 @@ COMPOSITION_CASES = [
         "f": lambda x, y: sin(x) * cos(y),
         "mock_args_fn": shapes((4,), (4,)),
     },
+    {
+        "id": "multi_input_dict_output",
+        "f": lambda x, y: {"sum": x + y, "prod": x * y},
+        "mock_args_fn": shapes((4,), (4,)),
+    },
+    {
+        "id": "dict_only_input",
+        "f": lambda d: sin(d["a"]) * d["b"],
+        "mock_args_fn": lambda: (
+            {"a": rand(4, dtype=float64), "b": rand(4, dtype=float64)},
+        ),
+    },
+    {
+        "id": "dict_first_input",
+        "f": lambda params, x: params["scale"] * sin(x) + params["bias"],
+        "mock_args_fn": lambda: (
+            {"scale": rand(3, dtype=float64), "bias": rand(3, dtype=float64)},
+            rand(3, dtype=float64),
+        ),
+    },
 ]
 
-COMPOSITION_IDS = [c["id"] for c in COMPOSITION_CASES]
 
-
+@mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])
 @mark.parametrize("K", K_VALUES, ids=K_IDS)
-@mark.parametrize("config", COMPOSITION_CASES, ids=COMPOSITION_IDS)
-def test_composition_standard(config: dict[str, Any], K: int):
-    """jet(composition) matches rev_jet(composition) on random inputs."""
+@mark.parametrize("config", COMPOSITION_CASES, ids=lambda c: c["id"])
+def test_composition(config: dict[str, Any], K: int, collapsed: bool):
+    """``jet(composition)`` matches its mode-specific oracle.
+
+    Standard mode is compared against :func:`rev_jet`; collapsed mode against
+    :func:`jet._uncollapsed_via_vmap`, which runs standard ``jet`` per
+    direction and sums at order ``K``.
+    """
+    if collapsed and K < 2:
+        skip("collapsed mode requires K >= 2")
     f = config["f"]
     mock_args = config["mock_args_fn"]()
-    args = make_standard_jet_args(mock_args, K)
+    args = make_jet_args(mock_args, K, collapsed=collapsed)
+    oracle = (
+        jet._uncollapsed_via_vmap(f, mock_args, randomization=None)
+        if collapsed
+        else rev_jet(f)
+    )
 
-    jet_out = jet.jet(f, mock_args)(*args)
-    rev_out = rev_jet(f)(*args)
-    assert_close(jet_out, rev_out)
-
-
-@mark.parametrize("K", K_VALUES, ids=K_IDS)
-@mark.parametrize("config", COMPOSITION_CASES, ids=COMPOSITION_IDS)
-def test_composition_collapsed(config: dict[str, Any], K: int):
-    """Collapsed-mode composition matches the _uncollapsed_via_vmap oracle."""
-    f = config["f"]
-    mock_args = config["mock_args_fn"]()
-    args = make_collapsed_jet_args(mock_args, K)
-
-    cjet_out = jet.jet(f, mock_args, collapsed=True)(*args)
-    oracle_out = jet._uncollapsed_via_vmap(f, mock_args, randomization=None)(*args)
-    assert_close(cjet_out, oracle_out)
+    actual = jet.jet(f, mock_args, collapsed=collapsed)(*args)
+    expected = oracle(*args)
+    assert_close(actual, expected)

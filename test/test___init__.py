@@ -18,12 +18,13 @@ from torch import (
 )
 from torch.nn import Linear, Module, Sequential, Tanh
 from torch.nn.functional import linear
+from torch.testing import assert_close
 from torch.utils._pytree import tree_map
 
 import jet
 from jet import rev_jet
 from jet.tracing import capture_graph
-from test.utils import report_pytrees_nonclose
+from test.utils import zip_jet
 
 INF = float("inf")
 
@@ -333,17 +334,8 @@ def test_jet(config: dict[str, Any], derivative_order: int):
 
     manual_seed(42)
     primals = config["mock_args_fn"]()
-    # Build the new-convention args: one pytree per argument of f, with each
-    # tensor leaf zipped into a (primal, c_1, ..., c_K) jet tuple.
     coeffs_by_order = [config["mock_args_fn"]() for _ in range(derivative_order)]
-    args = tuple(
-        tree_map(
-            lambda *ts: tuple(ts),
-            primals[arg_idx],
-            *(coeffs_by_order[order][arg_idx] for order in range(derivative_order)),
-        )
-        for arg_idx in range(len(primals))
-    )
+    args = zip_jet(primals, *coeffs_by_order)
 
     jet_f = jet.jet(f, mock_args)
     jet_out = jet_f(*args)
@@ -351,7 +343,7 @@ def test_jet(config: dict[str, Any], derivative_order: int):
     rev_jet_f = rev_jet(f)
     rev_jet_out = rev_jet_f(*args)
 
-    report_pytrees_nonclose(jet_out, rev_jet_out)
+    assert_close(jet_out, rev_jet_out)
 
 
 def _setup_collapsed_jet_args(
@@ -415,7 +407,7 @@ def test_collapsed_jet(config: dict[str, Any], derivative_order: int):
     std_f = jet._uncollapsed_via_vmap(f, mock_args, randomization=None)
     cjet_f = jet.jet(f, mock_args, collapsed=True)
 
-    report_pytrees_nonclose(std_f(*args), cjet_f(*args))
+    assert_close(std_f(*args), cjet_f(*args))
 
 
 def test_collapsed_jet_rejects_order_below_2():

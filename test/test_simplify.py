@@ -4,9 +4,10 @@ import torch
 from torch import Tensor, arange
 from torch.fx import Graph, Node
 
+from torch.testing import assert_close
+
 from jet.simplify import common_subexpression_elimination
 from jet.tracing import capture_graph
-from test.utils import report_nonclose
 
 
 def count_nodes(graph: Graph, predicate) -> int:
@@ -77,4 +78,4 @@ def test_common_subexpression_elimination():
         f"CSE should reduce duplicate add nodes: {adds_before} -> {adds_after}"
     )
 
-    report_nonclose(f_x, f_traced(x), name="f(x)")
+    assert_close(f_x, f_traced(x))

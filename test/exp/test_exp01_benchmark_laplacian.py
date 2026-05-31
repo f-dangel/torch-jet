@@ -26,7 +26,7 @@ from test.test_laplacian import (
     get_coefficients,
     laplacian,
 )
-from test.utils import report_nonclose
+from torch.testing import assert_close
 
 STRATEGY_IDS = [f"strategy={s}" for s in SUPPORTED_STRATEGIES]
 LAPLACIAN_DISTRIBUTION_IDS = [
@@ -98,7 +98,7 @@ def test_laplacian_functions(
         f, x, is_batched, strategy, randomization=None, weighting=weighting
     )()
 
-    report_nonclose(lap, lap_func)
+    assert_close(lap, lap_func)
 
 
 @mark.parametrize("batch_size", BATCH_SIZES, ids=BATCH_SIZE_IDS)
@@ -143,7 +143,7 @@ def test_randomized_laplacian_functions_identical(
     # same seed must yield identical results across strategies
     first_key = list(laps.keys())[0]
     for key in laps:
-        report_nonclose(laps[first_key], laps[key])
+        assert_close(laps[first_key], laps[key])
 
     # different seed must yield a different result (skip for rademacher:
     # v_i^2 = 1 makes the estimator exact for diagonal Hessians / rank-deficient
@@ -246,7 +246,7 @@ def test_bilaplacian_functions(config: dict[str, Any], strategy: str, batch_size
 
     bilap_func = bilaplacian_function(f, x, is_batched, strategy)()
 
-    report_nonclose(bilap, bilap_func)
+    assert_close(bilap, bilap_func)
 
 
 @mark.parametrize("batch_size", BATCH_SIZES, ids=BATCH_SIZE_IDS)
@@ -281,7 +281,7 @@ def test_randomized_bilaplacian_functions_identical(
     # same seed must yield identical results across strategies
     first_key = list(bilaps.keys())[0]
     for key in bilaps:
-        report_nonclose(bilaps[first_key], bilaps[key])
+        assert_close(bilaps[first_key], bilaps[key])
 
     # different seed must yield a different result (skip for rademacher:
     # v_i^2 = 1 makes the estimator exact for diagonal Hessians / rank-deficient

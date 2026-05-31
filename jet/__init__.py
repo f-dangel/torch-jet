@@ -374,9 +374,6 @@ def collapsed_jet(
         output structure, with each tensor leaf replaced by a tuple
         ``(f_0, f_1, ..., f_K)``. Orders 1..K-1 carry the leading ``R``
         dimension; order K is collapsed.
-
-    Raises:
-        ValueError: At call time, if ``K < 2`` is inferred from the inputs.
     """
     return _make_jet_transform(f, mock_args, collapsed=True)
 

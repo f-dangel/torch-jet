@@ -56,9 +56,6 @@ def capture_graph(
     Raises:
         TypeError: If ``mock_args`` is not a ``tuple``. Wrap a single
             positional argument as ``(x,)``.
-        NotImplementedError: If ``mock_args`` hits the unsupported
-            ``(tensor-or-tuple, dict)`` signature; see
-            :func:`_assert_traceable_signature`.
     """
     if not isinstance(mock_args, tuple):
         raise TypeError(

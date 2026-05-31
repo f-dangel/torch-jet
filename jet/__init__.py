@@ -24,9 +24,9 @@ _JetTypes = (JetTuple, CollapsedJetTuple)
 
 
 # ---------------------------------------------------------------------------
-# Input validation (parallel pytree walk vs. ``mock_primals``)
+# Input validation (parallel pytree walk vs. ``mock_args``)
 # ---------------------------------------------------------------------------
-# At every ``Tensor`` leaf in ``mock_primals``, ``args`` must hold a tuple
+# At every ``Tensor`` leaf in ``mock_args``, ``args`` must hold a tuple
 # ``(primal, c_1, ..., c_K)`` of tensors. Disambiguation is positional, so a
 # pytree container of K+1 tensors is not misread as a jet leaf. Shape rules:
 #
@@ -95,7 +95,7 @@ def _walk_and_validate(
 
     _walk(mock, args, "")
     if state["K"] is None:
-        raise ValueError("No jet leaves found; mock_primals has no tensors.")
+        raise ValueError("No jet leaves found; mock_args has no tensors.")
     return leaves, state["K"], state["R"]
 
 
@@ -115,8 +115,7 @@ def _validate_jet_leaf(
     if not isinstance(arg, tuple):
         raise _err(
             path,
-            f"expected a tuple (primal, c_1, ..., c_K), got "
-            f"{type(arg).__name__}.",
+            f"expected a tuple (primal, c_1, ..., c_K), got {type(arg).__name__}.",
         )
     if len(arg) < 1:
         raise _err(
@@ -272,27 +271,27 @@ def _normalize_output(
 
 
 def _make_jet_transform(
-    f: Callable[..., Any], mock_primals: tuple[Any, ...], *, collapsed: bool
+    f: Callable[..., Any], mock_args: tuple[Any, ...], *, collapsed: bool
 ) -> Callable[..., Any]:
     """Shared body of :func:`jet` and :func:`collapsed_jet`.
 
     Traces ``f``'s compute graph once via :func:`capture_graph`, then returns
     a Python callable that on each invocation validates the user's jets
-    against ``mock_primals``, runs the captured graph through a
+    against ``mock_args``, runs the captured graph through a
     :class:`JetInterpreter` in the requested mode, and normalizes the output.
     """
-    mod = capture_graph(f, mock_primals)
+    mod = capture_graph(f, mock_args)
     interp = JetInterpreter(mod, collapsed=collapsed)
 
     def transformed(*args: Any) -> Any:
-        leaves, K, R = _walk_and_validate(mock_primals, args, collapsed=collapsed)
+        leaves, K, R = _walk_and_validate(mock_args, args, collapsed=collapsed)
         result = interp.run(*leaves)
         return _normalize_output(result, K, collapsed=collapsed, R=R)
 
     return transformed
 
 
-def jet(f: Callable[..., Any], mock_primals: tuple[Any, ...]) -> Callable[..., Any]:
+def jet(f: Callable[..., Any], mock_args: tuple[Any, ...]) -> Callable[..., Any]:
     """Overload a function with its Taylor-mode equivalent.
 
     ``Any`` in the type signatures denotes a *pytree of tensors*, i.e. an
@@ -306,14 +305,14 @@ def jet(f: Callable[..., Any], mock_primals: tuple[Any, ...]) -> Callable[..., A
 
     Args:
         f: Function to overload. May accept and return pytrees of tensors.
-        mock_primals: Mock input tensors (or pytrees of tensors) for tracing
+        mock_args: Mock input tensors (or pytrees of tensors) for tracing
             ``f``'s compute graph, provided as a tuple matching the positional
             arguments of ``f``. Only shapes and dtypes matter, not the values.
 
     Returns:
         A callable ``jet_f(*args)`` taking one positional argument per
         argument of ``f``. Each argument is a pytree mirroring the
-        corresponding ``mock_primals`` entry but with every tensor leaf
+        corresponding ``mock_args`` entry but with every tensor leaf
         replaced by a tuple ``(primal, c_1, ..., c_K)`` bundling the primal
         with its ``K`` Taylor coefficients. Returns a pytree mirroring ``f``'s
         output structure with each tensor leaf replaced by
@@ -337,17 +336,17 @@ def jet(f: Callable[..., Any], mock_primals: tuple[Any, ...]) -> Callable[..., A
             >>> vx, vy = Tensor([1.0, 0.0, 0.0]), Tensor([0.0, 1.0, 0.0])
             >>> f0, f1 = jet_f((x, vx), (y, vy))
     """
-    return _make_jet_transform(f, mock_primals, collapsed=False)
+    return _make_jet_transform(f, mock_args, collapsed=False)
 
 
 def collapsed_jet(
-    f: Callable[..., Value], mock_primals: tuple[Any, ...]
+    f: Callable[..., Value], mock_args: tuple[Any, ...]
 ) -> Callable[..., tuple[Value, ...]]:
     """Overload ``f`` with its collapsed Taylor-mode equivalent.
 
     Like :func:`jet`, the returned callable takes one positional argument per
     argument of ``f``; each is a pytree mirroring the corresponding
-    ``mock_primals`` entry with every tensor leaf replaced by a tuple
+    ``mock_args`` entry with every tensor leaf replaced by a tuple
     ``(primal, c_1, ..., c_K)``. Unlike :func:`jet`, the coefficients have
     mixed shapes across orders:
 
@@ -366,7 +365,7 @@ def collapsed_jet(
 
     Args:
         f: Function to overload. May accept and return pytrees of tensors.
-        mock_primals: Mock input tensors (or pytrees of tensors) for tracing
+        mock_args: Mock input tensors (or pytrees of tensors) for tracing
             ``f``'s compute graph, provided as a tuple matching the positional
             arguments of ``f``. Only shapes and dtypes matter, not the values.
 
@@ -379,7 +378,7 @@ def collapsed_jet(
     Raises:
         ValueError: At call time, if ``K < 2`` is inferred from the inputs.
     """
-    return _make_jet_transform(f, mock_primals, collapsed=True)
+    return _make_jet_transform(f, mock_args, collapsed=True)
 
 
 def rev_jet(f: Callable[..., Any], detach: bool = True) -> Callable[..., Any]:

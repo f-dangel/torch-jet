@@ -329,7 +329,7 @@ def test_jet(config: dict[str, Any], derivative_order: int):
     """
     manual_seed(0)
     f = config["f"]
-    mock_primals = config["mock_args_fn"]()
+    mock_args = config["mock_args_fn"]()
 
     manual_seed(42)
     primals = config["mock_args_fn"]()
@@ -345,7 +345,7 @@ def test_jet(config: dict[str, Any], derivative_order: int):
         for arg_idx in range(len(primals))
     )
 
-    jet_f = jet.jet(f, mock_primals)
+    jet_f = jet.jet(f, mock_args)
     jet_out = jet_f(*args)
 
     rev_jet_f = rev_jet(f)

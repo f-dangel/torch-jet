@@ -94,7 +94,7 @@ _ = manual_seed(0)  # make deterministic
 # $(x_0, x_1, \dots)$, we can compute various derivatives!
 #
 # **In code,** the `jet` library offers a function transformation
-# `jet(f, mock_primals)` that takes a function $f$ and mock primal inputs and
+# `jet(f, mock_args)` that takes a function $f$ and mock primal inputs and
 # returns a new function `jet_f(*args)` taking one argument per argument of
 # $f$. Each argument bundles a primal with its Taylor coefficients into a
 # tuple `(x_0, x_1, ..., x_K)`, and the output mirrors this: each result is a
@@ -238,7 +238,7 @@ else:
 # dealing with partial differential equations (PDEs) where the unknown depends on
 # multiple variables such as time and space.
 #
-# For a function with multiple arguments, ``mock_primals`` is a tuple that matches the
+# For a function with multiple arguments, ``mock_args`` is a tuple that matches the
 # function's positional arguments, and the jet is called as ``jet_f(*args)`` with one
 # argument per argument of $f$. Each argument bundles its primal with its Taylor
 # coefficients as a tuple ``(x_0, x_1, ..., x_K)``.
@@ -253,7 +253,7 @@ else:
 #    tuple per argument, so a jet is one self-contained object.
 #
 #    A further difference is that ``torch-jet`` uses a two-step API: first
-#    ``jet_f = jet(f, mock_primals)`` traces the function, then ``jet_f(*args)``
+#    ``jet_f = jet(f, mock_args)`` traces the function, then ``jet_f(*args)``
 #    evaluates it. This separates tracing (which can be expensive) from
 #    evaluation, allowing the traced jet to be reused across multiple inputs
 #    and across any derivative order $K$ (inferred per call from the input).

@@ -2,8 +2,25 @@
 
 from typing import Any, Callable
 
-from torch import Tensor, manual_seed, rand, zeros, zeros_like
+from torch import Tensor, float64, manual_seed, rand, rand_like, zeros, zeros_like
 from torch.utils._pytree import tree_map
+
+#: Sweep K at the collapsed-mode floor and a representative high order.
+#: Intermediate K values exercise the same code paths and don't earn their
+#: own coverage at the primitive / composition layer.
+K_MAX = 5
+K_VALUES = [2, K_MAX]
+K_IDS = [f"K={k}" for k in K_VALUES]
+
+
+def shape(*dims: int) -> Callable[[], tuple[Tensor]]:
+    """Mock-args factory: one ``rand`` tensor of the given shape (float64)."""
+    return lambda: (rand(*dims, dtype=float64),)
+
+
+def shapes(*shape_pairs) -> Callable[[], tuple[Tensor, ...]]:
+    """Mock-args factory: one ``rand`` tensor per shape (all float64)."""
+    return lambda: tuple(rand(*s, dtype=float64) for s in shape_pairs)
 
 
 def setup_case(
@@ -27,8 +44,8 @@ def setup_case(
     f = config["f"]
     # Extract shape from mock_args_fn (single-input cases only).
     mock_args = config["mock_args_fn"]()
-    shape = mock_args[0].shape
-    vmap_shape = shape if vmapsize == 0 else (vmapsize, *shape)
+    arg_shape = mock_args[0].shape
+    vmap_shape = arg_shape if vmapsize == 0 else (vmapsize, *arg_shape)
     x = rand(*vmap_shape).double()
     vs = (
         ()
@@ -36,25 +53,6 @@ def setup_case(
         else tuple(rand(*vmap_shape).double() for _ in range(derivative_order))
     )
     return f, x, vs
-
-
-def zip_jet(primals: tuple, *coeffs_by_order: tuple) -> tuple:
-    """Zip primals with per-order coefficients into per-argument jet pytrees.
-
-    Args:
-        primals: Tuple of pytrees of tensors, one per positional arg of ``f``.
-        *coeffs_by_order: For each derivative order ``k = 1..K``, one tuple
-            of pytrees mirroring ``primals``'s structure that holds the
-            ``k``-th-order coefficients.
-
-    Returns:
-        Tuple of pytrees mirroring ``primals``, with each tensor leaf
-        replaced by a jet tuple ``(primal, c_1, ..., c_K)``.
-    """
-    return tuple(
-        tree_map(lambda *ts: tuple(ts), p, *cs)
-        for p, *cs in zip(primals, *coeffs_by_order)
-    )
 
 
 def make_standard_jet_args(
@@ -67,9 +65,11 @@ def make_standard_jet_args(
     ``t.shape``.
     """
     manual_seed(seed)
-    primals = tree_map(_rand_like, mock_args)
-    coeffs_by_order = [tree_map(_rand_like, mock_args) for _ in range(K)]
-    return zip_jet(primals, *coeffs_by_order)
+
+    def make_leaf(t: Tensor) -> tuple[Tensor, ...]:
+        return tuple(rand_like(t) for _ in range(K + 1))
+
+    return tuple(tree_map(make_leaf, arg) for arg in mock_args)
 
 
 def make_collapsed_jet_args(
@@ -87,14 +87,10 @@ def make_collapsed_jet_args(
     manual_seed(seed)
 
     def make_leaf(t: Tensor) -> tuple[Tensor, ...]:
-        primal = rand(*t.shape, dtype=t.dtype)
+        primal = rand_like(t)
         c_1 = rand(R, *t.shape, dtype=t.dtype)
         middle = [zeros(R, *t.shape, dtype=t.dtype) for _ in range(K - 2)]
         c_K = zeros_like(primal)
         return (primal, c_1, *middle, c_K)
 
     return tuple(tree_map(make_leaf, arg) for arg in mock_args)
-
-
-def _rand_like(t: Tensor) -> Tensor:
-    return rand(*t.shape, dtype=t.dtype)

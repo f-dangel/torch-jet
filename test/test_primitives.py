@@ -31,82 +31,75 @@ from torch.testing import assert_close
 
 import jet
 from jet import rev_jet
-from test.utils import make_collapsed_jet_args, make_standard_jet_args
-
-K_MAX = 5
-K_VALUES = [2, K_MAX]
-K_IDS = [f"K={k}" for k in K_VALUES]
+from test.utils import (
+    K_IDS,
+    K_VALUES,
+    make_collapsed_jet_args,
+    make_standard_jet_args,
+    shape,
+    shapes,
+)
 
 # Deterministic constants for ``_JC`` / ``_CJ`` branches. These are closed
 # over by the test ``f`` and become frozen constants in the captured graph.
 manual_seed(0)
-_MM_LEFT_CONST = rand(3, 4).double()  # for ``const @ jet`` rows
-_MM_RIGHT_CONST = rand(4, 5).double()  # for ``jet @ const`` rows
-_ADDMM_BIAS = rand(3, 5).double()
-_ADDMM_LEFT_CONST = rand(3, 4).double()
-_ADDMM_RIGHT_CONST = rand(4, 5).double()
+_MM_LEFT_CONST = rand(3, 4, dtype=float64)  # for ``const @ jet`` rows
+_MM_RIGHT_CONST = rand(4, 5, dtype=float64)  # for ``jet @ const`` rows
+_ADDMM_BIAS = rand(3, 5, dtype=float64)
+_ADDMM_LEFT_CONST = rand(3, 4, dtype=float64)
+_ADDMM_RIGHT_CONST = rand(4, 5, dtype=float64)
 # Tensor constant for ``_CJ`` rows on subtract: ``scalar - jet`` lowers to
 # ``aten.rsub.Scalar`` (unregistered), but ``tensor - jet`` stays on
 # ``aten.sub.Tensor`` which has the CJ branch we want to exercise.
 _SUB_CONST = tensor(2.0, dtype=float64)
 
 
-def _shape(*dims: int):
-    """Mock-args factory: one ``rand`` tensor of the given shape in double."""
-    return lambda: (rand(*dims).double(),)
-
-
-def _shapes(*shape_pairs):
-    """Mock-args factory: one ``rand`` tensor per shape, all in double."""
-    return lambda: tuple(rand(*s).double() for s in shape_pairs)
-
-
 PRIMITIVE_CASES = [
     # ---- Unary pointwise -------------------------------------------------
-    {"id": "sin", "f": sin, "mock_args_fn": _shape(4)},
-    {"id": "cos", "f": torch_cos, "mock_args_fn": _shape(4)},
-    {"id": "tanh", "f": tanh, "mock_args_fn": _shape(4)},
-    {"id": "sigmoid", "f": sigmoid, "mock_args_fn": _shape(4)},
+    {"id": "sin", "f": sin, "mock_args_fn": shape(4)},
+    {"id": "cos", "f": torch_cos, "mock_args_fn": shape(4)},
+    {"id": "tanh", "f": tanh, "mock_args_fn": shape(4)},
+    {"id": "sigmoid", "f": sigmoid, "mock_args_fn": shape(4)},
     # ---- Unary with scalar exponent --------------------------------------
-    {"id": "pow", "f": lambda x: x**2.5, "mock_args_fn": _shape(4)},
+    {"id": "pow", "f": lambda x: x**2.5, "mock_args_fn": shape(4)},
     # ---- Binary add (commutative; still 3 dispatch branches) -------------
-    {"id": "add_JJ", "f": lambda x, y: x + y, "mock_args_fn": _shapes((4,), (4,))},
-    {"id": "add_JC", "f": lambda x: x + 2.0, "mock_args_fn": _shape(4)},
-    {"id": "add_CJ", "f": lambda x: 2.0 + x, "mock_args_fn": _shape(4)},
+    {"id": "add_JJ", "f": lambda x, y: x + y, "mock_args_fn": shapes((4,), (4,))},
+    {"id": "add_JC", "f": lambda x: x + 2.0, "mock_args_fn": shape(4)},
+    {"id": "add_CJ", "f": lambda x: 2.0 + x, "mock_args_fn": shape(4)},
     # ---- Binary sub (non-commutative) ------------------------------------
-    {"id": "sub_JJ", "f": lambda x, y: x - y, "mock_args_fn": _shapes((4,), (4,))},
-    {"id": "sub_JC", "f": lambda x: x - 2.0, "mock_args_fn": _shape(4)},
-    {"id": "sub_CJ", "f": lambda x: _SUB_CONST - x, "mock_args_fn": _shape(4)},
+    {"id": "sub_JJ", "f": lambda x, y: x - y, "mock_args_fn": shapes((4,), (4,))},
+    {"id": "sub_JC", "f": lambda x: x - 2.0, "mock_args_fn": shape(4)},
+    {"id": "sub_CJ", "f": lambda x: _SUB_CONST - x, "mock_args_fn": shape(4)},
     # ---- Binary mul ------------------------------------------------------
-    {"id": "mul_JJ", "f": lambda x, y: x * y, "mock_args_fn": _shapes((4,), (4,))},
-    {"id": "mul_JC", "f": lambda x: x * 3.0, "mock_args_fn": _shape(4)},
-    {"id": "mul_CJ", "f": lambda x: 3.0 * x, "mock_args_fn": _shape(4)},
+    {"id": "mul_JJ", "f": lambda x, y: x * y, "mock_args_fn": shapes((4,), (4,))},
+    {"id": "mul_JC", "f": lambda x: x * 3.0, "mock_args_fn": shape(4)},
+    {"id": "mul_CJ", "f": lambda x: 3.0 * x, "mock_args_fn": shape(4)},
     # ---- Matrix multiply (non-commutative) -------------------------------
-    {"id": "mm_JJ", "f": lambda A, B: A @ B, "mock_args_fn": _shapes((3, 4), (4, 5))},
-    {"id": "mm_JC", "f": lambda A: A @ _MM_RIGHT_CONST, "mock_args_fn": _shape(3, 4)},
-    {"id": "mm_CJ", "f": lambda B: _MM_LEFT_CONST @ B, "mock_args_fn": _shape(4, 5)},
+    {"id": "mm_JJ", "f": lambda A, B: A @ B, "mock_args_fn": shapes((3, 4), (4, 5))},
+    {"id": "mm_JC", "f": lambda A: A @ _MM_RIGHT_CONST, "mock_args_fn": shape(3, 4)},
+    {"id": "mm_CJ", "f": lambda B: _MM_LEFT_CONST @ B, "mock_args_fn": shape(4, 5)},
     # ---- addmm (3 dispatch branches over mat1/mat2; bias must be const) ---
     {
         "id": "addmm_mat1_mat2_jet",
         "f": lambda A, B: addmm(_ADDMM_BIAS, A, B),
-        "mock_args_fn": _shapes((3, 4), (4, 5)),
+        "mock_args_fn": shapes((3, 4), (4, 5)),
     },
     {
         "id": "addmm_mat1_jet",
         "f": lambda A: addmm(_ADDMM_BIAS, A, _ADDMM_RIGHT_CONST),
-        "mock_args_fn": _shape(3, 4),
+        "mock_args_fn": shape(3, 4),
     },
     {
         "id": "addmm_mat2_jet",
         "f": lambda B: addmm(_ADDMM_BIAS, _ADDMM_LEFT_CONST, B),
-        "mock_args_fn": _shape(4, 5),
+        "mock_args_fn": shape(4, 5),
     },
     # ---- Reduction -------------------------------------------------------
-    {"id": "sum_dim_0", "f": lambda x: x.sum(0), "mock_args_fn": _shape(3, 4)},
+    {"id": "sum_dim_0", "f": lambda x: x.sum(0), "mock_args_fn": shape(3, 4)},
     # ---- Shape-only ops --------------------------------------------------
-    {"id": "view", "f": lambda x: x.view(-1), "mock_args_fn": _shape(3, 4)},
-    {"id": "unsqueeze", "f": lambda x: x.unsqueeze(0), "mock_args_fn": _shape(4)},
-    {"id": "squeeze", "f": lambda x: x.squeeze(0), "mock_args_fn": _shape(1, 4)},
+    {"id": "view", "f": lambda x: x.view(-1), "mock_args_fn": shape(3, 4)},
+    {"id": "unsqueeze", "f": lambda x: x.unsqueeze(0), "mock_args_fn": shape(4)},
+    {"id": "squeeze", "f": lambda x: x.squeeze(0), "mock_args_fn": shape(1, 4)},
 ]
 
 PRIMITIVE_IDS = [c["id"] for c in PRIMITIVE_CASES]
@@ -116,7 +109,6 @@ PRIMITIVE_IDS = [c["id"] for c in PRIMITIVE_CASES]
 @mark.parametrize("config", PRIMITIVE_CASES, ids=PRIMITIVE_IDS)
 def test_primitive_standard(config: dict[str, Any], K: int):
     """jet(primitive) matches rev_jet(primitive) on random inputs."""
-    manual_seed(0)
     f = config["f"]
     mock_args = config["mock_args_fn"]()
     args = make_standard_jet_args(mock_args, K)
@@ -130,7 +122,6 @@ def test_primitive_standard(config: dict[str, Any], K: int):
 @mark.parametrize("config", PRIMITIVE_CASES, ids=PRIMITIVE_IDS)
 def test_primitive_collapsed(config: dict[str, Any], K: int):
     """jet(primitive, collapsed=True) matches _uncollapsed_via_vmap oracle."""
-    manual_seed(0)
     f = config["f"]
     mock_args = config["mock_args_fn"]()
     args = make_collapsed_jet_args(mock_args, K)

@@ -23,12 +23,14 @@ from torch.testing import assert_close
 
 import jet
 from jet import rev_jet
-from test.utils import make_collapsed_jet_args, make_standard_jet_args
-
-K_MAX = 5
-K_VALUES = [2, K_MAX]
-K_IDS = [f"K={k}" for k in K_VALUES]
-
+from test.utils import (
+    K_IDS,
+    K_VALUES,
+    make_collapsed_jet_args,
+    make_standard_jet_args,
+    shape,
+    shapes,
+)
 
 # Module-level MLP so the captured graph is deterministic across runs.
 manual_seed(0)
@@ -59,12 +61,12 @@ COMPOSITION_CASES = [
         # ``.sum(0)`` (dim-IntList overload) — ``.sum()`` traces to
         # ``aten.sum.default`` which has no jet rule.
         "f": lambda x: (sin(x) * x).sum(0),
-        "mock_args_fn": lambda: (rand(5, dtype=float64),),
+        "mock_args_fn": shape(5),
     },
     {
         "id": "mlp",
         "f": _MLP,
-        "mock_args_fn": lambda: (rand(5, dtype=float64),),
+        "mock_args_fn": shape(5),
     },
     {
         "id": "deep_pytree",
@@ -74,7 +76,7 @@ COMPOSITION_CASES = [
     {
         "id": "multi_input",
         "f": lambda x, y: sin(x) * cos(y),
-        "mock_args_fn": lambda: (rand(4, dtype=float64), rand(4, dtype=float64)),
+        "mock_args_fn": shapes((4,), (4,)),
     },
 ]
 
@@ -85,7 +87,6 @@ COMPOSITION_IDS = [c["id"] for c in COMPOSITION_CASES]
 @mark.parametrize("config", COMPOSITION_CASES, ids=COMPOSITION_IDS)
 def test_composition_standard(config: dict[str, Any], K: int):
     """jet(composition) matches rev_jet(composition) on random inputs."""
-    manual_seed(0)
     f = config["f"]
     mock_args = config["mock_args_fn"]()
     args = make_standard_jet_args(mock_args, K)
@@ -99,7 +100,6 @@ def test_composition_standard(config: dict[str, Any], K: int):
 @mark.parametrize("config", COMPOSITION_CASES, ids=COMPOSITION_IDS)
 def test_composition_collapsed(config: dict[str, Any], K: int):
     """Collapsed-mode composition matches the _uncollapsed_via_vmap oracle."""
-    manual_seed(0)
     f = config["f"]
     mock_args = config["mock_args_fn"]()
     args = make_collapsed_jet_args(mock_args, K)

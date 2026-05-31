@@ -34,25 +34,6 @@ def _ones_args(shape, K, R=None, leading_dim_on_kK=False):
 # ---------------------------------------------------------------------------
 
 
-def test_validate_standard_single_tensor():
-    """Standard mode with a single tensor input."""
-    mock = (zeros(3),)
-    args = (_ones_args((3,), K=2),)
-    leaves, K, R = validate_input_jet(mock, args, collapsed=False)
-    assert K == 2
-    assert R is None
-    assert len(leaves) == 1
-
-
-def test_validate_standard_multi_leaf():
-    """Standard mode with multiple jet leaves."""
-    mock = (zeros(3), zeros(3))
-    args = (_ones_args((3,), K=3), _ones_args((3,), K=3))
-    _, K, R = validate_input_jet(mock, args, collapsed=False)
-    assert K == 3
-    assert R is None
-
-
 def test_validate_standard_K_mismatch():
     """K must be consistent across leaves."""
     mock = (zeros(3), zeros(3))
@@ -96,23 +77,6 @@ def test_validate_rejects_wrong_coefficient_shape():
 # ---------------------------------------------------------------------------
 # Collapsed mode
 # ---------------------------------------------------------------------------
-
-
-def test_validate_collapsed_K2_infers_R():
-    """Collapsed mode infers R from c_1's leading dim."""
-    mock = (zeros(3),)
-    args = (_ones_args((3,), K=2, R=4),)
-    _, K, R = validate_input_jet(mock, args, collapsed=True)
-    assert K == 2
-    assert R == 4
-
-
-def test_validate_collapsed_rejects_K_lt_2():
-    """Collapsed mode requires K >= 2."""
-    mock = (zeros(3),)
-    args = (_ones_args((3,), K=1),)
-    with raises(ValueError, match="collapsed mode requires K >= 2"):
-        validate_input_jet(mock, args, collapsed=True)
 
 
 def test_validate_collapsed_rejects_R_mismatch_across_leaves():

@@ -11,10 +11,9 @@ from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
 from jet.collapsed_operations import CollapsedJetTuple
 from jet.jet_interpreter import JetInterpreter
 from jet.operations import JetTuple
+from jet.simplify import common_subexpression_elimination
 from jet.tracing import capture_graph
 from jet.utils import Value
-
-__all__ = ["capture_graph", "collapsed_jet", "jet", "rev_jet"]
 
 
 # Internal jet types used by the interpreter for op dispatch. User-facing jet

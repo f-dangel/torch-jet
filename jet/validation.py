@@ -67,9 +67,26 @@ def _validate_jet_leaf(
     """Check that ``arg`` is a valid jet tuple matching ``mock``'s shape.
 
     ``K_seen`` and ``R_seen`` carry the values observed at earlier leaves
-    (``None`` on the first call). Returns the updated pair for the caller to
-    thread to the next leaf. Raises if this leaf's ``K`` or ``R`` disagrees
-    with the earlier ones.
+    (``None`` on the first call).
+
+    Args:
+        mock: The expected primal shape (one tensor leaf of ``mock_args``).
+        arg: Candidate jet tuple ``(primal, c_1, ..., c_K)`` of tensors.
+        collapsed: Whether to apply the collapsed-mode shape rules.
+        K_seen: Derivative order observed at an earlier leaf, or ``None`` if
+            this is the first leaf.
+        R_seen: Direction dim observed at an earlier leaf in collapsed mode,
+            or ``None``.
+
+    Returns:
+        ``(K, R)`` for this leaf, with ``R = R_seen`` if it was already set
+        (so the caller can thread the pair to the next leaf).
+
+    Raises:
+        ValueError: If ``arg`` is not a tuple of tensors, if its ``K`` or
+            ``R`` disagrees with ``K_seen`` / ``R_seen``, if ``collapsed``
+            mode is requested with ``K < 2``, or if any coefficient has the
+            wrong shape.
     """
     if not isinstance(arg, tuple):
         raise ValueError(

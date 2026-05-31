@@ -121,10 +121,28 @@ def test_validate_dict_pytree():
     assert len(leaves) == 2
 
 
+def test_validate_rejects_non_tensor_mock_leaf():
+    """Non-Tensor mock leaves (e.g. a stray Python int) get a typed error."""
+    mock = (zeros(3), 0)  # the int sneaks in as a pytree leaf
+    args = (_ones_args((3,), K=2), _ones_args((3,), K=2))
+    with raises(ValueError, match="mock_args leaf must be a Tensor"):
+        validate_input_jet(mock, args, collapsed=False)
+
+
+def test_validate_rejects_empty_mock():
+    """Tensor-free mock_args is rejected up front with a clear error."""
+    mock = ({},)  # empty dict -> zero tensor leaves
+    args = ({},)
+    with raises(ValueError, match="No jet leaves found"):
+        validate_input_jet(mock, args, collapsed=False)
+
+
 def test_validate_rejects_structure_mismatch():
     """Structural mismatch surfaces flatten_up_to's error."""
     mock = ({"a": zeros(3)},)
     args = ([_ones_args((3,), K=2)],)  # list instead of dict
-    # PyTorch's flatten_up_to raises a Node type mismatch
-    with raises(ValueError, match="[Nn]ode type mismatch"):
+    # PyTorch's flatten_up_to raises ValueError or RuntimeError depending on
+    # whether the Python or C++ pytree backend is in use; match either, and
+    # the message text loosely to avoid pinning the upstream wording.
+    with raises((ValueError, RuntimeError), match=r"[Mm]ismatch"):
         validate_input_jet(mock, args, collapsed=False)

@@ -46,6 +46,12 @@ def validate_input_jet(
             across leaves, or if any coefficient has the wrong shape.
     """
     mock_leaves, in_spec = tree_flatten(mock)
+    if not mock_leaves:
+        # Degenerate: capture_graph happily traces a zero-tensor-input function
+        # (e.g. `f({}) -> tensor(1.0)` produces a 0-placeholder graph emitting
+        # a constant). The interpreter would then receive K=R=None and crash
+        # deep inside `_zero_coeffs` with `range(None)`. Reject up front.
+        raise ValueError("No jet leaves found; mock_args has no tensors.")
     # flatten_up_to raises Node type/arity mismatch if args' pytree structure
     # diverges from mock's; at each tensor leaf in mock it takes the entire
     # subtree at the corresponding position in args (i.e. the jet tuple).
@@ -54,6 +60,9 @@ def validate_input_jet(
     R_seen: int | None = None
     for mock_t, arg in zip(mock_leaves, arg_leaves):
         K_seen, R_seen = _validate_jet_leaf(mock_t, arg, collapsed, K_seen, R_seen)
+    # K_seen is non-None here: mock_leaves is non-empty (checked above), so the
+    # for-loop ran at least once and _validate_jet_leaf set K_seen on leaf 1.
+    assert K_seen is not None
     return arg_leaves, K_seen, R_seen
 
 
@@ -88,6 +97,8 @@ def _validate_jet_leaf(
             mode is requested with ``K < 2``, or if any coefficient has the
             wrong shape.
     """
+    if not isinstance(mock, Tensor):
+        raise ValueError(f"mock_args leaf must be a Tensor, got {type(mock).__name__}.")
     if not isinstance(arg, tuple):
         raise ValueError(
             f"expected a jet tuple (primal, c_1, ..., c_K), got {type(arg).__name__}."
@@ -103,13 +114,16 @@ def _validate_jet_leaf(
         )
 
     K = len(arg) - 1
+    # Check the absolute K >= 2 floor first so a user who mixes K=1 with K=2
+    # in collapsed mode sees the root cause ('collapsed requires K >= 2') on
+    # the K=1 leaf, not the derived 'K disagrees' message.
+    if collapsed and K < 2:
+        raise ValueError(f"collapsed mode requires K >= 2, got K={K}.")
     if K_seen is not None and K != K_seen:
         raise ValueError(
             f"derivative order K={K} disagrees with K={K_seen} from an "
             f"earlier leaf; all jet leaves must share K."
         )
-    if collapsed and K < 2:
-        raise ValueError(f"collapsed mode requires K >= 2, got K={K}.")
 
     primal, *coeffs = arg
     if primal.shape != mock.shape:
@@ -118,6 +132,9 @@ def _validate_jet_leaf(
             f"{tuple(mock.shape)}."
         )
     R = _check_coeffs(coeffs, mock, collapsed)
+    # Cross-leaf R consistency. R is None in standard mode (no batched coeffs)
+    # and in collapsed mode it is always non-None given K >= 2 (enforced above)
+    # because c_1 is then batched and _check_coeffs's first iteration sets R.
     if R is not None and R_seen is not None and R != R_seen:
         raise ValueError(
             f"leaf's R={R} disagrees with R={R_seen} from an earlier leaf; "

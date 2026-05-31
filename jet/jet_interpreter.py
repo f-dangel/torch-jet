@@ -53,19 +53,20 @@ class JetInterpreter(Interpreter):
         self.mapping: dict = COLLAPSED_MAPPING if collapsed else MAPPING
         self.label: str = "collapsed jet" if collapsed else "jet"
 
-    def run(self, *args: Any, **kwargs: Any) -> Any:
+    def run(
+        self,
+        *args: Any,
+        derivative_order: int,
+        num_collapsed_directions: int | None,
+        **kwargs: Any,
+    ) -> Any:
         """Run the graph, then unwrap interpreter-internal jet types.
 
-        ``K`` (derivative order) and ``R`` (collapsed direction dim) are
-        derived from the input jet tuples and passed down to
-        :meth:`_normalize` for constant-output expansion. They are not stored
-        as instance state so each call is independent.
+        ``derivative_order`` (``K``) and ``num_collapsed_directions`` (``R``)
+        come from the validator that already inspected ``args``; passing them
+        explicitly avoids re-deriving them from ``args[0]`` here. Used by
+        :meth:`_normalize` to expand constant outputs to the right shapes.
         """
-        first_jet = args[0]
-        derivative_order = len(first_jet) - 1
-        num_collapsed_directions = (
-            first_jet[1].shape[0] if self.collapsed and derivative_order >= 2 else None
-        )
         result = super().run(*args, **kwargs)
         return self._normalize(result, derivative_order, num_collapsed_directions)
 

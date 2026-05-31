@@ -28,7 +28,7 @@ from jet.utils import Value
 
 def _walk_and_validate(
     mock: Any, args: Any, *, collapsed: bool
-) -> list[tuple[Tensor, ...]]:
+) -> tuple[list[tuple[Tensor, ...]], int, int | None]:
     """Validate ``args`` against ``mock``'s structure and shapes.
 
     Args:
@@ -38,7 +38,10 @@ def _walk_and_validate(
         collapsed: Whether to apply the collapsed-mode shape rules.
 
     Returns:
-        A flat list of jet tuples in mock-traversal order.
+        ``(jet_leaves, K, R)`` where ``jet_leaves`` is a flat list of jet
+        tuples in mock-traversal order, ``K`` is the inferred derivative order
+        (consistent across all leaves), and ``R`` is the inferred direction
+        dimension for collapsed mode (``None`` in standard mode).
 
     Raises:
         ValueError: If ``args``' pytree structure differs from ``mock``'s
@@ -46,10 +49,6 @@ def _walk_and_validate(
             leaves, or if any coefficient has the wrong shape.
     """
     leaves: list[tuple[Tensor, ...]] = []
-    # ``state`` tracks K (must be consistent across all leaves) and -- in
-    # collapsed mode -- R (the leading direction dim, also shared). Tracking
-    # is local to validation; the interpreter rediscovers K and R from its
-    # own placeholders to drive output normalization.
     state: dict[str, int | None] = {"K": None, "R": None}
 
     def _collect(mock_t: Tensor, arg: Any) -> None:
@@ -59,7 +58,7 @@ def _walk_and_validate(
     tree_map(_collect, mock, args, is_leaf=lambda x: isinstance(x, Tensor))
     if state["K"] is None:
         raise ValueError("No jet leaves found; mock_args has no tensors.")
-    return leaves
+    return leaves, state["K"], state["R"]
 
 
 def _validate_jet_leaf(
@@ -164,8 +163,8 @@ def _make_jet_transform(
     interp = JetInterpreter(mod, collapsed=collapsed)
 
     def transformed(*args: Any) -> Any:
-        leaves = _walk_and_validate(mock_args, args, collapsed=collapsed)
-        return interp.run(*leaves)
+        leaves, K, R = _walk_and_validate(mock_args, args, collapsed=collapsed)
+        return interp.run(*leaves, derivative_order=K, num_collapsed_directions=R)
 
     return transformed
 

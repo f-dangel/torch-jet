@@ -14,46 +14,42 @@ from jet.operations import JetTuple
 from jet.tracing import capture_graph
 from jet.utils import Value
 
-__all__ = [
-    "capture_graph",
-    "collapsed_jet",
-    "jet",
-    "rev_jet",
-]
+__all__ = ["capture_graph", "collapsed_jet", "jet", "rev_jet"]
 
+
+# Internal jet types used by the interpreter for op dispatch. User-facing jet
+# leaves are always plain ``tuple``s; these subclasses appear only inside the
+# interpreter and are unwrapped at the output boundary by ``_normalize_output``.
 _JetTypes = (JetTuple, CollapsedJetTuple)
 
 
-def _is_jet_or_tensor(x: Any) -> bool:
-    """Return True for ``JetTuple``/``CollapsedJetTuple`` and plain tensors."""
-    return isinstance(x, (*_JetTypes, Tensor))
+# ---------------------------------------------------------------------------
+# Input validation (parallel pytree walk vs. ``mock_primals``)
+# ---------------------------------------------------------------------------
+# At every ``Tensor`` leaf in ``mock_primals``, ``args`` must hold a tuple
+# ``(primal, c_1, ..., c_K)`` of tensors. Disambiguation is positional, so a
+# pytree container of K+1 tensors is not misread as a jet leaf. Shape rules:
+#
+#   standard  : every c_k has shape S = mock.shape.
+#   collapsed : c_1..c_{K-1} have shape (R, *S) with shared R across leaves;
+#               c_K has shape S. Requires K >= 2.
+
+
+def _err(path: str, msg: str) -> ValueError:
+    """Build a ValueError whose message names the offending pytree path."""
+    return ValueError(f"At {path or '<root>'}: {msg}")
 
 
 def _walk_and_validate(
-    mock: Any, args: Any, *, collapsed: bool, path: str = ""
+    mock: Any, args: Any, *, collapsed: bool
 ) -> tuple[list[tuple[Tensor, ...]], int, int | None]:
     """Walk ``mock`` and ``args`` in parallel; validate and collect jet leaves.
-
-    ``args`` mirrors the pytree structure of ``mock`` but every ``Tensor`` leaf
-    in ``mock`` is replaced by a tuple ``(primal, c_1, ..., c_K)`` of Taylor
-    coefficients in ``args``. The traversal uses ``mock`` as the template -- so
-    a jet leaf is *positional*, not detected by a "tuple of K+1 tensors"
-    heuristic. This eliminates the ambiguity where a pytree container of K+1
-    tensors would otherwise be misread as a jet leaf.
-
-    Shape rules per mode (``S = mock.shape``):
-
-    - **standard** (``collapsed=False``): every coefficient has shape ``S``.
-    - **collapsed**: coefficients ``c_1..c_{K-1}`` have shape ``(R, *S)`` with a
-      common leading ``R`` across all leaves; coefficient ``c_K`` has shape ``S``
-      (already summed over directions). Requires ``K >= 2``.
 
     Args:
         mock: Pytree of tensors describing the expected leaf positions and shapes.
         args: Pytree mirroring ``mock`` with each tensor leaf replaced by a jet
-            tuple.
+            tuple ``(primal, c_1, ..., c_K)`` of tensors.
         collapsed: Whether to apply the collapsed-mode shape rules.
-        path: Internal -- pytree path of the current node, for error messages.
 
     Returns:
         ``(jet_leaves, K, R)`` where ``jet_leaves`` is a flat list of jet
@@ -65,42 +61,42 @@ def _walk_and_validate(
         ValueError: If structures disagree, arity is inconsistent, or any
             coefficient has the wrong shape.
     """
-    jet_leaves: list[tuple[Tensor, ...]] = []
+    leaves: list[tuple[Tensor, ...]] = []
     state: dict[str, int | None] = {"K": None, "R": None}
 
     def _walk(m: Any, a: Any, p: str) -> None:
         if isinstance(m, Tensor):
             _validate_jet_leaf(m, a, p, collapsed=collapsed, state=state)
-            jet_leaves.append(a)
+            leaves.append(a)
             return
         if isinstance(m, dict):
             if not isinstance(a, dict) or set(m.keys()) != set(a.keys()):
-                raise ValueError(
-                    f"At {p or '<root>'}: expected dict with keys "
-                    f"{sorted(m.keys())}, got {type(a).__name__} "
-                    f"{sorted(a.keys()) if isinstance(a, dict) else ''}."
+                raise _err(
+                    p,
+                    f"expected dict with keys {sorted(m.keys())}, got "
+                    f"{type(a).__name__} "
+                    f"{sorted(a.keys()) if isinstance(a, dict) else ''}.",
                 )
             for k in m:
                 _walk(m[k], a[k], f"{p}[{k!r}]")
             return
         if isinstance(m, (tuple, list)):
             if type(a) is not type(m) or len(a) != len(m):
-                raise ValueError(
-                    f"At {p or '<root>'}: expected {type(m).__name__} of "
-                    f"length {len(m)}, got {type(a).__name__} of length "
-                    f"{len(a) if hasattr(a, '__len__') else '?'}."
+                raise _err(
+                    p,
+                    f"expected {type(m).__name__} of length {len(m)}, got "
+                    f"{type(a).__name__} of length "
+                    f"{len(a) if hasattr(a, '__len__') else '?'}.",
                 )
             for i, (mc, ac) in enumerate(zip(m, a)):
                 _walk(mc, ac, f"{p}[{i}]")
             return
-        raise ValueError(
-            f"At {p or '<root>'}: unsupported mock node type {type(m).__name__}."
-        )
+        raise _err(p, f"unsupported mock node type {type(m).__name__}.")
 
-    _walk(mock, args, path)
+    _walk(mock, args, "")
     if state["K"] is None:
         raise ValueError("No jet leaves found; mock_primals has no tensors.")
-    return jet_leaves, state["K"], state["R"]
+    return leaves, state["K"], state["R"]
 
 
 def _validate_jet_leaf(
@@ -113,48 +109,48 @@ def _validate_jet_leaf(
 ) -> None:
     """Check that ``arg`` is a valid jet tuple matching ``mock``'s shape.
 
-    Updates ``state["K"]`` (derivative order, must be shared) and, for collapsed
-    mode, ``state["R"]`` (leading direction dim, must be shared across all
-    leaves and all batched coefficients).
+    Updates ``state["K"]`` (must be shared across leaves) and, for collapsed
+    mode, ``state["R"]`` (shared across all leaves and batched coefficients).
     """
     # Reject tuple subclasses (e.g. internal JetTuple/CollapsedJetTuple) so a
     # user accidentally feeding a previously-produced jet back in gets a clear
     # boundary error rather than a double-wrap deep in the interpreter.
     if type(arg) is not tuple:
-        raise ValueError(
-            f"At {path or '<root>'}: expected a plain tuple "
-            f"(primal, c_1, ..., c_K), got {type(arg).__name__}."
+        raise _err(
+            path,
+            f"expected a plain tuple (primal, c_1, ..., c_K), got "
+            f"{type(arg).__name__}.",
         )
     if len(arg) < 1:
-        raise ValueError(
-            f"At {path or '<root>'}: jet tuple must have at least 1 entry "
-            f"(primal), got length {len(arg)}."
+        raise _err(
+            path,
+            f"jet tuple must have at least 1 entry (primal), got length {len(arg)}.",
         )
     if not all(isinstance(e, Tensor) for e in arg):
-        raise ValueError(
-            f"At {path or '<root>'}: every entry of a jet tuple must be a "
-            f"Tensor; got types "
-            f"{[type(e).__name__ for e in arg]}."
+        raise _err(
+            path,
+            f"every entry of a jet tuple must be a Tensor; got types "
+            f"{[type(e).__name__ for e in arg]}.",
         )
 
     K = len(arg) - 1
     if state["K"] is None:
         state["K"] = K
     elif K != state["K"]:
-        raise ValueError(
-            f"At {path or '<root>'}: derivative order K={K} disagrees with "
-            f"K={state['K']} from an earlier leaf; all jet leaves must share K."
+        raise _err(
+            path,
+            f"derivative order K={K} disagrees with K={state['K']} from an "
+            f"earlier leaf; all jet leaves must share K.",
         )
     if collapsed and K < 2:
-        raise ValueError(
-            f"At {path or '<root>'}: collapsed mode requires K >= 2, got K={K}."
-        )
+        raise _err(path, f"collapsed mode requires K >= 2, got K={K}.")
 
     primal, *coeffs = arg
     if primal.shape != mock.shape:
-        raise ValueError(
-            f"At {path or '<root>'}: primal shape {tuple(primal.shape)} "
-            f"does not match mock shape {tuple(mock.shape)}."
+        raise _err(
+            path,
+            f"primal shape {tuple(primal.shape)} does not match mock shape "
+            f"{tuple(mock.shape)}.",
         )
     if collapsed:
         _check_collapsed_coeffs(coeffs, K, mock, path, state)
@@ -166,10 +162,10 @@ def _check_standard_coeffs(coeffs: list[Tensor], mock: Tensor, path: str) -> Non
     """Standard mode: every coefficient has the primal's shape."""
     for k, c in enumerate(coeffs, start=1):
         if c.shape != mock.shape:
-            raise ValueError(
-                f"At {path or '<root>'}: coefficient c_{k} shape "
-                f"{tuple(c.shape)} does not match primal shape "
-                f"{tuple(mock.shape)}."
+            raise _err(
+                path,
+                f"coefficient c_{k} shape {tuple(c.shape)} does not match "
+                f"primal shape {tuple(mock.shape)}.",
             )
 
 
@@ -184,25 +180,53 @@ def _check_collapsed_coeffs(
     for k, c in enumerate(coeffs, start=1):
         if k == K:
             if c.shape != mock.shape:
-                raise ValueError(
-                    f"At {path or '<root>'}: collapsed coefficient c_K=c_{k} "
-                    f"(collapsed slot) has shape {tuple(c.shape)}, expected "
-                    f"{tuple(mock.shape)}."
+                raise _err(
+                    path,
+                    f"collapsed coefficient c_K=c_{k} (collapsed slot) has "
+                    f"shape {tuple(c.shape)}, expected {tuple(mock.shape)}.",
                 )
             continue
         if c.ndim != mock.ndim + 1 or c.shape[1:] != mock.shape:
-            raise ValueError(
-                f"At {path or '<root>'}: collapsed coefficient c_{k} has "
-                f"shape {tuple(c.shape)}, expected (R, *{tuple(mock.shape)})."
+            raise _err(
+                path,
+                f"collapsed coefficient c_{k} has shape {tuple(c.shape)}, "
+                f"expected (R, *{tuple(mock.shape)}).",
             )
         if state["R"] is None:
             state["R"] = c.shape[0]
         elif c.shape[0] != state["R"]:
-            raise ValueError(
-                f"At {path or '<root>'}: collapsed coefficient c_{k} has "
-                f"leading dim {c.shape[0]}, expected {state['R']} (must be "
-                f"shared across all batched coefficients)."
+            raise _err(
+                path,
+                f"collapsed coefficient c_{k} has leading dim {c.shape[0]}, "
+                f"expected {state['R']} (must be shared across all batched "
+                f"coefficients).",
             )
+
+
+# ---------------------------------------------------------------------------
+# Output normalization
+# ---------------------------------------------------------------------------
+# Interpreter outputs are either ``JetTuple``/``CollapsedJetTuple`` (real jets
+# carrying coefficients) or plain ``Tensor``s (constant outputs that do not
+# depend on the inputs). Convert both to plain ``(primal, c_1, ..., c_K)``
+# tuples, expanding constants to zero coefficients matching the mode's rules.
+
+
+def _zero_coeffs(
+    primal: Tensor, K: int, *, collapsed: bool, R: int | None
+) -> list[Tensor]:
+    """Build ``K`` zero-coefficients for a constant output leaf.
+
+    Standard mode returns ``K`` zeros of ``primal.shape``. Collapsed mode
+    returns ``K - 1`` zeros of shape ``(R, *primal.shape)`` followed by one
+    zero of ``primal.shape`` (the collapsed slot).
+    """
+    if not collapsed:
+        return [zeros_like(primal)] * K
+    assert R is not None, "R must be supplied in collapsed mode"
+    return [primal.new_zeros(R, *primal.shape) for _ in range(K - 1)] + [
+        zeros_like(primal)
+    ]
 
 
 def _normalize_output(
@@ -215,45 +239,55 @@ def _normalize_output(
     """Convert the interpreter's pytree-of-jets into a pytree of plain tuples.
 
     Each ``JetTuple``/``CollapsedJetTuple`` leaf becomes a plain
-    ``(f_0, f_1, ..., f_K)`` tuple. Constant outputs (plain tensors that do not
-    depend on the inputs) are expanded to zero-coefficient jets matching the
-    mode's shape contract:
-
-    - **standard** (``collapsed=False``): every coefficient has the primal's
-      shape.
-    - **collapsed**: coefficients ``c_1..c_{K-1}`` have shape ``(R, *S)`` (so
-      downstream consumers see the expected leading direction dim) and
-      ``c_K`` has shape ``S``. ``R`` must be supplied.
+    ``(f_0, ..., f_K)`` tuple. Constant tensor leaves are expanded to zero
+    coefficients matching the mode (see :func:`_zero_coeffs`).
     """
-    flat, spec = tree_flatten(result, is_leaf=_is_jet_or_tensor)
-    leaves: list[tuple[Tensor, ...]] = []
-    for node in flat:
-        if isinstance(node, _JetTypes):
-            leaves.append(tuple(node))
-        elif collapsed:
-            # R is guaranteed non-None here: collapsed mode requires K >= 2 and
-            # at least one jet leaf, both checked in _walk_and_validate, which
-            # sets state["R"] from the first batched coefficient it sees.
-            assert R is not None
-            coeffs = [
-                node.new_zeros(R, *node.shape) for _ in range(derivative_order - 1)
-            ]
-            coeffs.append(zeros_like(node))
-            leaves.append((node, *coeffs))
-        else:
-            leaves.append((node, *([zeros_like(node)] * derivative_order)))
+
+    def _is_leaf(x: Any) -> bool:
+        return isinstance(x, (*_JetTypes, Tensor))
+
+    flat, spec = tree_flatten(result, is_leaf=_is_leaf)
+    leaves = [
+        tuple(node)
+        if isinstance(node, _JetTypes)
+        else (node, *_zero_coeffs(node, derivative_order, collapsed=collapsed, R=R))
+        for node in flat
+    ]
     return tree_unflatten(leaves, spec)
 
 
-def jet(
-    f: Callable[..., Any],
-    mock_primals: tuple[Any, ...],
+# ---------------------------------------------------------------------------
+# Public transforms
+# ---------------------------------------------------------------------------
+
+
+def _make_jet_transform(
+    f: Callable[..., Any], mock_primals: tuple[Any, ...], *, collapsed: bool
 ) -> Callable[..., Any]:
+    """Shared body of :func:`jet` and :func:`collapsed_jet`.
+
+    Traces ``f``'s compute graph once via :func:`capture_graph`, then returns
+    a Python callable that on each invocation validates the user's jets
+    against ``mock_primals``, runs the captured graph through a
+    :class:`JetInterpreter` in the requested mode, and normalizes the output.
+    """
+    mod = capture_graph(f, mock_primals)
+    interp = JetInterpreter(mod, collapsed=collapsed)
+
+    def transformed(*args: Any) -> Any:
+        leaves, K, R = _walk_and_validate(mock_primals, args, collapsed=collapsed)
+        result = interp.run(*leaves)
+        return _normalize_output(result, K, collapsed=collapsed, R=R)
+
+    return transformed
+
+
+def jet(f: Callable[..., Any], mock_primals: tuple[Any, ...]) -> Callable[..., Any]:
     """Overload a function with its Taylor-mode equivalent.
 
     ``Any`` in the type signatures denotes a *pytree of tensors*, i.e. an
-    arbitrarily nested structure of ``Tensor``, ``tuple``, ``list``, or ``dict``
-    whose leaves are tensors.
+    arbitrarily nested structure of ``Tensor``, ``tuple``, ``list``, or
+    ``dict`` whose leaves are tensors.
 
     The returned function is K-polymorphic: the derivative order is inferred
     per call from the number of coefficients in the input jet tuples. To
@@ -267,12 +301,13 @@ def jet(
             arguments of ``f``. Only shapes and dtypes matter, not the values.
 
     Returns:
-        A callable ``jet_f(*args)`` taking one positional argument per argument
-        of ``f``. Each argument is a pytree mirroring the corresponding
-        ``mock_primals`` entry but with every tensor leaf replaced by a tuple
-        ``(primal, c_1, ..., c_K)`` bundling the primal with its ``K`` Taylor
-        coefficients. Returns a pytree mirroring ``f``'s output structure with
-        each tensor leaf replaced by ``(f_0, f_1, ..., f_K)``.
+        A callable ``jet_f(*args)`` taking one positional argument per
+        argument of ``f``. Each argument is a pytree mirroring the
+        corresponding ``mock_primals`` entry but with every tensor leaf
+        replaced by a tuple ``(primal, c_1, ..., c_K)`` bundling the primal
+        with its ``K`` Taylor coefficients. Returns a pytree mirroring ``f``'s
+        output structure with each tensor leaf replaced by
+        ``(f_0, f_1, ..., f_K)``.
 
     Examples:
         **Single-input**::
@@ -292,20 +327,11 @@ def jet(
             >>> vx, vy = Tensor([1.0, 0.0, 0.0]), Tensor([0.0, 1.0, 0.0])
             >>> f0, f1 = jet_f((x, vx), (y, vy))
     """
-    mod = capture_graph(f, mock_primals)
-    interp = JetInterpreter(mod)
-
-    def jet_f(*args: Any) -> Any:
-        leaves, K, _ = _walk_and_validate(mock_primals, args, collapsed=False)
-        result = interp.run(*leaves)
-        return _normalize_output(result, K)
-
-    return jet_f
+    return _make_jet_transform(f, mock_primals, collapsed=False)
 
 
 def collapsed_jet(
-    f: Callable[..., Value],
-    mock_primals: tuple[Any, ...],
+    f: Callable[..., Value], mock_primals: tuple[Any, ...]
 ) -> Callable[..., tuple[Value, ...]]:
     """Overload ``f`` with its collapsed Taylor-mode equivalent.
 
@@ -343,23 +369,15 @@ def collapsed_jet(
     Raises:
         ValueError: At call time, if ``K < 2`` is inferred from the inputs.
     """
-    mod = capture_graph(f, mock_primals)
-    interp = JetInterpreter(mod, collapsed=True)
-
-    def cjet_f(*args: Any) -> Any:
-        leaves, K, R = _walk_and_validate(mock_primals, args, collapsed=True)
-        result = interp.run(*leaves)
-        return _normalize_output(result, K, collapsed=True, R=R)
-
-    return cjet_f
+    return _make_jet_transform(f, mock_primals, collapsed=True)
 
 
 def rev_jet(f: Callable[..., Any], detach: bool = True) -> Callable[..., Any]:
     """Implement Taylor-mode via nested reverse-mode autodiff.
 
     Serves as a reference implementation for testing ``jet``. See :func:`jet`
-    for a description of the pytree-of-jets convention used by the returned
-    function. The derivative order is inferred per call from the input jets.
+    for the pytree-of-jets convention; the derivative order is inferred per
+    call from the input jets.
 
     Args:
         f: Function to overload. May accept and return pytrees of tensors.
@@ -453,21 +471,24 @@ def rev_jet(f: Callable[..., Any], detach: bool = True) -> Callable[..., Any]:
     return jet_f
 
 
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+
 def _make_uncollapsed_cjet(
     f: Callable[..., Value],
     mock_args: tuple[Any, ...],
     randomization: tuple[str, int] | None,
 ) -> Callable[..., tuple[Value, ...]]:
-    """Build a ``collapsed_jet``-compatible function using standard jet + vmap + sum.
+    """Build a ``collapsed_jet``-compatible function using ``jet`` + ``vmap`` + sum.
 
-    The returned function has the same calling convention as ``collapsed_jet``:
-    it accepts one positional argument per argument of ``f``, each a pytree
-    whose tensor leaves are tuples ``(primal, c_1, ..., c_K)`` where
-    coefficients of orders 1..K-1 are batched (leading direction dim R) and the
-    order-K coefficient is collapsed (no R dim). It returns output with the
-    K-th coefficient already summed over directions.
-
-    ``K`` is inferred per call from the input jets.
+    The returned function has the same calling convention as
+    :func:`collapsed_jet`: each positional argument is a pytree whose tensor
+    leaves are tuples ``(primal, c_1, ..., c_K)`` where coefficients of orders
+    1..K-1 are batched (leading direction dim ``R``) and the order-K
+    coefficient is collapsed (no ``R`` dim). The output's K-th coefficient is
+    likewise returned collapsed. ``K`` is inferred per call from the inputs.
     """
     jet_f = jet(f, mock_args)
 
@@ -475,8 +496,8 @@ def _make_uncollapsed_cjet(
         return type(x) is tuple and all(isinstance(e, Tensor) for e in x)
 
     def cjet_f(*args: Any) -> Any:
-        # Validate against mock shapes (rejects mixed-K, missing R, etc.) before
-        # falling back to tree_flatten for in_spec recovery.
+        # Validate against mock shapes (rejects mixed-K, missing R, etc.)
+        # before tree_flatten gives us in_spec for unflatten.
         _walk_and_validate(mock_args, args, collapsed=True)
         leaves, in_spec = tree_flatten(args, is_leaf=_is_jet_leaf)
         K = len(leaves[0]) - 1

@@ -91,13 +91,12 @@ def _validate_jet_leaf(
             f"primal shape {tuple(primal.shape)} does not match mock shape "
             f"{tuple(mock.shape)}."
         )
-    _check_coeffs(coeffs, mock, collapsed=collapsed, state=state)
+    _check_coeffs(coeffs, mock, collapsed, state)
 
 
 def _check_coeffs(
     coeffs: list[Tensor],
     mock: Tensor,
-    *,
     collapsed: bool,
     state: dict[str, int | None],
 ) -> None:

@@ -12,4 +12,4 @@
 
 ### ::: jet.capture_graph
 
-### ::: jet.common_subexpression_elimination
+### ::: jet.simplify.common_subexpression_elimination

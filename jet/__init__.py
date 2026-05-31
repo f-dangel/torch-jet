@@ -112,13 +112,10 @@ def _validate_jet_leaf(
     Updates ``state["K"]`` (must be shared across leaves) and, for collapsed
     mode, ``state["R"]`` (shared across all leaves and batched coefficients).
     """
-    # Reject tuple subclasses (e.g. internal JetTuple/CollapsedJetTuple) so a
-    # user accidentally feeding a previously-produced jet back in gets a clear
-    # boundary error rather than a double-wrap deep in the interpreter.
-    if type(arg) is not tuple:
+    if not isinstance(arg, tuple):
         raise _err(
             path,
-            f"expected a plain tuple (primal, c_1, ..., c_K), got "
+            f"expected a tuple (primal, c_1, ..., c_K), got "
             f"{type(arg).__name__}.",
         )
     if len(arg) < 1:

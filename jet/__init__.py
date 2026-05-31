@@ -14,6 +14,15 @@ from jet.utils import Value
 from jet.validation import validate_input_jet
 
 
+def _is_jet_leaf(x: Any) -> bool:
+    """``True`` iff ``x`` is a jet tuple: a ``tuple`` of one or more tensors."""
+    return (
+        isinstance(x, tuple)
+        and len(x) >= 1
+        and all(isinstance(e, Tensor) for e in x)
+    )
+
+
 def _make_jet_transform(
     f: Callable[..., Any], mock_args: tuple[Any, ...], *, collapsed: bool
 ) -> Callable[..., Any]:
@@ -148,13 +157,6 @@ def rev_jet(f: Callable[..., Any], detach: bool = True) -> Callable[..., Any]:
         """Gradient of ``f`` w.r.t. ``X`` if ``f`` requires grad, else zeros."""
         return grad(f, X, **grad_kwargs)[0] if f.requires_grad else zeros_like(X)
 
-    def _is_jet_leaf(x: Any) -> bool:
-        return (
-            isinstance(x, tuple)
-            and len(x) >= 1
-            and all(isinstance(e, Tensor) for e in x)
-        )
-
     def jet_f(*args: Any) -> Any:
         """Compute the function and its Taylor coefficients."""
         leaves, in_spec = tree_flatten(args, is_leaf=_is_jet_leaf)
@@ -237,16 +239,13 @@ def _make_uncollapsed_cjet(
     likewise returned collapsed. ``K`` is inferred per call from the inputs.
     """
     jet_f = jet(f, mock_args)
-
-    def _is_jet_leaf(x: Any) -> bool:
-        return type(x) is tuple and all(isinstance(e, Tensor) for e in x)
+    # ``in_spec`` is structural (no leaf values), so compute it once from
+    # ``mock_args`` and reuse it for every cjet_f call to rebuild per-direction
+    # args inside vmap. The validator confirms ``args`` matches this structure.
+    _, in_spec = tree_flatten(mock_args)
 
     def cjet_f(*args: Any) -> Any:
-        # Validate args (rejects mixed-K, missing R, etc.); the validator
-        # gives us K, but we still need tree_flatten for in_spec (used by
-        # tree_unflatten when rebuilding the per-direction args inside vmap).
-        _, K, _ = validate_input_jet(mock_args, args, collapsed=True)
-        leaves, in_spec = tree_flatten(args, is_leaf=_is_jet_leaf)
+        leaves, K, _ = validate_input_jet(mock_args, args, collapsed=True)
         num_leaves = len(leaves)
         primals = [leaf[0] for leaf in leaves]
         collapsed = [leaf[K] for leaf in leaves]

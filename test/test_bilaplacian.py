@@ -19,7 +19,7 @@ from torch.testing import assert_close
 from jet.bilaplacian import SUPPORTED_DISTRIBUTIONS
 from jet.bilaplacian import bilaplacian as jet_bilaplacian
 from jet.utils import run_seeded
-from test.test___init__ import setup_case
+from test.utils import setup_case
 from test.test_laplacian import _check_mc_convergence
 
 DISTRIBUTIONS = SUPPORTED_DISTRIBUTIONS

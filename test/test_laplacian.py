@@ -13,7 +13,7 @@ from jet.laplacian import SUPPORTED_DISTRIBUTIONS
 from jet.laplacian import laplacian as jet_laplacian
 from jet.utils import run_seeded
 from jet.weighted_laplacian import C_func_diagonal_increments, get_weighting
-from test.test___init__ import setup_case
+from test.utils import setup_case
 
 DISTRIBUTIONS = SUPPORTED_DISTRIBUTIONS
 DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]

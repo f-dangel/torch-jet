@@ -17,7 +17,7 @@ from jet.exp.exp01_benchmark_laplacian.execute import (
 from jet.laplacian import SUPPORTED_DISTRIBUTIONS as LAPLACIAN_SUPPORTED_DISTRIBUTIONS
 from jet.utils import run_seeded
 from jet.weighted_laplacian import get_weighting
-from test.test___init__ import setup_case
+from test.utils import setup_case
 from test.test_bilaplacian import bilaplacian
 from test.test_laplacian import (
     WEIGHT_IDS,

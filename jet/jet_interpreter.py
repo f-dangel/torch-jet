@@ -55,13 +55,13 @@ class JetInterpreter(Interpreter):
         # Per-call state, reset in ``run()``. ``K`` (derivative order) is set
         # from the first placeholder; ``R`` (collapsed direction dim) is set
         # from the first batched coefficient seen in collapsed mode.
-        self._K: int | None = None
-        self._R: int | None = None
+        self._derivative_order: int | None = None
+        self._num_collapsed_directions: int | None = None
 
     def run(self, *args: Any, **kwargs: Any) -> Any:
         """Run the graph, then unwrap interpreter-internal jet types."""
-        self._K = None
-        self._R = None
+        self._derivative_order = None
+        self._num_collapsed_directions = None
         result = super().run(*args, **kwargs)
         return self._normalize(result)
 
@@ -75,12 +75,16 @@ class JetInterpreter(Interpreter):
         with the right shapes.
         """
         value = super().placeholder(target, args, kwargs)
-        if self._K is None:
-            self._K = len(value) - 1
-        if self.collapsed and self._R is None and len(value) >= 2:
+        if self._derivative_order is None:
+            self._derivative_order = len(value) - 1
+        if (
+            self.collapsed
+            and self._num_collapsed_directions is None
+            and len(value) >= 2
+        ):
             # ``value`` is the user's jet tuple ``(primal, c_1, ..., c_K)``;
             # ``c_1`` carries the leading direction dim ``R``.
-            self._R = value[1].shape[0]
+            self._num_collapsed_directions = value[1].shape[0]
         return self.jet_type(value)
 
     def call_function(
@@ -137,23 +141,24 @@ class JetInterpreter(Interpreter):
         return tree_unflatten(leaves, spec)
 
     def _zero_coeffs(self, primal: Tensor) -> list[Tensor]:
-        """Build ``self._K`` zero-coefficients for a constant output leaf.
+        """Build ``self._derivative_order`` zero-coefficients for a constant output leaf.
 
         Each returned tensor is a distinct allocation; sharing one
         ``zeros_like`` across coefficient slots would make in-place mutation
         of one slot mutate all the others.
         """
-        K = self._K
+        K = self._derivative_order
         if not self.collapsed:
             return [zeros_like(primal) for _ in range(K)]
-        if self._R is None:
+        if self._num_collapsed_directions is None:
             raise ValueError(
                 "Constant output in collapsed mode requires R to be tracked; "
                 "the interpreter should have set it from a placeholder."
             )
-        return [primal.new_zeros(self._R, *primal.shape) for _ in range(K - 1)] + [
-            zeros_like(primal)
-        ]
+        return [
+            primal.new_zeros(self._num_collapsed_directions, *primal.shape)
+            for _ in range(K - 1)
+        ] + [zeros_like(primal)]
 
 
 def _is_jet_or_tensor(x: Any) -> bool:

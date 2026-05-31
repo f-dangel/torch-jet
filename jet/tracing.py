@@ -65,7 +65,7 @@ def capture_graph(
     """
     if not isinstance(mock_args, tuple):
         raise TypeError(
-            f"mock_args must be a tuple of positional pytrees, got "
+            f"mock_args must be a tuple of f's positional arguments, got "
             f"{type(mock_args).__name__}; wrap a single argument as ``(x,)``."
         )
     _assert_traceable_signature(mock_args)

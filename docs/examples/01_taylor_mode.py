@@ -435,44 +435,6 @@ with raises(NotImplementedError):
 
 # %%
 #
-# ---
-#
-# **With ``make_fx`` tracing, method calls are automatically handled.**
-#
-# Previously, ``jet`` only supported ``call_function`` nodes and would crash on
-# method calls like ``x.sin()``. With ``make_fx`` tracing, all operations are
-# decomposed into ATen-level function calls, so this limitation no longer exists.
-#
-# For example, the following works
-
-f = sin
-_ = jet(f, (rand(3),))  # works because sin traces to aten.sin
-
-# %%
-#
-# and so does calling sin as a method, since ``make_fx`` decomposes both to the
-# same ATen operation:
-
-
-def f(x: Tensor) -> Tensor:
-    """Function that calls sin as a method.
-
-    Args:
-        x: Input tensor.
-
-    Returns:
-        The sine of x.
-    """
-    return x.sin()
-
-
-_ = jet(f, (rand(3),))  # also works with make_fx tracing
-
-# %%
-#
-# This limitation is straightforward to address, but we currently off-load the burden
-# of calling functions in the supported way to the user.
-#
 #### Untraceable Functions
 #
 # **`jet` inherits all limitations of `make_fx` tracing.**

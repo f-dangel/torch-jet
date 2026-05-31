@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- **Backward-incompatible.** Merge `collapsed_jet` into `jet` as a
+  ``collapsed: bool = False`` flag (``jet(f, mock_args, collapsed=True)``
+  replaces ``collapsed_jet(f, mock_args)``). The single transform now
+  presents both propagation regimes — standard and collapsed — matching
+  the paper's framing of collapsed mode as a *mode of* Taylor mode rather
+  than a separate algorithm
+  ([PR](https://github.com/f-dangel/torch-jet/pull/135))
+
 - **Backward-incompatible.** `jet()`, `collapsed_jet()`, `laplacian()`, and
   `bilaplacian()` now return plain Python callables (was `GraphModule`).
   `jet()` and `collapsed_jet()` also drop their `derivative_order` argument

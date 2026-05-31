@@ -1,6 +1,6 @@
 """Validate user-supplied jet inputs against a mock-arg template.
 
-A jet transform built via :func:`jet.jet` or :func:`jet.collapsed_jet` is
+A jet transform built via :func:`jet.jet` (in either standard or collapsed mode) is
 constructed against ``mock_args`` -- a pytree of tensors that describes the
 expected leaf positions and shapes. At call time, the user passes ``args``
 that mirror ``mock_args``'s structure but with every tensor leaf replaced by a

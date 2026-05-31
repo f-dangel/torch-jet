@@ -18,7 +18,7 @@ from typing import Any
 from torch import Tensor, zeros_like
 from torch.fx import GraphModule, Interpreter
 from torch.fx.node import Argument, Target
-from torch.utils._pytree import tree_flatten, tree_unflatten
+from torch.utils._pytree import tree_map
 
 from jet.collapsed_operations import COLLAPSED_MAPPING, CollapsedJetTuple
 from jet.operations import MAPPING, JetTuple
@@ -126,19 +126,20 @@ class JetInterpreter(Interpreter):
         standard returns ``K`` zeros of the primal's shape; collapsed returns
         ``K - 1`` zeros of shape ``(R, *S)`` plus one zero of ``S``.
         """
-        flat, spec = tree_flatten(
-            result, is_leaf=lambda x: isinstance(x, (*_JetTypes, Tensor))
-        )
-        leaves = [
-            tuple(node)
-            if isinstance(node, _JetTypes)
-            else (
+
+        def _normalize_leaf(node: Any) -> tuple[Tensor, ...]:
+            if isinstance(node, _JetTypes):
+                return tuple(node)
+            return (
                 node,
                 *self._zero_coeffs(node, derivative_order, collapsed_directions),
             )
-            for node in flat
-        ]
-        return tree_unflatten(leaves, spec)
+
+        return tree_map(
+            _normalize_leaf,
+            result,
+            is_leaf=lambda x: isinstance(x, (*_JetTypes, Tensor)),
+        )
 
     def _zero_coeffs(
         self,

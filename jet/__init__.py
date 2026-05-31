@@ -36,29 +36,33 @@ def _validate_input_jet(
             leaves, or if any coefficient has the wrong shape.
     """
     leaves: list[tuple[Tensor, ...]] = []
-    state: dict[str, int | None] = {"K": None, "R": None}
+    K_seen: int | None = None
+    R_seen: int | None = None
 
     def _collect(mock_t: Tensor, arg: Any) -> None:
-        _validate_jet_leaf(mock_t, arg, collapsed=collapsed, state=state)
+        nonlocal K_seen, R_seen
+        K_seen, R_seen = _validate_jet_leaf(mock_t, arg, collapsed, K_seen, R_seen)
         leaves.append(arg)
 
     tree_map(_collect, mock, args, is_leaf=lambda x: isinstance(x, Tensor))
-    if state["K"] is None:
+    if K_seen is None:
         raise ValueError("No jet leaves found; mock_args has no tensors.")
-    return leaves, state["K"], state["R"]
+    return leaves, K_seen, R_seen
 
 
 def _validate_jet_leaf(
     mock: Tensor,
     arg: Any,
-    *,
     collapsed: bool,
-    state: dict[str, int | None],
-) -> None:
+    K_seen: int | None,
+    R_seen: int | None,
+) -> tuple[int, int | None]:
     """Check that ``arg`` is a valid jet tuple matching ``mock``'s shape.
 
-    Updates ``state["K"]`` (must be shared across leaves) and, for collapsed
-    mode, ``state["R"]`` (shared across all leaves and batched coefficients).
+    ``K_seen`` and ``R_seen`` carry the values observed at earlier leaves
+    (``None`` on the first call). Returns the updated pair for the caller to
+    thread to the next leaf. Raises if this leaf's ``K`` or ``R`` disagrees
+    with the earlier ones.
     """
     if not isinstance(arg, tuple):
         raise ValueError(
@@ -75,11 +79,9 @@ def _validate_jet_leaf(
         )
 
     K = len(arg) - 1
-    if state["K"] is None:
-        state["K"] = K
-    elif K != state["K"]:
+    if K_seen is not None and K != K_seen:
         raise ValueError(
-            f"derivative order K={K} disagrees with K={state['K']} from an "
+            f"derivative order K={K} disagrees with K={K_seen} from an "
             f"earlier leaf; all jet leaves must share K."
         )
     if collapsed and K < 2:
@@ -91,20 +93,13 @@ def _validate_jet_leaf(
             f"primal shape {tuple(primal.shape)} does not match mock shape "
             f"{tuple(mock.shape)}."
         )
-    _track_R(_check_coeffs(coeffs, mock, collapsed), state)
-
-
-def _track_R(R: int | None, state: dict[str, int | None]) -> None:
-    """Cross-leaf R check: record on first sight or reject a mismatch."""
-    if R is None:
-        return
-    if state["R"] is None:
-        state["R"] = R
-    elif R != state["R"]:
+    R = _check_coeffs(coeffs, mock, collapsed)
+    if R is not None and R_seen is not None and R != R_seen:
         raise ValueError(
-            f"leaf's R={R} disagrees with R={state['R']} from an earlier leaf; "
+            f"leaf's R={R} disagrees with R={R_seen} from an earlier leaf; "
             f"all batched coefficients must share R."
         )
+    return K, R_seen if R_seen is not None else R
 
 
 def _check_coeffs(

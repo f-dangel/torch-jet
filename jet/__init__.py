@@ -12,19 +12,6 @@ from jet.jet_interpreter import JetInterpreter
 from jet.tracing import capture_graph
 from jet.utils import Value
 
-# ---------------------------------------------------------------------------
-# Input validation
-# ---------------------------------------------------------------------------
-# At every ``Tensor`` leaf in ``mock_args``, ``args`` must hold a tuple
-# ``(primal, c_1, ..., c_K)`` of tensors. Structural traversal is delegated
-# to ``tree_map`` (which checks that ``args`` matches ``mock``'s pytree
-# structure and raises a clear ``Node type/arity mismatch`` otherwise); our
-# job is just the per-leaf shape check. Mode-dependent shape rules:
-#
-#   standard  : every c_k has shape S = mock.shape.
-#   collapsed : c_1..c_{K-1} have shape (R, *S) with shared R across leaves;
-#               c_K has shape S. Requires K >= 2.
-
 
 def _validate_input_jet(
     mock: Any, args: Any, *, collapsed: bool

@@ -136,6 +136,15 @@ def _check_coeffs(coeffs: list[Tensor], mock: Tensor, collapsed: bool) -> int | 
 
     Returns the leaf's ``R`` (collapsed mode with ``K >= 2``) for the caller
     to cross-check against other leaves, or ``None`` otherwise.
+
+    Raises:
+        ValueError: If any coefficient violates its expected shape -- in
+            standard mode, any ``c_k`` whose shape differs from
+            ``mock.shape``; in collapsed mode, a batched ``c_k`` (k < K)
+            without the ``(R, *mock.shape)`` shape or whose leading dim
+            disagrees with other batched coefficients in the same leaf, or
+            the collapsed slot ``c_K`` whose shape differs from
+            ``mock.shape``.
     """
     K = len(coeffs)
     R: int | None = None

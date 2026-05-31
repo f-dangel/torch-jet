@@ -152,6 +152,14 @@ class JetInterpreter(Interpreter):
         Each returned tensor is a distinct allocation; sharing one
         ``zeros_like`` across coefficient slots would make in-place mutation
         of one slot mutate all the others.
+
+        Raises:
+            ValueError: If ``self.collapsed`` and ``collapsed_directions`` is
+                ``None``. The validator guarantees ``R`` is set for any
+                collapsed call (``K >= 2`` forces at least one batched
+                coefficient), so this should be unreachable from the public
+                API; an explicit raise (rather than ``assert``) keeps the
+                contract visible under ``python -O``.
         """
         if not self.collapsed:
             return [zeros_like(primal) for _ in range(derivative_order)]

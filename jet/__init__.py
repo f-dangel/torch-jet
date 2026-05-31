@@ -375,11 +375,11 @@ def _make_uncollapsed_cjet(
         return type(x) is tuple and all(isinstance(e, Tensor) for e in x)
 
     def cjet_f(*args: Any) -> Any:
-        # Validate against mock shapes (rejects mixed-K, missing R, etc.)
-        # before tree_flatten gives us in_spec for unflatten.
-        _validate_input_jet(mock_args, args, collapsed=True)
+        # Validate args (rejects mixed-K, missing R, etc.); the validator
+        # gives us K, but we still need tree_flatten for in_spec (used by
+        # tree_unflatten when rebuilding the per-direction args inside vmap).
+        _, K, _ = _validate_input_jet(mock_args, args, collapsed=True)
         leaves, in_spec = tree_flatten(args, is_leaf=_is_jet_leaf)
-        K = len(leaves[0]) - 1
         num_leaves = len(leaves)
         primals = [leaf[0] for leaf in leaves]
         collapsed = [leaf[K] for leaf in leaves]

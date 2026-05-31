@@ -1,7 +1,7 @@
 """Tests for jet/validation.py.
 
 The validator is independent of the rest of the jet pipeline; these tests
-exercise it directly without going through jet()/collapsed_jet().
+exercise it directly without going through jet().
 """
 
 from pytest import raises

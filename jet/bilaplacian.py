@@ -4,7 +4,7 @@ from typing import Callable
 
 from torch import Tensor, eye, triu_indices, zeros, zeros_like
 
-from jet import _make_uncollapsed_cjet, collapsed_jet
+from jet import _uncollapsed_via_vmap, jet
 from jet.ttc_coefficients import compute_all_gammas
 from jet.utils import sample, validate_randomization
 
@@ -100,9 +100,9 @@ def bilaplacian(
     validate_randomization(randomization, SUPPORTED_DISTRIBUTIONS)
 
     cjet_f = (
-        collapsed_jet(f, (mock_x,))
+        jet(f, (mock_x,), collapsed=True)
         if collapsed
-        else _make_uncollapsed_cjet(f, (mock_x,), randomization)
+        else _uncollapsed_via_vmap(f, (mock_x,), randomization)
     )
 
     def _eval_4jet(x: Tensor, X1: Tensor) -> Tensor:

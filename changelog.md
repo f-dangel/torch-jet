@@ -9,16 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
-- **Backward-incompatible.** `jet()`, `collapsed_jet()`, `laplacian()`, and
-  `bilaplacian()` now return plain Python callables (was `GraphModule`).
-  `jet()` and `collapsed_jet()` also drop their `derivative_order` argument
-  (now inferred per call from the input jet tuples). To bake any of these
-  into a `GraphModule` for graph passes (CSE, `torch.compile`, etc.), apply
-  `capture_graph` to it yourself — graph capture is now a single explicit
-  step at the user's chosen point. `capture_graph(f, mock_args)` now takes
-  one tuple of positional pytrees (was variadic tensors) and returns
-  `(mod, in_spec)`; use `mod(*in_spec.flatten_up_to(args))` to call the
-  captured graph
+- **Backward-incompatible.** Merge `collapsed_jet` into `jet` as a
+  ``collapsed: bool = False`` flag (``jet(f, mock_args, collapsed=True)``
+  replaces ``collapsed_jet(f, mock_args)``). The single transform now
+  presents both propagation regimes — standard and collapsed — matching
+  the paper's framing of collapsed mode as a *mode of* Taylor mode rather
+  than a separate algorithm
+  ([PR](https://github.com/f-dangel/torch-jet/pull/135)).
+  Earlier in this release `collapsed_jet` was introduced as a separate
+  transform ([PR](https://github.com/f-dangel/torch-jet/pull/129)) and
+  then evolved alongside `jet()` (callable-return + drop `derivative_order`
+  in [PR #134](https://github.com/f-dangel/torch-jet/pull/134); per-arg
+  primal+coeffs bundling in [PR #130](https://github.com/f-dangel/torch-jet/pull/130)).
+
+- **Backward-incompatible.** `jet()`, `laplacian()`, and `bilaplacian()`
+  now return plain Python callables (was `GraphModule`). `jet()` also
+  drops its `derivative_order` argument (now inferred per call from the
+  input jet tuples). To bake any of these into a `GraphModule` for graph
+  passes (CSE, `torch.compile`, etc.), apply `capture_graph` to it
+  yourself — graph capture is now a single explicit step at the user's
+  chosen point. `capture_graph(f, mock_args)` now takes one tuple of
+  positional pytrees (was variadic tensors) and returns `(mod, in_spec)`;
+  use `mod(*in_spec.flatten_up_to(args))` to call the captured graph
   ([PR](https://github.com/f-dangel/torch-jet/pull/134))
 
 - **Backward-incompatible.** Rename the `use_collapsing` parameter on
@@ -28,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([PR](https://github.com/f-dangel/torch-jet/pull/132))
 
 - **Backward-incompatible.** Bundle each argument's primal with its Taylor
-  coefficients. The transforms `jet()`, `collapsed_jet()`, and `rev_jet()` now
+  coefficients. The transforms `jet()` and `rev_jet()` now
   take one argument per argument of `f`, where each tensor leaf is a tuple
   `(x_0, x_1, ..., x_K)` (primal followed by Taylor coefficients), and return a
   pytree mirroring `f`'s output with each leaf a tuple `(f_0, f_1, ..., f_K)`.
@@ -47,15 +59,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ```
 
   ([PR](https://github.com/f-dangel/torch-jet/pull/130))
-
-- Add a `collapsed_jet()` transform for collapsed Taylor mode. It has the same
-  calling convention as `jet()` but collapses (sums over directions) the
-  highest-order coefficient as it propagates, so intermediate tensors—and the
-  resulting compute graph—stay smaller. This replaces the old
-  `simplify(jet(...))` workflow: collapsing now happens inside the interpreter,
-  so you no longer need a separate simplification pass to shrink the graph.
-  `laplacian()` and `bilaplacian()` now use it by default
-  ([PR](https://github.com/f-dangel/torch-jet/pull/129))
 
 - **Backward-incompatible.** Replace `Laplacian` and `Bilaplacian` `nn.Module`s
   with `laplacian()` and `bilaplacian()` function transforms that return

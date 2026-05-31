@@ -4,7 +4,7 @@ from typing import Callable
 
 from torch import Tensor, eye, zeros_like
 
-from jet import _make_uncollapsed_cjet, collapsed_jet
+from jet import _uncollapsed_via_vmap, jet
 from jet.utils import sample, validate_randomization
 
 SUPPORTED_DISTRIBUTIONS = ["normal", "rademacher"]
@@ -91,9 +91,9 @@ def laplacian(
     )
 
     cjet_f = (
-        collapsed_jet(f, (mock_x,))
+        jet(f, (mock_x,), collapsed=True)
         if collapsed
-        else _make_uncollapsed_cjet(f, (mock_x,), randomization)
+        else _uncollapsed_via_vmap(f, (mock_x,), randomization)
     )
 
     def lap_f(x: Tensor) -> Tensor:

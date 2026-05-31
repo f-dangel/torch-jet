@@ -21,29 +21,11 @@ def _is_jet_leaf(x: Any) -> bool:
     )
 
 
-def _make_jet_transform(
-    f: Callable[..., Any], mock_args: tuple[Any, ...], *, collapsed: bool
+def jet(
+    f: Callable[..., Any],
+    mock_args: tuple[Any, ...],
+    collapsed: bool = False,
 ) -> Callable[..., Any]:
-    """Shared body of :func:`jet` and :func:`collapsed_jet`.
-
-    Traces ``f``'s compute graph once via :func:`capture_graph`, then returns
-    a Python callable that on each invocation validates the user's jets
-    against ``mock_args`` and runs the captured graph through a
-    :class:`JetInterpreter` in the requested mode. The interpreter owns the
-    type boundary -- it wraps inputs into its internal jet type and unwraps
-    the output back to plain ``(primal, c_1, ..., c_K)`` tuples.
-    """
-    mod, _ = capture_graph(f, mock_args)
-    interp = JetInterpreter(mod, collapsed=collapsed)
-
-    def transformed(*args: Any) -> Any:
-        leaves, K, R = validate_input_jet(mock_args, args, collapsed=collapsed)
-        return interp.run(K, R, *leaves)
-
-    return transformed
-
-
-def jet(f: Callable[..., Any], mock_args: tuple[Any, ...]) -> Callable[..., Any]:
     """Overload a function with its Taylor-mode equivalent.
 
     ``Any`` in the type signatures denotes a *pytree of tensors*, i.e. an
@@ -51,15 +33,29 @@ def jet(f: Callable[..., Any], mock_args: tuple[Any, ...]) -> Callable[..., Any]
     ``dict`` whose leaves are tensors.
 
     The returned function is K-polymorphic: the derivative order is inferred
-    per call from the number of coefficients in the input jet tuples. To
-    freeze the order into an FX ``GraphModule`` (e.g. for graph passes like
-    CSE), apply :func:`capture_graph` to the returned callable yourself.
+    per call from the number of coefficients in the input jet tuples. The
+    ``collapsed`` flag selects between two propagation regimes (the
+    coefficient shape contract for each mode is given below); to freeze the
+    order into an FX ``GraphModule`` (e.g. for graph passes like CSE), apply
+    :func:`capture_graph` to the returned callable yourself.
+
+    - **standard mode** (``collapsed=False``): every coefficient ``c_k`` has
+      the primal's shape ``S``.
+    - **collapsed mode** (``collapsed=True``): coefficients ``c_1..c_{K-1}``
+      have shape ``(R, *S)`` carrying ``R`` directions; ``c_K`` has shape ``S``
+      (already summed over the directions). The K-th output coefficient is
+      likewise returned collapsed. This exploits that the highest-order
+      coefficient enters linearly, so it can be summed eagerly to propagate
+      smaller tensors through the graph. Requires ``K >= 2`` and ``R`` may
+      vary per call.
 
     Args:
         f: Function to overload. May accept and return pytrees of tensors.
         mock_args: Mock input tensors (or pytrees of tensors) for tracing
             ``f``'s compute graph, provided as a tuple matching the positional
             arguments of ``f``. Only shapes and dtypes matter, not the values.
+        collapsed: Select between the two propagation regimes above. Default:
+            ``False`` (standard mode).
 
     Returns:
         A callable ``jet_f(*args)`` taking one positional argument per
@@ -88,46 +84,14 @@ def jet(f: Callable[..., Any], mock_args: tuple[Any, ...]) -> Callable[..., Any]
             >>> vx, vy = Tensor([1.0, 0.0, 0.0]), Tensor([0.0, 1.0, 0.0])
             >>> f0, f1 = jet_f((x, vx), (y, vy))
     """
-    return _make_jet_transform(f, mock_args, collapsed=False)
+    mod, _ = capture_graph(f, mock_args)
+    interp = JetInterpreter(mod, collapsed=collapsed)
 
+    def transformed(*args: Any) -> Any:
+        leaves, K, R = validate_input_jet(mock_args, args, collapsed=collapsed)
+        return interp.run(K, R, *leaves)
 
-def collapsed_jet(
-    f: Callable[..., Value], mock_args: tuple[Any, ...]
-) -> Callable[..., tuple[Value, ...]]:
-    """Overload ``f`` with its collapsed Taylor-mode equivalent.
-
-    Like :func:`jet`, the returned callable takes one positional argument per
-    argument of ``f``; each is a pytree mirroring the corresponding
-    ``mock_args`` entry with every tensor leaf replaced by a tuple
-    ``(primal, c_1, ..., c_K)``. Unlike :func:`jet`, the coefficients have
-    mixed shapes across orders:
-
-    - orders 1..K-1: tensors with a leading direction dimension ``R``,
-    - order K: tensors without the ``R`` dimension (already collapsed, i.e.
-      summed over the directions).
-
-    The K-th output coefficient is likewise returned collapsed. This exploits
-    that the highest-order coefficient enters linearly, so it can be summed
-    eagerly to propagate smaller tensors through the graph.
-
-    The returned callable is both ``K``-polymorphic (``K >= 2`` inferred per
-    call) and ``R``-polymorphic (any ``R`` per call). To freeze ``K`` and
-    ``R`` into an FX ``GraphModule``, apply :func:`capture_graph` to the
-    returned callable yourself.
-
-    Args:
-        f: Function to overload. May accept and return pytrees of tensors.
-        mock_args: Mock input tensors (or pytrees of tensors) for tracing
-            ``f``'s compute graph, provided as a tuple matching the positional
-            arguments of ``f``. Only shapes and dtypes matter, not the values.
-
-    Returns:
-        A callable ``cjet_f(*args)`` returning a pytree mirroring ``f``'s
-        output structure, with each tensor leaf replaced by a tuple
-        ``(f_0, f_1, ..., f_K)``. Orders 1..K-1 carry the leading ``R``
-        dimension; order K is collapsed.
-    """
-    return _make_jet_transform(f, mock_args, collapsed=True)
+    return transformed
 
 
 def rev_jet(f: Callable[..., Any], detach: bool = True) -> Callable[..., Any]:
@@ -222,19 +186,23 @@ def rev_jet(f: Callable[..., Any], detach: bool = True) -> Callable[..., Any]:
     return jet_f
 
 
-def _make_uncollapsed_cjet(
+def _uncollapsed_via_vmap(
     f: Callable[..., Value],
     mock_args: tuple[Any, ...],
     randomization: tuple[str, int] | None,
 ) -> Callable[..., tuple[Value, ...]]:
-    """Build a ``collapsed_jet``-compatible function using ``jet`` + ``vmap`` + sum.
+    """Build a collapsed-jet-compatible function from standard ``jet`` + ``vmap``.
 
     The returned function has the same calling convention as
-    :func:`collapsed_jet`: each positional argument is a pytree whose tensor
-    leaves are tuples ``(primal, c_1, ..., c_K)`` where coefficients of orders
-    1..K-1 are batched (leading direction dim ``R``) and the order-K
-    coefficient is collapsed (no ``R`` dim). The output's K-th coefficient is
-    likewise returned collapsed. ``K`` is inferred per call from the inputs.
+    :func:`jet` with ``collapsed=True``: each positional argument is a pytree
+    whose tensor leaves are tuples ``(primal, c_1, ..., c_K)`` where
+    coefficients of orders 1..K-1 are batched (leading direction dim ``R``)
+    and the order-K coefficient is collapsed (no ``R`` dim). The output's K-th
+    coefficient is likewise returned collapsed. ``K`` is inferred per call
+    from the inputs.
+
+    Used as a reference implementation against which the in-interpreter
+    collapsed path (``jet(..., collapsed=True)``) is compared in tests.
     """
     jet_f = jet(f, mock_args)
     # ``in_spec`` is structural (no leaf values), so compute it once from

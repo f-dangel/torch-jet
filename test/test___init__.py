@@ -21,7 +21,7 @@ from torch.nn.functional import linear
 from torch.utils._pytree import tree_map
 
 import jet
-from jet import collapsed_jet, rev_jet
+from jet import rev_jet
 from jet.tracing import capture_graph
 from test.utils import report_pytrees_nonclose
 
@@ -372,10 +372,10 @@ def _setup_collapsed_jet_args(
         R: Number of random directions. Default: ``2``.
 
     Returns:
-        Tuple ``(f, mock_args, args)`` ready for both ``collapsed_jet`` and
-        ``_make_uncollapsed_cjet``: ``mock_args`` is the tracing template (zero
-        tensors), and ``args`` is a tuple of pytrees -- one per argument of
-        ``f`` -- whose tensor leaves are the jet tuples.
+        Tuple ``(f, mock_args, args)`` ready for both ``jet(..., collapsed=True)``
+        and ``_uncollapsed_via_vmap``: ``mock_args`` is the tracing template
+        (zero tensors), and ``args`` is a tuple of pytrees -- one per argument
+        of ``f`` -- whose tensor leaves are the jet tuples.
     """
     K = derivative_order
     f = config["f"]
@@ -412,15 +412,15 @@ def test_collapsed_jet(config: dict[str, Any], derivative_order: int):
     """
     f, mock_args, args = _setup_collapsed_jet_args(config, derivative_order)
 
-    std_f = jet._make_uncollapsed_cjet(f, mock_args, randomization=None)
-    cjet_f = collapsed_jet(f, mock_args)
+    std_f = jet._uncollapsed_via_vmap(f, mock_args, randomization=None)
+    cjet_f = jet.jet(f, mock_args, collapsed=True)
 
     report_pytrees_nonclose(std_f(*args), cjet_f(*args))
 
 
 def test_collapsed_jet_rejects_order_below_2():
-    """collapsed_jet raises ValueError at call time for K < 2."""
-    cjet_f = collapsed_jet(sin, (zeros(3),))
+    """jet(..., collapsed=True) raises ValueError at call time for K < 2."""
+    cjet_f = jet.jet(sin, (zeros(3),), collapsed=True)
     x = zeros(3)
 
     # K=1: jet tuple has length 2 -> only a primal and one coefficient.
@@ -443,7 +443,7 @@ def test_collapsed_jet_constant_output_uses_collapsed_shape():
     def f(x: Tensor) -> tuple[Tensor, Tensor]:
         return sin(x), zeros(*out_shape, dtype=float64)  # second leaf is constant
 
-    cjet_f = collapsed_jet(f, (zeros(3, dtype=float64),))
+    cjet_f = jet.jet(f, (zeros(3, dtype=float64),), collapsed=True)
     primal = rand(3, dtype=float64)
     c1 = rand(R, 3, dtype=float64)
     cK = zeros(3, dtype=float64)
@@ -469,9 +469,9 @@ def test_jet_rejects_unsupported_tuple_dict_signature():
     # Unsupported: two args, first tensor/tuple, second dict.
     f = lambda x, params: x * params["a"]  # noqa: E731
     match = r"pytorch/pytorch#185640"  # pin to the tracked upstream issue
-    for transform in (jet.jet, collapsed_jet):
+    for collapsed in (False, True):
         with raises(NotImplementedError, match=match):
-            transform(f, (t, d))
+            jet.jet(f, (t, d), collapsed=collapsed)
 
     # Supported dict signatures must not raise.
     jet.jet(lambda d: d["a"] * 2, (d,))  # single dict arg

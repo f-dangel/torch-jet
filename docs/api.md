@@ -2,8 +2,6 @@
 
 ### ::: jet.jet
 
-### ::: jet.collapsed_jet
-
 ### ::: jet.laplacian.laplacian
 
 ### ::: jet.bilaplacian.bilaplacian

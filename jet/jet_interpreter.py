@@ -11,12 +11,6 @@ The same interpreter handles both standard and collapsed Taylor mode via the
 ``collapsed`` constructor flag, which selects the dispatch table
 (``MAPPING`` vs ``COLLAPSED_MAPPING``) and the placeholder wrapper
 (``JetTuple`` vs ``CollapsedJetTuple``).
-
-The interpreter owns both ends of the type boundary: ``placeholder()`` wraps
-each user-supplied jet tuple into ``self.jet_type``; ``run()`` unwraps the
-result back to plain ``(primal, c_1, ..., c_K)`` tuples (and expands constant
-outputs to zero coefficients matching the mode's shape contract) before
-returning, so callers never see ``JetTuple``/``CollapsedJetTuple``.
 """
 
 from typing import Any

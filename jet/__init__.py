@@ -8,17 +8,9 @@ from torch.autograd import grad
 from torch.func import vmap
 from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
 
-from jet.collapsed_operations import CollapsedJetTuple
 from jet.jet_interpreter import JetInterpreter
-from jet.operations import JetTuple
 from jet.tracing import capture_graph
 from jet.utils import Value
-
-# Internal jet types used by the interpreter for op dispatch. User-facing jet
-# leaves are always plain ``tuple``s; these subclasses appear only inside the
-# interpreter and are unwrapped at the output boundary by ``_normalize_output``.
-_JetTypes = (JetTuple, CollapsedJetTuple)
-
 
 # ---------------------------------------------------------------------------
 # Input validation
@@ -36,7 +28,7 @@ _JetTypes = (JetTuple, CollapsedJetTuple)
 
 def _walk_and_validate(
     mock: Any, args: Any, *, collapsed: bool
-) -> tuple[list[tuple[Tensor, ...]], int, int | None]:
+) -> list[tuple[Tensor, ...]]:
     """Validate ``args`` against ``mock``'s structure and shapes.
 
     Args:
@@ -46,10 +38,7 @@ def _walk_and_validate(
         collapsed: Whether to apply the collapsed-mode shape rules.
 
     Returns:
-        ``(jet_leaves, K, R)`` where ``jet_leaves`` is a flat list of jet
-        tuples in mock-traversal order, ``K`` is the inferred derivative order
-        (consistent across all leaves), and ``R`` is the inferred direction
-        dimension for collapsed mode (``None`` in standard mode).
+        A flat list of jet tuples in mock-traversal order.
 
     Raises:
         ValueError: If ``args``' pytree structure differs from ``mock``'s
@@ -57,6 +46,10 @@ def _walk_and_validate(
             leaves, or if any coefficient has the wrong shape.
     """
     leaves: list[tuple[Tensor, ...]] = []
+    # ``state`` tracks K (must be consistent across all leaves) and -- in
+    # collapsed mode -- R (the leading direction dim, also shared). Tracking
+    # is local to validation; the interpreter rediscovers K and R from its
+    # own placeholders to drive output normalization.
     state: dict[str, int | None] = {"K": None, "R": None}
 
     def _collect(mock_t: Tensor, arg: Any) -> None:
@@ -66,7 +59,7 @@ def _walk_and_validate(
     tree_map(_collect, mock, args, is_leaf=lambda x: isinstance(x, Tensor))
     if state["K"] is None:
         raise ValueError("No jet leaves found; mock_args has no tensors.")
-    return leaves, state["K"], state["R"]
+    return leaves
 
 
 def _validate_jet_leaf(
@@ -155,72 +148,6 @@ def _check_collapsed_coeffs(
             )
 
 
-# ---------------------------------------------------------------------------
-# Output normalization
-# ---------------------------------------------------------------------------
-# Interpreter outputs are either ``JetTuple``/``CollapsedJetTuple`` (real jets
-# carrying coefficients) or plain ``Tensor``s (constant outputs that do not
-# depend on the inputs). Convert both to plain ``(primal, c_1, ..., c_K)``
-# tuples, expanding constants to zero coefficients matching the mode's rules.
-
-
-def _zero_coeffs(
-    primal: Tensor, K: int, *, collapsed: bool, R: int | None
-) -> list[Tensor]:
-    """Build ``K`` zero-coefficients for a constant output leaf.
-
-    Standard mode returns ``K`` zeros of ``primal.shape``. Collapsed mode
-    returns ``K - 1`` zeros of shape ``(R, *primal.shape)`` followed by one
-    zero of ``primal.shape`` (the collapsed slot).
-
-    Each returned tensor is a distinct allocation; sharing one ``zeros_like``
-    across coefficient slots would make in-place mutation of one slot mutate
-    all the others.
-
-    ``R`` must be supplied in collapsed mode. The validator guarantees this
-    upstream (collapsed mode requires ``K >= 2`` and at least one jet leaf,
-    which ``_walk_and_validate`` uses to set ``R``); we raise rather than
-    ``assert`` so the contract survives ``python -O``.
-    """
-    if not collapsed:
-        return [zeros_like(primal) for _ in range(K)]
-    if R is None:
-        raise ValueError(
-            "_zero_coeffs(collapsed=True) requires R; the validator should "
-            "have supplied it."
-        )
-    return [primal.new_zeros(R, *primal.shape) for _ in range(K - 1)] + [
-        zeros_like(primal)
-    ]
-
-
-def _normalize_output(
-    result: Any,
-    derivative_order: int,
-    *,
-    collapsed: bool = False,
-    R: int | None = None,
-) -> Any:
-    """Convert the interpreter's pytree-of-jets into a pytree of plain tuples.
-
-    Each ``JetTuple``/``CollapsedJetTuple`` leaf becomes a plain
-    ``(f_0, ..., f_K)`` tuple. Constant tensor leaves are expanded to zero
-    coefficients matching the mode (see :func:`_zero_coeffs`).
-    """
-
-    def _is_leaf(x: Any) -> bool:
-        return isinstance(x, (*_JetTypes, Tensor))
-
-    flat, spec = tree_flatten(result, is_leaf=_is_leaf)
-    leaves = [
-        tuple(node)
-        if isinstance(node, _JetTypes)
-        else (node, *_zero_coeffs(node, derivative_order, collapsed=collapsed, R=R))
-        for node in flat
-    ]
-    return tree_unflatten(leaves, spec)
-
-
 def _make_jet_transform(
     f: Callable[..., Any], mock_args: tuple[Any, ...], *, collapsed: bool
 ) -> Callable[..., Any]:
@@ -228,16 +155,17 @@ def _make_jet_transform(
 
     Traces ``f``'s compute graph once via :func:`capture_graph`, then returns
     a Python callable that on each invocation validates the user's jets
-    against ``mock_args``, runs the captured graph through a
-    :class:`JetInterpreter` in the requested mode, and normalizes the output.
+    against ``mock_args`` and runs the captured graph through a
+    :class:`JetInterpreter` in the requested mode. The interpreter owns the
+    type boundary -- it wraps inputs into its internal jet type and unwraps
+    the output back to plain ``(primal, c_1, ..., c_K)`` tuples.
     """
     mod, _ = capture_graph(f, mock_args)
     interp = JetInterpreter(mod, collapsed=collapsed)
 
     def transformed(*args: Any) -> Any:
-        leaves, K, R = _walk_and_validate(mock_args, args, collapsed=collapsed)
-        result = interp.run(*leaves)
-        return _normalize_output(result, K, collapsed=collapsed, R=R)
+        leaves = _walk_and_validate(mock_args, args, collapsed=collapsed)
+        return interp.run(*leaves)
 
     return transformed
 

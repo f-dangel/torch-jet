@@ -11,15 +11,25 @@ The same interpreter handles both standard and collapsed Taylor mode via the
 ``collapsed`` constructor flag, which selects the dispatch table
 (``MAPPING`` vs ``COLLAPSED_MAPPING``) and the placeholder wrapper
 (``JetTuple`` vs ``CollapsedJetTuple``).
+
+The interpreter owns both ends of the type boundary: ``placeholder()`` wraps
+each user-supplied jet tuple into ``self.jet_type``; ``run()`` unwraps the
+result back to plain ``(primal, c_1, ..., c_K)`` tuples (and expands constant
+outputs to zero coefficients matching the mode's shape contract) before
+returning, so callers never see ``JetTuple``/``CollapsedJetTuple``.
 """
 
 from typing import Any
 
+from torch import Tensor, zeros_like
 from torch.fx import GraphModule, Interpreter
 from torch.fx.node import Argument, Target
+from torch.utils._pytree import tree_flatten, tree_unflatten
 
 from jet.collapsed_operations import COLLAPSED_MAPPING, CollapsedJetTuple
 from jet.operations import MAPPING, JetTuple
+
+_JetTypes = (JetTuple, CollapsedJetTuple)
 
 
 class JetInterpreter(Interpreter):
@@ -44,15 +54,39 @@ class JetInterpreter(Interpreter):
     def __init__(self, module: GraphModule, collapsed: bool = False) -> None:
         """Initialize the JetInterpreter."""
         super().__init__(module)
+        self.collapsed: bool = collapsed
         self.jet_type: type = CollapsedJetTuple if collapsed else JetTuple
         self.mapping: dict = COLLAPSED_MAPPING if collapsed else MAPPING
         self.label: str = "collapsed jet" if collapsed else "jet"
+        # Per-call state, reset in ``run()``. ``K`` (derivative order) is set
+        # from the first placeholder; ``R`` (collapsed direction dim) is set
+        # from the first batched coefficient seen in collapsed mode.
+        self._K: int | None = None
+        self._R: int | None = None
+
+    def run(self, *args: Any, **kwargs: Any) -> Any:
+        """Run the graph, then unwrap interpreter-internal jet types."""
+        self._K = None
+        self._R = None
+        result = super().run(*args, **kwargs)
+        return self._normalize(result)
 
     def placeholder(
         self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Any]
     ) -> Any:
-        """Wrap each placeholder value in ``self.jet_type``."""
+        """Wrap each placeholder value in ``self.jet_type``.
+
+        Also records ``K`` and (in collapsed mode) ``R`` so that constant
+        outputs in :meth:`_normalize` can be expanded to zero coefficients
+        with the right shapes.
+        """
         value = super().placeholder(target, args, kwargs)
+        if self._K is None:
+            self._K = len(value) - 1
+        if self.collapsed and self._R is None and len(value) >= 2:
+            # ``value`` is the user's jet tuple ``(primal, c_1, ..., c_K)``;
+            # ``c_1`` carries the leading direction dim ``R``.
+            self._R = value[1].shape[0]
         return self.jet_type(value)
 
     def call_function(
@@ -89,3 +123,45 @@ class JetInterpreter(Interpreter):
                 )
             return self.mapping[target](*args)
         return super().call_function(target, args, kwargs)
+
+    def _normalize(self, result: Any) -> Any:
+        """Convert the pytree-of-jets into a pytree of plain tuples.
+
+        Each ``self.jet_type`` leaf becomes a plain ``(f_0, ..., f_K)`` tuple.
+        Constant tensor leaves (outputs that do not depend on the inputs) are
+        expanded to zero-coefficient jets matching the mode's shape contract:
+        standard returns ``K`` zeros of the primal's shape; collapsed returns
+        ``K - 1`` zeros of shape ``(R, *S)`` plus one zero of ``S``.
+        """
+        flat, spec = tree_flatten(result, is_leaf=_is_jet_or_tensor)
+        leaves = [
+            tuple(node)
+            if isinstance(node, _JetTypes)
+            else (node, *self._zero_coeffs(node))
+            for node in flat
+        ]
+        return tree_unflatten(leaves, spec)
+
+    def _zero_coeffs(self, primal: Tensor) -> list[Tensor]:
+        """Build ``self._K`` zero-coefficients for a constant output leaf.
+
+        Each returned tensor is a distinct allocation; sharing one
+        ``zeros_like`` across coefficient slots would make in-place mutation
+        of one slot mutate all the others.
+        """
+        K = self._K
+        if not self.collapsed:
+            return [zeros_like(primal) for _ in range(K)]
+        if self._R is None:
+            raise ValueError(
+                "Constant output in collapsed mode requires R to be tracked; "
+                "the interpreter should have set it from a placeholder."
+            )
+        return [primal.new_zeros(self._R, *primal.shape) for _ in range(K - 1)] + [
+            zeros_like(primal)
+        ]
+
+
+def _is_jet_or_tensor(x: Any) -> bool:
+    """Return True for ``JetTuple``/``CollapsedJetTuple`` and plain tensors."""
+    return isinstance(x, (*_JetTypes, Tensor))

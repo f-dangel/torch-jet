@@ -11,132 +11,7 @@ from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
 from jet.jet_interpreter import JetInterpreter
 from jet.tracing import capture_graph
 from jet.utils import Value
-
-
-def _validate_input_jet(
-    mock: Any, args: Any, *, collapsed: bool
-) -> tuple[list[tuple[Tensor, ...]], int, int | None]:
-    """Validate ``args`` against ``mock``'s structure and shapes.
-
-    Args:
-        mock: Pytree of tensors describing the expected leaf positions and shapes.
-        args: Pytree mirroring ``mock`` with each tensor leaf replaced by a jet
-            tuple ``(primal, c_1, ..., c_K)`` of tensors.
-        collapsed: Whether to apply the collapsed-mode shape rules.
-
-    Returns:
-        ``(jet_leaves, K, R)`` where ``jet_leaves`` is a flat list of jet
-        tuples in mock-traversal order, ``K`` is the inferred derivative order
-        (consistent across all leaves), and ``R`` is the inferred direction
-        dimension for collapsed mode (``None`` in standard mode).
-
-    Raises:
-        ValueError: If ``args``' pytree structure differs from ``mock``'s
-            (raised by ``tree_map``), if arity (``K``) is inconsistent across
-            leaves, or if any coefficient has the wrong shape.
-    """
-    mock_leaves, in_spec = tree_flatten(mock)
-    # flatten_up_to raises Node type/arity mismatch if args' pytree structure
-    # diverges from mock's; at each tensor leaf in mock it takes the entire
-    # subtree at the corresponding position in args (i.e. the jet tuple).
-    arg_leaves = in_spec.flatten_up_to(args)
-    K_seen: int | None = None
-    R_seen: int | None = None
-    for mock_t, arg in zip(mock_leaves, arg_leaves):
-        K_seen, R_seen = _validate_jet_leaf(mock_t, arg, collapsed, K_seen, R_seen)
-    return arg_leaves, K_seen, R_seen
-
-
-def _validate_jet_leaf(
-    mock: Tensor,
-    arg: Any,
-    collapsed: bool,
-    K_seen: int | None,
-    R_seen: int | None,
-) -> tuple[int, int | None]:
-    """Check that ``arg`` is a valid jet tuple matching ``mock``'s shape.
-
-    ``K_seen`` and ``R_seen`` carry the values observed at earlier leaves
-    (``None`` on the first call). Returns the updated pair for the caller to
-    thread to the next leaf. Raises if this leaf's ``K`` or ``R`` disagrees
-    with the earlier ones.
-    """
-    if not isinstance(arg, tuple):
-        raise ValueError(
-            f"expected a jet tuple (primal, c_1, ..., c_K), got {type(arg).__name__}."
-        )
-    if len(arg) < 1:
-        raise ValueError(
-            f"jet tuple must have at least 1 entry (primal), got length {len(arg)}."
-        )
-    if not all(isinstance(e, Tensor) for e in arg):
-        raise ValueError(
-            f"every entry of a jet tuple must be a Tensor; got types "
-            f"{[type(e).__name__ for e in arg]}."
-        )
-
-    K = len(arg) - 1
-    if K_seen is not None and K != K_seen:
-        raise ValueError(
-            f"derivative order K={K} disagrees with K={K_seen} from an "
-            f"earlier leaf; all jet leaves must share K."
-        )
-    if collapsed and K < 2:
-        raise ValueError(f"collapsed mode requires K >= 2, got K={K}.")
-
-    primal, *coeffs = arg
-    if primal.shape != mock.shape:
-        raise ValueError(
-            f"primal shape {tuple(primal.shape)} does not match mock shape "
-            f"{tuple(mock.shape)}."
-        )
-    R = _check_coeffs(coeffs, mock, collapsed)
-    if R is not None and R_seen is not None and R != R_seen:
-        raise ValueError(
-            f"leaf's R={R} disagrees with R={R_seen} from an earlier leaf; "
-            f"all batched coefficients must share R."
-        )
-    return K, R_seen if R_seen is not None else R
-
-
-def _check_coeffs(
-    coeffs: list[Tensor], mock: Tensor, collapsed: bool
-) -> int | None:
-    """Validate coefficient shapes against ``mock``'s shape.
-
-    - Standard mode: every ``c_k`` has shape ``mock.shape``.
-    - Collapsed mode: ``c_1..c_{K-1}`` have shape ``(R, *mock.shape)`` with
-      shared ``R`` within the leaf; ``c_K`` has ``mock.shape`` (collapsed
-      slot).
-
-    Returns the leaf's ``R`` (collapsed mode with ``K >= 2``) for the caller
-    to cross-check against other leaves, or ``None`` otherwise.
-    """
-    K = len(coeffs)
-    R: int | None = None
-    for k, c in enumerate(coeffs, start=1):
-        # Batched: (R, *S). Otherwise: S (which covers all of standard mode
-        # and the collapsed slot c_K).
-        if collapsed and k < K:
-            if c.ndim != mock.ndim + 1 or c.shape[1:] != mock.shape:
-                raise ValueError(
-                    f"coefficient c_{k} has shape {tuple(c.shape)}, "
-                    f"expected (R, *{tuple(mock.shape)})."
-                )
-            if R is None:
-                R = c.shape[0]
-            elif c.shape[0] != R:
-                raise ValueError(
-                    f"coefficient c_{k} has leading dim {c.shape[0]}, "
-                    f"expected {R} (must match earlier batched coefficients "
-                    f"in this leaf)."
-                )
-        elif c.shape != mock.shape:
-            raise ValueError(
-                f"coefficient c_{k} has shape {tuple(c.shape)}, "
-                f"expected {tuple(mock.shape)}."
-            )
-    return R
+from jet.validation import validate_input_jet
 
 
 def _make_jet_transform(
@@ -155,7 +30,7 @@ def _make_jet_transform(
     interp = JetInterpreter(mod, collapsed=collapsed)
 
     def transformed(*args: Any) -> Any:
-        leaves, K, R = _validate_input_jet(mock_args, args, collapsed=collapsed)
+        leaves, K, R = validate_input_jet(mock_args, args, collapsed=collapsed)
         return interp.run(K, R, *leaves)
 
     return transformed
@@ -370,7 +245,7 @@ def _make_uncollapsed_cjet(
         # Validate args (rejects mixed-K, missing R, etc.); the validator
         # gives us K, but we still need tree_flatten for in_spec (used by
         # tree_unflatten when rebuilding the per-direction args inside vmap).
-        _, K, _ = _validate_input_jet(mock_args, args, collapsed=True)
+        _, K, _ = validate_input_jet(mock_args, args, collapsed=True)
         leaves, in_spec = tree_flatten(args, is_leaf=_is_jet_leaf)
         num_leaves = len(leaves)
         primals = [leaf[0] for leaf in leaves]

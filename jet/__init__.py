@@ -36,8 +36,6 @@ def _validate_input_jet(
             leaves, or if any coefficient has the wrong shape.
     """
     mock_leaves, in_spec = tree_flatten(mock)
-    if not mock_leaves:
-        raise ValueError("No jet leaves found; mock_args has no tensors.")
     # flatten_up_to raises Node type/arity mismatch if args' pytree structure
     # diverges from mock's; at each tensor leaf in mock it takes the entire
     # subtree at the corresponding position in args (i.e. the jet tuple).

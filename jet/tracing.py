@@ -27,14 +27,6 @@ def capture_graph(
 ) -> GraphModule:
     """Capture the compute graph of ``f`` as a ``GraphModule``.
 
-    ``make_fx`` creates one symbolic proxy per positional tensor argument and
-    cannot trace through nested pytree containers. This flattens ``mock_args``
-    into tensor leaves, wraps ``f`` in a shim that unflattens them back into
-    the original structure, and traces that shim. The shim is wrapped with
-    ``functionalize`` and in-place operations are replaced with their
-    out-of-place equivalents, producing a purely functional graph safe for
-    transformations like common subexpression elimination.
-
     .. warning::
 
        **The returned ``GraphModule``'s call signature does NOT match ``f``'s

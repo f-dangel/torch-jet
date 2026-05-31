@@ -37,9 +37,7 @@ _MLP = Sequential(
 ).double()
 
 
-def _deep_pytree_f(
-    x: Tensor, params: list
-) -> tuple[Tensor, dict[str, Tensor]]:
+def _deep_pytree_f(x: Tensor, params: list) -> tuple[Tensor, dict[str, Tensor]]:
     """Pytree-shaped composition: nested list input, mixed tuple/dict output."""
     w = params[0]
     b0, b1 = params[1]

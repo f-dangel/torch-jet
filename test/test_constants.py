@@ -25,12 +25,12 @@ def test_standard_constant_output_zero_coeffs():
     coeffs = tuple(rand(3, dtype=float64) for _ in range(K))
     (_, _, _, _), (const, *const_coeffs) = jet_f((primal, *coeffs))
 
-    assert const.shape == out_shape, f"constant primal shape {const.shape} != {out_shape}"
+    assert const.shape == out_shape, (
+        f"constant primal shape {const.shape} != {out_shape}"
+    )
     assert len(const_coeffs) == K, f"got {len(const_coeffs)} coeffs, expected {K}"
     for k, c in enumerate(const_coeffs, start=1):
-        assert c.shape == out_shape, (
-            f"constant c_{k} shape {c.shape} != {out_shape}"
-        )
+        assert c.shape == out_shape, f"constant c_{k} shape {c.shape} != {out_shape}"
 
 
 def test_collapsed_constant_output_uses_collapsed_shape():

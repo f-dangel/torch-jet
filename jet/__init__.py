@@ -91,15 +91,20 @@ def _validate_jet_leaf(
             f"primal shape {tuple(primal.shape)} does not match mock shape "
             f"{tuple(mock.shape)}."
         )
-    R = _check_coeffs(coeffs, mock, collapsed)
-    if R is not None:
-        if state["R"] is None:
-            state["R"] = R
-        elif R != state["R"]:
-            raise ValueError(
-                f"leaf's R={R} disagrees with R={state['R']} from an earlier "
-                f"leaf; all batched coefficients must share R."
-            )
+    _track_R(_check_coeffs(coeffs, mock, collapsed), state)
+
+
+def _track_R(R: int | None, state: dict[str, int | None]) -> None:
+    """Cross-leaf R check: record on first sight or reject a mismatch."""
+    if R is None:
+        return
+    if state["R"] is None:
+        state["R"] = R
+    elif R != state["R"]:
+        raise ValueError(
+            f"leaf's R={R} disagrees with R={state['R']} from an earlier leaf; "
+            f"all batched coefficients must share R."
+        )
 
 
 def _check_coeffs(

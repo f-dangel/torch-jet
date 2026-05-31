@@ -263,11 +263,6 @@ def _normalize_output(
     return tree_unflatten(leaves, spec)
 
 
-# ---------------------------------------------------------------------------
-# Public transforms
-# ---------------------------------------------------------------------------
-
-
 def _make_jet_transform(
     f: Callable[..., Any], mock_args: tuple[Any, ...], *, collapsed: bool
 ) -> Callable[..., Any]:

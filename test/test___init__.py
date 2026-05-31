@@ -456,15 +456,10 @@ def test_collapsed_jet_constant_output_uses_collapsed_shape():
     )
 
 
-def test_capture_graph_rejects_invalid_mock_args():
-    """F7: capture_graph requires mock_args to be a tuple of Tensor leaves."""
-    # Non-tuple mock_args (bare tensor — common stale call pattern).
+def test_capture_graph_rejects_non_tuple_mock_args():
+    """capture_graph requires mock_args to be a tuple (not a bare tensor)."""
     with raises(TypeError, match="must be a tuple"):
-        capture_graph(sin, zeros(3))
-
-    # Non-Tensor leaf inside mock_args (e.g. a Python scalar).
-    with raises(TypeError, match="must be a Tensor"):
-        capture_graph(lambda x, y: x + y, (zeros(3), 1.0))
+        capture_graph(sin, zeros(3))  # bare tensor — common stale call pattern
 
 
 def test_jet_rejects_unsupported_tuple_dict_signature():

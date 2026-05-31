@@ -60,9 +60,8 @@ def capture_graph(
         above.
 
     Raises:
-        TypeError: If ``mock_args`` is not a ``tuple``, or if any leaf is not
-            a ``Tensor``. Python scalars or numpy values are rejected even
-            though ``make_fx`` would accept them.
+        TypeError: If ``mock_args`` is not a ``tuple``. Wrap a single
+            positional argument as ``(x,)``.
     """
     if not isinstance(mock_args, tuple):
         raise TypeError(
@@ -71,11 +70,6 @@ def capture_graph(
         )
     _assert_traceable_signature(mock_args)
     flat_mocks, in_spec = tree_flatten(mock_args)
-    for i, leaf in enumerate(flat_mocks):
-        if not isinstance(leaf, Tensor):
-            raise TypeError(
-                f"mock_args leaf {i} must be a Tensor, got {type(leaf).__name__}."
-            )
 
     def flat_f(*flat_tensors: Tensor) -> Any:
         return f(*tree_unflatten(list(flat_tensors), in_spec))

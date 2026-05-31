@@ -91,46 +91,45 @@ def _validate_jet_leaf(
             f"primal shape {tuple(primal.shape)} does not match mock shape "
             f"{tuple(mock.shape)}."
         )
-    if collapsed:
-        _check_collapsed_coeffs(coeffs, K, mock, state)
-    else:
-        _check_standard_coeffs(coeffs, mock)
+    _check_coeffs(coeffs, mock, collapsed=collapsed, state=state)
 
 
-def _check_standard_coeffs(coeffs: list[Tensor], mock: Tensor) -> None:
-    """Standard mode: every coefficient has the primal's shape."""
-    for k, c in enumerate(coeffs, start=1):
-        if c.shape != mock.shape:
-            raise ValueError(
-                f"coefficient c_{k} shape {tuple(c.shape)} does not match "
-                f"primal shape {tuple(mock.shape)}."
-            )
-
-
-def _check_collapsed_coeffs(
-    coeffs: list[Tensor], K: int, mock: Tensor, state: dict[str, int | None]
+def _check_coeffs(
+    coeffs: list[Tensor],
+    mock: Tensor,
+    *,
+    collapsed: bool,
+    state: dict[str, int | None],
 ) -> None:
-    """Collapsed mode: ``c_1..c_{K-1}`` are ``(R, *S)``; ``c_K`` is ``S``."""
+    """Validate coefficient shapes against ``mock``'s shape.
+
+    - Standard mode: every ``c_k`` has shape ``mock.shape``.
+    - Collapsed mode: ``c_1..c_{K-1}`` have shape ``(R, *mock.shape)`` with
+      shared ``R`` (tracked in ``state["R"]``); ``c_K`` has ``mock.shape``
+      (collapsed slot).
+    """
+    K = len(coeffs)
     for k, c in enumerate(coeffs, start=1):
-        if k == K:
-            if c.shape != mock.shape:
+        # Batched: (R, *S). Otherwise: S (which covers all of standard mode
+        # and the collapsed slot c_K).
+        if collapsed and k < K:
+            if c.ndim != mock.ndim + 1 or c.shape[1:] != mock.shape:
                 raise ValueError(
-                    f"collapsed coefficient c_K=c_{k} (collapsed slot) has "
-                    f"shape {tuple(c.shape)}, expected {tuple(mock.shape)}."
+                    f"coefficient c_{k} has shape {tuple(c.shape)}, "
+                    f"expected (R, *{tuple(mock.shape)})."
                 )
-            continue
-        if c.ndim != mock.ndim + 1 or c.shape[1:] != mock.shape:
+            if state["R"] is None:
+                state["R"] = c.shape[0]
+            elif c.shape[0] != state["R"]:
+                raise ValueError(
+                    f"coefficient c_{k} has leading dim {c.shape[0]}, "
+                    f"expected {state['R']} (must be shared across all batched "
+                    f"coefficients)."
+                )
+        elif c.shape != mock.shape:
             raise ValueError(
-                f"collapsed coefficient c_{k} has shape {tuple(c.shape)}, "
-                f"expected (R, *{tuple(mock.shape)})."
-            )
-        if state["R"] is None:
-            state["R"] = c.shape[0]
-        elif c.shape[0] != state["R"]:
-            raise ValueError(
-                f"collapsed coefficient c_{k} has leading dim {c.shape[0]}, "
-                f"expected {state['R']} (must be shared across all batched "
-                f"coefficients)."
+                f"coefficient c_{k} has shape {tuple(c.shape)}, "
+                f"expected {tuple(mock.shape)}."
             )
 
 

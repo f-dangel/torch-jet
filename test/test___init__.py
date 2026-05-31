@@ -431,6 +431,58 @@ def test_collapsed_jet_rejects_order_below_2():
         cjet_f((x,))
 
 
+def test_collapsed_jet_constant_output_uses_collapsed_shape():
+    """F1: constant outputs in collapsed mode get c_1..c_{K-1} of shape (R, *S).
+
+    A function with a constant output leaf (a tensor independent of the inputs)
+    must still produce coefficients matching the collapsed-mode shape contract,
+    or downstream consumers see broken broadcasts.
+    """
+    R = 3  # K=2 implicit from passing one coefficient slot to cjet_f below
+
+    def f(x: Tensor) -> tuple[Tensor, Tensor]:
+        return sin(x), zeros(4, dtype=float64)  # second leaf is constant
+
+    cjet_f = collapsed_jet(f, (zeros(3, dtype=float64),))
+    primal = rand(3, dtype=float64)
+    c1 = rand(R, 3, dtype=float64)
+    cK = zeros(3, dtype=float64)
+    (_, _, _), (const, const_c1, const_cK) = cjet_f((primal, c1, cK))
+    assert const.shape == (4,), f"constant primal shape {const.shape} != (4,)"
+    assert const_c1.shape == (R, 4), (
+        f"constant c_1 shape {const_c1.shape} != (R={R}, 4)"
+    )
+    assert const_cK.shape == (4,), (
+        f"constant c_K shape {const_cK.shape} != (4,) (collapsed slot)"
+    )
+
+
+def test_jet_rejects_jettuple_input():
+    """F6: passing a JetTuple/CollapsedJetTuple at the boundary is rejected."""
+    from jet.operations import JetTuple
+
+    jet_f = jet.jet(sin, (zeros(3),))
+    x = zeros(3)
+    with raises(ValueError, match="plain tuple"):
+        jet_f(JetTuple((x, x, x)))
+
+
+def test_capture_graph_rejects_non_tuple_mock_args():
+    """F7: capture_graph requires a tuple for mock_args."""
+    from jet.tracing import capture_graph
+
+    with raises(TypeError, match="must be a tuple"):
+        capture_graph(sin, zeros(3))  # bare tensor — common stale call pattern
+
+
+def test_capture_graph_rejects_non_tensor_leaf():
+    """F7: capture_graph rejects non-Tensor leaves in mock_args."""
+    from jet.tracing import capture_graph
+
+    with raises(TypeError, match="must be a Tensor"):
+        capture_graph(lambda x, y: x + y, (zeros(3), 1.0))
+
+
 def test_jet_rejects_unsupported_tuple_dict_signature():
     """Reject only the (tensor/tuple, dict) two-argument signature (make_fx bug).
 

@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- **Backward-incompatible.** `jet()` and `collapsed_jet()` now return plain
+  Python callables (was `GraphModule`) and drop their `derivative_order`
+  argument (now inferred per call from the input jet tuples). To bake the
+  callable into a `GraphModule` for graph passes (CSE, etc.), apply
+  `capture_graph` to it yourself — choosing when to freeze `K` (and, for
+  `collapsed_jet`, the direction dim `R`). `capture_graph(f, mock_args)` now
+  takes one tuple of positional pytrees (was variadic tensors);
+  `capture_flat_graph` is removed (subsumed). Internally, the boundary now
+  eagerly validates inputs against `mock_args`, fixes the collapsed-mode
+  constant-output shape, and tightens type checks.
+
 - **Backward-incompatible.** Rename the `use_collapsing` parameter on
   `laplacian()` and `bilaplacian()` to `collapsed` (defaults unchanged).
   Bundled with an internal cleanup of the jet op dispatch that merges the

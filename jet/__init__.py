@@ -280,7 +280,7 @@ def _make_jet_transform(
     against ``mock_args``, runs the captured graph through a
     :class:`JetInterpreter` in the requested mode, and normalizes the output.
     """
-    mod = capture_graph(f, mock_args)
+    mod, _ = capture_graph(f, mock_args)
     interp = JetInterpreter(mod, collapsed=collapsed)
 
     def transformed(*args: Any) -> Any:

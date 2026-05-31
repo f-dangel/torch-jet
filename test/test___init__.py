@@ -438,28 +438,31 @@ def test_collapsed_jet_constant_output_uses_collapsed_shape():
     or downstream consumers see broken broadcasts.
     """
     R = 3  # K=2 implicit from passing one coefficient slot to cjet_f below
+    out_shape = (4,)
 
     def f(x: Tensor) -> tuple[Tensor, Tensor]:
-        return sin(x), zeros(4, dtype=float64)  # second leaf is constant
+        return sin(x), zeros(*out_shape, dtype=float64)  # second leaf is constant
 
     cjet_f = collapsed_jet(f, (zeros(3, dtype=float64),))
     primal = rand(3, dtype=float64)
     c1 = rand(R, 3, dtype=float64)
     cK = zeros(3, dtype=float64)
     (_, _, _), (const, const_c1, const_cK) = cjet_f((primal, c1, cK))
-    assert const.shape == (4,), f"constant primal shape {const.shape} != (4,)"
-    assert const_c1.shape == (R, 4), (
-        f"constant c_1 shape {const_c1.shape} != (R={R}, 4)"
+    assert const.shape == out_shape, (
+        f"constant primal shape {const.shape} != {out_shape}"
     )
-    assert const_cK.shape == (4,), (
-        f"constant c_K shape {const_cK.shape} != (4,) (collapsed slot)"
+    assert const_c1.shape == (R, *out_shape), (
+        f"constant c_1 shape {const_c1.shape} != (R={R}, *{out_shape})"
+    )
+    assert const_cK.shape == out_shape, (
+        f"constant c_K shape {const_cK.shape} != {out_shape} (collapsed slot)"
     )
 
 
 def test_capture_graph_rejects_non_tuple_mock_args():
     """capture_graph requires mock_args to be a tuple (not a bare tensor)."""
     with raises(TypeError, match="must be a tuple"):
-        capture_graph(sin, zeros(3))  # bare tensor — common stale call pattern
+        capture_graph(sin, zeros(3))
 
 
 def test_jet_rejects_unsupported_tuple_dict_signature():
@@ -467,17 +470,16 @@ def test_jet_rejects_unsupported_tuple_dict_signature():
 
     All other dict signatures are supported, so they must not raise.
     """
+    t, d = zeros(3), {"a": zeros(3)}
+
     # Unsupported: two args, first tensor/tuple, second dict.
     f = lambda x, params: x * params["a"]  # noqa: E731
     match = r"pytorch/pytorch#185640"  # pin to the tracked upstream issue
-    with raises(NotImplementedError, match=match):
-        jet.jet(f, (zeros(3), {"a": zeros(3)}))
-    with raises(NotImplementedError, match=match):
-        collapsed_jet(f, (zeros(3), {"a": zeros(3)}))
+    for transform in (jet.jet, collapsed_jet):
+        with raises(NotImplementedError, match=match):
+            transform(f, (t, d))
 
     # Supported dict signatures must not raise.
-    jet.jet(lambda d: d["a"] * 2, ({"a": zeros(3)},))  # single dict arg
-    jet.jet(lambda d, x: d["a"] + x, ({"a": zeros(3)}, zeros(3)))  # dict first
-    jet.jet(  # three args with a trailing dict
-        lambda x, y, d: x + y + d["a"], (zeros(3), zeros(3), {"a": zeros(3)})
-    )
+    jet.jet(lambda d: d["a"] * 2, (d,))  # single dict arg
+    jet.jet(lambda d, x: d["a"] + x, (d, t))  # dict first
+    jet.jet(lambda x, y, d: x + y + d["a"], (t, t, d))  # three args, trailing dict

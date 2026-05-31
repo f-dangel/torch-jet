@@ -165,4 +165,5 @@ def bilaplacian(
 
         return term1 + term2 + term3
 
-    return capture_graph(bilap_f, (mock_x,))
+    mod, _ = capture_graph(bilap_f, (mock_x,))
+    return mod

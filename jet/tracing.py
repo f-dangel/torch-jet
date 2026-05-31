@@ -7,7 +7,7 @@ from torch import Tensor, ops
 from torch.func import functionalize
 from torch.fx import GraphModule
 from torch.fx.experimental.proxy_tensor import make_fx
-from torch.utils._pytree import tree_flatten, tree_unflatten
+from torch.utils._pytree import TreeSpec, tree_flatten, tree_unflatten
 
 # Map in-place ATen ops to their out-of-place equivalents.
 _INPLACE_TO_FUNCTIONAL = {
@@ -23,30 +23,22 @@ _make_fx = partial(make_fx, tracing_mode="fake", _allow_non_fake_inputs=True)
 def capture_graph(
     f: Callable[..., Any],
     mock_args: tuple[Any, ...],
-) -> GraphModule:
+) -> tuple[GraphModule, TreeSpec]:
     """Capture the compute graph of ``f`` as a ``GraphModule``.
 
-    .. warning::
+    The returned ``GraphModule``'s ``forward`` takes the flat tensor leaves
+    of ``mock_args`` as positional arguments -- ``make_fx`` cannot trace
+    through pytree containers, so ``mock_args`` is flattened and ``f`` is
+    traced over those flat leaves. To call the captured graph with ``f``'s
+    original pytree shape, use the second return value, ``in_spec``, to
+    flatten new arguments in the order the graph expects::
 
-       **The returned ``GraphModule``'s call signature does NOT match ``f``'s
-       signature when ``f`` accepts pytrees.** Inputs are flattened (so
-       ``forward`` takes the flat tensor leaves in pytree-flatten order:
-       dict keys in insertion order, tuple/list elements in natural order),
-       outputs are passed through unchanged. Concretely, if ``f(d, t)``
-       takes a dict-then-tensor, the captured graph is called as
-       ``mod(*d.values(), t)`` -- not ``mod(d, t)``.
+        mod, in_spec = capture_graph(f, mock_args)
+        out = mod(*in_spec.flatten_up_to(args))
 
-       To call the captured graph with ``f``'s original pytree shape,
-       flatten yourself::
-
-           from torch.utils._pytree import tree_flatten
-           mod = capture_graph(f, mock_args)
-           mod(*tree_flatten(args)[0])
-
-       This asymmetry is intentional: the returned ``GraphModule`` follows
-       the ``make_fx`` convention so it composes with other FX tooling
-       (``torch.compile``, AOTAutograd, custom passes) that expect a flat
-       tensor forward signature.
+    Output structure is passed through unchanged -- whatever ``f`` returns
+    (single tensor, tuple, dict, arbitrary pytree), ``make_fx``'s pytree
+    codegen reconstructs on each call.
 
     Args:
         f: Callable to trace (plain function, ``nn.Module``, ``GraphModule``,
@@ -55,13 +47,18 @@ def capture_graph(
             args, provided as a tuple. Only shapes and dtypes matter.
 
     Returns:
-        A ``GraphModule`` whose forward takes the flat tensor leaves of
-        ``mock_args`` in pytree-flatten order. See the calling-convention note
-        above.
+        A pair ``(mod, in_spec)`` where ``mod`` is a ``GraphModule`` whose
+        forward takes the flat tensor leaves of ``mock_args``, and
+        ``in_spec`` is the ``TreeSpec`` of ``mock_args``. Use
+        ``in_spec.flatten_up_to(args)`` to obtain the flat leaves in the
+        order ``mod`` expects.
 
     Raises:
         TypeError: If ``mock_args`` is not a ``tuple``. Wrap a single
             positional argument as ``(x,)``.
+        NotImplementedError: If ``mock_args`` hits the unsupported
+            ``(tensor-or-tuple, dict)`` signature; see
+            :func:`_assert_traceable_signature`.
     """
     if not isinstance(mock_args, tuple):
         raise TypeError(
@@ -78,7 +75,7 @@ def capture_graph(
     _replace_inplace_ops(mod)
     mod.graph.eliminate_dead_code()
     mod.recompile()
-    return mod
+    return mod, in_spec
 
 
 def _assert_traceable_signature(args: tuple[Any, ...]) -> None:

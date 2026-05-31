@@ -41,7 +41,7 @@ def test_capture_graph_replaces_squeeze_():
     """capture_graph replaces squeeze_ with its out-of-place equivalent."""
     f = Linear(3, 1)
     x = rand(3)
-    mod = capture_graph(f, (x,))
+    mod, _ = capture_graph(f, (x,))
     assert not _uses_squeeze_inplace(mod)
 
 

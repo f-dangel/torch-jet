@@ -132,4 +132,5 @@ def laplacian(
 
         return F2
 
-    return capture_graph(lap_f, (mock_x,))
+    mod, _ = capture_graph(lap_f, (mock_x,))
+    return mod

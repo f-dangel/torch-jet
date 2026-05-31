@@ -311,13 +311,16 @@ lap_collapsed = laplacian(f, x)
 collapsed_laplacian = lap_collapsed(x)
 assert hessian_trace_laplacian.allclose(collapsed_laplacian)
 
-# Graph 3: Collapsed Taylor mode, simplified with CSE + DCE
+# Graph 3: Collapsed Taylor mode, simplified with CSE + DCE.
+# laplacian() returns a plain callable; capture its graph before applying
+# graph-level passes.
+lap_collapsed, in_spec = capture_graph(lap_collapsed, (x,))
 common_subexpression_elimination(lap_collapsed.graph)
 lap_collapsed.recompile()
 visualize_graph(
     lap_collapsed, path.join(GALLERYDIR, "02_laplacian_collapsed.png"), use_custom=True
 )
-assert hessian_trace_laplacian.allclose(lap_collapsed(x))
+assert hessian_trace_laplacian.allclose(lap_collapsed(*in_spec.flatten_up_to((x,))))
 
 # %%
 #

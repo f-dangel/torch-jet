@@ -9,13 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
-- **Backward-incompatible.** `jet()` and `collapsed_jet()` now return plain
-  Python callables (was `GraphModule`) and drop their `derivative_order`
-  argument (now inferred per call from the input jet tuples). To bake the
-  callable into a `GraphModule` for graph passes (CSE, etc.), apply
-  `capture_graph` to it yourself — choosing when to freeze `K` (and, for
-  `collapsed_jet`, the direction dim `R`). `capture_graph(f, mock_args)` now
-  takes one tuple of positional pytrees (was variadic tensors) and returns
+- **Backward-incompatible.** `jet()`, `collapsed_jet()`, `laplacian()`, and
+  `bilaplacian()` now return plain Python callables (was `GraphModule`).
+  `jet()` and `collapsed_jet()` also drop their `derivative_order` argument
+  (now inferred per call from the input jet tuples). To bake any of these
+  into a `GraphModule` for graph passes (CSE, `torch.compile`, etc.), apply
+  `capture_graph` to it yourself — graph capture is now a single explicit
+  step at the user's chosen point. `capture_graph(f, mock_args)` now takes
+  one tuple of positional pytrees (was variadic tensors) and returns
   `(mod, in_spec)`; use `mod(*in_spec.flatten_up_to(args))` to call the
   captured graph
   ([PR](https://github.com/f-dangel/torch-jet/pull/134))

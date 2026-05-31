@@ -26,7 +26,7 @@ from jet.utils import Value
 #               c_K has shape S. Requires K >= 2.
 
 
-def _walk_and_validate(
+def _validate_input_jet(
     mock: Any, args: Any, *, collapsed: bool
 ) -> tuple[list[tuple[Tensor, ...]], int, int | None]:
     """Validate ``args`` against ``mock``'s structure and shapes.
@@ -163,7 +163,7 @@ def _make_jet_transform(
     interp = JetInterpreter(mod, collapsed=collapsed)
 
     def transformed(*args: Any) -> Any:
-        leaves, K, R = _walk_and_validate(mock_args, args, collapsed=collapsed)
+        leaves, K, R = _validate_input_jet(mock_args, args, collapsed=collapsed)
         return interp.run(K, R, *leaves)
 
     return transformed
@@ -377,7 +377,7 @@ def _make_uncollapsed_cjet(
     def cjet_f(*args: Any) -> Any:
         # Validate against mock shapes (rejects mixed-K, missing R, etc.)
         # before tree_flatten gives us in_spec for unflatten.
-        _walk_and_validate(mock_args, args, collapsed=True)
+        _validate_input_jet(mock_args, args, collapsed=True)
         leaves, in_spec = tree_flatten(args, is_leaf=_is_jet_leaf)
         K = len(leaves[0]) - 1
         num_leaves = len(leaves)

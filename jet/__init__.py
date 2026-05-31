@@ -91,23 +91,32 @@ def _validate_jet_leaf(
             f"primal shape {tuple(primal.shape)} does not match mock shape "
             f"{tuple(mock.shape)}."
         )
-    _check_coeffs(coeffs, mock, collapsed, state)
+    R = _check_coeffs(coeffs, mock, collapsed)
+    if R is not None:
+        if state["R"] is None:
+            state["R"] = R
+        elif R != state["R"]:
+            raise ValueError(
+                f"leaf's R={R} disagrees with R={state['R']} from an earlier "
+                f"leaf; all batched coefficients must share R."
+            )
 
 
 def _check_coeffs(
-    coeffs: list[Tensor],
-    mock: Tensor,
-    collapsed: bool,
-    state: dict[str, int | None],
-) -> None:
+    coeffs: list[Tensor], mock: Tensor, collapsed: bool
+) -> int | None:
     """Validate coefficient shapes against ``mock``'s shape.
 
     - Standard mode: every ``c_k`` has shape ``mock.shape``.
     - Collapsed mode: ``c_1..c_{K-1}`` have shape ``(R, *mock.shape)`` with
-      shared ``R`` (tracked in ``state["R"]``); ``c_K`` has ``mock.shape``
-      (collapsed slot).
+      shared ``R`` within the leaf; ``c_K`` has ``mock.shape`` (collapsed
+      slot).
+
+    Returns the leaf's ``R`` (collapsed mode with ``K >= 2``) for the caller
+    to cross-check against other leaves, or ``None`` otherwise.
     """
     K = len(coeffs)
+    R: int | None = None
     for k, c in enumerate(coeffs, start=1):
         # Batched: (R, *S). Otherwise: S (which covers all of standard mode
         # and the collapsed slot c_K).
@@ -117,19 +126,20 @@ def _check_coeffs(
                     f"coefficient c_{k} has shape {tuple(c.shape)}, "
                     f"expected (R, *{tuple(mock.shape)})."
                 )
-            if state["R"] is None:
-                state["R"] = c.shape[0]
-            elif c.shape[0] != state["R"]:
+            if R is None:
+                R = c.shape[0]
+            elif c.shape[0] != R:
                 raise ValueError(
                     f"coefficient c_{k} has leading dim {c.shape[0]}, "
-                    f"expected {state['R']} (must be shared across all batched "
-                    f"coefficients)."
+                    f"expected {R} (must match earlier batched coefficients "
+                    f"in this leaf)."
                 )
         elif c.shape != mock.shape:
             raise ValueError(
                 f"coefficient c_{k} has shape {tuple(c.shape)}, "
                 f"expected {tuple(mock.shape)}."
             )
+    return R
 
 
 def _make_jet_transform(

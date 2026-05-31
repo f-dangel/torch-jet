@@ -284,24 +284,20 @@ else:
 # Graph 1: Simply capture the function that computes the Laplacian.
 # capture_graph returns (mod, in_spec); use in_spec.flatten_up_to to call
 # the captured graph in the order its flat-tensor forward expects.
-lap_traced, lap_traced_in_spec = capture_graph(lap_fn, (x,))
+lap_traced, in_spec = capture_graph(lap_fn, (x,))
 visualize_graph(
     lap_traced, path.join(GALLERYDIR, "02_laplacian_module.png"), use_custom=True
 )
-assert hessian_trace_laplacian.allclose(
-    lap_traced(*lap_traced_in_spec.flatten_up_to((x,)))
-)
+assert hessian_trace_laplacian.allclose(lap_traced(*in_spec.flatten_up_to((x,))))
 
 # Graph 2: Standard simplifications (dead code elimination, CSE)
-lap_standard, lap_standard_in_spec = capture_graph(lap_fn, (x,))
+lap_standard, in_spec = capture_graph(lap_fn, (x,))
 common_subexpression_elimination(lap_standard.graph)
 lap_standard.recompile()
 visualize_graph(
     lap_standard, path.join(GALLERYDIR, "02_laplacian_standard.png"), use_custom=True
 )
-assert hessian_trace_laplacian.allclose(
-    lap_standard(*lap_standard_in_spec.flatten_up_to((x,)))
-)
+assert hessian_trace_laplacian.allclose(lap_standard(*in_spec.flatten_up_to((x,))))
 
 # %%
 #

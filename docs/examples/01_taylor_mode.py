@@ -386,25 +386,24 @@ assert out["sub"][1].allclose(ones_like(inputs["x"])), "out['sub'][1] != 1"
 #
 # Let's visualize both the original function's compute graph and the jet function:
 
-mod, mod_in_spec = capture_graph(f, (x,))
+mod, in_spec = capture_graph(f, (x,))
 visualize_graph(mod, path.join(GALLERYDIR, "01_f.png"))
+f_val = mod(*in_spec.flatten_up_to((x,)))
+assert f_val.allclose(f(x))
+
 # Capture the jet's graph at K=2 by passing a representative mock 2-jet tuple.
 mock_2jet = (x, zeros_like(x), zeros_like(x))
-f_2jet_mod, f_2jet_in_spec = capture_graph(f_jet, (mock_2jet,))
+f_2jet_mod, in_spec = capture_graph(f_jet, (mock_2jet,))
 visualize_graph(f_2jet_mod, path.join(GALLERYDIR, "01_f_jet.png"))
+x_2jet = (x, ones_like(x), zeros_like(x))
+f_2jet_val = f_2jet_mod(*in_spec.flatten_up_to((x_2jet,)))
+assert f_2jet_val[2].allclose(f_jet(x_2jet)[2])
 
 # %%
 #
 # The returned ``GraphModule``'s ``forward`` takes the *flat* tensor leaves
 # of ``mock_args`` (not the original pytree). Use the second return value,
-# ``in_spec``, to flatten new arguments in the order the graph expects:
-
-f_val = mod(*mod_in_spec.flatten_up_to((x,)))
-assert f_val.allclose(f(x))
-
-jet_2jet = (x, ones_like(x), zeros_like(x))
-f_2jet_val = f_2jet_mod(*f_2jet_in_spec.flatten_up_to((jet_2jet,)))
-assert f_2jet_val[2].allclose(f_jet((x, ones_like(x), zeros_like(x)))[2])
+# ``in_spec``, to flatten new arguments in the order the graph expects.
 
 # %%
 #

@@ -4,7 +4,7 @@ from typing import Any, Callable
 
 from einops import einsum
 from pytest import mark
-from torch import Tensor, eye, manual_seed, sigmoid
+from torch import Tensor, eye
 from torch.func import hessian
 from torch.linalg import norm
 from torch.testing import assert_close
@@ -13,7 +13,9 @@ from jet.laplacian import SUPPORTED_DISTRIBUTIONS
 from jet.laplacian import laplacian as jet_laplacian
 from jet.utils import run_seeded
 from jet.weighted_laplacian import C_func_diagonal_increments, get_weighting
-from test.utils import MLP, setup_case, shape
+from test.utils import SCALAR_OUTPUT_CASES as LAPLACIAN_CASES
+from test.utils import SCALAR_OUTPUT_IDS as LAPLACIAN_IDS
+from test.utils import setup_case
 
 DISTRIBUTIONS = SUPPORTED_DISTRIBUTIONS
 DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]
@@ -28,18 +30,6 @@ WEIGHT_IDS = [
     "weighted-laplacian",
     "rank-deficient-weighted-laplacian",
 ]
-
-# make generation of test cases deterministic
-manual_seed(0)
-
-LAPLACIAN_CASES = [
-    # 5d tanh-activated two-layer MLP
-    {"f": MLP, "args_fn": shape(5), "id": "two-layer-tanh-mlp"},
-    # 3d sigmoid(sigmoid) function
-    {"f": lambda x: sigmoid(sigmoid(x)), "args_fn": shape(3), "id": "sigmoid-sigmoid"},
-]
-
-LAPLACIAN_IDS = [config["id"] for config in LAPLACIAN_CASES]
 
 
 def laplacian(f: Callable[[Tensor], Tensor], x: Tensor, C: Tensor) -> Tensor:

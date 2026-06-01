@@ -3,7 +3,16 @@
 from typing import Any, Callable
 
 from pytest import param
-from torch import Tensor, float64, manual_seed, rand, rand_like, stack, zeros_like
+from torch import (
+    Tensor,
+    float64,
+    manual_seed,
+    rand,
+    rand_like,
+    sigmoid,
+    stack,
+    zeros_like,
+)
 from torch.nn import Linear, Sequential, Tanh
 from torch.testing import assert_close
 from torch.utils._pytree import tree_flatten, tree_map
@@ -17,21 +26,9 @@ from jet import _is_jet_leaf, jet, rev_jet
 #: high order. Intermediate orders exercise the same code paths and don't
 #: earn their own coverage at the primitive / composition layer.
 K_AND_MODE = [
-    param(0, False, id="K=0-standard"),
-    param(1, False, id="K=1-standard"),
-    param(2, False, id="K=2-standard"),
-    param(5, False, id="K=5-standard"),
-    param(2, True, id="K=2-collapsed"),
-    param(5, True, id="K=5-collapsed"),
+    *(param(K, False, id=f"K={K}-standard") for K in (0, 1, 2, 5)),
+    *(param(K, True, id=f"K={K}-collapsed") for K in (2, 5)),
 ]
-
-# Module-level MLP shared across the composition / laplacian / bilaplacian /
-# exp01 test layers. Sequential's Linear weights are concrete tensors at
-# trace time, which FX requires.
-manual_seed(0)
-MLP = Sequential(
-    Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
-).double()
 
 
 def shape(*dims: int) -> Callable[[], tuple[Tensor]]:
@@ -42,6 +39,22 @@ def shape(*dims: int) -> Callable[[], tuple[Tensor]]:
 def shapes(*shape_pairs) -> Callable[[], tuple[Tensor, ...]]:
     """``args_fn`` factory: one ``rand`` tensor per shape (all float64)."""
     return lambda: tuple(rand(*s, dtype=float64) for s in shape_pairs)
+
+
+# Module-level MLP shared across the composition / laplacian / bilaplacian /
+# exp01 test layers. Sequential's Linear weights are concrete tensors at
+# trace time, which FX requires.
+manual_seed(0)
+MLP = Sequential(
+    Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
+).double()
+
+# Scalar-output cases shared by the laplacian + bilaplacian consumer tests.
+SCALAR_OUTPUT_CASES = [
+    {"f": MLP, "args_fn": shape(5), "id": "two-layer-tanh-mlp"},
+    {"f": lambda x: sigmoid(sigmoid(x)), "args_fn": shape(3), "id": "sigmoid-sigmoid"},
+]
+SCALAR_OUTPUT_IDS = [c["id"] for c in SCALAR_OUTPUT_CASES]
 
 
 def setup_case(

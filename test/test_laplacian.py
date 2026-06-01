@@ -149,7 +149,7 @@ def test_Laplacian(
     # Using a manually-vmapped jet
     weighting = get_weighting(x, weights)
     lap_fn = jet_laplacian(f, x, weighting=weighting, collapsed=collapsed)(x)
-    assert_close(lap_rev, lap_fn, msg="Functorch and jet Laplacians do not match.")
+    assert_close(lap_rev, lap_fn)
 
 
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)

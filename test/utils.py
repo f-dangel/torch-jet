@@ -119,22 +119,22 @@ def rev_collapsed_jet(f: Callable[..., Any]) -> Callable[..., Any]:
             ]
             return tree_unflatten(per_leaf, in_spec)
 
-        per_direction_outputs = [std_jet(*per_direction_args(r)) for r in range(R)]
-        flat_per_r = [
-            tree_flatten(out, is_leaf=_is_jet_leaf)[0] for out in per_direction_outputs
-        ]
-        _, out_spec = tree_flatten(per_direction_outputs[0], is_leaf=_is_jet_leaf)
-
-        collapsed_leaves = []
-        for leaf_idx in range(len(flat_per_r[0])):
-            per_r = [flat_per_r[r][leaf_idx] for r in range(R)]
-            o_0 = per_r[0][0]
-            middles = tuple(
-                stack([per_r[r][k] for r in range(R)], dim=0) for k in range(1, K)
+        flat_per_r = []
+        out_spec = None
+        for r in range(R):
+            leaves, out_spec = tree_flatten(
+                std_jet(*per_direction_args(r)), is_leaf=_is_jet_leaf
             )
-            o_K = stack([per_r[r][K] for r in range(R)], dim=0).sum(0)
-            collapsed_leaves.append((o_0, *middles, o_K))
+            flat_per_r.append(leaves)
 
+        collapsed_leaves = [
+            (
+                per_r[0][0],
+                *(stack([pr[k] for pr in per_r], dim=0) for k in range(1, K)),
+                sum(pr[K] for pr in per_r),
+            )
+            for per_r in zip(*flat_per_r)
+        ]
         return tree_unflatten(collapsed_leaves, out_spec)
 
     return cjet_f

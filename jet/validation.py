@@ -22,15 +22,15 @@ from typing import Any
 from torch import Tensor
 from torch.utils._pytree import tree_flatten
 
-from jet.utils import PyTree
+from jet.utils import Jet, PyTree
 
 
 def validate_input_jet(
     mock: tuple[PyTree[Tensor], ...],
-    args: tuple[PyTree[tuple[Tensor, ...]], ...],
+    args: tuple[PyTree[Jet], ...],
     *,
     collapsed: bool,
-) -> tuple[list[tuple[Tensor, ...]], int, int | None]:
+) -> tuple[list[Jet], int, int | None]:
     """Validate ``args`` against ``mock``'s structure and shapes.
 
     Args:

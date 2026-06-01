@@ -10,7 +10,7 @@ from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
 
 from jet.jet_interpreter import JetInterpreter
 from jet.tracing import capture_graph
-from jet.utils import PyTree
+from jet.utils import Jet, PyTree
 from jet.validation import validate_input_jet
 
 
@@ -25,7 +25,7 @@ def jet(
     f: Callable[..., PyTree[Tensor]],
     mock_args: tuple[PyTree[Tensor], ...],
     collapsed: bool = False,
-) -> Callable[..., PyTree[tuple[Tensor, ...]]]:
+) -> Callable[..., PyTree[Jet]]:
     """Overload a function with its Taylor-mode equivalent.
 
     The returned function is K-polymorphic: the derivative order is inferred
@@ -83,7 +83,7 @@ def jet(
     mod, _ = capture_graph(f, mock_args)
     interp = JetInterpreter(mod, collapsed=collapsed)
 
-    def transformed(*args: PyTree[tuple[Tensor, ...]]) -> PyTree[tuple[Tensor, ...]]:
+    def transformed(*args: PyTree[Jet]) -> PyTree[Jet]:
         leaves, K, R = validate_input_jet(mock_args, args, collapsed=collapsed)
         return interp.run(K, R, *leaves)
 
@@ -92,7 +92,7 @@ def jet(
 
 def rev_jet(
     f: Callable[..., PyTree[Tensor]], detach: bool = True
-) -> Callable[..., PyTree[tuple[Tensor, ...]]]:
+) -> Callable[..., PyTree[Jet]]:
     """Implement Taylor-mode via nested reverse-mode autodiff.
 
     Serves as a reference implementation for testing ``jet``. See :func:`jet`
@@ -117,7 +117,7 @@ def rev_jet(
         """Gradient of ``f`` w.r.t. ``X`` if ``f`` requires grad, else zeros."""
         return grad(f, X, **grad_kwargs)[0] if f.requires_grad else zeros_like(X)
 
-    def jet_f(*args: PyTree[tuple[Tensor, ...]]) -> PyTree[tuple[Tensor, ...]]:
+    def jet_f(*args: PyTree[Jet]) -> PyTree[Jet]:
         """Compute the function and its Taylor coefficients."""
         leaves, in_spec = tree_flatten(args, is_leaf=_is_jet_leaf)
         derivative_order = len(leaves[0]) - 1
@@ -188,7 +188,7 @@ def _uncollapsed_via_vmap(
     f: Callable[..., PyTree[Tensor]],
     mock_args: tuple[PyTree[Tensor], ...],
     randomization: tuple[str, int] | None,
-) -> Callable[..., PyTree[tuple[Tensor, ...]]]:
+) -> Callable[..., PyTree[Jet]]:
     """Build a collapsed-jet-compatible function from standard ``jet`` + ``vmap``.
 
     The returned function has the same calling convention as
@@ -208,7 +208,7 @@ def _uncollapsed_via_vmap(
     # args inside vmap. The validator confirms ``args`` matches this structure.
     _, in_spec = tree_flatten(mock_args)
 
-    def cjet_f(*args: PyTree[tuple[Tensor, ...]]) -> PyTree[tuple[Tensor, ...]]:
+    def cjet_f(*args: PyTree[Jet]) -> PyTree[Jet]:
         leaves, K, _ = validate_input_jet(mock_args, args, collapsed=True)
         num_leaves = len(leaves)
         primals = [leaf[0] for leaf in leaves]
@@ -236,7 +236,7 @@ def _uncollapsed_via_vmap(
         result = vmapped(*batched_flat)
 
         # De-batch order 0 (identical across directions) and collapse order K.
-        def _collapse_leaf(leaf: tuple[Tensor, ...]) -> tuple[Tensor, ...]:
+        def _collapse_leaf(leaf: Jet) -> Jet:
             return (leaf[0][0], *leaf[1:K], leaf[K].sum(0))
 
         return tree_map(_collapse_leaf, result, is_leaf=_is_jet_leaf)

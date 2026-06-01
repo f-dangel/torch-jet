@@ -25,7 +25,7 @@ from test.test_laplacian import (
     get_coefficients,
     laplacian,
 )
-from test.utils import DEVICES, mlp, setup_case, tolerances_for_device
+from test.utils import DEVICES, mlp, setup_case, tolerances_for
 
 # make generation of test cases deterministic
 manual_seed(0)
@@ -78,7 +78,7 @@ def test_laplacian_functions(
         f, x, strategy, randomization=None, weighting=weighting
     )()
 
-    assert_close(lap, lap_func, **tolerances_for_device(device))
+    assert_close(lap, lap_func, **tolerances_for(device))
 
 
 @mark.parametrize("device", DEVICES)
@@ -123,7 +123,7 @@ def test_randomized_laplacian_functions_identical(
     first_key = list(laps.keys())[0]
     reference = laps[first_key]
     for value in laps.values():
-        assert_close(reference, value, **tolerances_for_device(device))
+        assert_close(reference, value, **tolerances_for(device))
 
     # different seed must yield a different result (skip for rademacher:
     # v_i^2 = 1 makes the estimator exact for diagonal Hessians / rank-deficient
@@ -211,7 +211,7 @@ def test_bilaplacian_functions(config: dict[str, Any], strategy: str, device: st
 
     bilap_func = bilaplacian_function(f, x, strategy)()
 
-    assert_close(bilap, bilap_func, **tolerances_for_device(device))
+    assert_close(bilap, bilap_func, **tolerances_for(device))
 
 
 @mark.parametrize("device", DEVICES)

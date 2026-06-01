@@ -20,7 +20,7 @@ from jet.bilaplacian import bilaplacian as jet_bilaplacian
 from jet.laplacian import laplacian as jet_laplacian
 from jet.utils import run_seeded
 from test.test_laplacian import _check_mc_convergence
-from test.utils import DEVICES, setup_case, tolerances_for_device
+from test.utils import DEVICES, setup_case, tolerances_for
 from test.utils import SCALAR_OUTPUT_CASES as BILAPLACIAN_CASES
 
 
@@ -67,7 +67,7 @@ def test_bilaplacian(config: dict[str, Any], collapsed: bool, device: str):
     # using jets
     bilap_fn = jet_bilaplacian(f, x, collapsed=collapsed)
     bilap_jet = bilap_fn(x)
-    assert_close(bilap_func, bilap_jet, **tolerances_for_device(device))
+    assert_close(bilap_func, bilap_jet, **tolerances_for(device))
 
 
 @mark.xfail(
@@ -87,7 +87,7 @@ def test_bilaplacian_matches_nested_laplacian(
         jet_laplacian(f, x, collapsed=collapsed), x, collapsed=collapsed
     )
     expected = jet_bilaplacian(f, x, collapsed=collapsed)(x)
-    assert_close(lap_of_lap(x), expected, **tolerances_for_device(device))
+    assert_close(lap_of_lap(x), expected, **tolerances_for(device))
 
 
 @mark.parametrize("device", DEVICES)

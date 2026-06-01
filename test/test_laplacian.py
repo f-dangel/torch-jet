@@ -13,7 +13,7 @@ from jet.laplacian import SUPPORTED_DISTRIBUTIONS
 from jet.laplacian import laplacian as jet_laplacian
 from jet.utils import run_seeded
 from jet.weighted_laplacian import C_func_diagonal_increments, get_weighting
-from test.utils import DEVICES, setup_case, tolerances_for_device
+from test.utils import DEVICES, setup_case, tolerances_for
 from test.utils import SCALAR_OUTPUT_CASES as LAPLACIAN_CASES
 
 WEIGHTS = [
@@ -127,7 +127,7 @@ def test_Laplacian(
     # Using a manually-vmapped jet
     weighting = get_weighting(x, weights)
     lap_fn = jet_laplacian(f, x, weighting=weighting, collapsed=collapsed)(x)
-    assert_close(lap_rev, lap_fn, **tolerances_for_device(device))
+    assert_close(lap_rev, lap_fn, **tolerances_for(device))
 
 
 @mark.parametrize("device", DEVICES)

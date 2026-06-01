@@ -36,7 +36,7 @@ def dtype_for_device(device: str):
     return float32 if device == "mps" else float64
 
 
-def tolerances_for_device(device: str) -> dict[str, float]:
+def tolerances_for(device: str) -> dict[str, float]:
     """Relaxed ``assert_close`` tolerances for float32 devices (MPS).
 
     Default ``rtol=1.3e-6`` is calibrated for single-op float32 precision;
@@ -217,4 +217,4 @@ def assert_jet_matches_oracle(
     oracle = rev_collapsed_jet(f) if collapsed else rev_jet(f)
     actual = jet(f, mock_args, collapsed=collapsed)(*jet_args)
     expected = oracle(*jet_args)
-    assert_close(actual, expected, **tolerances_for_device(device))
+    assert_close(actual, expected, **tolerances_for(device))

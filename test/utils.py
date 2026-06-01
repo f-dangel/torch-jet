@@ -4,6 +4,7 @@ from typing import Any, Callable
 
 from pytest import param
 from torch import Tensor, float64, manual_seed, rand, rand_like, stack, zeros_like
+from torch.nn import Linear, Sequential, Tanh
 from torch.testing import assert_close
 from torch.utils._pytree import tree_flatten, tree_map
 
@@ -23,6 +24,14 @@ K_AND_MODE = [
     param(2, True, id="K=2-collapsed"),
     param(5, True, id="K=5-collapsed"),
 ]
+
+# Module-level MLP shared across the composition / laplacian / bilaplacian /
+# exp01 test layers. Sequential's Linear weights are concrete tensors at
+# trace time, which FX requires.
+manual_seed(0)
+MLP = Sequential(
+    Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
+).double()
 
 
 def shape(*dims: int) -> Callable[[], tuple[Tensor]]:
@@ -109,7 +118,9 @@ def rev_collapsed_jet(f: Callable[..., Any]) -> Callable[..., Any]:
             if len(leaf) - 1 != K:
                 raise ValueError(f"K mismatch across leaves: {K} vs {len(leaf) - 1}.")
             if leaf[1].shape[0] != R:
-                raise ValueError(f"R mismatch across leaves: {R} vs {leaf[1].shape[0]}.")
+                raise ValueError(
+                    f"R mismatch across leaves: {R} vs {leaf[1].shape[0]}."
+                )
 
         def direction(leaf: tuple[Tensor, ...], r: int) -> tuple[Tensor, ...]:
             c_K = leaf[K] if r == 0 else zeros_like(leaf[K])

@@ -1,20 +1,7 @@
 """Per-primitive correctness tests for Taylor mode.
 
-Each row in ``PRIMITIVE_CASES`` exercises **one dispatch branch** of a
-primitive registered with :class:`JetInterpreter`. Pointwise primitives
-collapse to a single row; non-commutative or operand-order-dependent
-primitives (binary ops, matmul, addmm) split into ``_JJ`` (both operands are
-jets), ``_JC`` (left is jet), and ``_CJ`` (right is jet) rows. "Constant"
-operands are closed over by the test ``f`` so they enter the captured graph
-as frozen constants.
-
-Oracles: ``rev_jet`` (standard) and ``rev_collapsed_jet`` (collapsed). Both
-compute Taylor coefficients via nested reverse-mode autograd over the Taylor
-path and are independent of the FX-trace + interpreter machinery.
-
-``K`` is sampled at the collapsed-mode floor (``K=2``) and a high order ``K=5``;
-intermediate orders exercise the same code paths and don't need their own
-coverage at the primitive layer.
+Each row in ``PRIMITIVE_CASES`` exercises one dispatch branch of a primitive
+registered with :class:`JetInterpreter`.
 """
 
 from typing import Any

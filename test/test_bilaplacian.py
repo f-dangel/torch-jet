@@ -13,7 +13,6 @@ from einops import einsum
 from pytest import mark
 from torch import Tensor, manual_seed, sigmoid
 from torch.func import hessian
-from torch.nn import Linear, Sequential, Tanh
 from torch.testing import assert_close
 
 from jet.bilaplacian import SUPPORTED_DISTRIBUTIONS
@@ -21,7 +20,7 @@ from jet.bilaplacian import bilaplacian as jet_bilaplacian
 from jet.laplacian import laplacian as jet_laplacian
 from jet.utils import run_seeded
 from test.test_laplacian import _check_mc_convergence
-from test.utils import setup_case, shape
+from test.utils import MLP, setup_case, shape
 
 DISTRIBUTIONS = SUPPORTED_DISTRIBUTIONS
 DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]
@@ -31,13 +30,7 @@ manual_seed(0)
 
 BILAPLACIAN_CASES = [
     # 5d tanh-activated two-layer MLP
-    {
-        "f": Sequential(
-            Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
-        ).double(),
-        "args_fn": shape(5),
-        "id": "two-layer-tanh-mlp",
-    },
+    {"f": MLP, "args_fn": shape(5), "id": "two-layer-tanh-mlp"},
     # 3d sigmoid(sigmoid) function
     {"f": lambda x: sigmoid(sigmoid(x)), "args_fn": shape(3), "id": "sigmoid-sigmoid"},
 ]

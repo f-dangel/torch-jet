@@ -7,16 +7,9 @@ Not primitive coverage -- see ``test_primitives.py`` for that.
 from typing import Any
 
 from pytest import mark
-from torch import Tensor, cos, float64, manual_seed, rand, sin, tanh
-from torch.nn import Linear, Sequential, Tanh
+from torch import Tensor, cos, float64, rand, sin, tanh
 
-from test.utils import K_AND_MODE, assert_jet_matches_oracle, shape, shapes
-
-# Module-level MLP so the captured graph is deterministic across runs.
-manual_seed(0)
-_MLP = Sequential(
-    Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
-).double()
+from test.utils import K_AND_MODE, MLP, assert_jet_matches_oracle, shape, shapes
 
 
 def _deep_pytree_f(x: Tensor, params: list) -> tuple[Tensor, dict[str, Tensor]]:
@@ -40,8 +33,8 @@ COMPOSITION_CASES = [
         "f": lambda x: (sin(x) * x).sum(0),
         "args_fn": shape(5),
     },
-    {"id": "mlp", "f": _MLP, "args_fn": shape(5)},
-    {"id": "mlp_batched", "f": _MLP, "args_fn": shape(10, 5)},
+    {"id": "mlp", "f": MLP, "args_fn": shape(5)},
+    {"id": "mlp_batched", "f": MLP, "args_fn": shape(10, 5)},
     {
         "id": "deep_pytree",
         "f": _deep_pytree_f,

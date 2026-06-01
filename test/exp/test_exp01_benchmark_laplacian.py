@@ -4,7 +4,6 @@ from typing import Any
 
 from pytest import mark
 from torch import manual_seed, sigmoid, vmap
-from torch.nn import Linear, Sequential, Tanh
 from torch.testing import assert_close
 
 from jet.bilaplacian import (
@@ -26,7 +25,7 @@ from test.test_laplacian import (
     get_coefficients,
     laplacian,
 )
-from test.utils import setup_case, shape
+from test.utils import MLP, setup_case, shape
 
 STRATEGY_IDS = [f"strategy={s}" for s in SUPPORTED_STRATEGIES]
 LAPLACIAN_DISTRIBUTION_IDS = [
@@ -46,13 +45,7 @@ BATCH_SIZE = 2
 
 EXP01_CASES = [
     # 5d tanh-activated two-layer MLP
-    {
-        "f": Sequential(
-            Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
-        ).double(),
-        "args_fn": shape(BATCH_SIZE, 5),
-        "id": "two-layer-tanh-mlp",
-    },
+    {"f": MLP, "args_fn": shape(BATCH_SIZE, 5), "id": "two-layer-tanh-mlp"},
     # 3d sigmoid(sigmoid) function
     {
         "f": lambda x: sigmoid(sigmoid(x)),

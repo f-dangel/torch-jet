@@ -98,7 +98,7 @@ def test_Bilaplacian_randomization(
     config: dict[str, Any],
     distribution: str,
     max_num_chunks: int = 500,
-    chunk_size: int = 512,
+    chunk_size: int = 256,
     target_rel_error: float = 1e-2,
 ):
     """Test convergence of the Bi-Laplacian's Monte-Carlo estimator.

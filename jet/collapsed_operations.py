@@ -13,7 +13,7 @@ At each nonlinear operation, the K-th output coefficient is computed as:
 from typing import Callable
 
 from scipy.special import comb
-from torch import Tensor, addmm, matmul, mm, ops
+from torch import Tensor, addmm, matmul, mm, ops, zeros_like
 from torch.func import vmap
 from torch.utils._pytree import register_pytree_node
 
@@ -340,6 +340,16 @@ def cjet_sum(
     return _apply_linear(self, lambda x: x.sum(pos))
 
 
+def cjet_zeros_like(self: CollapsedJetTuple, **kwargs) -> CollapsedJetTuple:
+    """Collapsed jet rule for ``aten.zeros_like``.
+
+    Output does not depend on input values, only shape/dtype. ``zeros_like``
+    on each entry preserves the per-slot shape contract: ``S`` for the
+    primal and the collapsed slot, ``(R, *S)`` for the batched coefficients.
+    """
+    return CollapsedJetTuple(zeros_like(c, **kwargs) for c in self)
+
+
 # ---------------------------------------------------------------------------
 # COLLAPSED_MAPPING
 # ---------------------------------------------------------------------------
@@ -365,4 +375,6 @@ COLLAPSED_MAPPING = {
     ops.aten.squeeze.dim: cjet_squeeze,
     # Reductions
     ops.aten.sum.dim_IntList: cjet_sum,
+    # Constant-output ops
+    ops.aten.zeros_like.default: cjet_zeros_like,
 }

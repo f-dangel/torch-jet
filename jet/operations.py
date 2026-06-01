@@ -621,6 +621,20 @@ def jet_sum(self: JetTuple, dim: list[int], keepdim: bool = False) -> JetTuple:
     return _apply_linear(self, lambda c: c.sum(pos))
 
 
+# --- Constant-output ops (output independent of input values) ---
+
+
+def jet_zeros_like(self: JetTuple, **kwargs) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.zeros_like(self)``.
+
+    Output does not depend on the input's values, only its shape/dtype, so
+    every Taylor coefficient is zero. Reusing ``zeros_like`` on each input
+    entry yields the right zero of the right shape (the primal's ``S`` for
+    the primal slot; coefficient shapes for the coefficient slots).
+    """
+    return JetTuple(zeros_like(c, **kwargs) for c in self)
+
+
 MAPPING = {
     # Elementwise unary
     ops.aten.sin.default: jet_sin,
@@ -641,4 +655,6 @@ MAPPING = {
     ops.aten.squeeze.dim: jet_squeeze,
     # Sum (dim reduction)
     ops.aten.sum.dim_IntList: jet_sum,
+    # Constant-output ops
+    ops.aten.zeros_like.default: jet_zeros_like,
 }

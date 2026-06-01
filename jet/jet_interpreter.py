@@ -92,8 +92,7 @@ class JetInterpreter(Interpreter):
             The result of the jet operation (a jet tuple) or the original op.
 
         Raises:
-            NotImplementedError: If a Taylor-dependent op has no jet rule, or
-                if the node has non-empty ``kwargs``.
+            NotImplementedError: If a Taylor-dependent op has no jet rule.
         """
         # TODO Only checks top-level args. Jets nested inside tuple/list/dict
         # args (e.g. for aten.stack, aten.cat) will be missed, causing a
@@ -105,12 +104,7 @@ class JetInterpreter(Interpreter):
                     f"No {self.label} rule for {target}. "
                     "Please file an issue or add a rule."
                 )
-            if kwargs:
-                raise NotImplementedError(
-                    f"{self.label.capitalize()} dispatch does not support kwargs "
-                    f"for {target} (got {kwargs})."
-                )
-            return self.mapping[target](*args)
+            return self.mapping[target](*args, **kwargs)
         return super().call_function(target, args, kwargs)
 
     def _normalize(

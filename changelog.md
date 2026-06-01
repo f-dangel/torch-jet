@@ -94,6 +94,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Slim the test suite into per-concern layers
+  ([PR](https://github.com/f-dangel/torch-jet/pull/136)).
+
 - Drop the `is_batched` parameter from the experiment harness functions
   (`laplacian_function` / `bilaplacian_function` in
   `jet/exp/exp01_benchmark_laplacian/execute.py` and the four matching JAX

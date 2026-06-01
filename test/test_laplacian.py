@@ -4,19 +4,17 @@ from typing import Any, Callable
 
 from einops import einsum
 from pytest import mark
-from torch import Tensor, eye, manual_seed, rand, sigmoid
+from torch import Tensor, eye
 from torch.func import hessian
 from torch.linalg import norm
-from torch.nn import Linear, Sequential, Tanh
+from torch.testing import assert_close
 
 from jet.laplacian import SUPPORTED_DISTRIBUTIONS
 from jet.laplacian import laplacian as jet_laplacian
 from jet.utils import run_seeded
 from jet.weighted_laplacian import C_func_diagonal_increments, get_weighting
-from test.test___init__ import setup_case
-
-DISTRIBUTIONS = SUPPORTED_DISTRIBUTIONS
-DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]
+from test.utils import SCALAR_OUTPUT_CASES as LAPLACIAN_CASES
+from test.utils import setup_case
 
 WEIGHTS = [
     None,
@@ -28,28 +26,6 @@ WEIGHT_IDS = [
     "weighted-laplacian",
     "rank-deficient-weighted-laplacian",
 ]
-
-# make generation of test cases deterministic
-manual_seed(0)
-
-LAPLACIAN_CASES = [
-    # 5d tanh-activated two-layer MLP
-    {
-        "f": Sequential(
-            Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
-        ).double(),
-        "mock_args_fn": lambda: (rand(5).double(),),
-        "id": "two-layer-tanh-mlp",
-    },
-    # 3d sigmoid(sigmoid) function
-    {
-        "f": lambda x: sigmoid(sigmoid(x)),
-        "mock_args_fn": lambda: (rand(3).double(),),
-        "id": "sigmoid-sigmoid",
-    },
-]
-
-LAPLACIAN_IDS = [config["id"] for config in LAPLACIAN_CASES]
 
 
 def laplacian(f: Callable[[Tensor], Tensor], x: Tensor, C: Tensor) -> Tensor:
@@ -124,7 +100,7 @@ def get_coefficients(x: Tensor, weights: str | None | tuple[str, float]) -> Tens
 
 @mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
-@mark.parametrize("config", LAPLACIAN_CASES, ids=LAPLACIAN_IDS)
+@mark.parametrize("config", LAPLACIAN_CASES, ids=lambda c: c["id"])
 def test_Laplacian(
     config: dict[str, Any],
     weights: str | None | tuple[str, float],
@@ -139,7 +115,7 @@ def test_Laplacian(
             used that has diagonal elements that are increments of 1 starting from 1.
         collapsed: Whether to use collapsed Taylor mode.
     """
-    f, x = setup_case(config)
+    f, (x,) = setup_case(config)
 
     # reference: Using PyTorch
     C = get_coefficients(x, weights)
@@ -148,16 +124,20 @@ def test_Laplacian(
     # Using a manually-vmapped jet
     weighting = get_weighting(x, weights)
     lap_fn = jet_laplacian(f, x, weighting=weighting, collapsed=collapsed)(x)
-    assert lap_rev.allclose(lap_fn), "Functorch and jet Laplacians do not match."
+    assert_close(lap_rev, lap_fn)
 
 
+@mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
-@mark.parametrize("distribution", DISTRIBUTIONS, ids=DISTRIBUTION_IDS)
-@mark.parametrize("config", LAPLACIAN_CASES, ids=LAPLACIAN_IDS)
+@mark.parametrize(
+    "distribution", SUPPORTED_DISTRIBUTIONS, ids=lambda d: f"distribution={d}"
+)
+@mark.parametrize("config", LAPLACIAN_CASES, ids=lambda c: c["id"])
 def test_Laplacian_randomization(
     config: dict[str, Any],
     distribution: str,
     weights: str | None,
+    collapsed: bool,
     max_num_chunks: int = 100,
     chunk_size: int = 256,
     target_rel_error: float = 1e-2,
@@ -170,11 +150,12 @@ def test_Laplacian_randomization(
         weights: The weighting to use for the Laplacian. If `None`, the Laplacian is
             unweighted. If `diagonal_increments`, a synthetic coefficient tensor is
             used that has diagonal elements that are increments of 1 starting from 1.
+        collapsed: Whether to use collapsed Taylor mode.
         max_num_chunks: Maximum number of chunks to accumulate. Default: `100`.
         chunk_size: Number of samples per chunk. Default: `256`.
         target_rel_error: Target relative error for convergence. Default: `1e-2`.
     """
-    f, x = setup_case(config)
+    f, (x,) = setup_case(config)
     randomization = (distribution, chunk_size)
 
     # reference: Using PyTorch
@@ -184,7 +165,9 @@ def test_Laplacian_randomization(
     # check convergence of MC estimator
     weighting = get_weighting(x, weights, randomization=randomization)
 
-    lap_fn = jet_laplacian(f, x, randomization=randomization, weighting=weighting)
+    lap_fn = jet_laplacian(
+        f, x, randomization=randomization, weighting=weighting, collapsed=collapsed
+    )
 
     converged = _check_mc_convergence(
         lap,

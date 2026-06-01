@@ -17,6 +17,7 @@ from torch import ops, rand
 from torch.func import functionalize
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.nn import Linear
+from torch.testing import assert_close
 
 from jet.tracing import capture_graph
 
@@ -70,4 +71,4 @@ def test_make_fx_supports_dict_arg_after_tuple_arg():
 
     args = ((rand(2),), {"x": rand(2), "y": rand(2)})
     expected = args[0][0] + args[1]["x"] + args[1]["y"]
-    assert graph(*args).allclose(expected)
+    assert_close(graph(*args), expected)

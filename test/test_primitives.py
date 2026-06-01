@@ -45,50 +45,50 @@ _SUB_CONST = tensor(2.0, dtype=float64)
 
 PRIMITIVE_CASES = [
     # ---- Unary pointwise -------------------------------------------------
-    {"id": "sin", "f": sin, "mock_args_fn": shape(4)},
-    {"id": "cos", "f": cos, "mock_args_fn": shape(4)},
-    {"id": "tanh", "f": tanh, "mock_args_fn": shape(4)},
-    {"id": "sigmoid", "f": sigmoid, "mock_args_fn": shape(4)},
+    {"id": "sin", "f": sin, "args_fn": shape(4)},
+    {"id": "cos", "f": cos, "args_fn": shape(4)},
+    {"id": "tanh", "f": tanh, "args_fn": shape(4)},
+    {"id": "sigmoid", "f": sigmoid, "args_fn": shape(4)},
     # ---- Unary with scalar exponent --------------------------------------
-    {"id": "pow", "f": lambda x: x**2.5, "mock_args_fn": shape(4)},
+    {"id": "pow", "f": lambda x: x**2.5, "args_fn": shape(4)},
     # ---- Binary add (commutative; still 3 dispatch branches) -------------
-    {"id": "add_JJ", "f": lambda x, y: x + y, "mock_args_fn": shapes((4,), (4,))},
-    {"id": "add_JC", "f": lambda x: x + 2.0, "mock_args_fn": shape(4)},
-    {"id": "add_CJ", "f": lambda x: 2.0 + x, "mock_args_fn": shape(4)},
+    {"id": "add_JJ", "f": lambda x, y: x + y, "args_fn": shapes((4,), (4,))},
+    {"id": "add_JC", "f": lambda x: x + 2.0, "args_fn": shape(4)},
+    {"id": "add_CJ", "f": lambda x: 2.0 + x, "args_fn": shape(4)},
     # ---- Binary sub (non-commutative) ------------------------------------
-    {"id": "sub_JJ", "f": lambda x, y: x - y, "mock_args_fn": shapes((4,), (4,))},
-    {"id": "sub_JC", "f": lambda x: x - 2.0, "mock_args_fn": shape(4)},
-    {"id": "sub_CJ", "f": lambda x: _SUB_CONST - x, "mock_args_fn": shape(4)},
+    {"id": "sub_JJ", "f": lambda x, y: x - y, "args_fn": shapes((4,), (4,))},
+    {"id": "sub_JC", "f": lambda x: x - 2.0, "args_fn": shape(4)},
+    {"id": "sub_CJ", "f": lambda x: _SUB_CONST - x, "args_fn": shape(4)},
     # ---- Binary mul ------------------------------------------------------
-    {"id": "mul_JJ", "f": lambda x, y: x * y, "mock_args_fn": shapes((4,), (4,))},
-    {"id": "mul_JC", "f": lambda x: x * 3.0, "mock_args_fn": shape(4)},
-    {"id": "mul_CJ", "f": lambda x: 3.0 * x, "mock_args_fn": shape(4)},
+    {"id": "mul_JJ", "f": lambda x, y: x * y, "args_fn": shapes((4,), (4,))},
+    {"id": "mul_JC", "f": lambda x: x * 3.0, "args_fn": shape(4)},
+    {"id": "mul_CJ", "f": lambda x: 3.0 * x, "args_fn": shape(4)},
     # ---- Matrix multiply (non-commutative) -------------------------------
-    {"id": "mm_JJ", "f": lambda A, B: A @ B, "mock_args_fn": shapes((3, 4), (4, 5))},
-    {"id": "mm_JC", "f": lambda A: A @ _MM_RIGHT_CONST, "mock_args_fn": shape(3, 4)},
-    {"id": "mm_CJ", "f": lambda B: _MM_LEFT_CONST @ B, "mock_args_fn": shape(4, 5)},
+    {"id": "mm_JJ", "f": lambda A, B: A @ B, "args_fn": shapes((3, 4), (4, 5))},
+    {"id": "mm_JC", "f": lambda A: A @ _MM_RIGHT_CONST, "args_fn": shape(3, 4)},
+    {"id": "mm_CJ", "f": lambda B: _MM_LEFT_CONST @ B, "args_fn": shape(4, 5)},
     # ---- addmm (3 dispatch branches over mat1/mat2; bias must be const) ---
     {
         "id": "addmm_mat1_mat2_jet",
         "f": lambda A, B: addmm(_ADDMM_BIAS, A, B),
-        "mock_args_fn": shapes((3, 4), (4, 5)),
+        "args_fn": shapes((3, 4), (4, 5)),
     },
     {
         "id": "addmm_mat1_jet",
         "f": lambda A: addmm(_ADDMM_BIAS, A, _ADDMM_RIGHT_CONST),
-        "mock_args_fn": shape(3, 4),
+        "args_fn": shape(3, 4),
     },
     {
         "id": "addmm_mat2_jet",
         "f": lambda B: addmm(_ADDMM_BIAS, _ADDMM_LEFT_CONST, B),
-        "mock_args_fn": shape(4, 5),
+        "args_fn": shape(4, 5),
     },
     # ---- Reduction -------------------------------------------------------
-    {"id": "sum_dim_0", "f": lambda x: x.sum(0), "mock_args_fn": shape(3, 4)},
+    {"id": "sum_dim_0", "f": lambda x: x.sum(0), "args_fn": shape(3, 4)},
     # ---- Shape-only ops --------------------------------------------------
-    {"id": "view", "f": lambda x: x.view(-1), "mock_args_fn": shape(3, 4)},
-    {"id": "unsqueeze", "f": lambda x: x.unsqueeze(0), "mock_args_fn": shape(4)},
-    {"id": "squeeze", "f": lambda x: x.squeeze(0), "mock_args_fn": shape(1, 4)},
+    {"id": "view", "f": lambda x: x.view(-1), "args_fn": shape(3, 4)},
+    {"id": "unsqueeze", "f": lambda x: x.unsqueeze(0), "args_fn": shape(4)},
+    {"id": "squeeze", "f": lambda x: x.squeeze(0), "args_fn": shape(1, 4)},
 ]
 
 

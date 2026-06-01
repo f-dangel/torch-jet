@@ -34,13 +34,13 @@ BILAPLACIAN_CASES = [
         "f": Sequential(
             Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
         ).double(),
-        "mock_args_fn": lambda: (rand(5).double(),),
+        "args_fn": lambda: (rand(5).double(),),
         "id": "two-layer-tanh-mlp",
     },
     # 3d sigmoid(sigmoid) function
     {
         "f": lambda x: sigmoid(sigmoid(x)),
-        "mock_args_fn": lambda: (rand(3).double(),),
+        "args_fn": lambda: (rand(3).double(),),
         "id": "sigmoid-sigmoid",
     },
 ]

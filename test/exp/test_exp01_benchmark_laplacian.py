@@ -41,7 +41,7 @@ manual_seed(0)
 
 #: Batch size used by all exp01 tests. The benchmark always runs batched, so
 #: the tests run batched too -- the cases below bake the batch dimension into
-#: their ``mock_args_fn``.
+#: their ``args_fn``.
 BATCH_SIZE = 2
 
 EXP01_CASES = [
@@ -50,13 +50,13 @@ EXP01_CASES = [
         "f": Sequential(
             Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
         ).double(),
-        "mock_args_fn": lambda: (rand(BATCH_SIZE, 5).double(),),
+        "args_fn": lambda: (rand(BATCH_SIZE, 5).double(),),
         "id": "two-layer-tanh-mlp",
     },
     # 3d sigmoid(sigmoid) function
     {
         "f": lambda x: sigmoid(sigmoid(x)),
-        "mock_args_fn": lambda: (rand(BATCH_SIZE, 3).double(),),
+        "args_fn": lambda: (rand(BATCH_SIZE, 3).double(),),
         "id": "sigmoid-sigmoid",
     },
 ]

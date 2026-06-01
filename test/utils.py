@@ -27,12 +27,12 @@ K_AND_MODE = [
 
 
 def shape(*dims: int) -> Callable[[], tuple[Tensor]]:
-    """Mock-args factory: one ``rand`` tensor of the given shape (float64)."""
+    """``args_fn`` factory: one ``rand`` tensor of the given shape (float64)."""
     return lambda: (rand(*dims, dtype=float64),)
 
 
 def shapes(*shape_pairs) -> Callable[[], tuple[Tensor, ...]]:
-    """Mock-args factory: one ``rand`` tensor per shape (all float64)."""
+    """``args_fn`` factory: one ``rand`` tensor per shape (all float64)."""
     return lambda: tuple(rand(*s, dtype=float64) for s in shape_pairs)
 
 
@@ -41,52 +41,52 @@ def setup_case(
 ) -> tuple[Callable[..., Tensor], tuple[Tensor, ...]]:
     """Instantiate the function and the arguments to evaluate it on.
 
-    The arguments are taken verbatim from ``config["mock_args_fn"]()``
+    The arguments are taken verbatim from ``config["args_fn"]()``
     -- if the case wants a batched input it should encode the batch dimension
-    into its ``mock_args_fn`` directly. Callers that re-pass the returned
+    into its ``args_fn`` directly. Callers that re-pass the returned
     tuple to a tracing API (where the library calls the parameter
     ``mock_args``) may rebind it locally to ``mock_args``.
 
     Args:
         config: Configuration dictionary of the test case. Must have ``"f"``
-            and ``"mock_args_fn"`` keys.
+            and ``"args_fn"`` keys.
 
     Returns:
         Tuple ``(f, args)`` where ``args`` is a tuple of tensors (one entry
         per positional argument of ``f``).
     """
     manual_seed(0)
-    return config["f"], config["mock_args_fn"]()
+    return config["f"], config["args_fn"]()
 
 
 def make_jet_args(
-    mock_args: tuple[Any, ...], K: int, *, collapsed: bool, R: int = 2
+    args: tuple[Any, ...], K: int, *, collapsed: bool, R: int = 2
 ) -> tuple[Any, ...]:
-    """Build random jet args matching ``mock_args``'s pytree structure.
+    """Build jet args from ``args`` by attaching Taylor coefficients per leaf.
 
-    Each tensor leaf ``t`` in ``mock_args`` becomes a jet tuple
-    ``(primal, c_1, ..., c_K)`` of tensors. Shape contract by mode:
+    Each tensor leaf ``t`` in ``args`` becomes a jet tuple
+    ``(t, c_1, ..., c_K)`` of tensors -- ``t`` itself is the primal. Shape
+    contract by mode:
 
     - **standard** (``collapsed=False``): every ``c_k`` has shape ``t.shape``.
       ``R`` is ignored.
-    - **collapsed** (``collapsed=True``): ``primal`` has shape ``t.shape``,
-      ``c_1..c_{K-1}`` have shape ``(R, *t.shape)`` (with ``c_2..c_{K-1}``
-      zero for simplicity), and ``c_K`` is zero of shape ``t.shape``. Only
-      the order-1 direction and the order-K collapsed slot are non-trivial
-      -- enough to exercise both shape contracts.
+    - **collapsed** (``collapsed=True``): ``c_1..c_{K-1}`` have shape
+      ``(R, *t.shape)`` (with ``c_2..c_{K-1}`` zero for simplicity), and
+      ``c_K`` is zero of shape ``t.shape``. Only the order-1 direction and
+      the order-K collapsed slot are non-trivial -- enough to exercise both
+      shape contracts.
     """
     manual_seed(42)
 
     def make_leaf(t: Tensor) -> tuple[Tensor, ...]:
         if not collapsed:
-            return tuple(rand_like(t) for _ in range(K + 1))
-        primal = rand_like(t)
+            return (t, *(rand_like(t) for _ in range(K)))
         c_1 = rand(R, *t.shape, dtype=t.dtype)
         middle = [zeros(R, *t.shape, dtype=t.dtype) for _ in range(K - 2)]
-        c_K = zeros_like(primal)
-        return (primal, c_1, *middle, c_K)
+        c_K = zeros_like(t)
+        return (t, c_1, *middle, c_K)
 
-    return tree_map(make_leaf, mock_args)
+    return tree_map(make_leaf, args)
 
 
 def assert_jet_matches_oracle(config: dict[str, Any], K: int, collapsed: bool) -> None:
@@ -97,13 +97,13 @@ def assert_jet_matches_oracle(config: dict[str, Any], K: int, collapsed: bool) -
     direction and sums at order ``K``.
     """
     f = config["f"]
-    mock_args = config["mock_args_fn"]()
-    args = make_jet_args(mock_args, K, collapsed=collapsed)
+    mock_args = config["args_fn"]()
+    jet_args = make_jet_args(mock_args, K, collapsed=collapsed)
     oracle = (
         jet._uncollapsed_via_vmap(f, mock_args, randomization=None)
         if collapsed
         else rev_jet(f)
     )
-    actual = jet.jet(f, mock_args, collapsed=collapsed)(*args)
-    expected = oracle(*args)
+    actual = jet.jet(f, mock_args, collapsed=collapsed)(*jet_args)
+    expected = oracle(*jet_args)
     assert_close(actual, expected)

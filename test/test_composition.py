@@ -44,7 +44,7 @@ def _deep_pytree_f(x: Tensor, params: list) -> tuple[Tensor, dict[str, Tensor]]:
     return (h + b0, {"a": cos(h) * b1, "b": tanh(h + b0 + b1)})
 
 
-def _deep_pytree_mock_args_fn() -> tuple:
+def _deep_pytree_args_fn() -> tuple:
     """Mock args for ``_deep_pytree_f``: ``(x, [w, [b0, b1]])`` of float64."""
     return (
         rand(3, dtype=float64),
@@ -58,36 +58,36 @@ COMPOSITION_CASES = [
         # ``.sum(0)`` (dim-IntList overload) — ``.sum()`` traces to
         # ``aten.sum.default`` which has no jet rule.
         "f": lambda x: (sin(x) * x).sum(0),
-        "mock_args_fn": shape(5),
+        "args_fn": shape(5),
     },
-    {"id": "mlp", "f": _MLP, "mock_args_fn": shape(5)},
-    {"id": "mlp_batched", "f": _MLP, "mock_args_fn": shape(10, 5)},
+    {"id": "mlp", "f": _MLP, "args_fn": shape(5)},
+    {"id": "mlp_batched", "f": _MLP, "args_fn": shape(10, 5)},
     {
         "id": "deep_pytree",
         "f": _deep_pytree_f,
-        "mock_args_fn": _deep_pytree_mock_args_fn,
+        "args_fn": _deep_pytree_args_fn,
     },
     {
         "id": "multi_input",
         "f": lambda x, y: sin(x) * cos(y),
-        "mock_args_fn": shapes((4,), (4,)),
+        "args_fn": shapes((4,), (4,)),
     },
     {
         "id": "multi_input_dict_output",
         "f": lambda x, y: {"sum": x + y, "prod": x * y},
-        "mock_args_fn": shapes((4,), (4,)),
+        "args_fn": shapes((4,), (4,)),
     },
     {
         "id": "dict_only_input",
         "f": lambda d: sin(d["a"]) * d["b"],
-        "mock_args_fn": lambda: (
+        "args_fn": lambda: (
             {"a": rand(4, dtype=float64), "b": rand(4, dtype=float64)},
         ),
     },
     {
         "id": "dict_first_input",
         "f": lambda params, x: params["scale"] * sin(x) + params["bias"],
-        "mock_args_fn": lambda: (
+        "args_fn": lambda: (
             {"scale": rand(3, dtype=float64), "bias": rand(3, dtype=float64)},
             rand(3, dtype=float64),
         ),

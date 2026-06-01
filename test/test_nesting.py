@@ -1,13 +1,5 @@
 """Nesting Taylor mode: ``jet(jet(f, mock_inner), mock_outer)``.
 
-The inner :func:`jet` returns a callable whose positional argument is a jet
-tuple ``(primal, c_1, ..., c_{K_inner})``. To trace it with an outer
-:func:`jet`, ``mock_outer`` mirrors that jet-tuple shape literally -- one
-container holding ``K_inner + 1`` tensor leaves. The outer then assigns
-``K_outer + 1`` Taylor coefficients to each leaf at call time. Output
-structure: a pytree mirroring the inner output, with each tensor leaf
-replaced by a ``K_outer + 1``-tuple.
-
 This is one analytically-verifiable smoke test (sin, ``K_inner = K_outer = 1``).
 The expected coefficients come from differentiating the closed-form inner
 jet ``inner(x_p, x_c) = (sin(x_p), cos(x_p) * x_c)`` along the outer

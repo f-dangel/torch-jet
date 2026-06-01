@@ -191,10 +191,8 @@ K = list(range(K_MAX + 1))
 K_IDS = [f"derivative_order={derivative_order}" for derivative_order in K]
 
 
-def setup_case(
-    config: dict[str, Any], derivative_order: int | None = None
-) -> tuple[Callable[[Tensor], Tensor], Tensor, tuple[Tensor, ...]]:
-    """Instantiate the function, its input, and Taylor coefficients.
+def setup_case(config: dict[str, Any]) -> tuple[Callable[[Tensor], Tensor], Tensor]:
+    """Instantiate the function and its input.
 
     The input shape is taken verbatim from ``config["mock_args_fn"]()`` -- if
     the case wants a batched input it should encode the batch dimension into
@@ -203,28 +201,15 @@ def setup_case(
     Args:
         config: Configuration dictionary of the test case. Must have ``"f"`` and
             ``"mock_args_fn"`` keys.
-        derivative_order: The number of Taylor coefficients to generate. No
-            coefficients are generated if ``None``. Default: ``None``.
 
     Returns:
-        Tuple containing the function, the input tensor, and the Taylor
-        coefficients. All are in double precision to avoid numerical issues.
+        Tuple containing the function and the input tensor in double precision.
     """
     manual_seed(0)
     f = config["f"]
-
-    # Extract shape from mock_args_fn (single-input cases only)
-    mock_args = config["mock_args_fn"]()
-    shape = mock_args[0].shape
-
+    shape = config["mock_args_fn"]()[0].shape
     x = rand(*shape).double()
-    vs = (
-        ()
-        if derivative_order is None
-        else tuple(rand(*shape).double() for _ in range(derivative_order))
-    )
-
-    return f, x, vs
+    return f, x
 
 
 # ---------------------------------------------------------------------------

@@ -80,10 +80,10 @@ def test_laplacian_functions(
             unweighted. If `diagonal_increments`, a synthetic coefficient tensor is
             used that has diagonal elements that are increments of 1 starting from 1.
     """
-    f, x, _ = setup_case(config)
+    f, x = setup_case(config)
 
     C = vmap(lambda x: get_coefficients(x, weights))(x)
-    lap_func = vmap(lambda x, C: laplacian(f, x, C))  # noqa: E731
+    lap_func = vmap(lambda x, C: laplacian(f, x, C))
     lap = lap_func(x, C)
 
     weighting = get_weighting(x[0], weights)
@@ -115,7 +115,7 @@ def test_randomized_laplacian_functions_identical(
             unweighted. If `diagonal_increments`, a synthetic coefficient tensor is
             used that has diagonal elements that are increments of 1 starting from 1.
     """
-    f, x, _ = setup_case(config)
+    f, x = setup_case(config)
 
     randomization = (distribution, num_samples)
     weighting = get_weighting(x[0], weights, randomization=randomization)
@@ -175,10 +175,10 @@ def test_randomized_laplacian_functions_converge(
         chunk_size: Number of samples per chunk. Default: `64`.
         target_rel_error: Target relative error for convergence. Default: `5e-2`.
     """
-    f, X, _ = setup_case(config)
+    f, X = setup_case(config)
 
     C = vmap(lambda x: get_coefficients(x, weights))(X)
-    lap_func = vmap(lambda x, C: laplacian(f, x, C))  # noqa: E731
+    lap_func = vmap(lambda x, C: laplacian(f, x, C))
     lap = lap_func(X, C)
 
     randomization = (distribution, chunk_size)
@@ -208,8 +208,8 @@ def test_bilaplacian_functions(config: dict[str, Any], strategy: str):
         config: Configuration dictionary of the test case.
         strategy: The strategy to test.
     """
-    f, x, _ = setup_case(config)
-    bilap_func = vmap(lambda x: bilaplacian(f, x))  # noqa: E731
+    f, x = setup_case(config)
+    bilap_func = vmap(lambda x: bilaplacian(f, x))
     bilap = bilap_func(x)
 
     bilap_func = bilaplacian_function(f, x, strategy)()
@@ -233,7 +233,7 @@ def test_randomized_bilaplacian_functions_identical(
         distribution: The distribution from which to draw random vectors.
         num_samples: Number of samples to draw. Default: `42`.
     """
-    f, x, _ = setup_case(config)
+    f, x = setup_case(config)
     randomization = (distribution, num_samples)
 
     bilaps = {}
@@ -282,10 +282,10 @@ def test_randomized_bilaplacian_functions_converge(
         chunk_size: Number of samples per chunk. Default: `128`.
         target_rel_error: Target relative error for convergence. Default: `5e-2`.
     """
-    f, X, _ = setup_case(config)
+    f, X = setup_case(config)
     randomization = (distribution, chunk_size)
 
-    bilap_func = vmap(lambda x: bilaplacian(f, x))  # noqa: E731
+    bilap_func = vmap(lambda x: bilaplacian(f, x))
     bilap = bilap_func(X)
 
     # check convergence of the Monte-Carlo estimator

@@ -88,11 +88,13 @@ def test_bilaplacian(config: dict[str, Any], collapsed: bool):
     assert_close(bilap_func, bilap_jet)
 
 
+@mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
 @mark.parametrize("distribution", DISTRIBUTIONS, ids=DISTRIBUTION_IDS)
 @mark.parametrize("config", BILAPLACIAN_CASES, ids=BILAPLACIAN_IDS)
 def test_Bilaplacian_randomization(
     config: dict[str, Any],
     distribution: str,
+    collapsed: bool,
     max_num_chunks: int = 500,
     chunk_size: int = 256,
     target_rel_error: float = 1e-2,
@@ -102,6 +104,7 @@ def test_Bilaplacian_randomization(
     Args:
         config: Configuration dictionary of the test case.
         distribution: The distribution from which to draw random vectors.
+        collapsed: Whether to use collapsed Taylor mode.
         max_num_chunks: Maximum number of chunks to accumulate. Default: `200`.
         chunk_size: Number of samples per chunk. Default: `256`.
         target_rel_error: Target relative error for convergence. Default: `1e-2`.
@@ -114,7 +117,7 @@ def test_Bilaplacian_randomization(
     randomization = (distribution, chunk_size)
 
     # check convergence of MC estimator
-    bilap_fn = jet_bilaplacian(f, x, randomization=randomization)
+    bilap_fn = jet_bilaplacian(f, x, randomization=randomization, collapsed=collapsed)
 
     converged = _check_mc_convergence(
         bilap,

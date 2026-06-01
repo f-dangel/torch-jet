@@ -3,7 +3,7 @@
 from typing import Any, Callable
 
 from pytest import param
-from torch import Tensor, float64, manual_seed, rand, rand_like, zeros, zeros_like
+from torch import Tensor, float64, manual_seed, rand, rand_like, zeros_like
 from torch.testing import assert_close
 from torch.utils._pytree import tree_map
 
@@ -68,23 +68,24 @@ def make_jet_args(
     ``(t, c_1, ..., c_K)`` of tensors -- ``t`` itself is the primal. Shape
     contract by mode:
 
-    - **standard** (``collapsed=False``): every ``c_k`` has shape ``t.shape``.
-      ``R`` is ignored.
+    - **standard** (``collapsed=False``): every ``c_k`` has shape ``t.shape``,
+      randomly drawn. ``R`` is ignored.
     - **collapsed** (``collapsed=True``): ``c_1..c_{K-1}`` have shape
-      ``(R, *t.shape)`` (with ``c_2..c_{K-1}`` zero for simplicity), and
-      ``c_K`` is zero of shape ``t.shape``. Only the order-1 direction and
-      the order-K collapsed slot are non-trivial -- enough to exercise both
-      shape contracts.
+      ``(R, *t.shape)``, randomly drawn (each carries the ``R`` directions);
+      ``c_K`` has shape ``t.shape`` and is zero. The collapsed oracle
+      (:func:`jet._uncollapsed_via_vmap`) shares the input ``c_K`` across all
+      ``R`` per-direction standard-jet calls and sums at the end, which
+      multiplies any non-zero input ``c_K`` by ``R`` -- the in-interpreter
+      collapsed path processes it once, so a non-zero ``c_K`` makes the two
+      disagree. Keep it zero.
     """
     manual_seed(42)
 
     def make_leaf(t: Tensor) -> tuple[Tensor, ...]:
         if not collapsed:
             return (t, *(rand_like(t) for _ in range(K)))
-        c_1 = rand(R, *t.shape, dtype=t.dtype)
-        middle = [zeros(R, *t.shape, dtype=t.dtype) for _ in range(K - 2)]
-        c_K = zeros_like(t)
-        return (t, c_1, *middle, c_K)
+        batched = [rand(R, *t.shape, dtype=t.dtype) for _ in range(K - 1)]
+        return (t, *batched, zeros_like(t))
 
     return tree_map(make_leaf, args)
 

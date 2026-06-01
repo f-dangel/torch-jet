@@ -148,6 +148,7 @@ def test_Laplacian(
     assert_close(lap_rev, lap_fn)
 
 
+@mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize("distribution", DISTRIBUTIONS, ids=DISTRIBUTION_IDS)
 @mark.parametrize("config", LAPLACIAN_CASES, ids=LAPLACIAN_IDS)
@@ -155,6 +156,7 @@ def test_Laplacian_randomization(
     config: dict[str, Any],
     distribution: str,
     weights: str | None,
+    collapsed: bool,
     max_num_chunks: int = 100,
     chunk_size: int = 256,
     target_rel_error: float = 1e-2,
@@ -167,6 +169,7 @@ def test_Laplacian_randomization(
         weights: The weighting to use for the Laplacian. If `None`, the Laplacian is
             unweighted. If `diagonal_increments`, a synthetic coefficient tensor is
             used that has diagonal elements that are increments of 1 starting from 1.
+        collapsed: Whether to use collapsed Taylor mode.
         max_num_chunks: Maximum number of chunks to accumulate. Default: `100`.
         chunk_size: Number of samples per chunk. Default: `256`.
         target_rel_error: Target relative error for convergence. Default: `1e-2`.
@@ -181,7 +184,9 @@ def test_Laplacian_randomization(
     # check convergence of MC estimator
     weighting = get_weighting(x, weights, randomization=randomization)
 
-    lap_fn = jet_laplacian(f, x, randomization=randomization, weighting=weighting)
+    lap_fn = jet_laplacian(
+        f, x, randomization=randomization, weighting=weighting, collapsed=collapsed
+    )
 
     converged = _check_mc_convergence(
         lap,

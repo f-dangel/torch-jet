@@ -324,9 +324,7 @@ def cjet_squeeze(self: CollapsedJetTuple, dim: int) -> CollapsedJetTuple:
     return _apply_linear(self, lambda x: ops.aten.squeeze.dim(x, dim))
 
 
-def cjet_squeeze_dims(
-    self: CollapsedJetTuple, dim: list[int]
-) -> CollapsedJetTuple:
+def cjet_squeeze_dims(self: CollapsedJetTuple, dim: list[int]) -> CollapsedJetTuple:
     """Collapsed jet rule for the multi-dim ``aten.squeeze.dims`` overload."""
     return _apply_linear(self, lambda x: ops.aten.squeeze.dims(x, dim))
 

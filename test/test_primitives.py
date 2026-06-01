@@ -51,6 +51,16 @@ PRIMITIVE_CASES = [
     # ---- Binary mul (3 dispatch branches + aliased ``x*x``) --------------
     {"id": "mul_JJ", "f": lambda x, y: x * y, "args_fn": shapes((4,), (4,))},
     {"id": "mul_JJ_aliased", "f": lambda x: x * x, "args_fn": shape(4)},
+    # ``mul_JJ_diff_rank`` operands have different primal ranks. In collapsed
+    # mode this exposes whether the Leibniz cross term aligns the leading
+    # direction dim ``R`` of both operands instead of relying on PyTorch
+    # broadcasting (which right-aligns and would put one operand's ``R``
+    # against a middle primal dim of the other).
+    {
+        "id": "mul_JJ_diff_rank",
+        "f": lambda x, y: x * y,
+        "args_fn": shapes((3,), (2, 3)),
+    },
     {"id": "mul_JC", "f": lambda x: x * 3.0, "args_fn": shape(4)},
     {"id": "mul_CJ", "f": lambda x: 3.0 * x, "args_fn": shape(4)},
     # ---- Matrix multiply (non-commutative) -------------------------------

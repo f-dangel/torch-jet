@@ -21,7 +21,7 @@ def test_constant_output_shape(collapsed: bool):
     - Standard mode: each coefficient ``c_1..c_K`` is shape ``S``.
     - Collapsed mode: ``c_1..c_{K-1}`` are ``(R, *S)`` and ``c_K`` is ``S``.
     """
-    K, R, out_shape = 2, 4, (5,)
+    K, R, out_shape = 2, 3, (4,)
     mock_args = (zeros(3, dtype=float64),)
 
     def f(x: Tensor) -> tuple[Tensor, Tensor]:

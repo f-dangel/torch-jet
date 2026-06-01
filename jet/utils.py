@@ -9,9 +9,6 @@ from torch.fx import GraphModule, Node
 from torch.fx.passes.graph_drawer import FxGraphDrawer
 from torch.random import fork_rng
 
-# Type aliases for arguments and return values of jet-able functions.
-Primal = Tensor
-Value = Tensor
 #: A jet leaf: ``(primal, c_1, ..., c_K)`` bundling a primal with its ``K``
 #: Taylor coefficients. Type-checker hint only — not a runtime constructor.
 Jet = tuple[Tensor, ...]

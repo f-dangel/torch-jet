@@ -38,25 +38,34 @@ _ADDMM_RIGHT_CONST = rand(4, 5, dtype=float64)
 _SUB_CONST = tensor(2.0, dtype=float64)
 
 
+_UNARY_POINTWISE = {"sin": sin, "cos": cos, "tanh": tanh, "sigmoid": sigmoid}
+_UNARY_SHAPES = {"1d": (4,), "2d": (3, 4)}
+
 PRIMITIVE_CASES = [
-    # ---- Unary pointwise -------------------------------------------------
-    {"id": "sin", "f": sin, "args_fn": shape(4)},
-    {"id": "cos", "f": cos, "args_fn": shape(4)},
-    {"id": "tanh", "f": tanh, "args_fn": shape(4)},
-    {"id": "sigmoid", "f": sigmoid, "args_fn": shape(4)},
-    # ---- Unary with scalar exponent (float, plus a high integer exponent) -
+    # ---- Unary pointwise (cross-product over shapes) ---------------------
+    *(
+        {"id": f"{name}-{sid}", "f": fn, "args_fn": shape(*dims)}
+        for name, fn in _UNARY_POINTWISE.items()
+        for sid, dims in _UNARY_SHAPES.items()
+    ),
+    # ---- Unary with scalar exponent (float + low/high integer) -----------
+    # ``pow_int_5`` at ``K=5`` hits the order-equals-exponent edge where the
+    # K-th derivative of ``x**5`` vanishes.
     {"id": "pow_float", "f": lambda x: x**2.5, "args_fn": shape(4)},
+    {"id": "pow_int_5", "f": lambda x: x**5, "args_fn": shape(4)},
     {"id": "pow_int_10", "f": lambda x: x**10, "args_fn": shape(4)},
-    # ---- Binary add (commutative; still 3 dispatch branches) -------------
+    # ---- Binary add (commutative; 3 dispatch branches + aliased) ---------
     {"id": "add_JJ", "f": lambda x, y: x + y, "args_fn": shapes((4,), (4,))},
+    {"id": "add_JJ_aliased", "f": lambda x: x + x, "args_fn": shape(4)},
     {"id": "add_JC", "f": lambda x: x + 2.0, "args_fn": shape(4)},
     {"id": "add_CJ", "f": lambda x: 2.0 + x, "args_fn": shape(4)},
     # ---- Binary sub (non-commutative) ------------------------------------
     {"id": "sub_JJ", "f": lambda x, y: x - y, "args_fn": shapes((4,), (4,))},
     {"id": "sub_JC", "f": lambda x: x - 2.0, "args_fn": shape(4)},
     {"id": "sub_CJ", "f": lambda x: _SUB_CONST - x, "args_fn": shape(4)},
-    # ---- Binary mul ------------------------------------------------------
+    # ---- Binary mul (3 dispatch branches + aliased ``x*x``) --------------
     {"id": "mul_JJ", "f": lambda x, y: x * y, "args_fn": shapes((4,), (4,))},
+    {"id": "mul_JJ_aliased", "f": lambda x: x * x, "args_fn": shape(4)},
     {"id": "mul_JC", "f": lambda x: x * 3.0, "args_fn": shape(4)},
     {"id": "mul_CJ", "f": lambda x: 3.0 * x, "args_fn": shape(4)},
     # ---- Matrix multiply (non-commutative) -------------------------------

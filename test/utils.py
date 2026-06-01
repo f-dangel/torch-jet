@@ -52,8 +52,8 @@ def setup_case(
             and ``"mock_args_fn"`` keys.
 
     Returns:
-        Tuple containing the function and the mock-args tuple it consumes
-        (one entry per positional argument of ``f``).
+        Tuple ``(f, args)`` where ``args`` is a tuple of tensors (one entry
+        per positional argument of ``f``).
     """
     manual_seed(0)
     return config["f"], config["mock_args_fn"]()

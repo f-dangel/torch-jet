@@ -194,22 +194,20 @@ K_IDS = [f"derivative_order={derivative_order}" for derivative_order in K]
 def setup_case(config: dict[str, Any]) -> tuple[Callable[[Tensor], Tensor], Tensor]:
     """Instantiate the function and its input.
 
-    The input shape is taken verbatim from ``config["mock_args_fn"]()`` -- if
-    the case wants a batched input it should encode the batch dimension into
-    its ``mock_args_fn`` directly.
+    The input is taken verbatim from the first leaf of ``config["mock_args_fn"]()``
+    -- if the case wants a batched input it should encode the batch dimension
+    into its ``mock_args_fn`` directly.
 
     Args:
         config: Configuration dictionary of the test case. Must have ``"f"`` and
-            ``"mock_args_fn"`` keys.
+            ``"mock_args_fn"`` keys. ``mock_args_fn()`` must return a tuple
+            whose first leaf is the (already double-precision) input tensor.
 
     Returns:
-        Tuple containing the function and the input tensor in double precision.
+        Tuple containing the function and the input tensor.
     """
     manual_seed(0)
-    f = config["f"]
-    shape = config["mock_args_fn"]()[0].shape
-    x = rand(*shape).double()
-    return f, x
+    return config["f"], config["mock_args_fn"]()[0]
 
 
 # ---------------------------------------------------------------------------

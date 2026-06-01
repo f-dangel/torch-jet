@@ -32,16 +32,16 @@ manual_seed(0)
 
 #: Batch size used by all exp01 tests. The benchmark always runs batched, so
 #: the tests run batched too -- the cases below bake the batch dimension into
-#: their ``input_shapes``.
+#: their ``args``.
 BATCH_SIZE = 2
 
 EXP01_CASES = [
     # 5d tanh-activated two-layer MLP
-    {"f": mlp, "input_shapes": [(BATCH_SIZE, 5)], "id": "two-layer-tanh-mlp"},
+    {"f": mlp, "args": [(BATCH_SIZE, 5)], "id": "two-layer-tanh-mlp"},
     # 3d sigmoid(sigmoid) function
     {
         "f": lambda device: lambda x: sigmoid(sigmoid(x)),
-        "input_shapes": [(BATCH_SIZE, 3)],
+        "args": [(BATCH_SIZE, 3)],
         "id": "sigmoid-sigmoid",
     },
 ]

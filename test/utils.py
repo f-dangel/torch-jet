@@ -1,11 +1,13 @@
 """Utility functions for testing."""
 
+from functools import cache
 from typing import Any, Callable
 
 from pytest import param
 from torch import (
     Tensor,
     cuda,
+    dtype,
     float32,
     float64,
     manual_seed,
@@ -31,9 +33,28 @@ if mps.is_available():
     DEVICES.append("mps")
 
 
-def dtype_for_device(device: str):
-    """MPS doesn't support float64; CPU/CUDA use float64."""
+def dtype_for_device(device: str) -> dtype:
+    """Default floating dtype for ``device``.
+
+    MPS doesn't support ``float64``, so MPS gets ``float32``; CPU and CUDA
+    use ``float64`` (the test suite's preferred precision).
+    """
     return float32 if device == "mps" else float64
+
+
+def device_kw(device: str) -> dict[str, Any]:
+    """Tensor-factory kwargs (``dtype``, ``device``) for ``device``."""
+    return {"dtype": dtype_for_device(device), "device": device}
+
+
+def _stateless(f: Callable) -> Callable[[str], Callable]:
+    """Wrap a device-independent test function as a device-aware builder."""
+    return lambda device: f
+
+
+def _is_shape(x: Any) -> bool:
+    """Identify shape tuples (``tuple[int, ...]``) as pytree leaves."""
+    return isinstance(x, tuple) and all(isinstance(d, int) for d in x)
 
 
 def tolerances_for(device: str) -> dict[str, float]:
@@ -43,9 +64,7 @@ def tolerances_for(device: str) -> dict[str, float]:
     higher-order Taylor coefficients accumulate roundoff and need headroom.
     Float64 keeps the default (no relaxation).
     """
-    if device == "mps":
-        return {"rtol": 1e-3, "atol": 1e-3}
-    return {}
+    return {"rtol": 5e-4, "atol": 1e-6} if device == "mps" else {}
 
 
 #: Valid ``(K, collapsed)`` pairs for the standard-vs-collapsed mode sweep.
@@ -60,31 +79,26 @@ K_AND_MODE = [
 ]
 
 
-#: Per-device cache for the two-layer tanh MLP used by composition / laplacian
-#: / bilaplacian / exp01 tests. Sequential's Linear weights are concrete
-#: tensors at trace time, which FX requires.
-_MLP_CACHE: dict[str, Sequential] = {}
-
-
+@cache
 def mlp(device: str) -> Sequential:
-    """Build (or retrieve cached) two-layer tanh-activated MLP on ``device``."""
-    if device not in _MLP_CACHE:
-        manual_seed(0)
-        net = Sequential(
-            Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
-        )
-        _MLP_CACHE[device] = net.to(device=device, dtype=dtype_for_device(device))
-    return _MLP_CACHE[device]
+    """Build (or retrieve cached) two-layer tanh-activated MLP on ``device``.
+
+    Sequential's Linear weights are concrete tensors at trace time, which FX
+    requires. Cached per device.
+    """
+    manual_seed(0)
+    net = Sequential(Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh())
+    return net.to(device=device, dtype=dtype_for_device(device))
 
 
 #: Scalar-output cases shared by the laplacian + bilaplacian consumer tests.
 #: ``f`` is a builder ``device -> Callable``; tensor inputs are described
-#: declaratively as ``input_shapes`` (one shape tuple per positional arg).
+#: declaratively as ``args`` (a pytree of shape tuples; see ``setup_case``).
 SCALAR_OUTPUT_CASES = [
-    {"f": mlp, "input_shapes": [(5,)], "id": "two-layer-tanh-mlp"},
+    {"f": mlp, "args": [(5,)], "id": "two-layer-tanh-mlp"},
     {
-        "f": lambda device: lambda x: sigmoid(sigmoid(x)),
-        "input_shapes": [(3,)],
+        "f": _stateless(lambda x: sigmoid(sigmoid(x))),
+        "args": [(3,)],
         "id": "sigmoid-sigmoid",
     },
 ]
@@ -95,29 +109,26 @@ def setup_case(
 ) -> tuple[Callable[..., Tensor], tuple[Any, ...]]:
     """Instantiate the function and the arguments on ``device``.
 
-    Each case dict carries a function builder ``"f": device -> Callable`` and
-    either ``"input_shapes": list[tuple[int, ...]]`` (flat tuple of plain
-    tensors, materialized here) or ``"args_builder": device -> tuple`` (for
-    pytree-shaped inputs).
+    Each case dict carries:
 
-    Args:
-        config: Configuration dictionary of the test case.
-        device: Device to materialize the function and arguments on.
+    - ``"f"``: a builder ``device -> Callable``.
+    - ``"args"``: a list of positional-argument specs, one entry per
+      positional arg of ``f``. Each spec is a pytree (``list``/``dict``
+      containers) whose leaves are shape tuples (``tuple[int, ...]``).
+      Each shape tuple becomes a ``rand`` tensor of that shape on
+      ``device`` with the device's preferred dtype. Tuples are always
+      leaves; nest with ``list``/``dict`` containers if you need pytree
+      shape.
 
     Returns:
         Tuple ``(f, args)`` where ``args`` is the materialized positional
-        argument tuple.
+        argument tuple, preserving the input pytree structure.
     """
     manual_seed(0)
     f = config["f"](device)
-    if "input_shapes" in config:
-        dtype = dtype_for_device(device)
-        args = tuple(
-            rand(*s, dtype=dtype, device=device) for s in config["input_shapes"]
-        )
-    else:
-        args = config["args_builder"](device)
-    return f, args
+    kw = device_kw(device)
+    args = tree_map(lambda s: rand(*s, **kw), config["args"], is_leaf=_is_shape)
+    return f, tuple(args)
 
 
 def make_jet_args(

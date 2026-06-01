@@ -7,13 +7,13 @@ Not primitive coverage -- see ``test_primitives.py`` for that.
 from typing import Any
 
 from pytest import mark
-from torch import Tensor, cos, rand, sin, tanh
+from torch import Tensor, cos, sin, tanh
 
 from test.utils import (
     DEVICES,
     K_AND_MODE,
+    _stateless,
     assert_jet_matches_oracle,
-    dtype_for_device,
     mlp,
 )
 
@@ -25,70 +25,49 @@ def _deep_pytree_f(x: Tensor, params: list) -> tuple[Tensor, dict[str, Tensor]]:
     return (h + b0, {"a": cos(h) * b1, "b": tanh(h + b0 + b1)})
 
 
-def _deep_pytree_args(device: str) -> tuple:
-    """Mock args for ``_deep_pytree_f``: ``(x, [w, [b0, b1]])``."""
-    kw = {"dtype": dtype_for_device(device), "device": device}
-    return (rand(3, **kw), [rand(3, **kw), [rand(3, **kw), rand(3, **kw)]])
-
-
-def _dict_only_args(device: str) -> tuple:
-    kw = {"dtype": dtype_for_device(device), "device": device}
-    return ({"a": rand(4, **kw), "b": rand(4, **kw)},)
-
-
-def _dict_first_args(device: str) -> tuple:
-    kw = {"dtype": dtype_for_device(device), "device": device}
-    return ({"scale": rand(3, **kw), "bias": rand(3, **kw)}, rand(3, **kw))
-
-
-def _stateless(f):
-    """Wrap a device-independent function as a builder."""
-    return lambda device: f
-
-
 COMPOSITION_CASES = [
     {
         "id": "scalar_Rn_to_R",
         "f": _stateless(lambda x: (sin(x) * x).sum(0)),
-        "input_shapes": [(5,)],
+        "args": [(5,)],
     },
-    {"id": "mlp", "f": mlp, "input_shapes": [(5,)]},
-    {"id": "mlp_batched", "f": mlp, "input_shapes": [(10, 5)]},
+    {"id": "mlp", "f": mlp, "args": [(5,)]},
+    {"id": "mlp_batched", "f": mlp, "args": [(10, 5)]},
     {
         "id": "deep_pytree",
         "f": _stateless(_deep_pytree_f),
-        "args_builder": _deep_pytree_args,
+        "args": [(3,), [(3,), [(3,), (3,)]]],
     },
     {
         "id": "sin_residual",
         # variable aliasing: ``x`` appears both inside ``sin`` and outside.
         "f": _stateless(lambda x: sin(x) + x),
-        "input_shapes": [(3,)],
+        "args": [(3,)],
     },
     {
         "id": "multi_input",
         "f": _stateless(lambda x, y: sin(x) * cos(y)),
-        "input_shapes": [(4,), (4,)],
+        "args": [(4,), (4,)],
     },
     {
         "id": "multi_input_tuple_output",
         "f": _stateless(lambda x, y: (x + y, x * y)),
-        "input_shapes": [(4,), (4,)],
+        "args": [(4,), (4,)],
     },
     {
         "id": "multi_input_dict_output",
         "f": _stateless(lambda x, y: {"sum": x + y, "prod": x * y}),
-        "input_shapes": [(4,), (4,)],
+        "args": [(4,), (4,)],
     },
     {
         "id": "dict_only_input",
         "f": _stateless(lambda d: sin(d["a"]) * d["b"]),
-        "args_builder": _dict_only_args,
+        "args": [{"a": (4,), "b": (4,)}],
     },
     {
         "id": "dict_first_input",
         "f": _stateless(lambda params, x: params["scale"] * sin(x) + params["bias"]),
-        "args_builder": _dict_first_args,
+        "args": [{"scale": (3,), "bias": (3,)}, (3,)],
     },
 ]
 

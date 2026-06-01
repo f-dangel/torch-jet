@@ -583,6 +583,15 @@ def jet_unsqueeze(self: JetTuple, dim: int) -> JetTuple:
     return _apply_linear(self, lambda c: ops.aten.unsqueeze.default(c, dim))
 
 
+def jet_squeeze_dims(self: JetTuple, dim: list[int]) -> JetTuple:
+    """Taylor-mode arithmetic for the multi-dim ``aten.squeeze.dims`` overload.
+
+    Same linearity argument as :func:`jet_squeeze`; differs only in that
+    ``dim`` is a list of axes to squeeze in one call.
+    """
+    return _apply_linear(self, lambda c: ops.aten.squeeze.dims(c, dim))
+
+
 def jet_squeeze(self: JetTuple, dim: int) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.squeeze(self, dim)``.
 
@@ -651,8 +660,10 @@ MAPPING = {
     ops.aten.mm.default: jet_mm,
     ops.aten.addmm.default: jet_addmm,
     ops.aten.view.default: jet_view,
+    ops.aten._unsafe_view.default: jet_view,
     ops.aten.unsqueeze.default: jet_unsqueeze,
     ops.aten.squeeze.dim: jet_squeeze,
+    ops.aten.squeeze.dims: jet_squeeze_dims,
     # Sum (dim reduction)
     ops.aten.sum.dim_IntList: jet_sum,
     # Constant-output ops

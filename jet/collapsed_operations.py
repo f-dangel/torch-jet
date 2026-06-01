@@ -324,6 +324,13 @@ def cjet_squeeze(self: CollapsedJetTuple, dim: int) -> CollapsedJetTuple:
     return _apply_linear(self, lambda x: ops.aten.squeeze.dim(x, dim))
 
 
+def cjet_squeeze_dims(
+    self: CollapsedJetTuple, dim: list[int]
+) -> CollapsedJetTuple:
+    """Collapsed jet rule for the multi-dim ``aten.squeeze.dims`` overload."""
+    return _apply_linear(self, lambda x: ops.aten.squeeze.dims(x, dim))
+
+
 def cjet_sum(
     self: CollapsedJetTuple,
     dim: list[int] | int,
@@ -371,8 +378,10 @@ COLLAPSED_MAPPING = {
     ops.aten.addmm.default: cjet_addmm,
     # Shape ops
     ops.aten.view.default: cjet_view,
+    ops.aten._unsafe_view.default: cjet_view,
     ops.aten.unsqueeze.default: cjet_unsqueeze,
     ops.aten.squeeze.dim: cjet_squeeze,
+    ops.aten.squeeze.dims: cjet_squeeze_dims,
     # Reductions
     ops.aten.sum.dim_IntList: cjet_sum,
     # Constant-output ops

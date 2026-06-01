@@ -43,11 +43,7 @@ LAPLACIAN_CASES = [
         "id": "two-layer-tanh-mlp",
     },
     # 3d sigmoid(sigmoid) function
-    {
-        "f": lambda x: sigmoid(sigmoid(x)),
-        "args_fn": shape(3),
-        "id": "sigmoid-sigmoid",
-    },
+    {"f": lambda x: sigmoid(sigmoid(x)), "args_fn": shape(3), "id": "sigmoid-sigmoid"},
 ]
 
 LAPLACIAN_IDS = [config["id"] for config in LAPLACIAN_CASES]

@@ -94,6 +94,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Annotate pytree-shaped signatures with a new `PyTree[Leaf]` recursive alias
+  and a `Jet = tuple[Tensor, ...]` alias in `jet/utils.py`; apply per-site to
+  `jet/__init__.py`, `jet/tracing.py`, `jet/validation.py`, and
+  `jet/jet_interpreter.py`. Dispatch params keep their concrete `JetTuple` /
+  `CollapsedJetTuple` annotations
+  ([PR](https://github.com/f-dangel/torch-jet/pull/138)).
+
 - Slim the test suite into per-concern layers
   ([PR](https://github.com/f-dangel/torch-jet/pull/136)).
 

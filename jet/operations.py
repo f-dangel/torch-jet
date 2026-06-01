@@ -583,6 +583,15 @@ def jet_unsqueeze(self: JetTuple, dim: int) -> JetTuple:
     return _apply_linear(self, lambda c: ops.aten.unsqueeze.default(c, dim))
 
 
+def jet_squeeze_dims(self: JetTuple, dim: list[int]) -> JetTuple:
+    """Taylor-mode arithmetic for the multi-dim ``aten.squeeze.dims`` overload.
+
+    Same linearity argument as :func:`jet_squeeze`; differs only in that
+    ``dim`` is a list of axes to squeeze in one call.
+    """
+    return _apply_linear(self, lambda c: ops.aten.squeeze.dims(c, dim))
+
+
 def jet_squeeze(self: JetTuple, dim: int) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.squeeze(self, dim)``.
 
@@ -621,6 +630,20 @@ def jet_sum(self: JetTuple, dim: list[int], keepdim: bool = False) -> JetTuple:
     return _apply_linear(self, lambda c: c.sum(pos))
 
 
+# --- Constant-output ops (output independent of input values) ---
+
+
+def jet_zeros_like(self: JetTuple, **kwargs) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.zeros_like(self)``.
+
+    Output does not depend on the input's values, only its shape/dtype, so
+    every Taylor coefficient is zero. Reusing ``zeros_like`` on each input
+    entry yields the right zero of the right shape (the primal's ``S`` for
+    the primal slot; coefficient shapes for the coefficient slots).
+    """
+    return JetTuple(zeros_like(c, **kwargs) for c in self)
+
+
 MAPPING = {
     # Elementwise unary
     ops.aten.sin.default: jet_sin,
@@ -637,8 +660,12 @@ MAPPING = {
     ops.aten.mm.default: jet_mm,
     ops.aten.addmm.default: jet_addmm,
     ops.aten.view.default: jet_view,
+    ops.aten._unsafe_view.default: jet_view,
     ops.aten.unsqueeze.default: jet_unsqueeze,
     ops.aten.squeeze.dim: jet_squeeze,
+    ops.aten.squeeze.dims: jet_squeeze_dims,
     # Sum (dim reduction)
     ops.aten.sum.dim_IntList: jet_sum,
+    # Constant-output ops
+    ops.aten.zeros_like.default: jet_zeros_like,
 }

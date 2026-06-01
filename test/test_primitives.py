@@ -7,7 +7,19 @@ registered with :class:`JetInterpreter`.
 from typing import Any
 
 from pytest import mark
-from torch import addmm, cos, float64, manual_seed, rand, sigmoid, sin, tanh, tensor
+from torch import (
+    addmm,
+    cos,
+    float64,
+    manual_seed,
+    ops,
+    rand,
+    sigmoid,
+    sin,
+    tanh,
+    tensor,
+    zeros_like,
+)
 
 from test.utils import K_AND_MODE, assert_jet_matches_oracle, shape, shapes
 
@@ -79,8 +91,19 @@ PRIMITIVE_CASES = [
     {"id": "sum_dim_0", "f": lambda x: x.sum(0), "args_fn": shape(3, 4)},
     # ---- Shape-only ops --------------------------------------------------
     {"id": "view", "f": lambda x: x.view(-1), "args_fn": shape(3, 4)},
+    # ``_unsafe_view`` is an internal aten op emitted by Linear/addmm
+    # decompositions; reached only via the explicit overload.
+    {
+        "id": "_unsafe_view",
+        "f": lambda x: ops.aten._unsafe_view.default(x, [-1]),
+        "args_fn": shape(3, 4),
+    },
     {"id": "unsqueeze", "f": lambda x: x.unsqueeze(0), "args_fn": shape(4)},
     {"id": "squeeze", "f": lambda x: x.squeeze(0), "args_fn": shape(1, 4)},
+    # ``squeeze.dims`` is the multi-axis overload (``.squeeze([0, 1])``).
+    {"id": "squeeze_dims", "f": lambda x: x.squeeze([0, 1]), "args_fn": shape(1, 1, 4)},
+    # ---- Constant-output ops (zero derivatives at every order) -----------
+    {"id": "zeros_like", "f": zeros_like, "args_fn": shape(3, 4)},
 ]
 
 

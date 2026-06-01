@@ -68,11 +68,6 @@ def test_bilaplacian(config: dict[str, Any], collapsed: bool):
     assert_close(bilap_func, bilap_jet)
 
 
-@mark.xfail(
-    raises=NotImplementedError,
-    reason="aten.zeros_like.default has no jet rule; blocks nesting laplacian twice",
-    strict=True,
-)
 @mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
 @mark.parametrize("config", BILAPLACIAN_CASES, ids=lambda c: c["id"])
 def test_bilaplacian_matches_nested_laplacian(config: dict[str, Any], collapsed: bool):

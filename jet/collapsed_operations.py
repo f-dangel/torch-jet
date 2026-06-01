@@ -13,7 +13,7 @@ At each nonlinear operation, the K-th output coefficient is computed as:
 from typing import Callable
 
 from scipy.special import comb
-from torch import Tensor, addmm, matmul, mm, ops
+from torch import Tensor, addmm, matmul, mm, ops, zeros_like
 from torch.func import vmap
 from torch.utils._pytree import register_pytree_node
 
@@ -324,6 +324,11 @@ def cjet_squeeze(self: CollapsedJetTuple, dim: int) -> CollapsedJetTuple:
     return _apply_linear(self, lambda x: ops.aten.squeeze.dim(x, dim))
 
 
+def cjet_squeeze_dims(self: CollapsedJetTuple, dim: list[int]) -> CollapsedJetTuple:
+    """Collapsed jet rule for the multi-dim ``aten.squeeze.dims`` overload."""
+    return _apply_linear(self, lambda x: ops.aten.squeeze.dims(x, dim))
+
+
 def cjet_sum(
     self: CollapsedJetTuple,
     dim: list[int] | int,
@@ -338,6 +343,16 @@ def cjet_sum(
         raise NotImplementedError("keepdim=True is not supported.")
     (pos,) = (dim,) if isinstance(dim, int) else dim
     return _apply_linear(self, lambda x: x.sum(pos))
+
+
+def cjet_zeros_like(self: CollapsedJetTuple, **kwargs) -> CollapsedJetTuple:
+    """Collapsed jet rule for ``aten.zeros_like``.
+
+    Output does not depend on input values, only shape/dtype. ``zeros_like``
+    on each entry preserves the per-slot shape contract: ``S`` for the
+    primal and the collapsed slot, ``(R, *S)`` for the batched coefficients.
+    """
+    return CollapsedJetTuple(zeros_like(c, **kwargs) for c in self)
 
 
 # ---------------------------------------------------------------------------
@@ -361,8 +376,12 @@ COLLAPSED_MAPPING = {
     ops.aten.addmm.default: cjet_addmm,
     # Shape ops
     ops.aten.view.default: cjet_view,
+    ops.aten._unsafe_view.default: cjet_view,
     ops.aten.unsqueeze.default: cjet_unsqueeze,
     ops.aten.squeeze.dim: cjet_squeeze,
+    ops.aten.squeeze.dims: cjet_squeeze_dims,
     # Reductions
     ops.aten.sum.dim_IntList: cjet_sum,
+    # Constant-output ops
+    ops.aten.zeros_like.default: cjet_zeros_like,
 }

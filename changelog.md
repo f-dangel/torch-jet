@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Add jet rules for `aten.zeros_like.default`, `aten._unsafe_view.default`,
+  and `aten.squeeze.dims`. Op dispatch now forwards kwargs to the
+  registered rule. Together with the collapsed Leibniz fix in PR #141
+  this unblocks `laplacian(laplacian(f))`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/140)).
+
 - **Backward-incompatible.** Merge `collapsed_jet` into `jet` as a
   ``collapsed: bool = False`` flag (``jet(f, mock_args, collapsed=True)``
   replaces ``collapsed_jet(f, mock_args)``). The single transform now

@@ -265,7 +265,6 @@ def laplacian_function(
         list[ArrayLike], Callable[[list[ArrayLike], ArrayLike], ArrayLike]
     ],
     X: ArrayLike,
-    is_batched: bool,
     strategy: str,
 ) -> Callable[[list[ArrayLike], ArrayLike], ArrayLike]:
     """Construct a function to compute the Laplacian in JAX using different strategies.
@@ -274,8 +273,8 @@ def laplacian_function(
         params_and_f: The neural net's parameters and the unbatched forward function
             whose Laplacian we want to compute. The function should take the parameters
             and the input tensor as arguments and return the output tensor.
-        X: The input tensor at which to compute the Laplacian.
-        is_batched: Whether the input is a batched tensor.
+        X: The batched input tensor at which to compute the Laplacian (leading
+            dimension is the batch).
         strategy: Which strategy will be used by the returned function to compute
             the Laplacian. The following strategies are supported:
             - `'hessian_trace'`: The Laplacian is computed by tracing the Hessian.
@@ -288,7 +287,7 @@ def laplacian_function(
         A function that computes the Laplacian of the function f given X and params.
     """
     _, f = params_and_f
-    dummy_X = X[0] if is_batched else X
+    dummy_X = X[0]
 
     transforms = {
         "hessian_trace": hessian_trace_laplacian,
@@ -297,10 +296,7 @@ def laplacian_function(
     }
     laplacian = transforms[strategy](f, dummy_X)
 
-    if is_batched:
-        laplacian = vmap(laplacian, in_axes=[None, 0])
-
-    return laplacian
+    return vmap(laplacian, in_axes=[None, 0])
 
 
 def randomized_laplacian_function(
@@ -308,7 +304,6 @@ def randomized_laplacian_function(
         list[ArrayLike], Callable[[list[ArrayLike], ArrayLike], ArrayLike]
     ],
     X: ArrayLike,
-    is_batched: bool,
     strategy: str,
 ) -> Callable[[list[ArrayLike], ArrayLike, ArrayLike], ArrayLike]:
     """Construct function to compute the MC Laplacian in JAX with different strategies.
@@ -319,8 +314,8 @@ def randomized_laplacian_function(
         params_and_f: The neural net's parameters and the unbatched forward function
             whose MC Laplacian we want to compute. The function should take the
             parameters and the input tensor as arguments and return the output tensor.
-        X: The input tensor at which to compute the Bi-Laplacian.
-        is_batched: Whether the input is a batched tensor.
+        X: The batched input tensor at which to compute the Bi-Laplacian (leading
+            dimension is the batch).
         strategy: Which strategy will be used by the returned function to compute
             the MC Laplacian. The following strategies are supported:
             - `'hessian_trace'`: The MC Laplacian is computed by multiplying the Hessian
@@ -334,7 +329,7 @@ def randomized_laplacian_function(
         ValueError: If an unsupported strategy is specified.
     """
     _, f = params_and_f
-    dummy_X = X[0] if is_batched else X
+    dummy_X = X[0]
 
     if strategy == "hessian_trace":
         d2f_vv = vector_hessian_vector_product(f, dummy_X)
@@ -361,8 +356,7 @@ def randomized_laplacian_function(
         raise ValueError(f"Unsupported {strategy=}.")
 
     # vmap over data points
-    if is_batched:
-        d2f_vv = vmap(d2f_vv, in_axes=[None, 0, 0])
+    d2f_vv = vmap(d2f_vv, in_axes=[None, 0, 0])
 
     # vmap over vectors
     d2f_VV = vmap(d2f_vv, in_axes=[None, None, 0])
@@ -375,7 +369,6 @@ def bilaplacian_function(
         list[ArrayLike], Callable[[list[ArrayLike], ArrayLike], ArrayLike]
     ],
     X: ArrayLike,
-    is_batched: bool,
     strategy: str,
 ) -> Callable[[list[ArrayLike], ArrayLike], ArrayLike]:
     """Construct function to compute the Bi-Laplacian in JAX using different strategies.
@@ -386,8 +379,8 @@ def bilaplacian_function(
         params_and_f: The neural net's parameters and the unbatched forward function
             whose Bi-Laplacian we want to compute. The function should take the
             parameters and the input tensor as arguments and return the output tensor.
-        X: The input tensor at which to compute the Laplacian.
-        is_batched: Whether the input is a batched tensor.
+        X: The batched input tensor at which to compute the Laplacian (leading
+            dimension is the batch).
         strategy: Which strategy will be used by the returned function to compute
             the Bi-Laplacian. The following strategies are supported:
             - `'hessian_trace'`: The Bi-Laplacian is computed by tracing the Hessian,
@@ -401,7 +394,7 @@ def bilaplacian_function(
         A function that computes the Bi-Laplacian of the function f given X and params.
     """
     _, f = params_and_f
-    dummy_X = X[0] if is_batched else X
+    dummy_X = X[0]
 
     transform = {
         "hessian_trace": hessian_trace_laplacian,
@@ -411,10 +404,7 @@ def bilaplacian_function(
     laplacian = transform(f, dummy_X)
     bilaplacian = transform(laplacian, dummy_X)
 
-    if is_batched:
-        bilaplacian = vmap(bilaplacian, in_axes=[None, 0])
-
-    return bilaplacian
+    return vmap(bilaplacian, in_axes=[None, 0])
 
 
 def randomized_bilaplacian_function(
@@ -422,7 +412,6 @@ def randomized_bilaplacian_function(
         list[ArrayLike], Callable[[list[ArrayLike], ArrayLike], ArrayLike]
     ],
     X: ArrayLike,
-    is_batched: bool,
     strategy: str,
 ) -> Callable[[list[ArrayLike], ArrayLike, ArrayLike], ArrayLike]:
     """Construct function to compute the MC Bi-Laplace in JAX with different strategies.
@@ -433,8 +422,8 @@ def randomized_bilaplacian_function(
         params_and_f: The neural net's parameters and the unbatched forward function
             whose MC Bi-Laplacian we want to compute. The function should take the
             parameters and the input tensor as arguments and return the output tensor.
-        X: The input tensor at which to compute the Bi-Laplacian.
-        is_batched: Whether the input is a batched tensor.
+        X: The batched input tensor at which to compute the Bi-Laplacian (leading
+            dimension is the batch).
         strategy: Which strategy will be used by the returned function to compute
             the MC Bi-Laplacian. The following strategies are supported:
             - `'hessian_trace'`: The MC Bi-Laplacian is computed by multiplying the
@@ -448,7 +437,7 @@ def randomized_bilaplacian_function(
         ValueError: If an unsupported strategy is specified.
     """
     _, f = params_and_f
-    dummy_X = X[0] if is_batched else X
+    dummy_X = X[0]
 
     if strategy == "hessian_trace":
         # nest vector-Hessian-vector products to multiply with 4th-order derivatives
@@ -481,8 +470,7 @@ def randomized_bilaplacian_function(
         raise ValueError(f"Unsupported {strategy=}.")
 
     # vmap over data points
-    if is_batched:
-        d4f_vvvv = vmap(d4f_vvvv, in_axes=[None, 0, 0])
+    d4f_vvvv = vmap(d4f_vvvv, in_axes=[None, 0, 0])
 
     # vmap over vectors
     d4f_VVVV = vmap(d4f_vvvv, in_axes=[None, None, 0])
@@ -499,7 +487,6 @@ def get_function_and_description(
         list[ArrayLike], Callable[[list[ArrayLike], ArrayLike], ArrayLike]
     ],
     X: ArrayLike,
-    is_batched: bool,
 ) -> tuple[Callable[[], ArrayLike], Callable[[], list[ArrayLike]], str]:
     """Determine the function and its description based on the operator and strategy.
 
@@ -509,8 +496,7 @@ def get_function_and_description(
         distribution: The distribution type, if any.
         num_samples: The number of samples, if any.
         params_and_net: The parameters and neural network function.
-        X: The input tensor.
-        is_batched: A flag indicating if the input is batched.
+        X: The batched input tensor (leading dimension is the batch).
 
     Returns:
         A tuple containing the jitted functions to compute the operator w/o being
@@ -537,7 +523,7 @@ def get_function_and_description(
 
     # Set up the function that computes the operator given (params, X) in the exact,
     # and (params, X, V) in the stochastic setting.
-    args = (params_and_net, X, is_batched, strategy)
+    args = (params_and_net, X, strategy)
     func = make_func(*args)
 
     # Set up the function that computes the gradient w.r.t. params.
@@ -575,7 +561,6 @@ if __name__ == "__main__":
     dev = devices(args.device)[0]
     dt = float64
     params, net = setup_architecture(args.architecture, args.dim, dev, dt)
-    is_batched = True
     X = setup_input(args.batch_size, args.dim, dev, dt)
 
     start = perf_counter()
@@ -586,7 +571,6 @@ if __name__ == "__main__":
         args.num_samples,
         (params, net),
         X,
-        is_batched,
     )
     print(f"Setting up function took: {perf_counter() - start:.3f} s.")
     is_cuda = args.device == "cuda"
@@ -621,7 +605,6 @@ if __name__ == "__main__":
             args.num_samples,
             (params, net),
             X,
-            is_batched,
         )
         baseline_result = baseline_func_no()
 

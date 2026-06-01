@@ -94,6 +94,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Drop the `is_batched` parameter from the experiment harness functions
+  (`laplacian_function` / `bilaplacian_function` in
+  `jet/exp/exp01_benchmark_laplacian/execute.py` and the four matching JAX
+  functions in `jet/exp/exp04_jax_benchmark/execute.py`)
+  ([PR](https://github.com/f-dangel/torch-jet/pull/137))
+
 - Extract input validation into `jet/validation.py` (entry point:
   `validate_input_jet`); the `JetInterpreter` now owns both ends of the
   type boundary (wrapping inputs in `placeholder()`, unwrapping outputs in

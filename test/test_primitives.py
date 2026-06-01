@@ -44,8 +44,9 @@ PRIMITIVE_CASES = [
     {"id": "cos", "f": cos, "args_fn": shape(4)},
     {"id": "tanh", "f": tanh, "args_fn": shape(4)},
     {"id": "sigmoid", "f": sigmoid, "args_fn": shape(4)},
-    # ---- Unary with scalar exponent --------------------------------------
-    {"id": "pow", "f": lambda x: x**2.5, "args_fn": shape(4)},
+    # ---- Unary with scalar exponent (float, plus a high integer exponent) -
+    {"id": "pow_float", "f": lambda x: x**2.5, "args_fn": shape(4)},
+    {"id": "pow_int_10", "f": lambda x: x**10, "args_fn": shape(4)},
     # ---- Binary add (commutative; still 3 dispatch branches) -------------
     {"id": "add_JJ", "f": lambda x, y: x + y, "args_fn": shapes((4,), (4,))},
     {"id": "add_JC", "f": lambda x: x + 2.0, "args_fn": shape(4)},

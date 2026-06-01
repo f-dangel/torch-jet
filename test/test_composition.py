@@ -68,8 +68,19 @@ COMPOSITION_CASES = [
         "args_fn": _deep_pytree_args_fn,
     },
     {
+        "id": "sin_residual",
+        # variable aliasing: ``x`` appears both inside ``sin`` and outside.
+        "f": lambda x: sin(x) + x,
+        "args_fn": shape(3),
+    },
+    {
         "id": "multi_input",
         "f": lambda x, y: sin(x) * cos(y),
+        "args_fn": shapes((4,), (4,)),
+    },
+    {
+        "id": "multi_input_tuple_output",
+        "f": lambda x, y: (x + y, x * y),
         "args_fn": shapes((4,), (4,)),
     },
     {

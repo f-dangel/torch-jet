@@ -110,12 +110,30 @@ def _collapsed_leibniz(
             f"order; got lengths {len(self)} and {len(other)}"
         )
     K = len(self) - 1
+
+    def apply(a, b, a_batched, b_batched):
+        # Each coefficient ``c_k`` for ``k >= 1`` carries a leading direction
+        # dim ``R``; ``c_0`` does not. Plain ``binary_op(a, b)`` would
+        # right-align via PyTorch broadcasting, which collides ``R`` against
+        # a middle primal dim of the other operand whenever ``a``'s and
+        # ``b``'s primal shapes have different ranks (e.g. ``mul`` of operands
+        # with primal shapes ``(3,)`` and ``(2, 3)``, where ``R`` coincides
+        # with the size-2 primal dim of the other). ``vmap`` over ``R`` with
+        # the right ``in_dims`` aligns ``R`` per-direction explicitly and
+        # broadcasts the suffixes correctly.
+        if not (a_batched or b_batched):
+            return binary_op(a, b)
+        in_dims = (0 if a_batched else None, 0 if b_batched else None)
+        return vmap(binary_op, in_dims=in_dims)(a, b)
+
     coeffs = ()
     for k in range(1, K + 1):
         if k < K:
             term = None
             for j in range(k + 1):
-                term_j = comb(k, j, exact=True) * binary_op(self[j], other[k - j])
+                term_j = comb(k, j, exact=True) * apply(
+                    self[j], other[k - j], j >= 1, (k - j) >= 1
+                )
                 term = term_j if term is None else term + term_j
             coeffs += (term,)
         else:
@@ -125,8 +143,8 @@ def _collapsed_leibniz(
                 for j in range(1, K):
                     # Sum out the direction dim R per term so the accumulator (and
                     # downstream traced-graph tensors) stay small.
-                    term_j = comb(K, j, exact=True) * binary_op(
-                        self[j], other[K - j]
+                    term_j = comb(K, j, exact=True) * apply(
+                        self[j], other[K - j], True, True
                     ).sum(0)
                     nonlinear = term_j if nonlinear is None else nonlinear + term_j
                 coeffs += (linear + nonlinear,)

@@ -10,7 +10,7 @@ from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
 
 from jet.jet_interpreter import JetInterpreter
 from jet.tracing import capture_graph
-from jet.utils import Value
+from jet.utils import PyTree
 from jet.validation import validate_input_jet
 
 
@@ -22,15 +22,11 @@ def _is_jet_leaf(x: Any) -> bool:
 
 
 def jet(
-    f: Callable[..., Any],
-    mock_args: tuple[Any, ...],
+    f: Callable[..., PyTree[Tensor]],
+    mock_args: tuple[PyTree[Tensor], ...],
     collapsed: bool = False,
-) -> Callable[..., Any]:
+) -> Callable[..., PyTree[tuple[Tensor, ...]]]:
     """Overload a function with its Taylor-mode equivalent.
-
-    ``Any`` in the type signatures denotes a *pytree of tensors*, i.e. an
-    arbitrarily nested structure of ``Tensor``, ``tuple``, ``list``, or
-    ``dict`` whose leaves are tensors.
 
     The returned function is K-polymorphic: the derivative order is inferred
     per call from the number of coefficients in the input jet tuples. The
@@ -94,7 +90,9 @@ def jet(
     return transformed
 
 
-def rev_jet(f: Callable[..., Any], detach: bool = True) -> Callable[..., Any]:
+def rev_jet(
+    f: Callable[..., PyTree[Tensor]], detach: bool = True
+) -> Callable[..., PyTree[tuple[Tensor, ...]]]:
     """Implement Taylor-mode via nested reverse-mode autodiff.
 
     Serves as a reference implementation for testing ``jet``. See :func:`jet`
@@ -187,10 +185,10 @@ def rev_jet(f: Callable[..., Any], detach: bool = True) -> Callable[..., Any]:
 
 
 def _uncollapsed_via_vmap(
-    f: Callable[..., Value],
-    mock_args: tuple[Any, ...],
+    f: Callable[..., PyTree[Tensor]],
+    mock_args: tuple[PyTree[Tensor], ...],
     randomization: tuple[str, int] | None,
-) -> Callable[..., tuple[Value, ...]]:
+) -> Callable[..., PyTree[tuple[Tensor, ...]]]:
     """Build a collapsed-jet-compatible function from standard ``jet`` + ``vmap``.
 
     The returned function has the same calling convention as

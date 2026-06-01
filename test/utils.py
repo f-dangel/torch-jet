@@ -52,13 +52,14 @@ def _stateless(f: Callable) -> Callable[[str], Callable]:
 
 
 def tolerances_for(device: str) -> dict[str, float]:
-    """Relaxed ``assert_close`` tolerances for float32 devices (MPS).
+    """Relaxed ``assert_close`` tolerances for float32 devices.
 
     Default ``rtol=1.3e-6`` is calibrated for single-op float32 precision;
     higher-order Taylor coefficients accumulate roundoff and need headroom.
-    Float64 keeps the default (no relaxation).
+    Float64 keeps the default (no relaxation). Keyed on dtype (not device)
+    so any future float32-only backend inherits the same headroom.
     """
-    return {"rtol": 5e-4, "atol": 5e-6} if device == "mps" else {}
+    return {"rtol": 5e-4, "atol": 5e-6} if dtype_for_device(device) == float32 else {}
 
 
 #: Valid ``(K, collapsed)`` pairs for the standard-vs-collapsed mode sweep.

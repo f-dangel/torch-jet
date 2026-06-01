@@ -60,7 +60,7 @@ def setup_case(
 
 
 def make_jet_args(
-    args: tuple[Any, ...], K: int, *, collapsed: bool, R: int = 2
+    args: tuple[Any, ...], K: int, collapsed: bool = False, R: int = 2
 ) -> tuple[Any, ...]:
     """Build jet args from ``args`` by attaching Taylor coefficients per leaf.
 

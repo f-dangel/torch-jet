@@ -7,7 +7,7 @@ Not primitive coverage -- see ``test_primitives.py`` for that.
 from typing import Any
 
 from pytest import mark
-from torch import Tensor, cos, sin, tanh
+from torch import Tensor, cos, manual_seed, rand, sin, tanh
 
 from test.utils import (
     DEVICES,
@@ -25,49 +25,52 @@ def _deep_pytree_f(x: Tensor, params: list) -> tuple[Tensor, dict[str, Tensor]]:
     return (h + b0, {"a": cos(h) * b1, "b": tanh(h + b0 + b1)})
 
 
+# Inputs pre-built on CPU; ``setup_case`` migrates per device.
+manual_seed(0)
+
 COMPOSITION_CASES = [
     {
         "id": "scalar_Rn_to_R",
         "f": _stateless(lambda x: (sin(x) * x).sum(0)),
-        "args": [(5,)],
+        "args": [rand(5)],
     },
-    {"id": "mlp", "f": mlp, "args": [(5,)]},
-    {"id": "mlp_batched", "f": mlp, "args": [(10, 5)]},
+    {"id": "mlp", "f": mlp, "args": [rand(5)]},
+    {"id": "mlp_batched", "f": mlp, "args": [rand(10, 5)]},
     {
         "id": "deep_pytree",
         "f": _stateless(_deep_pytree_f),
-        "args": [(3,), [(3,), [(3,), (3,)]]],
+        "args": [rand(3), [rand(3), [rand(3), rand(3)]]],
     },
     {
         "id": "sin_residual",
         # variable aliasing: ``x`` appears both inside ``sin`` and outside.
         "f": _stateless(lambda x: sin(x) + x),
-        "args": [(3,)],
+        "args": [rand(3)],
     },
     {
         "id": "multi_input",
         "f": _stateless(lambda x, y: sin(x) * cos(y)),
-        "args": [(4,), (4,)],
+        "args": [rand(4), rand(4)],
     },
     {
         "id": "multi_input_tuple_output",
         "f": _stateless(lambda x, y: (x + y, x * y)),
-        "args": [(4,), (4,)],
+        "args": [rand(4), rand(4)],
     },
     {
         "id": "multi_input_dict_output",
         "f": _stateless(lambda x, y: {"sum": x + y, "prod": x * y}),
-        "args": [(4,), (4,)],
+        "args": [rand(4), rand(4)],
     },
     {
         "id": "dict_only_input",
         "f": _stateless(lambda d: sin(d["a"]) * d["b"]),
-        "args": [{"a": (4,), "b": (4,)}],
+        "args": [{"a": rand(4), "b": rand(4)}],
     },
     {
         "id": "dict_first_input",
         "f": _stateless(lambda params, x: params["scale"] * sin(x) + params["bias"]),
-        "args": [{"scale": (3,), "bias": (3,)}, (3,)],
+        "args": [{"scale": rand(3), "bias": rand(3)}, rand(3)],
     },
 ]
 

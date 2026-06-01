@@ -70,47 +70,54 @@ def _addmm_mat2_jet(device):
 _UNARY_POINTWISE = {"sin": sin, "cos": cos, "tanh": tanh, "sigmoid": sigmoid}
 _UNARY_SHAPES = {"1d": (4,), "2d": (3, 4)}
 
+# Inputs pre-built on CPU; ``setup_case`` migrates per device.
+manual_seed(0)
+
 PRIMITIVE_CASES = [
     # ---- Unary pointwise (cross-product over shapes) ---------------------
     *(
-        {"id": f"{name}-{sid}", "f": _stateless(fn), "args": [dims]}
+        {"id": f"{name}-{sid}", "f": _stateless(fn), "args": [rand(*dims)]}
         for name, fn in _UNARY_POINTWISE.items()
         for sid, dims in _UNARY_SHAPES.items()
     ),
     # ---- Unary with scalar exponent (float + low/high integer) -----------
     # ``pow_int_5`` at ``K=5`` hits the order-equals-exponent edge where the
     # K-th derivative of ``x**5`` vanishes.
-    {"id": "pow_float", "f": _stateless(lambda x: x**2.5), "args": [(4,)]},
-    {"id": "pow_int_5", "f": _stateless(lambda x: x**5), "args": [(4,)]},
-    {"id": "pow_int_10", "f": _stateless(lambda x: x**10), "args": [(4,)]},
+    {"id": "pow_float", "f": _stateless(lambda x: x**2.5), "args": [rand(4)]},
+    {"id": "pow_int_5", "f": _stateless(lambda x: x**5), "args": [rand(4)]},
+    {"id": "pow_int_10", "f": _stateless(lambda x: x**10), "args": [rand(4)]},
     # ---- Binary add (commutative; 3 dispatch branches + aliased) ---------
-    {"id": "add_JJ", "f": _stateless(lambda x, y: x + y), "args": [(4,), (4,)]},
-    {"id": "add_JJ_aliased", "f": _stateless(lambda x: x + x), "args": [(4,)]},
-    {"id": "add_JC", "f": _stateless(lambda x: x + 2.0), "args": [(4,)]},
-    {"id": "add_CJ", "f": _stateless(lambda x: 2.0 + x), "args": [(4,)]},
+    {"id": "add_JJ", "f": _stateless(lambda x, y: x + y), "args": [rand(4), rand(4)]},
+    {"id": "add_JJ_aliased", "f": _stateless(lambda x: x + x), "args": [rand(4)]},
+    {"id": "add_JC", "f": _stateless(lambda x: x + 2.0), "args": [rand(4)]},
+    {"id": "add_CJ", "f": _stateless(lambda x: 2.0 + x), "args": [rand(4)]},
     # ---- Binary sub (non-commutative) ------------------------------------
-    {"id": "sub_JJ", "f": _stateless(lambda x, y: x - y), "args": [(4,), (4,)]},
-    {"id": "sub_JC", "f": _stateless(lambda x: x - 2.0), "args": [(4,)]},
-    {"id": "sub_CJ", "f": _sub_cj, "args": [(4,)]},
+    {"id": "sub_JJ", "f": _stateless(lambda x, y: x - y), "args": [rand(4), rand(4)]},
+    {"id": "sub_JC", "f": _stateless(lambda x: x - 2.0), "args": [rand(4)]},
+    {"id": "sub_CJ", "f": _sub_cj, "args": [rand(4)]},
     # ---- Binary mul (3 dispatch branches + aliased ``x*x``) --------------
-    {"id": "mul_JJ", "f": _stateless(lambda x, y: x * y), "args": [(4,), (4,)]},
-    {"id": "mul_JJ_aliased", "f": _stateless(lambda x: x * x), "args": [(4,)]},
-    {"id": "mul_JC", "f": _stateless(lambda x: x * 3.0), "args": [(4,)]},
-    {"id": "mul_CJ", "f": _stateless(lambda x: 3.0 * x), "args": [(4,)]},
+    {"id": "mul_JJ", "f": _stateless(lambda x, y: x * y), "args": [rand(4), rand(4)]},
+    {"id": "mul_JJ_aliased", "f": _stateless(lambda x: x * x), "args": [rand(4)]},
+    {"id": "mul_JC", "f": _stateless(lambda x: x * 3.0), "args": [rand(4)]},
+    {"id": "mul_CJ", "f": _stateless(lambda x: 3.0 * x), "args": [rand(4)]},
     # ---- Matrix multiply (non-commutative) -------------------------------
-    {"id": "mm_JJ", "f": _stateless(lambda A, B: A @ B), "args": [(3, 4), (4, 5)]},
-    {"id": "mm_JC", "f": _mm_jc, "args": [(3, 4)]},
-    {"id": "mm_CJ", "f": _mm_cj, "args": [(4, 5)]},
+    {
+        "id": "mm_JJ",
+        "f": _stateless(lambda A, B: A @ B),
+        "args": [rand(3, 4), rand(4, 5)],
+    },
+    {"id": "mm_JC", "f": _mm_jc, "args": [rand(3, 4)]},
+    {"id": "mm_CJ", "f": _mm_cj, "args": [rand(4, 5)]},
     # ---- addmm (3 dispatch branches over mat1/mat2; bias must be const) ---
-    {"id": "addmm_mat1_mat2_jet", "f": _addmm_jj, "args": [(3, 4), (4, 5)]},
-    {"id": "addmm_mat1_jet", "f": _addmm_mat1_jet, "args": [(3, 4)]},
-    {"id": "addmm_mat2_jet", "f": _addmm_mat2_jet, "args": [(4, 5)]},
+    {"id": "addmm_mat1_mat2_jet", "f": _addmm_jj, "args": [rand(3, 4), rand(4, 5)]},
+    {"id": "addmm_mat1_jet", "f": _addmm_mat1_jet, "args": [rand(3, 4)]},
+    {"id": "addmm_mat2_jet", "f": _addmm_mat2_jet, "args": [rand(4, 5)]},
     # ---- Reduction -------------------------------------------------------
-    {"id": "sum_dim_0", "f": _stateless(lambda x: x.sum(0)), "args": [(3, 4)]},
+    {"id": "sum_dim_0", "f": _stateless(lambda x: x.sum(0)), "args": [rand(3, 4)]},
     # ---- Shape-only ops --------------------------------------------------
-    {"id": "view", "f": _stateless(lambda x: x.view(-1)), "args": [(3, 4)]},
-    {"id": "unsqueeze", "f": _stateless(lambda x: x.unsqueeze(0)), "args": [(4,)]},
-    {"id": "squeeze", "f": _stateless(lambda x: x.squeeze(0)), "args": [(1, 4)]},
+    {"id": "view", "f": _stateless(lambda x: x.view(-1)), "args": [rand(3, 4)]},
+    {"id": "unsqueeze", "f": _stateless(lambda x: x.unsqueeze(0)), "args": [rand(4)]},
+    {"id": "squeeze", "f": _stateless(lambda x: x.squeeze(0)), "args": [rand(1, 4)]},
 ]
 
 

@@ -3,7 +3,7 @@
 from typing import Any
 
 from pytest import mark
-from torch import manual_seed, sigmoid, vmap
+from torch import manual_seed, rand, sigmoid, vmap
 from torch.testing import assert_close
 
 from jet.bilaplacian import (
@@ -25,23 +25,23 @@ from test.test_laplacian import (
     get_coefficients,
     laplacian,
 )
-from test.utils import DEVICES, mlp, setup_case, tolerances_for
-
-# make generation of test cases deterministic
-manual_seed(0)
+from test.utils import DEVICES, _stateless, mlp, setup_case, tolerances_for
 
 #: Batch size used by all exp01 tests. The benchmark always runs batched, so
 #: the tests run batched too -- the cases below bake the batch dimension into
 #: their ``args``.
 BATCH_SIZE = 2
 
+# Inputs pre-built on CPU; ``setup_case`` migrates per device.
+manual_seed(0)
+
 EXP01_CASES = [
     # 5d tanh-activated two-layer MLP
-    {"f": mlp, "args": [(BATCH_SIZE, 5)], "id": "two-layer-tanh-mlp"},
+    {"f": mlp, "args": [rand(BATCH_SIZE, 5)], "id": "two-layer-tanh-mlp"},
     # 3d sigmoid(sigmoid) function
     {
-        "f": lambda device: lambda x: sigmoid(sigmoid(x)),
-        "args": [(BATCH_SIZE, 3)],
+        "f": _stateless(lambda x: sigmoid(sigmoid(x))),
+        "args": [rand(BATCH_SIZE, 3)],
         "id": "sigmoid-sigmoid",
     },
 ]

@@ -52,11 +52,6 @@ def _stateless(f: Callable) -> Callable[[str], Callable]:
     return lambda device: f
 
 
-def _is_shape(x: Any) -> bool:
-    """Identify shape tuples (``tuple[int, ...]``) as pytree leaves."""
-    return isinstance(x, tuple) and all(isinstance(d, int) for d in x)
-
-
 def tolerances_for(device: str) -> dict[str, float]:
     """Relaxed ``assert_close`` tolerances for float32 devices (MPS).
 
@@ -92,13 +87,15 @@ def mlp(device: str) -> Sequential:
 
 
 #: Scalar-output cases shared by the laplacian + bilaplacian consumer tests.
-#: ``f`` is a builder ``device -> Callable``; tensor inputs are described
-#: declaratively as ``args`` (a pytree of shape tuples; see ``setup_case``).
+#: ``f`` is a builder ``device -> Callable``; tensor inputs are built on CPU
+#: once at module load and migrated to the right device + dtype by
+#: ``setup_case``.
+manual_seed(0)
 SCALAR_OUTPUT_CASES = [
-    {"f": mlp, "args": [(5,)], "id": "two-layer-tanh-mlp"},
+    {"f": mlp, "args": [rand(5)], "id": "two-layer-tanh-mlp"},
     {
         "f": _stateless(lambda x: sigmoid(sigmoid(x))),
-        "args": [(3,)],
+        "args": [rand(3)],
         "id": "sigmoid-sigmoid",
     },
 ]
@@ -107,27 +104,22 @@ SCALAR_OUTPUT_CASES = [
 def setup_case(
     config: dict[str, Any], device: str = "cpu"
 ) -> tuple[Callable[..., Tensor], tuple[Any, ...]]:
-    """Instantiate the function and the arguments on ``device``.
+    """Instantiate the function and migrate its arguments to ``device``.
 
     Each case dict carries:
 
     - ``"f"``: a builder ``device -> Callable``.
-    - ``"args"``: a list of positional-argument specs, one entry per
-      positional arg of ``f``. Each spec is a pytree (``list``/``dict``
-      containers) whose leaves are shape tuples (``tuple[int, ...]``).
-      Each shape tuple becomes a ``rand`` tensor of that shape on
-      ``device`` with the device's preferred dtype. Tuples are always
-      leaves; nest with ``list``/``dict`` containers if you need pytree
-      shape.
+    - ``"args"``: a list of positional-argument pytrees whose leaves are
+      pre-built CPU tensors. ``setup_case`` migrates each leaf to
+      ``device`` with the device's preferred dtype.
 
     Returns:
-        Tuple ``(f, args)`` where ``args`` is the materialized positional
+        Tuple ``(f, args)`` where ``args`` is the migrated positional
         argument tuple, preserving the input pytree structure.
     """
-    manual_seed(0)
     f = config["f"](device)
     kw = device_kw(device)
-    args = tree_map(lambda s: rand(*s, **kw), config["args"], is_leaf=_is_shape)
+    args = tree_map(lambda t: t.to(**kw), config["args"])
     return f, tuple(args)
 
 

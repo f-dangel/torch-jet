@@ -8,14 +8,9 @@ jets), ``_JC`` (left is jet), and ``_CJ`` (right is jet) rows. "Constant"
 operands are closed over by the test ``f`` so they enter the captured graph
 as frozen constants.
 
-Oracles:
-
-- **Standard mode**: ``jet(f, mock_args)`` vs ``rev_jet(f)``, which computes
-  Taylor coefficients via nested reverse-mode autograd over the Taylor path
-  and is independent of the FX-trace machinery.
-- **Collapsed mode**: ``jet(f, mock_args, collapsed=True)`` vs
-  ``jet._uncollapsed_via_vmap(f, mock_args, randomization=None)``, which runs
-  standard ``jet`` per direction and sums at order ``K``.
+Oracles: ``rev_jet`` (standard) and ``rev_collapsed_jet`` (collapsed). Both
+compute Taylor coefficients via nested reverse-mode autograd over the Taylor
+path and are independent of the FX-trace + interpreter machinery.
 
 ``K`` is sampled at the collapsed-mode floor (``K=2``) and a high order ``K=5``;
 intermediate orders exercise the same code paths and don't need their own

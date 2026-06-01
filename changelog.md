@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Add `rev_collapsed_jet(f)`: a reference implementation for collapsed
+  Taylor mode built on `rev_jet` (nested reverse-mode AD). Independent of
+  the FX-trace and interpreter machinery, so usable as an oracle for
+  `jet(..., collapsed=True)` in tests
+  ([PR](https://github.com/f-dangel/torch-jet/pull/136)).
+
 - **Backward-incompatible.** Merge `collapsed_jet` into `jet` as a
   ``collapsed: bool = False`` flag (``jet(f, mock_args, collapsed=True)``
   replaces ``collapsed_jet(f, mock_args)``). The single transform now

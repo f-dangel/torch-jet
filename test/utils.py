@@ -3,12 +3,12 @@
 from typing import Any, Callable
 
 from pytest import param
-from torch import Tensor, float64, manual_seed, rand, rand_like, zeros_like
+from torch import Tensor, float64, manual_seed, rand, rand_like
 from torch.testing import assert_close
 from torch.utils._pytree import tree_map
 
 import jet
-from jet import rev_jet
+from jet import rev_collapsed_jet, rev_jet
 
 #: Valid ``(K, collapsed)`` pairs for the standard-vs-collapsed mode sweep.
 #: ``K=0`` (primal-only) and ``K=1`` (Jacobian-vector product) are
@@ -68,16 +68,13 @@ def make_jet_args(
     ``(t, c_1, ..., c_K)`` of tensors -- ``t`` itself is the primal. Shape
     contract by mode:
 
-    - **standard** (``collapsed=False``): every ``c_k`` has shape ``t.shape``,
-      randomly drawn. ``R`` is ignored.
+    - **standard** (``collapsed=False``): every ``c_k`` has shape ``t.shape``.
+      ``R`` is ignored.
     - **collapsed** (``collapsed=True``): ``c_1..c_{K-1}`` have shape
-      ``(R, *t.shape)``, randomly drawn (each carries the ``R`` directions);
-      ``c_K`` has shape ``t.shape`` and is zero. The collapsed oracle
-      (:func:`jet._uncollapsed_via_vmap`) shares the input ``c_K`` across all
-      ``R`` per-direction standard-jet calls and sums at the end, which
-      multiplies any non-zero input ``c_K`` by ``R`` -- the in-interpreter
-      collapsed path processes it once, so a non-zero ``c_K`` makes the two
-      disagree. Keep it zero.
+      ``(R, *t.shape)`` (each carries the ``R`` directions); ``c_K`` has
+      shape ``t.shape``.
+
+    All coefficients are independently randomly drawn.
     """
     manual_seed(42)
 
@@ -85,7 +82,7 @@ def make_jet_args(
         if not collapsed:
             return (t, *(rand_like(t) for _ in range(K)))
         batched = [rand(R, *t.shape, dtype=t.dtype) for _ in range(K - 1)]
-        return (t, *batched, zeros_like(t))
+        return (t, *batched, rand_like(t))
 
     return tree_map(make_leaf, args)
 
@@ -93,18 +90,14 @@ def make_jet_args(
 def assert_jet_matches_oracle(config: dict[str, Any], K: int, collapsed: bool) -> None:
     """Assert ``jet(f, mock_args, collapsed)`` matches its mode-specific oracle.
 
-    Standard mode is compared against :func:`jet.rev_jet`; collapsed mode
-    against :func:`jet._uncollapsed_via_vmap`, which runs standard ``jet`` per
-    direction and sums at order ``K``.
+    The oracle is :func:`jet.rev_jet` (standard) or :func:`jet.rev_collapsed_jet`
+    (collapsed). Both are built on nested reverse-mode AD and are independent
+    of the FX-trace + interpreter machinery under test.
     """
     f = config["f"]
     mock_args = config["args_fn"]()
     jet_args = make_jet_args(mock_args, K, collapsed=collapsed)
-    oracle = (
-        jet._uncollapsed_via_vmap(f, mock_args, randomization=None)
-        if collapsed
-        else rev_jet(f)
-    )
+    oracle = rev_collapsed_jet(f) if collapsed else rev_jet(f)
     actual = jet.jet(f, mock_args, collapsed=collapsed)(*jet_args)
     expected = oracle(*jet_args)
     assert_close(actual, expected)

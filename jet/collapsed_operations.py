@@ -26,7 +26,6 @@ from jet.operations import (
     _sin_derivatives,
     _tanh_derivatives,
 )
-from jet.utils import Primal
 
 # ---------------------------------------------------------------------------
 # CollapsedJetTuple
@@ -44,7 +43,7 @@ register_pytree_node(
 )
 
 
-def _cjet_order(*args: Primal | CollapsedJetTuple | float | int) -> int:
+def _cjet_order(*args: Tensor | CollapsedJetTuple | float | int) -> int:
     """Infer ``K`` from all ``CollapsedJetTuple`` positional args.
 
     Thin wrapper around :func:`jet.operations._order` that pre-binds the jet
@@ -143,7 +142,7 @@ def _collapsed_leibniz(
 
 def _cjet_elementwise(
     self: CollapsedJetTuple,
-    deriv_fn: Callable[[Primal, int], tuple[Primal, dict[int, Primal]]],
+    deriv_fn: Callable[[Tensor, int], tuple[Tensor, dict[int, Tensor]]],
 ) -> CollapsedJetTuple:
     """Generic collapsed elementwise using shared helpers."""
     K = _cjet_order(self)
@@ -188,8 +187,8 @@ def cjet_pow(self: CollapsedJetTuple, exponent: float | int) -> CollapsedJetTupl
 
 
 def cjet_add(
-    self: Primal | CollapsedJetTuple | float | int,
-    other: Primal | CollapsedJetTuple | float | int,
+    self: Tensor | CollapsedJetTuple | float | int,
+    other: Tensor | CollapsedJetTuple | float | int,
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.add``."""
     self_is = isinstance(self, CollapsedJetTuple)
@@ -205,8 +204,8 @@ def cjet_add(
 
 
 def cjet_sub(
-    self: Primal | CollapsedJetTuple | float | int,
-    other: Primal | CollapsedJetTuple | float | int,
+    self: Tensor | CollapsedJetTuple | float | int,
+    other: Tensor | CollapsedJetTuple | float | int,
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.sub``."""
     self_is = isinstance(self, CollapsedJetTuple)
@@ -222,8 +221,8 @@ def cjet_sub(
 
 
 def cjet_mul(
-    self: Primal | CollapsedJetTuple,
-    other: Primal | CollapsedJetTuple,
+    self: Tensor | CollapsedJetTuple,
+    other: Tensor | CollapsedJetTuple,
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.mul``."""
     self_is = isinstance(self, CollapsedJetTuple)
@@ -245,7 +244,7 @@ def cjet_mul(
 
 
 def cjet_mm(
-    self: Primal | CollapsedJetTuple, mat2: Primal | CollapsedJetTuple
+    self: Tensor | CollapsedJetTuple, mat2: Tensor | CollapsedJetTuple
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.mm``."""
     self_is = isinstance(self, CollapsedJetTuple)
@@ -260,9 +259,9 @@ def cjet_mm(
 
 
 def cjet_addmm(
-    self: Primal,
-    mat1: Primal | CollapsedJetTuple,
-    mat2: Primal | CollapsedJetTuple,
+    self: Tensor,
+    mat1: Tensor | CollapsedJetTuple,
+    mat2: Tensor | CollapsedJetTuple,
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.addmm``."""
     if isinstance(self, CollapsedJetTuple):

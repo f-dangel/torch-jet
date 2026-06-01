@@ -79,6 +79,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
+- Fix collapsed-mode Leibniz misaligning the leading direction dim `R` when
+  product operands have different primal ranks (`cjet_mul` / `cjet_mm` /
+  `cjet_addmm`). Right-aligned PyTorch broadcasting collided one operand's
+  `R` against a middle primal dim of the other; `vmap(binary_op,
+  in_dims=...)` now aligns `R` per-direction explicitly
+  ([PR](https://github.com/f-dangel/torch-jet/pull/141)).
+
 - Constant output leaves in collapsed mode are now wrapped with the correct
   shape: coefficients `c_1..c_{K-1}` are `(R, *S)` and `c_K` is `S`. Previously
   all zero coefficients were `S`-shaped, silently producing wrong shapes for

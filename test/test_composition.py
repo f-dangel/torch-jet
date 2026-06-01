@@ -16,9 +16,6 @@ fixtures cover the realistic-shape territory:
 7. **Dict-only input** -- single dict positional argument.
 8. **Dict-first input** -- ``(dict, tensor)`` -- one of the make_fx-tricky
    signatures that the rejection smoke (test___init__.py) carves around.
-
-Each fixture runs in standard mode at ``K ∈ {0, 1, 2, 5}`` and in collapsed
-mode at ``K ∈ {2, 5}`` (collapsed mode requires ``K >= 2``).
 """
 
 from typing import Any

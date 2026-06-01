@@ -3,8 +3,8 @@
 from typing import Any
 
 from pytest import mark
-from torch import manual_seed, rand, sigmoid, vmap
-from torch.nn import Linear, Sequential, Tanh
+from torch import manual_seed, sigmoid, vmap
+from torch.testing import assert_close
 
 from jet.bilaplacian import (
     SUPPORTED_DISTRIBUTIONS as BILAPLACIAN_SUPPORTED_DISTRIBUTIONS,
@@ -17,7 +17,6 @@ from jet.exp.exp01_benchmark_laplacian.execute import (
 from jet.laplacian import SUPPORTED_DISTRIBUTIONS as LAPLACIAN_SUPPORTED_DISTRIBUTIONS
 from jet.utils import run_seeded
 from jet.weighted_laplacian import get_weighting
-from test.test___init__ import setup_case
 from test.test_bilaplacian import bilaplacian
 from test.test_laplacian import (
     WEIGHT_IDS,
@@ -26,46 +25,31 @@ from test.test_laplacian import (
     get_coefficients,
     laplacian,
 )
-from test.utils import report_nonclose
-
-STRATEGY_IDS = [f"strategy={s}" for s in SUPPORTED_STRATEGIES]
-LAPLACIAN_DISTRIBUTION_IDS = [
-    f"distribution={d}" for d in LAPLACIAN_SUPPORTED_DISTRIBUTIONS
-]
-BILAPLACIAN_DISTRIBUTION_IDS = [
-    f"distribution={d}" for d in BILAPLACIAN_SUPPORTED_DISTRIBUTIONS
-]
+from test.utils import MLP, setup_case, shape
 
 # make generation of test cases deterministic
 manual_seed(0)
 
 #: Batch size used by all exp01 tests. The benchmark always runs batched, so
 #: the tests run batched too -- the cases below bake the batch dimension into
-#: their ``mock_args_fn``.
+#: their ``args_fn``.
 BATCH_SIZE = 2
 
 EXP01_CASES = [
     # 5d tanh-activated two-layer MLP
-    {
-        "f": Sequential(
-            Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
-        ).double(),
-        "mock_args_fn": lambda: (rand(BATCH_SIZE, 5).double(),),
-        "id": "two-layer-tanh-mlp",
-    },
+    {"f": MLP, "args_fn": shape(BATCH_SIZE, 5), "id": "two-layer-tanh-mlp"},
     # 3d sigmoid(sigmoid) function
     {
         "f": lambda x: sigmoid(sigmoid(x)),
-        "mock_args_fn": lambda: (rand(BATCH_SIZE, 3).double(),),
+        "args_fn": shape(BATCH_SIZE, 3),
         "id": "sigmoid-sigmoid",
     },
 ]
-EXP01_IDS = [config["id"] for config in EXP01_CASES]
 
 
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
-@mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
-@mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
+@mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=lambda s: f"strategy={s}")
+@mark.parametrize("config", EXP01_CASES, ids=lambda c: c["id"])
 def test_laplacian_functions(
     config: dict[str, Any],
     strategy: str,
@@ -80,7 +64,7 @@ def test_laplacian_functions(
             unweighted. If `diagonal_increments`, a synthetic coefficient tensor is
             used that has diagonal elements that are increments of 1 starting from 1.
     """
-    f, x = setup_case(config)
+    f, (x,) = setup_case(config)
 
     C = vmap(lambda x: get_coefficients(x, weights))(x)
     lap_func = vmap(lambda x, C: laplacian(f, x, C))
@@ -91,14 +75,16 @@ def test_laplacian_functions(
         f, x, strategy, randomization=None, weighting=weighting
     )()
 
-    report_nonclose(lap, lap_func)
+    assert_close(lap, lap_func)
 
 
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize(
-    "distribution", LAPLACIAN_SUPPORTED_DISTRIBUTIONS, ids=LAPLACIAN_DISTRIBUTION_IDS
+    "distribution",
+    LAPLACIAN_SUPPORTED_DISTRIBUTIONS,
+    ids=lambda d: f"distribution={d}",
 )
-@mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
+@mark.parametrize("config", EXP01_CASES, ids=lambda c: c["id"])
 def test_randomized_laplacian_functions_identical(
     config: dict[str, Any],
     distribution: str,
@@ -115,7 +101,7 @@ def test_randomized_laplacian_functions_identical(
             unweighted. If `diagonal_increments`, a synthetic coefficient tensor is
             used that has diagonal elements that are increments of 1 starting from 1.
     """
-    f, x = setup_case(config)
+    f, (x,) = setup_case(config)
 
     randomization = (distribution, num_samples)
     weighting = get_weighting(x[0], weights, randomization=randomization)
@@ -131,7 +117,7 @@ def test_randomized_laplacian_functions_identical(
     first_key = list(laps.keys())[0]
     reference = laps[first_key]
     for value in laps.values():
-        report_nonclose(reference, value)
+        assert_close(reference, value)
 
     # different seed must yield a different result (skip for rademacher:
     # v_i^2 = 1 makes the estimator exact for diagonal Hessians / rank-deficient
@@ -146,13 +132,13 @@ def test_randomized_laplacian_functions_identical(
 
 
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
-@mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
+@mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=lambda s: f"strategy={s}")
 @mark.parametrize(
     "distribution",
     LAPLACIAN_SUPPORTED_DISTRIBUTIONS,
-    ids=LAPLACIAN_DISTRIBUTION_IDS,
+    ids=lambda d: f"distribution={d}",
 )
-@mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
+@mark.parametrize("config", EXP01_CASES, ids=lambda c: c["id"])
 def test_randomized_laplacian_functions_converge(
     config: dict[str, Any],
     strategy: str,
@@ -175,7 +161,7 @@ def test_randomized_laplacian_functions_converge(
         chunk_size: Number of samples per chunk. Default: `64`.
         target_rel_error: Target relative error for convergence. Default: `5e-2`.
     """
-    f, X = setup_case(config)
+    f, (X,) = setup_case(config)
 
     C = vmap(lambda x: get_coefficients(x, weights))(X)
     lap_func = vmap(lambda x, C: laplacian(f, x, C))
@@ -199,8 +185,8 @@ def test_randomized_laplacian_functions_converge(
     assert converged, f"MC Laplacian ({strategy}, {distribution}) did not converge."
 
 
-@mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
-@mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
+@mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=lambda s: f"strategy={s}")
+@mark.parametrize("config", EXP01_CASES, ids=lambda c: c["id"])
 def test_bilaplacian_functions(config: dict[str, Any], strategy: str):
     """Test that the benchmarked Bi-Laplacians produce the correct result.
 
@@ -208,21 +194,21 @@ def test_bilaplacian_functions(config: dict[str, Any], strategy: str):
         config: Configuration dictionary of the test case.
         strategy: The strategy to test.
     """
-    f, x = setup_case(config)
+    f, (x,) = setup_case(config)
     bilap_func = vmap(lambda x: bilaplacian(f, x))
     bilap = bilap_func(x)
 
     bilap_func = bilaplacian_function(f, x, strategy)()
 
-    report_nonclose(bilap, bilap_func)
+    assert_close(bilap, bilap_func)
 
 
 @mark.parametrize(
     "distribution",
     BILAPLACIAN_SUPPORTED_DISTRIBUTIONS,
-    ids=BILAPLACIAN_DISTRIBUTION_IDS,
+    ids=lambda d: f"distribution={d}",
 )
-@mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
+@mark.parametrize("config", EXP01_CASES, ids=lambda c: c["id"])
 def test_randomized_bilaplacian_functions_identical(
     config: dict[str, Any], distribution: str, num_samples: int = 42
 ):
@@ -233,7 +219,7 @@ def test_randomized_bilaplacian_functions_identical(
         distribution: The distribution from which to draw random vectors.
         num_samples: Number of samples to draw. Default: `42`.
     """
-    f, x = setup_case(config)
+    f, (x,) = setup_case(config)
     randomization = (distribution, num_samples)
 
     bilaps = {}
@@ -245,7 +231,7 @@ def test_randomized_bilaplacian_functions_identical(
     first_key = list(bilaps.keys())[0]
     reference = bilaps[first_key]
     for value in bilaps.values():
-        report_nonclose(reference, value)
+        assert_close(reference, value)
 
     # different seed must yield a different result (skip for rademacher:
     # v_i^2 = 1 makes the estimator exact for diagonal Hessians / rank-deficient
@@ -257,13 +243,13 @@ def test_randomized_bilaplacian_functions_identical(
         assert not bilap_seed_a.allclose(bilap_seed_b)
 
 
-@mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
+@mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=lambda s: f"strategy={s}")
 @mark.parametrize(
     "distribution",
     BILAPLACIAN_SUPPORTED_DISTRIBUTIONS,
-    ids=BILAPLACIAN_DISTRIBUTION_IDS,
+    ids=lambda d: f"distribution={d}",
 )
-@mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
+@mark.parametrize("config", EXP01_CASES, ids=lambda c: c["id"])
 def test_randomized_bilaplacian_functions_converge(
     config: dict[str, Any],
     strategy: str,
@@ -282,7 +268,7 @@ def test_randomized_bilaplacian_functions_converge(
         chunk_size: Number of samples per chunk. Default: `128`.
         target_rel_error: Target relative error for convergence. Default: `5e-2`.
     """
-    f, X = setup_case(config)
+    f, (X,) = setup_case(config)
     randomization = (distribution, chunk_size)
 
     bilap_func = vmap(lambda x: bilaplacian(f, x))

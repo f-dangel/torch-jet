@@ -207,7 +207,6 @@ def vector_hessian_vector_product_laplacian(
 def laplacian_function(
     f: Callable[[Tensor], Tensor],
     X: Tensor,
-    is_batched: bool,
     strategy: str,
     randomization: tuple[str, int] | None = None,
     weighting: tuple[Callable[[Tensor, Tensor], Tensor], int] | None = None,
@@ -216,8 +215,8 @@ def laplacian_function(
 
     Args:
         f: The function to compute the Laplacian of. Processes an un-batched tensor.
-        X: The input tensor at which to compute the Laplacian.
-        is_batched: Whether the input is a batched tensor.
+        X: The batched input tensor at which to compute the Laplacian (leading
+            dimension is the batch).
         strategy: Which strategy will be used by the returned function to compute
             the Laplacian. The following strategies are supported:
             - `'hessian_trace'`: The Laplacian is computed by tracing the Hessian.
@@ -247,7 +246,7 @@ def laplacian_function(
         ValueError: If the strategy is not supported.
     """
     # Set up the function that computes the Laplacian on an un-batched datum
-    dummy_x = X[0] if is_batched else X
+    dummy_x = X[0]
 
     if strategy == "hessian_trace":
         if weighting is None and randomization is None:
@@ -273,10 +272,9 @@ def laplacian_function(
     else:
         raise ValueError(f"Unsupported {strategy=}. {SUPPORTED_STRATEGIES=}.")
 
-    if is_batched:
-        laplacian = vmap(
-            laplacian, randomness="error" if randomization is None else "different"
-        )
+    laplacian = vmap(
+        laplacian, randomness="error" if randomization is None else "different"
+    )
     return partial(laplacian, X)
 
 
@@ -325,7 +323,6 @@ def vector_hessian_vector_product_bilaplacian(
 def bilaplacian_function(
     f: Callable[[Tensor], Tensor],
     X: Tensor,
-    is_batched: bool,
     strategy: str,
     randomization: tuple[str, int] | None = None,
 ) -> Callable[[], Tensor]:
@@ -333,8 +330,8 @@ def bilaplacian_function(
 
     Args:
         f: The function to compute the Bi-Laplacian of. Processes an un-batched tensor.
-        X: The input tensor at which to compute the Bi-Laplacian.
-        is_batched: Whether the input is a batched tensor.
+        X: The batched input tensor at which to compute the Bi-Laplacian (leading
+            dimension is the batch).
         strategy: Which strategy will be used by the returned function to compute
             the Bi-Laplacian. The following strategies are supported:
             - `'hessian_trace'`: The Bi-Laplacian is computed by computing the tensor
@@ -356,7 +353,7 @@ def bilaplacian_function(
     Raises:
         ValueError: If the strategy is not supported.
     """
-    dummy_x = X[0] if is_batched else X
+    dummy_x = X[0]
 
     if strategy == "hessian_trace":
         if randomization is None:
@@ -382,10 +379,9 @@ def bilaplacian_function(
     else:
         raise ValueError(f"Unsupported strategy: {strategy}.")
 
-    if is_batched:
-        bilap_fn = vmap(
-            bilap_fn, randomness="error" if randomization is None else "different"
-        )
+    bilap_fn = vmap(
+        bilap_fn, randomness="error" if randomization is None else "different"
+    )
 
     return partial(bilap_fn, X)
 
@@ -460,7 +456,6 @@ def get_function_and_description(
     num_samples: int | None,
     net: Callable[[Tensor], Tensor],
     X: Tensor,
-    is_batched: bool,
     compiled: bool,
     rank_ratio: float | None = None,
 ) -> tuple[Callable[[], Tensor], Callable[[], Tensor], str]:
@@ -473,8 +468,7 @@ def get_function_and_description(
         distribution: The distribution type, if any.
         num_samples: The number of samples, if any.
         net: The neural network model.
-        X: The input tensor.
-        is_batched: A flag indicating if the input is batched.
+        X: The batched input tensor (leading dimension is the batch).
         compiled: A flag indicating if the function should be compiled.
         rank_ratio: Ratio of the rank to use for the coefficient matrix (∈ (0; 1]).
             Only used for weighted Laplacian.
@@ -499,11 +493,11 @@ def get_function_and_description(
     )
 
     # set up arguments
-    args = (net, X, is_batched, strategy)
+    args = (net, X, strategy)
     kwargs = {"randomization": randomization}
     if operator == "weighted-laplacian":
         kwargs["weighting"] = get_weighting(
-            X[0] if is_batched else X,
+            X[0],
             ("diagonal_increments", rank_ratio),
             randomization=randomization,
         )
@@ -616,7 +610,6 @@ if __name__ == "__main__":
     dev = device(args.device)
     dt = float64
     net = setup_architecture(args.architecture, args.dim, dev, dt)
-    is_batched = True
     X = setup_input(args.batch_size, args.dim, dev, dt)
 
     start = perf_counter()
@@ -627,7 +620,6 @@ if __name__ == "__main__":
         args.num_samples,
         net,
         X,
-        is_batched,
         args.compiled,
         args.rank_ratio,
     )
@@ -670,7 +662,6 @@ if __name__ == "__main__":
             args.num_samples,
             net,
             X,
-            is_batched,
             False,  # do not use compilation for ground truth
             args.rank_ratio,
         )

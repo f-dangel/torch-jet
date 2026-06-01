@@ -18,6 +18,7 @@ from torch.testing import assert_close
 
 from jet.bilaplacian import SUPPORTED_DISTRIBUTIONS
 from jet.bilaplacian import bilaplacian as jet_bilaplacian
+from jet.laplacian import laplacian as jet_laplacian
 from jet.utils import run_seeded
 from test.test_laplacian import _check_mc_convergence
 from test.utils import setup_case, shape
@@ -86,6 +87,23 @@ def test_bilaplacian(config: dict[str, Any], collapsed: bool):
     bilap_fn = jet_bilaplacian(f, x, collapsed=collapsed)
     bilap_jet = bilap_fn(x)
     assert_close(bilap_func, bilap_jet)
+
+
+@mark.xfail(
+    raises=NotImplementedError,
+    reason="aten.zeros_like.default has no jet rule; blocks nesting laplacian twice",
+    strict=True,
+)
+@mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
+@mark.parametrize("config", BILAPLACIAN_CASES, ids=BILAPLACIAN_IDS)
+def test_bilaplacian_matches_nested_laplacian(config: dict[str, Any], collapsed: bool):
+    """``Δ(Δf)(x) == Δ²f(x)`` -- nesting laplacian twice yields the bilaplacian."""
+    f, (x,) = setup_case(config)
+    lap_of_lap = jet_laplacian(
+        jet_laplacian(f, x, collapsed=collapsed), x, collapsed=collapsed
+    )
+    expected = jet_bilaplacian(f, x, collapsed=collapsed)(x)
+    assert_close(lap_of_lap(x), expected)
 
 
 @mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])

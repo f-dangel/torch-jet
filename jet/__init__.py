@@ -22,10 +22,10 @@ def _is_jet_leaf(x: Any) -> bool:
 
 
 def jet(
-    f: Callable[..., PyTree[Tensor]],
+    f: Callable[[*tuple[PyTree[Tensor], ...]], PyTree[Tensor]],
     mock_args: tuple[PyTree[Tensor], ...],
     collapsed: bool = False,
-) -> Callable[..., PyTree[Jet]]:
+) -> Callable[[*tuple[PyTree[Jet], ...]], PyTree[Jet]]:
     """Overload a function with its Taylor-mode equivalent.
 
     The returned function is K-polymorphic: the derivative order is inferred
@@ -91,8 +91,8 @@ def jet(
 
 
 def rev_jet(
-    f: Callable[..., PyTree[Tensor]], detach: bool = True
-) -> Callable[..., PyTree[Jet]]:
+    f: Callable[[*tuple[PyTree[Tensor], ...]], PyTree[Tensor]], detach: bool = True
+) -> Callable[[*tuple[PyTree[Jet], ...]], PyTree[Jet]]:
     """Implement Taylor-mode via nested reverse-mode autodiff.
 
     Serves as a reference implementation for testing ``jet``. See :func:`jet`
@@ -128,7 +128,7 @@ def rev_jet(
         ]
         ref_tensor = primals[0]
 
-        def path(t: Tensor) -> Any:
+        def path(t: Tensor) -> tuple[PyTree[Tensor], ...]:
             """Construct the Taylor path
             x_0 + t * x_1 + t^2 / 2 * x_2 + ... + t^k / k! x_k.
             It tracks ``f``'s dependence on the primal values and Taylor coefficients.
@@ -185,10 +185,10 @@ def rev_jet(
 
 
 def _uncollapsed_via_vmap(
-    f: Callable[..., PyTree[Tensor]],
+    f: Callable[[*tuple[PyTree[Tensor], ...]], PyTree[Tensor]],
     mock_args: tuple[PyTree[Tensor], ...],
     randomization: tuple[str, int] | None,
-) -> Callable[..., PyTree[Jet]]:
+) -> Callable[[*tuple[PyTree[Jet], ...]], PyTree[Jet]]:
     """Build a collapsed-jet-compatible function from standard ``jet`` + ``vmap``.
 
     The returned function has the same calling convention as
@@ -216,7 +216,7 @@ def _uncollapsed_via_vmap(
         # Batched coefficients (orders 1..K-1) carry the leading direction dim R.
         batched_flat = [leaf[order] for leaf in leaves for order in range(1, K)]
 
-        def single_direction(*flat_batched: Tensor) -> Any:
+        def single_direction(*flat_batched: Tensor) -> PyTree[Jet]:
             # Rebuild per-leaf jets from this direction's batched coefficients,
             # reusing the shared (un-batched) collapsed order-K coefficient.
             per_leaf_jets = [

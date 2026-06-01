@@ -24,18 +24,16 @@ from torch import addmm, cos, float64, manual_seed, rand, sigmoid, sin, tanh, te
 
 from test.utils import K_AND_MODE, assert_jet_matches_oracle, shape, shapes
 
-# Deterministic constants for ``_JC`` / ``_CJ`` branches. These are closed
-# over by the test ``f`` and become frozen constants in the captured graph.
+# Deterministic constants for ``_JC`` / ``_CJ`` branches. Closed over by
+# the test ``f`` and become frozen constants in the captured graph.
 manual_seed(0)
-_MM_LEFT_CONST = rand(3, 4, dtype=float64)  # for ``const @ jet`` rows
-_MM_RIGHT_CONST = rand(4, 5, dtype=float64)  # for ``jet @ const`` rows
-_ADDMM_BIAS = rand(3, 5, dtype=float64)
-_ADDMM_LEFT_CONST = rand(3, 4, dtype=float64)
-_ADDMM_RIGHT_CONST = rand(4, 5, dtype=float64)
+_LEFT = rand(3, 4, dtype=float64)  # left operand of mm/addmm when jet is right
+_RIGHT = rand(4, 5, dtype=float64)  # right operand of mm/addmm when jet is left
+_BIAS = rand(3, 5, dtype=float64)  # addmm bias (must be const)
 # Tensor constant for ``_CJ`` rows on subtract: ``scalar - jet`` lowers to
 # ``aten.rsub.Scalar`` (unregistered), but ``tensor - jet`` stays on
 # ``aten.sub.Tensor`` which has the CJ branch we want to exercise.
-_SUB_CONST = tensor(2.0, dtype=float64)
+_SUB = tensor(2.0, dtype=float64)
 
 
 _UNARY_POINTWISE = {"sin": sin, "cos": cos, "tanh": tanh, "sigmoid": sigmoid}
@@ -62,7 +60,7 @@ PRIMITIVE_CASES = [
     # ---- Binary sub (non-commutative) ------------------------------------
     {"id": "sub_JJ", "f": lambda x, y: x - y, "args_fn": shapes((4,), (4,))},
     {"id": "sub_JC", "f": lambda x: x - 2.0, "args_fn": shape(4)},
-    {"id": "sub_CJ", "f": lambda x: _SUB_CONST - x, "args_fn": shape(4)},
+    {"id": "sub_CJ", "f": lambda x: _SUB - x, "args_fn": shape(4)},
     # ---- Binary mul (3 dispatch branches + aliased ``x*x``) --------------
     {"id": "mul_JJ", "f": lambda x, y: x * y, "args_fn": shapes((4,), (4,))},
     {"id": "mul_JJ_aliased", "f": lambda x: x * x, "args_fn": shape(4)},
@@ -70,22 +68,22 @@ PRIMITIVE_CASES = [
     {"id": "mul_CJ", "f": lambda x: 3.0 * x, "args_fn": shape(4)},
     # ---- Matrix multiply (non-commutative) -------------------------------
     {"id": "mm_JJ", "f": lambda A, B: A @ B, "args_fn": shapes((3, 4), (4, 5))},
-    {"id": "mm_JC", "f": lambda A: A @ _MM_RIGHT_CONST, "args_fn": shape(3, 4)},
-    {"id": "mm_CJ", "f": lambda B: _MM_LEFT_CONST @ B, "args_fn": shape(4, 5)},
+    {"id": "mm_JC", "f": lambda A: A @ _RIGHT, "args_fn": shape(3, 4)},
+    {"id": "mm_CJ", "f": lambda B: _LEFT @ B, "args_fn": shape(4, 5)},
     # ---- addmm (3 dispatch branches over mat1/mat2; bias must be const) ---
     {
         "id": "addmm_mat1_mat2_jet",
-        "f": lambda A, B: addmm(_ADDMM_BIAS, A, B),
+        "f": lambda A, B: addmm(_BIAS, A, B),
         "args_fn": shapes((3, 4), (4, 5)),
     },
     {
         "id": "addmm_mat1_jet",
-        "f": lambda A: addmm(_ADDMM_BIAS, A, _ADDMM_RIGHT_CONST),
+        "f": lambda A: addmm(_BIAS, A, _RIGHT),
         "args_fn": shape(3, 4),
     },
     {
         "id": "addmm_mat2_jet",
-        "f": lambda B: addmm(_ADDMM_BIAS, _ADDMM_LEFT_CONST, B),
+        "f": lambda B: addmm(_BIAS, _LEFT, B),
         "args_fn": shape(4, 5),
     },
     # ---- Reduction -------------------------------------------------------

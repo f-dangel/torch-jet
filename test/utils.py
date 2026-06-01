@@ -1,6 +1,5 @@
 """Utility functions for testing."""
 
-from functools import cache
 from typing import Any, Callable
 
 from pytest import param
@@ -74,12 +73,11 @@ K_AND_MODE = [
 ]
 
 
-@cache
 def mlp(device: str) -> Sequential:
-    """Build (or retrieve cached) two-layer tanh-activated MLP on ``device``.
+    """Build a two-layer tanh-activated MLP on ``device``.
 
     Sequential's Linear weights are concrete tensors at trace time, which FX
-    requires. Cached per device.
+    requires. ``manual_seed(0)`` keeps the weights deterministic across calls.
     """
     manual_seed(0)
     net = Sequential(Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh())
@@ -116,9 +114,8 @@ def setup_case(
         argument tuple, preserving the input pytree structure.
     """
     f = config["f"](device)
-    # Seed AFTER f -- on first call to a builder like ``mlp`` the constructor
-    # consumes RNG, otherwise hits the device cache; re-seeding here keeps
-    # ``args_fn`` deterministic regardless of cache state.
+    # Seed AFTER ``f`` -- builders like ``mlp`` / ``_consts`` consume RNG to
+    # construct their state; re-seeding here keeps ``args_fn`` deterministic.
     manual_seed(0)
     kw = device_kw(device)
     return f, tree_map(lambda t: t.to(**kw), config["args_fn"]())

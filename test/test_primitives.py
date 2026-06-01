@@ -4,7 +4,6 @@ Each row in ``PRIMITIVE_CASES`` exercises one dispatch branch of a primitive
 registered with :class:`JetInterpreter`.
 """
 
-from functools import cache
 from typing import Any
 
 from pytest import mark
@@ -19,9 +18,8 @@ from test.utils import (
 )
 
 
-@cache
 def _consts(device: str) -> dict[str, Any]:
-    """Build (or retrieve cached) frozen constants on ``device``.
+    """Build frozen constants on ``device``.
 
     Keys: ``L`` (3, 4), ``R`` (4, 5) -- mm/addmm operands; ``B`` (3, 5) --
     addmm bias; ``SUB`` -- scalar tensor for ``tensor - jet`` (which lowers

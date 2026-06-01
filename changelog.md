@@ -107,6 +107,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Add JAX-style `deflinear(prim)` / `defzero(prim)` helpers in
+  `jet/operations.py` and `jet/collapsed_operations.py` to bulk-register
+  linear and constant-output ops. Drops the per-op `jet_view` /
+  `jet_unsqueeze` / `jet_squeeze` / `jet_squeeze_dims` / `jet_zeros_like`
+  functions and their `cjet_*` mirrors; adding a new op in either category
+  is now a one-line edit
+  ([PR](https://github.com/f-dangel/torch-jet/pull/142)).
+
 - Annotate pytree-shaped signatures with a new `PyTree[Leaf]` recursive alias
   and a `Jet = tuple[Tensor, ...]` alias in `jet/utils.py`
   ([PR](https://github.com/f-dangel/torch-jet/pull/138)).

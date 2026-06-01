@@ -21,11 +21,7 @@ from jet.laplacian import laplacian as jet_laplacian
 from jet.utils import run_seeded
 from test.test_laplacian import _check_mc_convergence
 from test.utils import SCALAR_OUTPUT_CASES as BILAPLACIAN_CASES
-from test.utils import SCALAR_OUTPUT_IDS as BILAPLACIAN_IDS
 from test.utils import setup_case
-
-DISTRIBUTIONS = SUPPORTED_DISTRIBUTIONS
-DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]
 
 
 def bilaplacian(f: Callable[[Tensor], Tensor], x: Tensor) -> Tensor:
@@ -53,7 +49,7 @@ def bilaplacian(f: Callable[[Tensor], Tensor], x: Tensor) -> Tensor:
 
 
 @mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
-@mark.parametrize("config", BILAPLACIAN_CASES, ids=BILAPLACIAN_IDS)
+@mark.parametrize("config", BILAPLACIAN_CASES, ids=lambda c: c["id"])
 def test_bilaplacian(config: dict[str, Any], collapsed: bool):
     """Compare Bi-Laplacian implementations.
 
@@ -78,7 +74,7 @@ def test_bilaplacian(config: dict[str, Any], collapsed: bool):
     strict=True,
 )
 @mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
-@mark.parametrize("config", BILAPLACIAN_CASES, ids=BILAPLACIAN_IDS)
+@mark.parametrize("config", BILAPLACIAN_CASES, ids=lambda c: c["id"])
 def test_bilaplacian_matches_nested_laplacian(config: dict[str, Any], collapsed: bool):
     """``Δ(Δf)(x) == Δ²f(x)`` -- nesting laplacian twice yields the bilaplacian."""
     f, (x,) = setup_case(config)
@@ -90,8 +86,10 @@ def test_bilaplacian_matches_nested_laplacian(config: dict[str, Any], collapsed:
 
 
 @mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
-@mark.parametrize("distribution", DISTRIBUTIONS, ids=DISTRIBUTION_IDS)
-@mark.parametrize("config", BILAPLACIAN_CASES, ids=BILAPLACIAN_IDS)
+@mark.parametrize(
+    "distribution", SUPPORTED_DISTRIBUTIONS, ids=lambda d: f"distribution={d}"
+)
+@mark.parametrize("config", BILAPLACIAN_CASES, ids=lambda c: c["id"])
 def test_Bilaplacian_randomization(
     config: dict[str, Any],
     distribution: str,
@@ -106,7 +104,7 @@ def test_Bilaplacian_randomization(
         config: Configuration dictionary of the test case.
         distribution: The distribution from which to draw random vectors.
         collapsed: Whether to use collapsed Taylor mode.
-        max_num_chunks: Maximum number of chunks to accumulate. Default: `200`.
+        max_num_chunks: Maximum number of chunks to accumulate. Default: `500`.
         chunk_size: Number of samples per chunk. Default: `256`.
         target_rel_error: Target relative error for convergence. Default: `1e-2`.
     """

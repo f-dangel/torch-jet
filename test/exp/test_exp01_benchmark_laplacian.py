@@ -27,14 +27,6 @@ from test.test_laplacian import (
 )
 from test.utils import MLP, setup_case, shape
 
-STRATEGY_IDS = [f"strategy={s}" for s in SUPPORTED_STRATEGIES]
-LAPLACIAN_DISTRIBUTION_IDS = [
-    f"distribution={d}" for d in LAPLACIAN_SUPPORTED_DISTRIBUTIONS
-]
-BILAPLACIAN_DISTRIBUTION_IDS = [
-    f"distribution={d}" for d in BILAPLACIAN_SUPPORTED_DISTRIBUTIONS
-]
-
 # make generation of test cases deterministic
 manual_seed(0)
 
@@ -53,12 +45,11 @@ EXP01_CASES = [
         "id": "sigmoid-sigmoid",
     },
 ]
-EXP01_IDS = [config["id"] for config in EXP01_CASES]
 
 
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
-@mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
-@mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
+@mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=lambda s: f"strategy={s}")
+@mark.parametrize("config", EXP01_CASES, ids=lambda c: c["id"])
 def test_laplacian_functions(
     config: dict[str, Any],
     strategy: str,
@@ -89,9 +80,11 @@ def test_laplacian_functions(
 
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize(
-    "distribution", LAPLACIAN_SUPPORTED_DISTRIBUTIONS, ids=LAPLACIAN_DISTRIBUTION_IDS
+    "distribution",
+    LAPLACIAN_SUPPORTED_DISTRIBUTIONS,
+    ids=lambda d: f"distribution={d}",
 )
-@mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
+@mark.parametrize("config", EXP01_CASES, ids=lambda c: c["id"])
 def test_randomized_laplacian_functions_identical(
     config: dict[str, Any],
     distribution: str,
@@ -139,13 +132,13 @@ def test_randomized_laplacian_functions_identical(
 
 
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
-@mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
+@mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=lambda s: f"strategy={s}")
 @mark.parametrize(
     "distribution",
     LAPLACIAN_SUPPORTED_DISTRIBUTIONS,
-    ids=LAPLACIAN_DISTRIBUTION_IDS,
+    ids=lambda d: f"distribution={d}",
 )
-@mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
+@mark.parametrize("config", EXP01_CASES, ids=lambda c: c["id"])
 def test_randomized_laplacian_functions_converge(
     config: dict[str, Any],
     strategy: str,
@@ -192,8 +185,8 @@ def test_randomized_laplacian_functions_converge(
     assert converged, f"MC Laplacian ({strategy}, {distribution}) did not converge."
 
 
-@mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
-@mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
+@mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=lambda s: f"strategy={s}")
+@mark.parametrize("config", EXP01_CASES, ids=lambda c: c["id"])
 def test_bilaplacian_functions(config: dict[str, Any], strategy: str):
     """Test that the benchmarked Bi-Laplacians produce the correct result.
 
@@ -213,9 +206,9 @@ def test_bilaplacian_functions(config: dict[str, Any], strategy: str):
 @mark.parametrize(
     "distribution",
     BILAPLACIAN_SUPPORTED_DISTRIBUTIONS,
-    ids=BILAPLACIAN_DISTRIBUTION_IDS,
+    ids=lambda d: f"distribution={d}",
 )
-@mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
+@mark.parametrize("config", EXP01_CASES, ids=lambda c: c["id"])
 def test_randomized_bilaplacian_functions_identical(
     config: dict[str, Any], distribution: str, num_samples: int = 42
 ):
@@ -250,13 +243,13 @@ def test_randomized_bilaplacian_functions_identical(
         assert not bilap_seed_a.allclose(bilap_seed_b)
 
 
-@mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=STRATEGY_IDS)
+@mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=lambda s: f"strategy={s}")
 @mark.parametrize(
     "distribution",
     BILAPLACIAN_SUPPORTED_DISTRIBUTIONS,
-    ids=BILAPLACIAN_DISTRIBUTION_IDS,
+    ids=lambda d: f"distribution={d}",
 )
-@mark.parametrize("config", EXP01_CASES, ids=EXP01_IDS)
+@mark.parametrize("config", EXP01_CASES, ids=lambda c: c["id"])
 def test_randomized_bilaplacian_functions_converge(
     config: dict[str, Any],
     strategy: str,

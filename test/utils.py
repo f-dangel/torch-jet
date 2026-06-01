@@ -54,7 +54,6 @@ SCALAR_OUTPUT_CASES = [
     {"f": MLP, "args_fn": shape(5), "id": "two-layer-tanh-mlp"},
     {"f": lambda x: sigmoid(sigmoid(x)), "args_fn": shape(3), "id": "sigmoid-sigmoid"},
 ]
-SCALAR_OUTPUT_IDS = [c["id"] for c in SCALAR_OUTPUT_CASES]
 
 
 def setup_case(

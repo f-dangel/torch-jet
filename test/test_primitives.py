@@ -27,9 +27,9 @@ from test.utils import K_AND_MODE, assert_jet_matches_oracle, shape, shapes
 # Deterministic constants for ``_JC`` / ``_CJ`` branches. Closed over by
 # the test ``f`` and become frozen constants in the captured graph.
 manual_seed(0)
-_LEFT = rand(3, 4, dtype=float64)  # left operand of mm/addmm when jet is right
-_RIGHT = rand(4, 5, dtype=float64)  # right operand of mm/addmm when jet is left
-_BIAS = rand(3, 5, dtype=float64)  # addmm bias (must be const)
+_L = rand(3, 4, dtype=float64)  # left operand of mm/addmm when jet is right
+_R = rand(4, 5, dtype=float64)  # right operand of mm/addmm when jet is left
+_B = rand(3, 5, dtype=float64)  # addmm bias (must be const)
 # Tensor constant for ``_CJ`` rows on subtract: ``scalar - jet`` lowers to
 # ``aten.rsub.Scalar`` (unregistered), but ``tensor - jet`` stays on
 # ``aten.sub.Tensor`` which has the CJ branch we want to exercise.
@@ -68,24 +68,16 @@ PRIMITIVE_CASES = [
     {"id": "mul_CJ", "f": lambda x: 3.0 * x, "args_fn": shape(4)},
     # ---- Matrix multiply (non-commutative) -------------------------------
     {"id": "mm_JJ", "f": lambda A, B: A @ B, "args_fn": shapes((3, 4), (4, 5))},
-    {"id": "mm_JC", "f": lambda A: A @ _RIGHT, "args_fn": shape(3, 4)},
-    {"id": "mm_CJ", "f": lambda B: _LEFT @ B, "args_fn": shape(4, 5)},
+    {"id": "mm_JC", "f": lambda A: A @ _R, "args_fn": shape(3, 4)},
+    {"id": "mm_CJ", "f": lambda B: _L @ B, "args_fn": shape(4, 5)},
     # ---- addmm (3 dispatch branches over mat1/mat2; bias must be const) ---
     {
         "id": "addmm_mat1_mat2_jet",
-        "f": lambda A, B: addmm(_BIAS, A, B),
+        "f": lambda A, B: addmm(_B, A, B),
         "args_fn": shapes((3, 4), (4, 5)),
     },
-    {
-        "id": "addmm_mat1_jet",
-        "f": lambda A: addmm(_BIAS, A, _RIGHT),
-        "args_fn": shape(3, 4),
-    },
-    {
-        "id": "addmm_mat2_jet",
-        "f": lambda B: addmm(_BIAS, _LEFT, B),
-        "args_fn": shape(4, 5),
-    },
+    {"id": "addmm_mat1_jet", "f": lambda A: addmm(_B, A, _R), "args_fn": shape(3, 4)},
+    {"id": "addmm_mat2_jet", "f": lambda B: addmm(_B, _L, B), "args_fn": shape(4, 5)},
     # ---- Reduction -------------------------------------------------------
     {"id": "sum_dim_0", "f": lambda x: x.sum(0), "args_fn": shape(3, 4)},
     # ---- Shape-only ops --------------------------------------------------

@@ -11,7 +11,7 @@ from typing import Any, Callable
 
 from einops import einsum
 from pytest import mark
-from torch import Tensor, manual_seed, rand, sigmoid
+from torch import Tensor, manual_seed, sigmoid
 from torch.func import hessian
 from torch.nn import Linear, Sequential, Tanh
 from torch.testing import assert_close
@@ -20,7 +20,7 @@ from jet.bilaplacian import SUPPORTED_DISTRIBUTIONS
 from jet.bilaplacian import bilaplacian as jet_bilaplacian
 from jet.utils import run_seeded
 from test.test_laplacian import _check_mc_convergence
-from test.utils import setup_case
+from test.utils import setup_case, shape
 
 DISTRIBUTIONS = SUPPORTED_DISTRIBUTIONS
 DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]
@@ -34,13 +34,13 @@ BILAPLACIAN_CASES = [
         "f": Sequential(
             Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
         ).double(),
-        "args_fn": lambda: (rand(5).double(),),
+        "args_fn": shape(5),
         "id": "two-layer-tanh-mlp",
     },
     # 3d sigmoid(sigmoid) function
     {
         "f": lambda x: sigmoid(sigmoid(x)),
-        "args_fn": lambda: (rand(3).double(),),
+        "args_fn": shape(3),
         "id": "sigmoid-sigmoid",
     },
 ]
@@ -97,8 +97,8 @@ def test_bilaplacian(config: dict[str, Any], collapsed: bool):
 def test_Bilaplacian_randomization(
     config: dict[str, Any],
     distribution: str,
-    max_num_chunks: int = 200,
-    chunk_size: int = 256,
+    max_num_chunks: int = 500,
+    chunk_size: int = 512,
     target_rel_error: float = 1e-2,
 ):
     """Test convergence of the Bi-Laplacian's Monte-Carlo estimator.

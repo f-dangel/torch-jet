@@ -3,7 +3,7 @@
 from typing import Any
 
 from pytest import mark
-from torch import manual_seed, rand, sigmoid, vmap
+from torch import manual_seed, sigmoid, vmap
 from torch.nn import Linear, Sequential, Tanh
 from torch.testing import assert_close
 
@@ -26,7 +26,7 @@ from test.test_laplacian import (
     get_coefficients,
     laplacian,
 )
-from test.utils import setup_case
+from test.utils import setup_case, shape
 
 STRATEGY_IDS = [f"strategy={s}" for s in SUPPORTED_STRATEGIES]
 LAPLACIAN_DISTRIBUTION_IDS = [
@@ -50,13 +50,13 @@ EXP01_CASES = [
         "f": Sequential(
             Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
         ).double(),
-        "args_fn": lambda: (rand(BATCH_SIZE, 5).double(),),
+        "args_fn": shape(BATCH_SIZE, 5),
         "id": "two-layer-tanh-mlp",
     },
     # 3d sigmoid(sigmoid) function
     {
         "f": lambda x: sigmoid(sigmoid(x)),
-        "args_fn": lambda: (rand(BATCH_SIZE, 3).double(),),
+        "args_fn": shape(BATCH_SIZE, 3),
         "id": "sigmoid-sigmoid",
     },
 ]

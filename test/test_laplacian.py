@@ -4,7 +4,7 @@ from typing import Any, Callable
 
 from einops import einsum
 from pytest import mark
-from torch import Tensor, eye, manual_seed, rand, sigmoid
+from torch import Tensor, eye, manual_seed, sigmoid
 from torch.func import hessian
 from torch.linalg import norm
 from torch.nn import Linear, Sequential, Tanh
@@ -14,7 +14,7 @@ from jet.laplacian import SUPPORTED_DISTRIBUTIONS
 from jet.laplacian import laplacian as jet_laplacian
 from jet.utils import run_seeded
 from jet.weighted_laplacian import C_func_diagonal_increments, get_weighting
-from test.utils import setup_case
+from test.utils import setup_case, shape
 
 DISTRIBUTIONS = SUPPORTED_DISTRIBUTIONS
 DISTRIBUTION_IDS = [f"distribution={d}" for d in DISTRIBUTIONS]
@@ -39,13 +39,13 @@ LAPLACIAN_CASES = [
         "f": Sequential(
             Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
         ).double(),
-        "args_fn": lambda: (rand(5).double(),),
+        "args_fn": shape(5),
         "id": "two-layer-tanh-mlp",
     },
     # 3d sigmoid(sigmoid) function
     {
         "f": lambda x: sigmoid(sigmoid(x)),
-        "args_fn": lambda: (rand(3).double(),),
+        "args_fn": shape(3),
         "id": "sigmoid-sigmoid",
     },
 ]

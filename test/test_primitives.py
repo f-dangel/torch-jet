@@ -24,14 +24,14 @@ coverage at the primitive layer.
 
 from typing import Any
 
-from pytest import mark, skip
+from pytest import mark
 from torch import addmm, float64, manual_seed, rand, sigmoid, sin, tanh, tensor
 from torch import cos as torch_cos
 from torch.testing import assert_close
 
 import jet
 from jet import rev_jet
-from test.utils import K_IDS, K_VALUES, make_jet_args, shape, shapes
+from test.utils import K_AND_MODE, make_jet_args, shape, shapes
 
 # Deterministic constants for ``_JC`` / ``_CJ`` branches. These are closed
 # over by the test ``f`` and become frozen constants in the captured graph.
@@ -96,8 +96,7 @@ PRIMITIVE_CASES = [
 ]
 
 
-@mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])
-@mark.parametrize("K", K_VALUES, ids=K_IDS)
+@mark.parametrize("K, collapsed", K_AND_MODE)
 @mark.parametrize("config", PRIMITIVE_CASES, ids=lambda c: c["id"])
 def test_primitive(config: dict[str, Any], K: int, collapsed: bool):
     """``jet(primitive)`` matches its mode-specific oracle.
@@ -106,8 +105,6 @@ def test_primitive(config: dict[str, Any], K: int, collapsed: bool):
     :func:`jet._uncollapsed_via_vmap`, which runs standard ``jet`` per
     direction and sums at order ``K``.
     """
-    if collapsed and K < 2:
-        skip("collapsed mode requires K >= 2")
     f = config["f"]
     mock_args = config["mock_args_fn"]()
     args = make_jet_args(mock_args, K, collapsed=collapsed)

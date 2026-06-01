@@ -23,14 +23,14 @@ mode at ``K ∈ {2, 5}`` (collapsed mode requires ``K >= 2``).
 
 from typing import Any
 
-from pytest import mark, skip
+from pytest import mark
 from torch import Tensor, cos, float64, manual_seed, rand, sin, tanh
 from torch.nn import Linear, Sequential, Tanh
 from torch.testing import assert_close
 
 import jet
 from jet import rev_jet
-from test.utils import K_IDS, K_VALUES, make_jet_args, shape, shapes
+from test.utils import K_AND_MODE, make_jet_args, shape, shapes
 
 # Module-level MLP so the captured graph is deterministic across runs.
 manual_seed(0)
@@ -106,8 +106,7 @@ COMPOSITION_CASES = [
 ]
 
 
-@mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])
-@mark.parametrize("K", K_VALUES, ids=K_IDS)
+@mark.parametrize("K, collapsed", K_AND_MODE)
 @mark.parametrize("config", COMPOSITION_CASES, ids=lambda c: c["id"])
 def test_composition(config: dict[str, Any], K: int, collapsed: bool):
     """``jet(composition)`` matches its mode-specific oracle.
@@ -116,8 +115,6 @@ def test_composition(config: dict[str, Any], K: int, collapsed: bool):
     :func:`jet._uncollapsed_via_vmap`, which runs standard ``jet`` per
     direction and sums at order ``K``.
     """
-    if collapsed and K < 2:
-        skip("collapsed mode requires K >= 2")
     f = config["f"]
     mock_args = config["mock_args_fn"]()
     args = make_jet_args(mock_args, K, collapsed=collapsed)

@@ -2,17 +2,24 @@
 
 from typing import Any, Callable
 
+from pytest import param
 from torch import Tensor, float64, manual_seed, rand, rand_like, zeros, zeros_like
 from torch.utils._pytree import tree_map
 
-#: K sweep. ``K=0`` (primal-only) and ``K=1`` (Jacobian-vector product) are
-#: boundary cases that exercise the no-recursion branches of the jet rules;
-#: ``K=2`` is the collapsed-mode floor; ``K=5`` is a representative high
-#: order. Intermediate orders exercise the same code paths and don't earn
-#: their own coverage at the primitive / composition layer. Collapsed-mode
-#: tests skip ``K < 2`` at runtime rather than splitting the sweep.
-K_VALUES = [0, 1, 2, 5]
-K_IDS = [f"K={k}" for k in K_VALUES]
+#: Valid ``(K, collapsed)`` pairs for the standard-vs-collapsed mode sweep.
+#: ``K=0`` (primal-only) and ``K=1`` (Jacobian-vector product) are
+#: standard-mode boundaries that exercise the no-recursion branches of the
+#: jet rules; ``K=2`` is the collapsed-mode floor; ``K=5`` is a representative
+#: high order. Intermediate orders exercise the same code paths and don't
+#: earn their own coverage at the primitive / composition layer.
+K_AND_MODE = [
+    param(0, False, id="K=0-standard"),
+    param(1, False, id="K=1-standard"),
+    param(2, False, id="K=2-standard"),
+    param(5, False, id="K=5-standard"),
+    param(2, True, id="K=2-collapsed"),
+    param(5, True, id="K=5-collapsed"),
+]
 
 
 def shape(*dims: int) -> Callable[[], tuple[Tensor]]:

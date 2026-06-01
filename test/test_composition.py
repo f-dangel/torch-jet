@@ -1,21 +1,7 @@
 """Composition tests for Taylor mode.
 
-These tests exercise the interpreter / tracing machinery's ability to thread
-jets through realistic compute graphs. They are NOT primitive coverage --
-each primitive's standalone correctness is in ``test_primitives.py``. The
-fixtures cover the realistic-shape territory:
-
-1. **Scalar `R^n → R`** -- the canonical Laplacian shape.
-2. **Small MLP** -- the canonical PINN compute graph.
-3. **Batched MLP** -- the same MLP with a leading batch dim, the realistic
-   PINN shape.
-4. **Deep pytree → pytree** -- exercises ``tuple``/``list``/``dict``
-   container handling on both input and output.
-5. **Multi-input** -- exercises the variadic positional path.
-6. **Multi-input → dict output** -- multi-input combined with pytree output.
-7. **Dict-only input** -- single dict positional argument.
-8. **Dict-first input** -- ``(dict, tensor)`` -- one of the make_fx-tricky
-   signatures that the rejection smoke (test___init__.py) carves around.
+Exercise the interpreter / tracing machinery on realistic compute graphs.
+Not primitive coverage -- see ``test_primitives.py`` for that.
 """
 
 from typing import Any

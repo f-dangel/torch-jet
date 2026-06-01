@@ -51,8 +51,6 @@ def _deep_pytree_args_fn() -> tuple:
 COMPOSITION_CASES = [
     {
         "id": "scalar_Rn_to_R",
-        # ``.sum(0)`` (dim-IntList overload) — ``.sum()`` traces to
-        # ``aten.sum.default`` which has no jet rule.
         "f": lambda x: (sin(x) * x).sum(0),
         "args_fn": shape(5),
     },

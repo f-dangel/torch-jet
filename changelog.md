@@ -94,6 +94,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Drop the `is_batched` parameter from the experiment harness functions
+  (`laplacian_function` / `bilaplacian_function` in
+  `jet/exp/exp01_benchmark_laplacian/execute.py` and the four matching JAX
+  functions in `jet/exp/exp04_jax_benchmark/execute.py`). The benchmark
+  `__main__` always sets `is_batched = True`, so the `is_batched=False`
+  branch was unreachable in production. The exp test suite consequently
+  drops its `batch_size` parametrize (always batched, with the batch
+  dimension baked into the case's `mock_args_fn`), and `setup_case` loses
+  its now-unused `vmapsize` parameter
+  ([PR](https://github.com/f-dangel/torch-jet/pull/136))
+
 - Extract input validation into `jet/validation.py` (entry point:
   `validate_input_jet`); the `JetInterpreter` now owns both ends of the
   type boundary (wrapping inputs in `placeholder()`, unwrapping outputs in

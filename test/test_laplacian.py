@@ -8,6 +8,7 @@ from torch import Tensor, eye, manual_seed, rand, sigmoid
 from torch.func import hessian
 from torch.linalg import norm
 from torch.nn import Linear, Sequential, Tanh
+from torch.testing import assert_close
 
 from jet.laplacian import SUPPORTED_DISTRIBUTIONS
 from jet.laplacian import laplacian as jet_laplacian
@@ -148,7 +149,7 @@ def test_Laplacian(
     # Using a manually-vmapped jet
     weighting = get_weighting(x, weights)
     lap_fn = jet_laplacian(f, x, weighting=weighting, collapsed=collapsed)(x)
-    assert lap_rev.allclose(lap_fn), "Functorch and jet Laplacians do not match."
+    assert_close(lap_rev, lap_fn, msg="Functorch and jet Laplacians do not match.")
 
 
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)

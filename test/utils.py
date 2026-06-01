@@ -32,30 +32,23 @@ def shapes(*shape_pairs) -> Callable[[], tuple[Tensor, ...]]:
     return lambda: tuple(rand(*s, dtype=float64) for s in shape_pairs)
 
 
-def setup_case(
-    config: dict[str, Any], vmapsize: int = 0
-) -> tuple[Callable[[Tensor], Tensor], Tensor]:
+def setup_case(config: dict[str, Any]) -> tuple[Callable[[Tensor], Tensor], Tensor]:
     """Instantiate the function and its input.
+
+    The input is taken verbatim from the first leaf of ``config["mock_args_fn"]()``
+    -- if the case wants a batched input it should encode the batch dimension
+    into its ``mock_args_fn`` directly.
 
     Args:
         config: Configuration dictionary of the test case. Must have ``"f"``
-            and ``"mock_args_fn"`` keys.
-        vmapsize: Whether to generate an input for a vmap-ed operation.
-            ``0`` means no vmap is applied. Default: ``0``.
+            and ``"mock_args_fn"`` keys. ``mock_args_fn()`` must return a tuple
+            whose first leaf is the (already double-precision) input tensor.
 
     Returns:
-        Tuple ``(f, x)`` with ``x`` in ``float64`` to avoid numerical issues.
+        Tuple containing the function and the input tensor.
     """
     manual_seed(0)
-    f = config["f"]
-    # Extract shape from mock_args_fn (single-input cases only).
-    mock_args = config["mock_args_fn"]()
-    arg_shape = mock_args[0].shape
-    vmap_shape = arg_shape if vmapsize == 0 else (vmapsize, *arg_shape)
-    # ``.double()`` (not ``dtype=float64``) — the two paths consume different
-    # RNG bits, and the downstream MC tests are seeded against this draw.
-    x = rand(*vmap_shape).double()
-    return f, x
+    return config["f"], config["mock_args_fn"]()[0]
 
 
 def make_jet_args(

@@ -7,7 +7,18 @@ registered with :class:`JetInterpreter`.
 from typing import Any
 
 from pytest import mark
-from torch import addmm, cos, manual_seed, ops, rand, sigmoid, sin, tanh, tensor, zeros_like
+from torch import (
+    addmm,
+    cos,
+    manual_seed,
+    ops,
+    rand,
+    sigmoid,
+    sin,
+    tanh,
+    tensor,
+    zeros_like,
+)
 
 from test.utils import (
     DEVICES,

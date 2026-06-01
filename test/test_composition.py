@@ -26,11 +26,8 @@ from typing import Any
 from pytest import mark
 from torch import Tensor, cos, float64, manual_seed, rand, sin, tanh
 from torch.nn import Linear, Sequential, Tanh
-from torch.testing import assert_close
 
-import jet
-from jet import rev_jet
-from test.utils import K_AND_MODE, make_jet_args, shape, shapes
+from test.utils import K_AND_MODE, assert_jet_matches_oracle, shape, shapes
 
 # Module-level MLP so the captured graph is deterministic across runs.
 manual_seed(0)
@@ -101,21 +98,5 @@ COMPOSITION_CASES = [
 @mark.parametrize("K, collapsed", K_AND_MODE)
 @mark.parametrize("config", COMPOSITION_CASES, ids=lambda c: c["id"])
 def test_composition(config: dict[str, Any], K: int, collapsed: bool):
-    """``jet(composition)`` matches its mode-specific oracle.
-
-    Standard mode is compared against :func:`rev_jet`; collapsed mode against
-    :func:`jet._uncollapsed_via_vmap`, which runs standard ``jet`` per
-    direction and sums at order ``K``.
-    """
-    f = config["f"]
-    mock_args = config["mock_args_fn"]()
-    args = make_jet_args(mock_args, K, collapsed=collapsed)
-    oracle = (
-        jet._uncollapsed_via_vmap(f, mock_args, randomization=None)
-        if collapsed
-        else rev_jet(f)
-    )
-
-    actual = jet.jet(f, mock_args, collapsed=collapsed)(*args)
-    expected = oracle(*args)
-    assert_close(actual, expected)
+    """``jet(composition)`` matches its mode-specific oracle."""
+    assert_jet_matches_oracle(config, K, collapsed)

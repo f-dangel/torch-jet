@@ -4,7 +4,11 @@ from typing import Any, Callable
 
 from pytest import param
 from torch import Tensor, float64, manual_seed, rand, rand_like, zeros, zeros_like
+from torch.testing import assert_close
 from torch.utils._pytree import tree_map
+
+import jet
+from jet import rev_jet
 
 #: Valid ``(K, collapsed)`` pairs for the standard-vs-collapsed mode sweep.
 #: ``K=0`` (primal-only) and ``K=1`` (Jacobian-vector product) are
@@ -35,11 +39,13 @@ def shapes(*shape_pairs) -> Callable[[], tuple[Tensor, ...]]:
 def setup_case(
     config: dict[str, Any],
 ) -> tuple[Callable[..., Tensor], tuple[Tensor, ...]]:
-    """Instantiate the function and its mock arguments.
+    """Instantiate the function and the arguments to evaluate it on.
 
-    The mock arguments are taken verbatim from ``config["mock_args_fn"]()``
+    The arguments are taken verbatim from ``config["mock_args_fn"]()``
     -- if the case wants a batched input it should encode the batch dimension
-    into its ``mock_args_fn`` directly.
+    into its ``mock_args_fn`` directly. Callers that re-pass the returned
+    tuple to a tracing API (where the library calls the parameter
+    ``mock_args``) may rebind it locally to ``mock_args``.
 
     Args:
         config: Configuration dictionary of the test case. Must have ``"f"``
@@ -81,3 +87,23 @@ def make_jet_args(
         return (primal, c_1, *middle, c_K)
 
     return tree_map(make_leaf, mock_args)
+
+
+def assert_jet_matches_oracle(config: dict[str, Any], K: int, collapsed: bool) -> None:
+    """Assert ``jet(f, mock_args, collapsed)`` matches its mode-specific oracle.
+
+    Standard mode is compared against :func:`jet.rev_jet`; collapsed mode
+    against :func:`jet._uncollapsed_via_vmap`, which runs standard ``jet`` per
+    direction and sums at order ``K``.
+    """
+    f = config["f"]
+    mock_args = config["mock_args_fn"]()
+    args = make_jet_args(mock_args, K, collapsed=collapsed)
+    oracle = (
+        jet._uncollapsed_via_vmap(f, mock_args, randomization=None)
+        if collapsed
+        else rev_jet(f)
+    )
+    actual = jet.jet(f, mock_args, collapsed=collapsed)(*args)
+    expected = oracle(*args)
+    assert_close(actual, expected)

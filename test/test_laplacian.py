@@ -13,8 +13,8 @@ from jet.laplacian import SUPPORTED_DISTRIBUTIONS
 from jet.laplacian import laplacian as jet_laplacian
 from jet.utils import run_seeded
 from jet.weighted_laplacian import C_func_diagonal_increments, get_weighting
+from test.utils import DEVICES, setup_case, tolerances_for_device
 from test.utils import SCALAR_OUTPUT_CASES as LAPLACIAN_CASES
-from test.utils import setup_case
 
 WEIGHTS = [
     None,
@@ -98,6 +98,7 @@ def get_coefficients(x: Tensor, weights: str | None | tuple[str, float]) -> Tens
     raise ValueError(f"Unsupported {weights=}.")
 
 
+@mark.parametrize("device", DEVICES)
 @mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize("config", LAPLACIAN_CASES, ids=lambda c: c["id"])
@@ -105,6 +106,7 @@ def test_Laplacian(
     config: dict[str, Any],
     weights: str | None | tuple[str, float],
     collapsed: bool,
+    device: str,
 ):
     """Compare Laplacian implementations.
 
@@ -114,8 +116,9 @@ def test_Laplacian(
             unweighted. If `diagonal_increments`, a synthetic coefficient tensor is
             used that has diagonal elements that are increments of 1 starting from 1.
         collapsed: Whether to use collapsed Taylor mode.
+        device: Device to run the test on.
     """
-    f, (x,) = setup_case(config)
+    f, (x,) = setup_case(config, device)
 
     # reference: Using PyTorch
     C = get_coefficients(x, weights)
@@ -124,9 +127,10 @@ def test_Laplacian(
     # Using a manually-vmapped jet
     weighting = get_weighting(x, weights)
     lap_fn = jet_laplacian(f, x, weighting=weighting, collapsed=collapsed)(x)
-    assert_close(lap_rev, lap_fn)
+    assert_close(lap_rev, lap_fn, **tolerances_for_device(device))
 
 
+@mark.parametrize("device", DEVICES)
 @mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize(
@@ -138,6 +142,7 @@ def test_Laplacian_randomization(
     distribution: str,
     weights: str | None,
     collapsed: bool,
+    device: str,
     max_num_chunks: int = 100,
     chunk_size: int = 256,
     target_rel_error: float = 1e-2,
@@ -151,11 +156,12 @@ def test_Laplacian_randomization(
             unweighted. If `diagonal_increments`, a synthetic coefficient tensor is
             used that has diagonal elements that are increments of 1 starting from 1.
         collapsed: Whether to use collapsed Taylor mode.
+        device: Device to run the test on.
         max_num_chunks: Maximum number of chunks to accumulate. Default: `100`.
         chunk_size: Number of samples per chunk. Default: `256`.
         target_rel_error: Target relative error for convergence. Default: `1e-2`.
     """
-    f, (x,) = setup_case(config)
+    f, (x,) = setup_case(config, device)
     randomization = (distribution, chunk_size)
 
     # reference: Using PyTorch

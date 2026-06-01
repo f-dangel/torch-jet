@@ -8,24 +8,26 @@ unbatched zero (``S``) at the collapsed slot ``c_K``.
 """
 
 from pytest import mark
-from torch import Tensor, float64, sin, zeros
+from torch import Tensor, sin, zeros
 
 from jet import jet
-from test.utils import make_jet_args
+from test.utils import DEVICES, dtype_for_device, make_jet_args
 
 
+@mark.parametrize("device", DEVICES)
 @mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])
-def test_constant_output_shape(collapsed: bool):
+def test_constant_output_shape(collapsed: bool, device: str):
     """Constant output leaves match the mode-specific shape contract.
 
     - Standard mode: each coefficient ``c_1..c_K`` is shape ``S``.
     - Collapsed mode: ``c_1..c_{K-1}`` are ``(R, *S)`` and ``c_K`` is ``S``.
     """
     K, R, out_shape = 2, 3, (4,)
-    mock_args = (zeros(3, dtype=float64),)
+    dtype = dtype_for_device(device)
+    mock_args = (zeros(3, dtype=dtype, device=device),)
 
     def f(x: Tensor) -> tuple[Tensor, Tensor]:
-        return sin(x), zeros(*out_shape, dtype=float64)
+        return sin(x), zeros(*out_shape, dtype=dtype, device=device)
 
     args = make_jet_args(mock_args, K, collapsed=collapsed, R=R)
     _, (const, *const_coeffs) = jet(f, mock_args, collapsed=collapsed)(*args)

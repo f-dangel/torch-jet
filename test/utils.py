@@ -5,6 +5,8 @@ from typing import Any, Callable
 from pytest import param
 from torch import (
     Tensor,
+    cuda,
+    float32,
     float64,
     manual_seed,
     rand,
@@ -13,11 +15,38 @@ from torch import (
     stack,
     zeros_like,
 )
+from torch.backends import mps
 from torch.nn import Linear, Sequential, Tanh
 from torch.testing import assert_close
 from torch.utils._pytree import tree_flatten, tree_map
 
 from jet import _is_jet_leaf, jet, rev_jet
+
+#: Devices the test suite parametrizes over. CPU is always present; CUDA and
+#: MPS are added when their respective backends are available.
+DEVICES = ["cpu"]
+if cuda.is_available():
+    DEVICES.append("cuda")
+if mps.is_available():
+    DEVICES.append("mps")
+
+
+def dtype_for_device(device: str):
+    """MPS doesn't support float64; CPU/CUDA use float64."""
+    return float32 if device == "mps" else float64
+
+
+def tolerances_for_device(device: str) -> dict[str, float]:
+    """Relaxed ``assert_close`` tolerances for float32 devices (MPS).
+
+    Default ``rtol=1.3e-6`` is calibrated for single-op float32 precision;
+    higher-order Taylor coefficients accumulate roundoff and need headroom.
+    Float64 keeps the default (no relaxation).
+    """
+    if device == "mps":
+        return {"rtol": 1e-3, "atol": 1e-3}
+    return {}
+
 
 #: Valid ``(K, collapsed)`` pairs for the standard-vs-collapsed mode sweep.
 #: ``K=0`` (primal-only) and ``K=1`` (Jacobian-vector product) are
@@ -31,52 +60,64 @@ K_AND_MODE = [
 ]
 
 
-def shape(*dims: int) -> Callable[[], tuple[Tensor]]:
-    """``args_fn`` factory: one ``rand`` tensor of the given shape (float64)."""
-    return lambda: (rand(*dims, dtype=float64),)
+#: Per-device cache for the two-layer tanh MLP used by composition / laplacian
+#: / bilaplacian / exp01 tests. Sequential's Linear weights are concrete
+#: tensors at trace time, which FX requires.
+_MLP_CACHE: dict[str, Sequential] = {}
 
 
-def shapes(*shape_pairs) -> Callable[[], tuple[Tensor, ...]]:
-    """``args_fn`` factory: one ``rand`` tensor per shape (all float64)."""
-    return lambda: tuple(rand(*s, dtype=float64) for s in shape_pairs)
+def mlp(device: str) -> Sequential:
+    """Build (or retrieve cached) two-layer tanh-activated MLP on ``device``."""
+    if device not in _MLP_CACHE:
+        manual_seed(0)
+        net = Sequential(
+            Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
+        )
+        _MLP_CACHE[device] = net.to(device=device, dtype=dtype_for_device(device))
+    return _MLP_CACHE[device]
 
 
-# Module-level MLP shared across the composition / laplacian / bilaplacian /
-# exp01 test layers. Sequential's Linear weights are concrete tensors at
-# trace time, which FX requires.
-manual_seed(0)
-MLP = Sequential(
-    Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh()
-).double()
-
-# Scalar-output cases shared by the laplacian + bilaplacian consumer tests.
+#: Scalar-output cases shared by the laplacian + bilaplacian consumer tests.
+#: ``f`` is a builder ``device -> Callable``; tensor inputs are described
+#: declaratively as ``input_shapes`` (one shape tuple per positional arg).
 SCALAR_OUTPUT_CASES = [
-    {"f": MLP, "args_fn": shape(5), "id": "two-layer-tanh-mlp"},
-    {"f": lambda x: sigmoid(sigmoid(x)), "args_fn": shape(3), "id": "sigmoid-sigmoid"},
+    {"f": mlp, "input_shapes": [(5,)], "id": "two-layer-tanh-mlp"},
+    {
+        "f": lambda device: lambda x: sigmoid(sigmoid(x)),
+        "input_shapes": [(3,)],
+        "id": "sigmoid-sigmoid",
+    },
 ]
 
 
 def setup_case(
-    config: dict[str, Any],
-) -> tuple[Callable[..., Tensor], tuple[Tensor, ...]]:
-    """Instantiate the function and the arguments to evaluate it on.
+    config: dict[str, Any], device: str = "cpu"
+) -> tuple[Callable[..., Tensor], tuple[Any, ...]]:
+    """Instantiate the function and the arguments on ``device``.
 
-    The arguments are taken verbatim from ``config["args_fn"]()``
-    -- if the case wants a batched input it should encode the batch dimension
-    into its ``args_fn`` directly. Callers that re-pass the returned
-    tuple to a tracing API (where the library calls the parameter
-    ``mock_args``) may rebind it locally to ``mock_args``.
+    Each case dict carries a function builder ``"f": device -> Callable`` and
+    either ``"input_shapes": list[tuple[int, ...]]`` (flat tuple of plain
+    tensors, materialized here) or ``"args_builder": device -> tuple`` (for
+    pytree-shaped inputs).
 
     Args:
-        config: Configuration dictionary of the test case. Must have ``"f"``
-            and ``"args_fn"`` keys.
+        config: Configuration dictionary of the test case.
+        device: Device to materialize the function and arguments on.
 
     Returns:
-        Tuple ``(f, args)`` where ``args`` is a tuple of tensors (one entry
-        per positional argument of ``f``).
+        Tuple ``(f, args)`` where ``args`` is the materialized positional
+        argument tuple.
     """
     manual_seed(0)
-    return config["f"], config["args_fn"]()
+    f = config["f"](device)
+    if "input_shapes" in config:
+        dtype = dtype_for_device(device)
+        args = tuple(
+            rand(*s, dtype=dtype, device=device) for s in config["input_shapes"]
+        )
+    else:
+        args = config["args_builder"](device)
+    return f, args
 
 
 def make_jet_args(
@@ -94,14 +135,17 @@ def make_jet_args(
       ``(R, *t.shape)`` (each carries the ``R`` directions); ``c_K`` has
       shape ``t.shape``.
 
-    All coefficients are independently randomly drawn.
+    All coefficients are independently randomly drawn on the same device and
+    dtype as the primal.
     """
     manual_seed(42)
 
     def make_leaf(t: Tensor) -> tuple[Tensor, ...]:
         if not collapsed:
             return (t, *(rand_like(t) for _ in range(K)))
-        batched = [rand(R, *t.shape, dtype=t.dtype) for _ in range(K - 1)]
+        batched = [
+            rand(R, *t.shape, dtype=t.dtype, device=t.device) for _ in range(K - 1)
+        ]
         return (t, *batched, rand_like(t))
 
     return tree_map(make_leaf, args)
@@ -159,17 +203,18 @@ def rev_collapsed_jet(f: Callable[..., Any]) -> Callable[..., Any]:
     return cjet_f
 
 
-def assert_jet_matches_oracle(config: dict[str, Any], K: int, collapsed: bool) -> None:
+def assert_jet_matches_oracle(
+    config: dict[str, Any], K: int, collapsed: bool, device: str = "cpu"
+) -> None:
     """Assert ``jet(f, mock_args, collapsed)`` matches its mode-specific oracle.
 
     The oracle is :func:`jet.rev_jet` (standard) or :func:`rev_collapsed_jet`
     (collapsed). Both are built on nested reverse-mode AD and are independent
     of the FX-trace + interpreter machinery under test.
     """
-    f = config["f"]
-    mock_args = config["args_fn"]()
+    f, mock_args = setup_case(config, device)
     jet_args = make_jet_args(mock_args, K, collapsed=collapsed)
     oracle = rev_collapsed_jet(f) if collapsed else rev_jet(f)
     actual = jet(f, mock_args, collapsed=collapsed)(*jet_args)
     expected = oracle(*jet_args)
-    assert_close(actual, expected)
+    assert_close(actual, expected, **tolerances_for_device(device))

@@ -25,28 +25,29 @@ from test.test_laplacian import (
     get_coefficients,
     laplacian,
 )
-from test.utils import MLP, setup_case, shape
+from test.utils import DEVICES, mlp, setup_case, tolerances_for_device
 
 # make generation of test cases deterministic
 manual_seed(0)
 
 #: Batch size used by all exp01 tests. The benchmark always runs batched, so
 #: the tests run batched too -- the cases below bake the batch dimension into
-#: their ``args_fn``.
+#: their ``input_shapes``.
 BATCH_SIZE = 2
 
 EXP01_CASES = [
     # 5d tanh-activated two-layer MLP
-    {"f": MLP, "args_fn": shape(BATCH_SIZE, 5), "id": "two-layer-tanh-mlp"},
+    {"f": mlp, "input_shapes": [(BATCH_SIZE, 5)], "id": "two-layer-tanh-mlp"},
     # 3d sigmoid(sigmoid) function
     {
-        "f": lambda x: sigmoid(sigmoid(x)),
-        "args_fn": shape(BATCH_SIZE, 3),
+        "f": lambda device: lambda x: sigmoid(sigmoid(x)),
+        "input_shapes": [(BATCH_SIZE, 3)],
         "id": "sigmoid-sigmoid",
     },
 ]
 
 
+@mark.parametrize("device", DEVICES)
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=lambda s: f"strategy={s}")
 @mark.parametrize("config", EXP01_CASES, ids=lambda c: c["id"])
@@ -54,6 +55,7 @@ def test_laplacian_functions(
     config: dict[str, Any],
     strategy: str,
     weights: str | None | tuple[str, float],
+    device: str,
 ):
     """Test that the benchmarked Laplacian functions produce the correct result.
 
@@ -63,8 +65,9 @@ def test_laplacian_functions(
         weights: The weighting to use for the Laplacian. If `None`, the Laplacian is
             unweighted. If `diagonal_increments`, a synthetic coefficient tensor is
             used that has diagonal elements that are increments of 1 starting from 1.
+        device: Device to run the test on.
     """
-    f, (x,) = setup_case(config)
+    f, (x,) = setup_case(config, device)
 
     C = vmap(lambda x: get_coefficients(x, weights))(x)
     lap_func = vmap(lambda x, C: laplacian(f, x, C))
@@ -75,9 +78,10 @@ def test_laplacian_functions(
         f, x, strategy, randomization=None, weighting=weighting
     )()
 
-    assert_close(lap, lap_func)
+    assert_close(lap, lap_func, **tolerances_for_device(device))
 
 
+@mark.parametrize("device", DEVICES)
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize(
     "distribution",
@@ -89,6 +93,7 @@ def test_randomized_laplacian_functions_identical(
     config: dict[str, Any],
     distribution: str,
     weights: str | None | tuple[str, float],
+    device: str,
     num_samples: int = 42,
 ):
     """Test that the benchmarked MC-Laplacian functions are identical when seeding.
@@ -100,8 +105,9 @@ def test_randomized_laplacian_functions_identical(
         weights: The weighting to use for the Laplacian. If `None`, the Laplacian is
             unweighted. If `diagonal_increments`, a synthetic coefficient tensor is
             used that has diagonal elements that are increments of 1 starting from 1.
+        device: Device to run the test on.
     """
-    f, (x,) = setup_case(config)
+    f, (x,) = setup_case(config, device)
 
     randomization = (distribution, num_samples)
     weighting = get_weighting(x[0], weights, randomization=randomization)
@@ -117,7 +123,7 @@ def test_randomized_laplacian_functions_identical(
     first_key = list(laps.keys())[0]
     reference = laps[first_key]
     for value in laps.values():
-        assert_close(reference, value)
+        assert_close(reference, value, **tolerances_for_device(device))
 
     # different seed must yield a different result (skip for rademacher:
     # v_i^2 = 1 makes the estimator exact for diagonal Hessians / rank-deficient
@@ -131,6 +137,7 @@ def test_randomized_laplacian_functions_identical(
         assert not lap_seed_a.allclose(lap_seed_b)
 
 
+@mark.parametrize("device", DEVICES)
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=lambda s: f"strategy={s}")
 @mark.parametrize(
@@ -144,6 +151,7 @@ def test_randomized_laplacian_functions_converge(
     strategy: str,
     distribution: str,
     weights: str | None | tuple[str, float],
+    device: str,
     max_num_chunks: int = 128,
     chunk_size: int = 128,
     target_rel_error: float = 5e-2,
@@ -157,11 +165,12 @@ def test_randomized_laplacian_functions_converge(
         weights: The weighting to use for the Laplacian. If `None`, the Laplacian is
             unweighted. If `diagonal_increments`, a synthetic coefficient tensor is
             used that has diagonal elements that are increments of 1 starting from 1.
+        device: Device to run the test on.
         max_num_chunks: Maximum number of chunks to accumulate. Default: `128`.
         chunk_size: Number of samples per chunk. Default: `64`.
         target_rel_error: Target relative error for convergence. Default: `5e-2`.
     """
-    f, (X,) = setup_case(config)
+    f, (X,) = setup_case(config, device)
 
     C = vmap(lambda x: get_coefficients(x, weights))(X)
     lap_func = vmap(lambda x, C: laplacian(f, x, C))
@@ -185,24 +194,27 @@ def test_randomized_laplacian_functions_converge(
     assert converged, f"MC Laplacian ({strategy}, {distribution}) did not converge."
 
 
+@mark.parametrize("device", DEVICES)
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=lambda s: f"strategy={s}")
 @mark.parametrize("config", EXP01_CASES, ids=lambda c: c["id"])
-def test_bilaplacian_functions(config: dict[str, Any], strategy: str):
+def test_bilaplacian_functions(config: dict[str, Any], strategy: str, device: str):
     """Test that the benchmarked Bi-Laplacians produce the correct result.
 
     Args:
         config: Configuration dictionary of the test case.
         strategy: The strategy to test.
+        device: Device to run the test on.
     """
-    f, (x,) = setup_case(config)
+    f, (x,) = setup_case(config, device)
     bilap_func = vmap(lambda x: bilaplacian(f, x))
     bilap = bilap_func(x)
 
     bilap_func = bilaplacian_function(f, x, strategy)()
 
-    assert_close(bilap, bilap_func)
+    assert_close(bilap, bilap_func, **tolerances_for_device(device))
 
 
+@mark.parametrize("device", DEVICES)
 @mark.parametrize(
     "distribution",
     BILAPLACIAN_SUPPORTED_DISTRIBUTIONS,
@@ -210,16 +222,17 @@ def test_bilaplacian_functions(config: dict[str, Any], strategy: str):
 )
 @mark.parametrize("config", EXP01_CASES, ids=lambda c: c["id"])
 def test_randomized_bilaplacian_functions_identical(
-    config: dict[str, Any], distribution: str, num_samples: int = 42
+    config: dict[str, Any], distribution: str, device: str, num_samples: int = 42
 ):
     """Test that the weighted MC-Bi-Laplacian functions are identical when seeding.
 
     Args:
         config: Configuration dictionary of the test case.
         distribution: The distribution from which to draw random vectors.
+        device: Device to run the test on.
         num_samples: Number of samples to draw. Default: `42`.
     """
-    f, (x,) = setup_case(config)
+    f, (x,) = setup_case(config, device)
     randomization = (distribution, num_samples)
 
     bilaps = {}
@@ -243,6 +256,7 @@ def test_randomized_bilaplacian_functions_identical(
         assert not bilap_seed_a.allclose(bilap_seed_b)
 
 
+@mark.parametrize("device", DEVICES)
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=lambda s: f"strategy={s}")
 @mark.parametrize(
     "distribution",
@@ -254,6 +268,7 @@ def test_randomized_bilaplacian_functions_converge(
     config: dict[str, Any],
     strategy: str,
     distribution: str,
+    device: str,
     max_num_chunks: int = 128,
     chunk_size: int = 128,
     target_rel_error: float = 5e-2,
@@ -264,11 +279,12 @@ def test_randomized_bilaplacian_functions_converge(
         config: Configuration dictionary of the test case.
         strategy: The strategy to test.
         distribution: The distribution from which to draw random vectors.
+        device: Device to run the test on.
         max_num_chunks: Maximum number of chunks to accumulate. Default: `128`.
         chunk_size: Number of samples per chunk. Default: `128`.
         target_rel_error: Target relative error for convergence. Default: `5e-2`.
     """
-    f, (X,) = setup_case(config)
+    f, (X,) = setup_case(config, device)
     randomization = (distribution, chunk_size)
 
     bilap_func = vmap(lambda x: bilaplacian(f, x))

@@ -106,6 +106,11 @@ def rev_collapsed_jet(f: Callable[..., Any]) -> Callable[..., Any]:
         leaves, _ = tree_flatten(args, is_leaf=_is_jet_leaf)
         K = len(leaves[0]) - 1
         R = leaves[0][1].shape[0]
+        for leaf in leaves:
+            if len(leaf) - 1 != K:
+                raise ValueError(f"K mismatch across leaves: {K} vs {len(leaf) - 1}.")
+            if leaf[1].shape[0] != R:
+                raise ValueError(f"R mismatch across leaves: {R} vs {leaf[1].shape[0]}.")
 
         def direction(leaf: tuple[Tensor, ...], r: int) -> tuple[Tensor, ...]:
             c_K = leaf[K] if r == 0 else zeros_like(leaf[K])

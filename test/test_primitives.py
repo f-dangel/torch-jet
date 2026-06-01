@@ -25,8 +25,7 @@ coverage at the primitive layer.
 from typing import Any
 
 from pytest import mark
-from torch import addmm, float64, manual_seed, rand, sigmoid, sin, tanh, tensor
-from torch import cos as torch_cos
+from torch import addmm, cos, float64, manual_seed, rand, sigmoid, sin, tanh, tensor
 from torch.testing import assert_close
 
 import jet
@@ -50,7 +49,7 @@ _SUB_CONST = tensor(2.0, dtype=float64)
 PRIMITIVE_CASES = [
     # ---- Unary pointwise -------------------------------------------------
     {"id": "sin", "f": sin, "mock_args_fn": shape(4)},
-    {"id": "cos", "f": torch_cos, "mock_args_fn": shape(4)},
+    {"id": "cos", "f": cos, "mock_args_fn": shape(4)},
     {"id": "tanh", "f": tanh, "mock_args_fn": shape(4)},
     {"id": "sigmoid", "f": sigmoid, "mock_args_fn": shape(4)},
     # ---- Unary with scalar exponent --------------------------------------

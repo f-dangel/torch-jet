@@ -33,9 +33,7 @@ def test_nested_jet_sin_K_inner_1_K_outer_1():
     p_c = rand(3, dtype=float64)  # outer c_1 at inner-primal position
     q_p = rand(3, dtype=float64)  # primal at inner-c_1 position
     q_c = rand(3, dtype=float64)  # outer c_1 at inner-c_1 position
-    result = outer(
-        (((p_p, p_c), (q_p, q_c))),
-    )
+    result = outer(((p_p, p_c), (q_p, q_c)))
 
     # ``inner(x_p, x_c) = (sin(x_p), cos(x_p) * x_c)``. Differentiating w.r.t.
     # (x_p, x_c) along the outer direction (p_c, q_c) gives the outer c_1.

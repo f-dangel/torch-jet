@@ -63,16 +63,8 @@ COMPOSITION_CASES = [
         "f": lambda x: (sin(x) * x).sum(0),
         "mock_args_fn": shape(5),
     },
-    {
-        "id": "mlp",
-        "f": _MLP,
-        "mock_args_fn": shape(5),
-    },
-    {
-        "id": "mlp_batched",
-        "f": _MLP,
-        "mock_args_fn": shape(10, 5),
-    },
+    {"id": "mlp", "f": _MLP, "mock_args_fn": shape(5)},
+    {"id": "mlp_batched", "f": _MLP, "mock_args_fn": shape(10, 5)},
     {
         "id": "deep_pytree",
         "f": _deep_pytree_f,

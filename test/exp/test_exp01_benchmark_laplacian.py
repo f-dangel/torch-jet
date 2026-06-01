@@ -142,8 +142,9 @@ def test_randomized_laplacian_functions_identical(
 
     # same seed must yield identical results across strategies
     first_key = list(laps.keys())[0]
-    for key in laps:
-        assert_close(laps[first_key], laps[key])
+    reference = laps[first_key]
+    for value in laps.values():
+        assert_close(reference, value)
 
     # different seed must yield a different result (skip for rademacher:
     # v_i^2 = 1 makes the estimator exact for diagonal Hessians / rank-deficient
@@ -280,8 +281,9 @@ def test_randomized_bilaplacian_functions_identical(
 
     # same seed must yield identical results across strategies
     first_key = list(bilaps.keys())[0]
-    for key in bilaps:
-        assert_close(bilaps[first_key], bilaps[key])
+    reference = bilaps[first_key]
+    for value in bilaps.values():
+        assert_close(reference, value)
 
     # different seed must yield a different result (skip for rademacher:
     # v_i^2 = 1 makes the estimator exact for diagonal Hessians / rank-deficient

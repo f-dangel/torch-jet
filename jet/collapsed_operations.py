@@ -13,7 +13,7 @@ At each nonlinear operation, the K-th output coefficient is computed as:
 from typing import Callable
 
 from scipy.special import comb
-from torch import Tensor, addmm, matmul, mm, ops
+from torch import Tensor, addmm, matmul, mm, ops, zeros_like
 from torch.func import vmap
 from torch.utils._pytree import register_pytree_node
 
@@ -26,7 +26,6 @@ from jet.operations import (
     _sin_derivatives,
     _tanh_derivatives,
 )
-from jet.utils import Primal
 
 # ---------------------------------------------------------------------------
 # CollapsedJetTuple
@@ -44,7 +43,7 @@ register_pytree_node(
 )
 
 
-def _cjet_order(*args: Primal | CollapsedJetTuple | float | int) -> int:
+def _cjet_order(*args: Tensor | CollapsedJetTuple | float | int) -> int:
     """Infer ``K`` from all ``CollapsedJetTuple`` positional args.
 
     Thin wrapper around :func:`jet.operations._order` that pre-binds the jet
@@ -111,12 +110,30 @@ def _collapsed_leibniz(
             f"order; got lengths {len(self)} and {len(other)}"
         )
     K = len(self) - 1
+
+    def apply(a, b, a_batched, b_batched):
+        # Each coefficient ``c_k`` for ``k >= 1`` carries a leading direction
+        # dim ``R``; ``c_0`` does not. Plain ``binary_op(a, b)`` would
+        # right-align via PyTorch broadcasting, which collides ``R`` against
+        # a middle primal dim of the other operand whenever ``a``'s and
+        # ``b``'s primal shapes have different ranks (e.g. ``mul`` of operands
+        # with primal shapes ``(3,)`` and ``(2, 3)``, where ``R`` coincides
+        # with the size-2 primal dim of the other). ``vmap`` over ``R`` with
+        # the right ``in_dims`` aligns ``R`` per-direction explicitly and
+        # broadcasts the suffixes correctly.
+        if not (a_batched or b_batched):
+            return binary_op(a, b)
+        in_dims = (0 if a_batched else None, 0 if b_batched else None)
+        return vmap(binary_op, in_dims=in_dims)(a, b)
+
     coeffs = ()
     for k in range(1, K + 1):
         if k < K:
             term = None
             for j in range(k + 1):
-                term_j = comb(k, j, exact=True) * binary_op(self[j], other[k - j])
+                term_j = comb(k, j, exact=True) * apply(
+                    self[j], other[k - j], j >= 1, (k - j) >= 1
+                )
                 term = term_j if term is None else term + term_j
             coeffs += (term,)
         else:
@@ -126,8 +143,8 @@ def _collapsed_leibniz(
                 for j in range(1, K):
                     # Sum out the direction dim R per term so the accumulator (and
                     # downstream traced-graph tensors) stay small.
-                    term_j = comb(K, j, exact=True) * binary_op(
-                        self[j], other[K - j]
+                    term_j = comb(K, j, exact=True) * apply(
+                        self[j], other[K - j], True, True
                     ).sum(0)
                     nonlinear = term_j if nonlinear is None else nonlinear + term_j
                 coeffs += (linear + nonlinear,)
@@ -143,7 +160,7 @@ def _collapsed_leibniz(
 
 def _cjet_elementwise(
     self: CollapsedJetTuple,
-    deriv_fn: Callable[[Primal, int], tuple[Primal, dict[int, Primal]]],
+    deriv_fn: Callable[[Tensor, int], tuple[Tensor, dict[int, Tensor]]],
 ) -> CollapsedJetTuple:
     """Generic collapsed elementwise using shared helpers."""
     K = _cjet_order(self)
@@ -188,8 +205,8 @@ def cjet_pow(self: CollapsedJetTuple, exponent: float | int) -> CollapsedJetTupl
 
 
 def cjet_add(
-    self: Primal | CollapsedJetTuple | float | int,
-    other: Primal | CollapsedJetTuple | float | int,
+    self: Tensor | CollapsedJetTuple | float | int,
+    other: Tensor | CollapsedJetTuple | float | int,
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.add``."""
     self_is = isinstance(self, CollapsedJetTuple)
@@ -205,8 +222,8 @@ def cjet_add(
 
 
 def cjet_sub(
-    self: Primal | CollapsedJetTuple | float | int,
-    other: Primal | CollapsedJetTuple | float | int,
+    self: Tensor | CollapsedJetTuple | float | int,
+    other: Tensor | CollapsedJetTuple | float | int,
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.sub``."""
     self_is = isinstance(self, CollapsedJetTuple)
@@ -222,8 +239,8 @@ def cjet_sub(
 
 
 def cjet_mul(
-    self: Primal | CollapsedJetTuple,
-    other: Primal | CollapsedJetTuple,
+    self: Tensor | CollapsedJetTuple,
+    other: Tensor | CollapsedJetTuple,
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.mul``."""
     self_is = isinstance(self, CollapsedJetTuple)
@@ -245,7 +262,7 @@ def cjet_mul(
 
 
 def cjet_mm(
-    self: Primal | CollapsedJetTuple, mat2: Primal | CollapsedJetTuple
+    self: Tensor | CollapsedJetTuple, mat2: Tensor | CollapsedJetTuple
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.mm``."""
     self_is = isinstance(self, CollapsedJetTuple)
@@ -260,9 +277,9 @@ def cjet_mm(
 
 
 def cjet_addmm(
-    self: Primal,
-    mat1: Primal | CollapsedJetTuple,
-    mat2: Primal | CollapsedJetTuple,
+    self: Tensor,
+    mat1: Tensor | CollapsedJetTuple,
+    mat2: Tensor | CollapsedJetTuple,
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.addmm``."""
     if isinstance(self, CollapsedJetTuple):
@@ -307,6 +324,11 @@ def cjet_squeeze(self: CollapsedJetTuple, dim: int) -> CollapsedJetTuple:
     return _apply_linear(self, lambda x: ops.aten.squeeze.dim(x, dim))
 
 
+def cjet_squeeze_dims(self: CollapsedJetTuple, dim: list[int]) -> CollapsedJetTuple:
+    """Collapsed jet rule for the multi-dim ``aten.squeeze.dims`` overload."""
+    return _apply_linear(self, lambda x: ops.aten.squeeze.dims(x, dim))
+
+
 def cjet_sum(
     self: CollapsedJetTuple,
     dim: list[int] | int,
@@ -321,6 +343,16 @@ def cjet_sum(
         raise NotImplementedError("keepdim=True is not supported.")
     (pos,) = (dim,) if isinstance(dim, int) else dim
     return _apply_linear(self, lambda x: x.sum(pos))
+
+
+def cjet_zeros_like(self: CollapsedJetTuple, **kwargs) -> CollapsedJetTuple:
+    """Collapsed jet rule for ``aten.zeros_like``.
+
+    Output does not depend on input values, only shape/dtype. ``zeros_like``
+    on each entry preserves the per-slot shape contract: ``S`` for the
+    primal and the collapsed slot, ``(R, *S)`` for the batched coefficients.
+    """
+    return CollapsedJetTuple(zeros_like(c, **kwargs) for c in self)
 
 
 # ---------------------------------------------------------------------------
@@ -344,8 +376,12 @@ COLLAPSED_MAPPING = {
     ops.aten.addmm.default: cjet_addmm,
     # Shape ops
     ops.aten.view.default: cjet_view,
+    ops.aten._unsafe_view.default: cjet_view,
     ops.aten.unsqueeze.default: cjet_unsqueeze,
     ops.aten.squeeze.dim: cjet_squeeze,
+    ops.aten.squeeze.dims: cjet_squeeze_dims,
     # Reductions
     ops.aten.sum.dim_IntList: cjet_sum,
+    # Constant-output ops
+    ops.aten.zeros_like.default: cjet_zeros_like,
 }

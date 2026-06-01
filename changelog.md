@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Add jet rules for `aten.zeros_like.default`, `aten._unsafe_view.default`,
+  and `aten.squeeze.dims`. Op dispatch now forwards kwargs to the
+  registered rule. Together with the collapsed Leibniz fix in PR #141
+  this unblocks `laplacian(laplacian(f))`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/140)).
+
 - **Backward-incompatible.** Merge `collapsed_jet` into `jet` as a
   ``collapsed: bool = False`` flag (``jet(f, mock_args, collapsed=True)``
   replaces ``collapsed_jet(f, mock_args)``). The single transform now
@@ -79,6 +85,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
+- Fix collapsed-mode Leibniz misaligning the leading direction dim `R` when
+  product operands have different primal ranks (`cjet_mul` / `cjet_mm` /
+  `cjet_addmm`). Right-aligned PyTorch broadcasting collided one operand's
+  `R` against a middle primal dim of the other; `vmap(binary_op,
+  in_dims=...)` now aligns `R` per-direction explicitly
+  ([PR](https://github.com/f-dangel/torch-jet/pull/141)).
+
 - Constant output leaves in collapsed mode are now wrapped with the correct
   shape: coefficients `c_1..c_{K-1}` are `(R, *S)` and `c_K` is `S`. Previously
   all zero coefficients were `S`-shaped, silently producing wrong shapes for
@@ -93,6 +106,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([PR](https://github.com/f-dangel/torch-jet/pull/129))
 
 ### Internal
+
+- Annotate pytree-shaped signatures with a new `PyTree[Leaf]` recursive alias
+  and a `Jet = tuple[Tensor, ...]` alias in `jet/utils.py`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/138)).
 
 - Slim the test suite into per-concern layers
   ([PR](https://github.com/f-dangel/torch-jet/pull/136)).

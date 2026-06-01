@@ -7,7 +7,7 @@ registered with :class:`JetInterpreter`.
 from typing import Any
 
 from pytest import mark
-from torch import addmm, cos, manual_seed, rand, sigmoid, sin, tanh, tensor
+from torch import addmm, cos, manual_seed, ops, rand, sigmoid, sin, tanh, tensor, zeros_like
 
 from test.utils import (
     DEVICES,
@@ -125,6 +125,16 @@ PRIMITIVE_CASES = [
         "f": _stateless(lambda x: x * x),
         "args_fn": lambda: (rand(4),),
     },
+    # ``mul_JJ_diff_rank`` operands have different primal ranks. In collapsed
+    # mode this exposes whether the Leibniz cross term aligns the leading
+    # direction dim ``R`` of both operands instead of relying on PyTorch
+    # broadcasting (which right-aligns and would put one operand's ``R``
+    # against a middle primal dim of the other).
+    {
+        "id": "mul_JJ_diff_rank",
+        "f": _stateless(lambda x, y: x * y),
+        "args_fn": lambda: (rand(3), rand(2, 3)),
+    },
     {"id": "mul_JC", "f": _stateless(lambda x: x * 3.0), "args_fn": lambda: (rand(4),)},
     {"id": "mul_CJ", "f": _stateless(lambda x: 3.0 * x), "args_fn": lambda: (rand(4),)},
     # ---- Matrix multiply (non-commutative) -------------------------------
@@ -155,6 +165,13 @@ PRIMITIVE_CASES = [
         "f": _stateless(lambda x: x.view(-1)),
         "args_fn": lambda: (rand(3, 4),),
     },
+    # ``_unsafe_view`` is an internal aten op emitted by Linear/addmm
+    # decompositions; reached only via the explicit overload.
+    {
+        "id": "_unsafe_view",
+        "f": _stateless(lambda x: ops.aten._unsafe_view.default(x, [-1])),
+        "args_fn": lambda: (rand(3, 4),),
+    },
     {
         "id": "unsqueeze",
         "f": _stateless(lambda x: x.unsqueeze(0)),
@@ -165,6 +182,14 @@ PRIMITIVE_CASES = [
         "f": _stateless(lambda x: x.squeeze(0)),
         "args_fn": lambda: (rand(1, 4),),
     },
+    # ``squeeze.dims`` is the multi-axis overload (``.squeeze([0, 1])``).
+    {
+        "id": "squeeze_dims",
+        "f": _stateless(lambda x: x.squeeze([0, 1])),
+        "args_fn": lambda: (rand(1, 1, 4),),
+    },
+    # ---- Constant-output ops (zero derivatives at every order) -----------
+    {"id": "zeros_like", "f": _stateless(zeros_like), "args_fn": lambda: (rand(3, 4),)},
 ]
 
 

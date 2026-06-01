@@ -9,9 +9,23 @@ from torch.fx import GraphModule, Node
 from torch.fx.passes.graph_drawer import FxGraphDrawer
 from torch.random import fork_rng
 
-# Type aliases for arguments and return values of jet-able functions.
-Primal = Tensor
-Value = Tensor
+#: A jet leaf: ``(primal, c_1, ..., c_K)`` bundling a primal with its ``K``
+#: Taylor coefficients. Type-checker hint only — not a runtime constructor.
+Jet = tuple[Tensor, ...]
+
+#: A pytree of ``Leaf``: arbitrarily nested ``tuple`` / ``list`` / ``dict``
+#: whose leaves have type ``Leaf``. Three concrete leaf types appear in this
+#: library:
+#:
+#: - ``PyTree[Tensor]`` — public input side (``mock_args``).
+#: - ``PyTree[Jet]`` — public jet-form: arguments to and return value of the
+#:   callable returned by :func:`jet.jet` and :func:`jet.rev_jet`, where each
+#:   tensor leaf is replaced by a jet ``(primal, c_1, ..., c_K)``.
+#: - ``PyTree[JetTuple | CollapsedJetTuple | Tensor]`` — interpreter-internal
+#:   form, returned by ``JetInterpreter.run``.
+type PyTree[Leaf] = (
+    Leaf | tuple[PyTree[Leaf], ...] | list[PyTree[Leaf]] | dict[str, PyTree[Leaf]]
+)
 
 
 def run_seeded(f: Callable, seed: int, *args, **kwargs):

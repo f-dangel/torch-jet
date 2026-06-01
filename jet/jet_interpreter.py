@@ -22,6 +22,7 @@ from torch.utils._pytree import tree_map
 
 from jet.collapsed_operations import COLLAPSED_MAPPING, CollapsedJetTuple
 from jet.operations import MAPPING, JetTuple
+from jet.utils import Jet, PyTree
 
 _JetTypes = (JetTuple, CollapsedJetTuple)
 
@@ -57,9 +58,9 @@ class JetInterpreter(Interpreter):
         self,
         derivative_order: int,
         collapsed_directions: int | None,
-        *args: Any,
+        *args: Tensor,
         **kwargs: Any,
-    ) -> Any:
+    ) -> PyTree[Jet]:
         """Run the graph, then unwrap interpreter-internal jet types.
 
         ``derivative_order`` (``K``) and ``collapsed_directions`` (``R``)
@@ -91,8 +92,7 @@ class JetInterpreter(Interpreter):
             The result of the jet operation (a jet tuple) or the original op.
 
         Raises:
-            NotImplementedError: If a Taylor-dependent op has no jet rule, or
-                if the node has non-empty ``kwargs``.
+            NotImplementedError: If a Taylor-dependent op has no jet rule.
         """
         # TODO Only checks top-level args. Jets nested inside tuple/list/dict
         # args (e.g. for aten.stack, aten.cat) will be missed, causing a
@@ -104,20 +104,15 @@ class JetInterpreter(Interpreter):
                     f"No {self.label} rule for {target}. "
                     "Please file an issue or add a rule."
                 )
-            if kwargs:
-                raise NotImplementedError(
-                    f"{self.label.capitalize()} dispatch does not support kwargs "
-                    f"for {target} (got {kwargs})."
-                )
-            return self.mapping[target](*args)
+            return self.mapping[target](*args, **kwargs)
         return super().call_function(target, args, kwargs)
 
     def _normalize(
         self,
-        result: Any,
+        result: PyTree[JetTuple | CollapsedJetTuple | Tensor],
         derivative_order: int,
         collapsed_directions: int | None,
-    ) -> Any:
+    ) -> PyTree[Jet]:
         """Convert the pytree-of-jets into a pytree of plain tuples.
 
         Each ``self.jet_type`` leaf becomes a plain ``(f_0, ..., f_K)`` tuple.
@@ -127,7 +122,7 @@ class JetInterpreter(Interpreter):
         ``K - 1`` zeros of shape ``(R, *S)`` plus one zero of ``S``.
         """
 
-        def _normalize_leaf(node: Any) -> tuple[Tensor, ...]:
+        def _normalize_leaf(node: Any) -> Jet:
             if isinstance(node, _JetTypes):
                 return tuple(node)
             return (

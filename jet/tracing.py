@@ -9,6 +9,8 @@ from torch.fx import GraphModule
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.utils._pytree import TreeSpec, tree_flatten, tree_unflatten
 
+from jet.utils import PyTree
+
 # Map in-place ATen ops to their out-of-place equivalents.
 _INPLACE_TO_FUNCTIONAL = {
     ops.aten.squeeze_.dim: ops.aten.squeeze.dim,
@@ -21,8 +23,8 @@ _make_fx = partial(make_fx, tracing_mode="fake", _allow_non_fake_inputs=True)
 
 
 def capture_graph(
-    f: Callable[..., Any],
-    mock_args: tuple[Any, ...],
+    f: Callable[[*tuple[PyTree[Tensor], ...]], PyTree[Tensor]],
+    mock_args: tuple[PyTree[Tensor], ...],
 ) -> tuple[GraphModule, TreeSpec]:
     """Capture the compute graph of ``f`` as a ``GraphModule``.
 
@@ -65,7 +67,7 @@ def capture_graph(
     _assert_traceable_signature(mock_args)
     flat_mocks, in_spec = tree_flatten(mock_args)
 
-    def flat_f(*flat_tensors: Tensor) -> Any:
+    def flat_f(*flat_tensors: Tensor) -> PyTree[Tensor]:
         return f(*tree_unflatten(list(flat_tensors), in_spec))
 
     mod = _make_fx(functionalize(flat_f))(*flat_mocks)

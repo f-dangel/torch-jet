@@ -3,15 +3,10 @@
 from typing import Callable
 
 from scipy.special import comb, factorial, stirling2
-from torch import addmm, cos, mm, ops, sigmoid, sin, tanh, zeros_like
+from torch import Tensor, addmm, cos, mm, ops, sigmoid, sin, tanh, zeros_like
 from torch.utils._pytree import register_pytree_node
 
-from jet.utils import (
-    Primal,
-    Value,
-    integer_partitions,
-    multiplicity,
-)
+from jet.utils import integer_partitions, multiplicity
 
 
 class JetTuple(tuple):
@@ -31,7 +26,7 @@ register_pytree_node(
 )
 
 
-def _order(args: tuple[Value, ...], jet_type: type) -> int:
+def _order(args: tuple[Tensor, ...], jet_type: type) -> int:
     """Infer the Taylor-expansion order ``K`` from the jet-typed positional args.
 
     A jet (whether ``JetTuple`` or ``CollapsedJetTuple``) is exactly
@@ -63,12 +58,12 @@ def _order(args: tuple[Value, ...], jet_type: type) -> int:
     return Ks.pop()
 
 
-def _jet_order(*args: Value) -> int:
+def _jet_order(*args: Tensor) -> int:
     """Infer ``K`` from all ``JetTuple`` positional args. See :func:`_order`."""
     return _order(args, JetTuple)
 
 
-def _apply_linear(self: JetTuple, op: Callable[[Primal], Primal]) -> JetTuple:
+def _apply_linear(self: JetTuple, op: Callable[[Tensor], Tensor]) -> JetTuple:
     """Apply a linear ``op`` coefficient-wise to every entry of ``self``.
 
     Linear ops commute with the Taylor expansion, so the result's coefficients
@@ -87,8 +82,8 @@ def _apply_linear(self: JetTuple, op: Callable[[Primal], Primal]) -> JetTuple:
 
 
 def _apply_linear_coeffs(
-    self: JetTuple, op: Callable[[Primal], Primal]
-) -> tuple[Primal, ...]:
+    self: JetTuple, op: Callable[[Tensor], Tensor]
+) -> tuple[Tensor, ...]:
     """Apply a linear ``op`` to coefficients 1..K of ``self`` (skipping the primal).
 
     Used by ops that handle the primal separately (e.g. ``jet_addmm``'s bias).
@@ -99,8 +94,8 @@ def _apply_linear_coeffs(
 def _leibniz(
     self: JetTuple,
     other: JetTuple,
-    binary_op: Callable[[Primal, Primal], Primal],
-) -> tuple[Primal, ...]:
+    binary_op: Callable[[Tensor, Tensor], Tensor],
+) -> tuple[Tensor, ...]:
     """Apply the Leibniz product rule for a bilinear ``binary_op`` (orders 1..K).
 
     The k-th coefficient of ``binary_op(self, other)`` (treated as functions of
@@ -145,8 +140,8 @@ def _leibniz(
 
 
 def _partition_term(
-    vs: tuple[Primal, ...], sigma: tuple[int, ...], dn: dict[int, Primal]
-) -> Value | None:
+    vs: tuple[Tensor, ...], sigma: tuple[int, ...], dn: dict[int, Tensor]
+) -> Tensor | None:
     r"""Compute one term of the Faà di Bruno sum for a given partition.
 
     In Faà di Bruno's formula, the order-``k`` Taylor coefficient of the
@@ -186,7 +181,7 @@ def _partition_term(
     return nu * term if nu != 1.0 else term
 
 
-def _collapsed_highest_order(vs: tuple[Primal, ...], dn: dict[int, Primal]) -> Value:
+def _collapsed_highest_order(vs: tuple[Tensor, ...], dn: dict[int, Tensor]) -> Tensor:
     """Compute the collapsed (summed) highest-order Faà di Bruno coefficient.
 
     Separates the linear contribution (which multiplies the collapsed input)
@@ -222,10 +217,10 @@ def _collapsed_highest_order(vs: tuple[Primal, ...], dn: dict[int, Primal]) -> V
 
 
 def _faa_di_bruno(
-    vs: tuple[Primal, ...],
-    dn: dict[int, Primal],
+    vs: tuple[Tensor, ...],
+    dn: dict[int, Tensor],
     collapsed: bool = False,
-) -> list[Value]:
+) -> list[Tensor]:
     """Apply Faà di Bruno's formula for elementwise functions.
 
     Args:
@@ -260,7 +255,7 @@ def _faa_di_bruno(
 # --- Derivative helpers (shared with collapsed mode) ---
 
 
-def _sin_derivatives(x0: Primal, K: int) -> tuple[Primal, dict[int, Primal]]:
+def _sin_derivatives(x0: Tensor, K: int) -> tuple[Tensor, dict[int, Tensor]]:
     """Compute ``sin(x0)`` and its derivatives up to order *K*."""
     sin_x0 = sin(x0)
     d = {0: sin_x0}
@@ -274,7 +269,7 @@ def _sin_derivatives(x0: Primal, K: int) -> tuple[Primal, dict[int, Primal]]:
     return sin_x0, d
 
 
-def _cos_derivatives(x0: Primal, K: int) -> tuple[Primal, dict[int, Primal]]:
+def _cos_derivatives(x0: Tensor, K: int) -> tuple[Tensor, dict[int, Tensor]]:
     """Compute ``cos(x0)`` and its derivatives up to order *K*."""
     cos_x0 = cos(x0)
     d = {0: cos_x0}
@@ -288,7 +283,7 @@ def _cos_derivatives(x0: Primal, K: int) -> tuple[Primal, dict[int, Primal]]:
     return cos_x0, d
 
 
-def _tanh_derivatives(x0: Primal, K: int) -> tuple[Primal, dict[int, Primal]]:
+def _tanh_derivatives(x0: Tensor, K: int) -> tuple[Tensor, dict[int, Tensor]]:
     """Compute ``tanh(x0)`` and its derivatives up to order *K*."""
     # Use the explicit form of the derivative polynomials for tanh from "Derivative
     # polynomials for tanh, tan, sech and sec in explicit form" by Boyadzhiev (2006)
@@ -317,7 +312,7 @@ def _tanh_derivatives(x0: Primal, K: int) -> tuple[Primal, dict[int, Primal]]:
     return tanh_x0, d
 
 
-def _sigmoid_derivatives(x0: Primal, K: int) -> tuple[Primal, dict[int, Primal]]:
+def _sigmoid_derivatives(x0: Tensor, K: int) -> tuple[Tensor, dict[int, Tensor]]:
     """Compute ``sigmoid(x0)`` and its derivatives up to order *K*."""
     # Use the Stirling form of the sigmoid derivatives, see Equation 20
     # of "On the Derivatives of the Sigmoid" by Minai and Williams (1993)
@@ -345,8 +340,8 @@ def _sigmoid_derivatives(x0: Primal, K: int) -> tuple[Primal, dict[int, Primal]]
 
 
 def _pow_derivatives(
-    x0: Primal, exponent: float | int, K: int
-) -> tuple[Primal, dict[int, Primal | None]]:
+    x0: Tensor, exponent: float | int, K: int
+) -> tuple[Tensor, dict[int, Tensor | None]]:
     """Compute ``x0 ** exponent`` and its derivatives up to order *K*."""
     pow_x0 = x0**exponent
     d = {0: pow_x0}
@@ -368,7 +363,7 @@ def _pow_derivatives(
 
 def _jet_elementwise(
     self: JetTuple,
-    deriv_fn: Callable[[Primal, int], tuple[Primal, dict[int, Primal]]],
+    deriv_fn: Callable[[Tensor, int], tuple[Tensor, dict[int, Tensor]]],
 ) -> JetTuple:
     """Generic elementwise jet rule using shared derivative helpers.
 
@@ -431,8 +426,8 @@ def jet_pow(self: JetTuple, exponent: float | int) -> JetTuple:
 
 
 def jet_add(
-    self: Primal | JetTuple | float | int,
-    other: Primal | JetTuple | float | int,
+    self: Tensor | JetTuple | float | int,
+    other: Tensor | JetTuple | float | int,
 ) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.add(self, other)``.
 
@@ -457,8 +452,8 @@ def jet_add(
 
 
 def jet_sub(
-    self: Primal | JetTuple | float | int,
-    other: Primal | JetTuple | float | int,
+    self: Tensor | JetTuple | float | int,
+    other: Tensor | JetTuple | float | int,
 ) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.sub(self, other)``.
 
@@ -482,7 +477,7 @@ def jet_sub(
     return JetTuple(coeffs)
 
 
-def jet_mul(self: Primal | JetTuple, other: Primal | JetTuple) -> JetTuple:
+def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.mul(self, other)``.
 
     Args:
@@ -507,7 +502,7 @@ def jet_mul(self: Primal | JetTuple, other: Primal | JetTuple) -> JetTuple:
 # --- Linear decomposition ---
 
 
-def jet_mm(self: Primal | JetTuple, mat2: Primal | JetTuple) -> JetTuple:
+def jet_mm(self: Tensor | JetTuple, mat2: Tensor | JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.mm(self, mat2)``.
 
     Args:
@@ -530,7 +525,7 @@ def jet_mm(self: Primal | JetTuple, mat2: Primal | JetTuple) -> JetTuple:
 
 
 def jet_addmm(
-    self: Primal, mat1: Primal | JetTuple, mat2: Primal | JetTuple
+    self: Tensor, mat1: Tensor | JetTuple, mat2: Tensor | JetTuple
 ) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.addmm(self, mat1, mat2)``.
 
@@ -588,6 +583,15 @@ def jet_unsqueeze(self: JetTuple, dim: int) -> JetTuple:
     return _apply_linear(self, lambda c: ops.aten.unsqueeze.default(c, dim))
 
 
+def jet_squeeze_dims(self: JetTuple, dim: list[int]) -> JetTuple:
+    """Taylor-mode arithmetic for the multi-dim ``aten.squeeze.dims`` overload.
+
+    Same linearity argument as :func:`jet_squeeze`; differs only in that
+    ``dim`` is a list of axes to squeeze in one call.
+    """
+    return _apply_linear(self, lambda c: ops.aten.squeeze.dims(c, dim))
+
+
 def jet_squeeze(self: JetTuple, dim: int) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.squeeze(self, dim)``.
 
@@ -626,6 +630,20 @@ def jet_sum(self: JetTuple, dim: list[int], keepdim: bool = False) -> JetTuple:
     return _apply_linear(self, lambda c: c.sum(pos))
 
 
+# --- Constant-output ops (output independent of input values) ---
+
+
+def jet_zeros_like(self: JetTuple, **kwargs) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.zeros_like(self)``.
+
+    Output does not depend on the input's values, only its shape/dtype, so
+    every Taylor coefficient is zero. Reusing ``zeros_like`` on each input
+    entry yields the right zero of the right shape (the primal's ``S`` for
+    the primal slot; coefficient shapes for the coefficient slots).
+    """
+    return JetTuple(zeros_like(c, **kwargs) for c in self)
+
+
 MAPPING = {
     # Elementwise unary
     ops.aten.sin.default: jet_sin,
@@ -642,8 +660,12 @@ MAPPING = {
     ops.aten.mm.default: jet_mm,
     ops.aten.addmm.default: jet_addmm,
     ops.aten.view.default: jet_view,
+    ops.aten._unsafe_view.default: jet_view,
     ops.aten.unsqueeze.default: jet_unsqueeze,
     ops.aten.squeeze.dim: jet_squeeze,
+    ops.aten.squeeze.dims: jet_squeeze_dims,
     # Sum (dim reduction)
     ops.aten.sum.dim_IntList: jet_sum,
+    # Constant-output ops
+    ops.aten.zeros_like.default: jet_zeros_like,
 }

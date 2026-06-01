@@ -70,11 +70,6 @@ def test_bilaplacian(config: dict[str, Any], collapsed: bool, device: str):
     assert_close(bilap_func, bilap_jet, **tolerances_for(device))
 
 
-@mark.xfail(
-    raises=NotImplementedError,
-    reason="aten.zeros_like.default has no jet rule; blocks nesting laplacian twice",
-    strict=True,
-)
 @mark.parametrize("device", DEVICES)
 @mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
 @mark.parametrize("config", BILAPLACIAN_CASES, ids=lambda c: c["id"])

@@ -5,7 +5,7 @@ from typing import Any, Callable
 from pytest import param
 from torch import Tensor, float64, manual_seed, rand, rand_like, stack, zeros_like
 from torch.testing import assert_close
-from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
+from torch.utils._pytree import tree_flatten, tree_map
 
 import jet
 from jet import _is_jet_leaf, rev_jet
@@ -94,48 +94,40 @@ def rev_collapsed_jet(f: Callable[..., Any]) -> Callable[..., Any]:
     the FX-trace and interpreter machinery. See :func:`jet.jet` for the
     collapsed-mode shape contract.
 
-    The implementation exploits that the K-th output coefficient depends
-    linearly on the K-th input coefficient (Faa di Bruno: only the term with
-    multi-index ``m_K = 1, m_{<K} = 0`` involves ``c_K``, contributing
-    ``Df(c_0) c_K``). So summing per-direction K-th outputs is the same as
-    putting the full ``c_K`` into one direction and zeros into the rest,
-    which is what we do.
+    Run a standard ``rev_jet`` per direction (full ``c_K`` into direction 0,
+    zeros into the rest, exploiting that ``o_K`` is linear in ``c_K``), then
+    combine: orders 1..K-1 stack across ``R``, order K sums. (``rev_jet``
+    uses :func:`torch.autograd.grad` which does not compose with
+    :func:`torch.func.vmap`, hence the explicit Python loop over ``R``.)
     """
     std_jet = rev_jet(f)
 
     def cjet_f(*args: Any) -> Any:
-        in_leaves, in_spec = tree_flatten(args, is_leaf=_is_jet_leaf)
-        K = len(in_leaves[0]) - 1
-        R = in_leaves[0][1].shape[0]
+        leaves, _ = tree_flatten(args, is_leaf=_is_jet_leaf)
+        K = len(leaves[0]) - 1
+        R = leaves[0][1].shape[0]
 
-        def per_direction_args(r: int) -> tuple[Any, ...]:
-            per_leaf = [
-                (
-                    leaf[0],
-                    *(leaf[order][r] for order in range(1, K)),
-                    leaf[K] if r == 0 else zeros_like(leaf[K]),
+        def direction(leaf: tuple[Tensor, ...], r: int) -> tuple[Tensor, ...]:
+            c_K = leaf[K] if r == 0 else zeros_like(leaf[K])
+            return (leaf[0], *(leaf[k][r] for k in range(1, K)), c_K)
+
+        per_dir = [
+            std_jet(
+                *tree_map(
+                    lambda leaf, r=r: direction(leaf, r), args, is_leaf=_is_jet_leaf
                 )
-                for leaf in in_leaves
-            ]
-            return tree_unflatten(per_leaf, in_spec)
-
-        flat_per_r = []
-        out_spec = None
-        for r in range(R):
-            leaves, out_spec = tree_flatten(
-                std_jet(*per_direction_args(r)), is_leaf=_is_jet_leaf
             )
-            flat_per_r.append(leaves)
-
-        collapsed_leaves = [
-            (
-                per_r[0][0],
-                *(stack([pr[k] for pr in per_r], dim=0) for k in range(1, K)),
-                sum(pr[K] for pr in per_r),
-            )
-            for per_r in zip(*flat_per_r)
+            for r in range(R)
         ]
-        return tree_unflatten(collapsed_leaves, out_spec)
+
+        def combine(*jets: tuple[Tensor, ...]) -> tuple[Tensor, ...]:
+            return (
+                jets[0][0],
+                *(stack([j[k] for j in jets]) for k in range(1, K)),
+                sum(j[K] for j in jets),
+            )
+
+        return tree_map(combine, *per_dir, is_leaf=_is_jet_leaf)
 
     return cjet_f
 

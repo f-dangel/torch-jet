@@ -140,7 +140,7 @@ def test_Laplacian(
             used that has diagonal elements that are increments of 1 starting from 1.
         collapsed: Whether to use collapsed Taylor mode.
     """
-    f, x = setup_case(config)
+    f, (x,) = setup_case(config)
 
     # reference: Using PyTorch
     C = get_coefficients(x, weights)
@@ -175,7 +175,7 @@ def test_Laplacian_randomization(
         chunk_size: Number of samples per chunk. Default: `256`.
         target_rel_error: Target relative error for convergence. Default: `1e-2`.
     """
-    f, x = setup_case(config)
+    f, (x,) = setup_case(config)
     randomization = (distribution, chunk_size)
 
     # reference: Using PyTorch

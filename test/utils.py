@@ -32,23 +32,25 @@ def shapes(*shape_pairs) -> Callable[[], tuple[Tensor, ...]]:
     return lambda: tuple(rand(*s, dtype=float64) for s in shape_pairs)
 
 
-def setup_case(config: dict[str, Any]) -> tuple[Callable[[Tensor], Tensor], Tensor]:
-    """Instantiate the function and its input.
+def setup_case(
+    config: dict[str, Any],
+) -> tuple[Callable[..., Tensor], tuple[Tensor, ...]]:
+    """Instantiate the function and its mock arguments.
 
-    The input is taken verbatim from the first leaf of ``config["mock_args_fn"]()``
+    The mock arguments are taken verbatim from ``config["mock_args_fn"]()``
     -- if the case wants a batched input it should encode the batch dimension
     into its ``mock_args_fn`` directly.
 
     Args:
         config: Configuration dictionary of the test case. Must have ``"f"``
-            and ``"mock_args_fn"`` keys. ``mock_args_fn()`` must return a tuple
-            whose first leaf is the (already double-precision) input tensor.
+            and ``"mock_args_fn"`` keys.
 
     Returns:
-        Tuple containing the function and the input tensor.
+        Tuple containing the function and the mock-args tuple it consumes
+        (one entry per positional argument of ``f``).
     """
     manual_seed(0)
-    return config["f"], config["mock_args_fn"]()[0]
+    return config["f"], config["mock_args_fn"]()
 
 
 def make_jet_args(

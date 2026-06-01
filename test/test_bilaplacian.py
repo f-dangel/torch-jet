@@ -81,7 +81,7 @@ def test_bilaplacian(config: dict[str, Any], collapsed: bool):
         config: Configuration dictionary of the test case.
         collapsed: Whether to use collapsed Taylor mode.
     """
-    f, x = setup_case(config)
+    f, (x,) = setup_case(config)
 
     # using torch.func
     bilap_func = bilaplacian(f, x)
@@ -110,7 +110,7 @@ def test_Bilaplacian_randomization(
         chunk_size: Number of samples per chunk. Default: `256`.
         target_rel_error: Target relative error for convergence. Default: `1e-2`.
     """
-    f, x = setup_case(config)
+    f, (x,) = setup_case(config)
 
     # reference: Using PyTorch
     bilap = bilaplacian(f, x)

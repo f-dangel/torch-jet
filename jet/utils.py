@@ -26,15 +26,6 @@ Jet = tuple[Tensor, ...]
 #:   tensor leaf is replaced by a jet ``(primal, c_1, ..., c_K)``.
 #: - ``PyTree[JetTuple | CollapsedJetTuple | Tensor]`` — interpreter-internal
 #:   form, returned by ``JetInterpreter.run``.
-#:
-#: Three properties this alias deliberately cannot express; they are
-#: runtime-enforced by :func:`jet.validation.validate_input_jet`:
-#:
-#: 1. ``args`` mirrors ``mock_args``'s pytree structure, with each ``Tensor``
-#:    in ``mock`` ↔ ``tuple[Tensor, ...]`` in ``args``.
-#: 2. ``K`` is consistent across all jet leaves.
-#: 3. In collapsed mode, ``c_1..c_{K-1}`` have shape ``(R, *S)`` with shared
-#:    ``R``; ``c_K`` has shape ``S``.
 type PyTree[Leaf] = (
     Leaf | tuple[PyTree[Leaf], ...] | list[PyTree[Leaf]] | dict[str, PyTree[Leaf]]
 )

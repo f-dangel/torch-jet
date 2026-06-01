@@ -13,6 +13,30 @@ from torch.random import fork_rng
 Primal = Tensor
 Value = Tensor
 
+#: A pytree of ``Leaf``: arbitrarily nested ``tuple`` / ``list`` / ``dict``
+#: whose leaves have type ``Leaf``. Three concrete leaf types appear in this
+#: library:
+#:
+#: - ``PyTree[Tensor]`` — public input side (``mock_args``).
+#: - ``PyTree[tuple[Tensor, ...]]`` — public jet-form: arguments to and
+#:   return value of the callable returned by :func:`jet.jet` and
+#:   :func:`jet.rev_jet`, where each tensor leaf is replaced by a jet tuple
+#:   ``(primal, c_1, ..., c_K)``.
+#: - ``PyTree[JetTuple | CollapsedJetTuple | Tensor]`` — interpreter-internal
+#:   form, returned by ``JetInterpreter.run``.
+#:
+#: Three properties this alias deliberately cannot express; they are
+#: runtime-enforced by :func:`jet.validation.validate_input_jet`:
+#:
+#: 1. ``args`` mirrors ``mock_args``'s pytree structure, with each ``Tensor``
+#:    in ``mock`` ↔ ``tuple[Tensor, ...]`` in ``args``.
+#: 2. ``K`` is consistent across all jet leaves.
+#: 3. In collapsed mode, ``c_1..c_{K-1}`` have shape ``(R, *S)`` with shared
+#:    ``R``; ``c_K`` has shape ``S``.
+type PyTree[Leaf] = (
+    Leaf | tuple[PyTree[Leaf], ...] | list[PyTree[Leaf]] | dict[str, PyTree[Leaf]]
+)
+
 
 def run_seeded(f: Callable, seed: int, *args, **kwargs):
     """Run a callable with a specific random seed, restoring the RNG state afterwards.

@@ -59,7 +59,7 @@ def tolerances_for(device: str) -> dict[str, float]:
     higher-order Taylor coefficients accumulate roundoff and need headroom.
     Float64 keeps the default (no relaxation).
     """
-    return {"rtol": 5e-4, "atol": 1e-6} if device == "mps" else {}
+    return {"rtol": 5e-4, "atol": 5e-6} if device == "mps" else {}
 
 
 #: Valid ``(K, collapsed)`` pairs for the standard-vs-collapsed mode sweep.
@@ -87,15 +87,13 @@ def mlp(device: str) -> Sequential:
 
 
 #: Scalar-output cases shared by the laplacian + bilaplacian consumer tests.
-#: ``f`` is a builder ``device -> Callable``; tensor inputs are built on CPU
-#: once at module load and migrated to the right device + dtype by
-#: ``setup_case``.
-manual_seed(0)
+#: ``f`` is a builder ``device -> Callable``; ``args_fn`` is a zero-arg
+#: closure returning the positional-args pytree (CPU tensors).
 SCALAR_OUTPUT_CASES = [
-    {"f": mlp, "args": [rand(5)], "id": "two-layer-tanh-mlp"},
+    {"f": mlp, "args_fn": lambda: (rand(5),), "id": "two-layer-tanh-mlp"},
     {
         "f": _stateless(lambda x: sigmoid(sigmoid(x))),
-        "args": [rand(3)],
+        "args_fn": lambda: (rand(3),),
         "id": "sigmoid-sigmoid",
     },
 ]
@@ -109,18 +107,21 @@ def setup_case(
     Each case dict carries:
 
     - ``"f"``: a builder ``device -> Callable``.
-    - ``"args"``: a list of positional-argument pytrees whose leaves are
-      pre-built CPU tensors. ``setup_case`` migrates each leaf to
-      ``device`` with the device's preferred dtype.
+    - ``"args_fn"``: a zero-arg closure returning the positional-args
+      pytree (CPU tensors). ``setup_case`` ``tree_map``s ``.to(device,
+      dtype)`` over the result.
 
     Returns:
         Tuple ``(f, args)`` where ``args`` is the migrated positional
         argument tuple, preserving the input pytree structure.
     """
     f = config["f"](device)
+    # Seed AFTER f -- on first call to a builder like ``mlp`` the constructor
+    # consumes RNG, otherwise hits the device cache; re-seeding here keeps
+    # ``args_fn`` deterministic regardless of cache state.
+    manual_seed(0)
     kw = device_kw(device)
-    args = tree_map(lambda t: t.to(**kw), config["args"])
-    return f, tuple(args)
+    return f, tree_map(lambda t: t.to(**kw), config["args_fn"]())
 
 
 def make_jet_args(

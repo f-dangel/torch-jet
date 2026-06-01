@@ -17,17 +17,17 @@ direction.
 from torch import cos, float64, manual_seed, rand, sin, zeros
 from torch.testing import assert_close
 
-import jet
+from jet import jet
 
 
 def test_nested_jet_sin_K_inner_1_K_outer_1():
     """jet(jet(sin, mock_inner), mock_outer) matches the analytical expansion."""
     manual_seed(0)
-    inner = jet.jet(sin, (zeros(3, dtype=float64),))
+    inner = jet(sin, (zeros(3, dtype=float64),))
     # mock_outer mirrors inner's jet-tuple shape: 1 positional arg whose
     # container is (primal, c_1) of (K_inner + 1) = 2 tensor leaves.
     mock_outer = ((zeros(3, dtype=float64), zeros(3, dtype=float64)),)
-    outer = jet.jet(inner, mock_outer)
+    outer = jet(inner, mock_outer)
 
     p_p = rand(3, dtype=float64)  # primal at inner-primal position
     p_c = rand(3, dtype=float64)  # outer c_1 at inner-primal position

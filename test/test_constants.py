@@ -10,7 +10,7 @@ unbatched zero (``S``) at the collapsed slot ``c_K``.
 from pytest import mark
 from torch import Tensor, float64, sin, zeros
 
-import jet
+from jet import jet
 from test.utils import make_jet_args
 
 
@@ -28,7 +28,7 @@ def test_constant_output_shape(collapsed: bool):
         return sin(x), zeros(*out_shape, dtype=float64)
 
     args = make_jet_args(mock_args, K, collapsed=collapsed, R=R)
-    _, (const, *const_coeffs) = jet.jet(f, mock_args, collapsed=collapsed)(*args)
+    _, (const, *const_coeffs) = jet(f, mock_args, collapsed=collapsed)(*args)
 
     expected = (
         [(R, *out_shape)] * (K - 1) + [out_shape] if collapsed else [out_shape] * K

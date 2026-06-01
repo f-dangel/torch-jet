@@ -94,6 +94,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Slim the test suite into per-concern layers (`test_primitives.py` for
+  per-dispatch-branch primitive coverage, `test_composition.py` for
+  realistic-shape compute graphs, `test_constants.py` for constant-output
+  shape contracts), trim `test_init.py` to API rejection/smoke tests, and
+  replace home-grown comparison utilities with `torch.testing.assert_close`.
+  Adds an independent collapsed-mode oracle (`rev_collapsed_jet` in
+  `test/utils.py`) built on `rev_jet` so the collapsed interpreter is no
+  longer compared against itself via `_uncollapsed_via_vmap`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/136)).
+
 - Drop the `is_batched` parameter from the experiment harness functions
   (`laplacian_function` / `bilaplacian_function` in
   `jet/exp/exp01_benchmark_laplacian/execute.py` and the four matching JAX

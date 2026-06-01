@@ -83,7 +83,7 @@ def jet(
     mod, _ = capture_graph(f, mock_args)
     interp = JetInterpreter(mod, collapsed=collapsed)
 
-    def transformed(*args: Any) -> Any:
+    def transformed(*args: PyTree[tuple[Tensor, ...]]) -> PyTree[tuple[Tensor, ...]]:
         leaves, K, R = validate_input_jet(mock_args, args, collapsed=collapsed)
         return interp.run(K, R, *leaves)
 
@@ -117,7 +117,7 @@ def rev_jet(
         """Gradient of ``f`` w.r.t. ``X`` if ``f`` requires grad, else zeros."""
         return grad(f, X, **grad_kwargs)[0] if f.requires_grad else zeros_like(X)
 
-    def jet_f(*args: Any) -> Any:
+    def jet_f(*args: PyTree[tuple[Tensor, ...]]) -> PyTree[tuple[Tensor, ...]]:
         """Compute the function and its Taylor coefficients."""
         leaves, in_spec = tree_flatten(args, is_leaf=_is_jet_leaf)
         derivative_order = len(leaves[0]) - 1
@@ -208,7 +208,7 @@ def _uncollapsed_via_vmap(
     # args inside vmap. The validator confirms ``args`` matches this structure.
     _, in_spec = tree_flatten(mock_args)
 
-    def cjet_f(*args: Any) -> Any:
+    def cjet_f(*args: PyTree[tuple[Tensor, ...]]) -> PyTree[tuple[Tensor, ...]]:
         leaves, K, _ = validate_input_jet(mock_args, args, collapsed=True)
         num_leaves = len(leaves)
         primals = [leaf[0] for leaf in leaves]

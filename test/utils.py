@@ -7,8 +7,7 @@ from torch import Tensor, float64, manual_seed, rand, rand_like, stack, zeros_li
 from torch.testing import assert_close
 from torch.utils._pytree import tree_flatten, tree_map
 
-import jet
-from jet import _is_jet_leaf, rev_jet
+from jet import _is_jet_leaf, jet, rev_jet
 
 #: Valid ``(K, collapsed)`` pairs for the standard-vs-collapsed mode sweep.
 #: ``K=0`` (primal-only) and ``K=1`` (Jacobian-vector product) are
@@ -148,6 +147,6 @@ def assert_jet_matches_oracle(config: dict[str, Any], K: int, collapsed: bool) -
     mock_args = config["args_fn"]()
     jet_args = make_jet_args(mock_args, K, collapsed=collapsed)
     oracle = rev_collapsed_jet(f) if collapsed else rev_jet(f)
-    actual = jet.jet(f, mock_args, collapsed=collapsed)(*jet_args)
+    actual = jet(f, mock_args, collapsed=collapsed)(*jet_args)
     expected = oracle(*jet_args)
     assert_close(actual, expected)

@@ -102,7 +102,7 @@ SCALAR_OUTPUT_CASES = [
 
 def setup_case(
     config: dict[str, Any], device: str = "cpu"
-) -> tuple[Callable[..., Tensor], tuple[Any, ...]]:
+) -> tuple[Callable[..., Any], tuple[Any, ...]]:
     """Instantiate the function and migrate its arguments to ``device``.
 
     Each case dict carries:

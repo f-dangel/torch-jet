@@ -22,6 +22,7 @@ from jet.operations import (
     _faa_di_bruno,
     _order,
     _pow_derivatives,
+    _relu_derivatives,
     _sigmoid_derivatives,
     _sin_derivatives,
     _tanh_derivatives,
@@ -190,6 +191,11 @@ def cjet_sigmoid(self: CollapsedJetTuple) -> CollapsedJetTuple:
     return _cjet_elementwise(self, _sigmoid_derivatives)
 
 
+def cjet_relu(self: CollapsedJetTuple) -> CollapsedJetTuple:
+    """Collapsed jet rule for ``aten.relu``."""
+    return _cjet_elementwise(self, _relu_derivatives)
+
+
 def cjet_pow(self: CollapsedJetTuple, exponent: float | int) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.pow``."""
     assert isinstance(exponent, (float, int))
@@ -314,6 +320,7 @@ COLLAPSED_MAPPING: dict = {
     ops.aten.cos.default: cjet_cos,
     ops.aten.tanh.default: cjet_tanh,
     ops.aten.sigmoid.default: cjet_sigmoid,
+    ops.aten.relu.default: cjet_relu,
     # Power
     ops.aten.pow.Tensor_Scalar: cjet_pow,
     # Arithmetic

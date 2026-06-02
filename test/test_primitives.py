@@ -14,6 +14,8 @@ from torch import (
     manual_seed,
     ops,
     rand,
+    randn,
+    relu,
     sigmoid,
     sin,
     tanh,
@@ -88,6 +90,16 @@ PRIMITIVE_CASES = [
             "args_fn": lambda dims=dims: (rand(*dims),),
         }
         for name, fn in _UNARY_POINTWISE.items()
+        for sid, dims in _UNARY_SHAPES.items()
+    ),
+    # ---- ReLU (piecewise linear; ``randn`` straddles 0 to exercise both
+    # the active ``x>0`` mask and the zeroed-out ``x<0`` branch) -----------
+    *(
+        {
+            "id": f"relu-{sid}",
+            "f": _stateless(relu),
+            "args_fn": lambda dims=dims: (randn(*dims),),
+        }
         for sid, dims in _UNARY_SHAPES.items()
     ),
     # ---- Unary with scalar exponent (float + low/high integer) -----------

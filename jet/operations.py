@@ -3,7 +3,7 @@
 from typing import Callable
 
 from scipy.special import comb, factorial, stirling2
-from torch import Tensor, addmm, cos, mm, ops, sigmoid, sin, tanh, zeros_like
+from torch import Tensor, addmm, cos, mm, ops, relu, sigmoid, sin, tanh, zeros_like
 from torch.utils._pytree import register_pytree_node
 
 from jet.utils import integer_partitions, multiplicity
@@ -339,6 +339,25 @@ def _sigmoid_derivatives(x0: Tensor, K: int) -> tuple[Tensor, dict[int, Tensor]]
     return sigmoid_x0, d
 
 
+def _relu_derivatives(x0: Tensor, K: int) -> tuple[Tensor, dict[int, Tensor | None]]:
+    """Compute ``relu(x0)`` and its derivatives up to order *K*.
+
+    ReLU is piecewise linear, so its first derivative is the indicator
+    ``x0 > 0`` and every higher derivative vanishes (we adopt the subgradient
+    convention ``relu'(0) = 0``, matching PyTorch's autograd). Returning
+    ``None`` for orders ``>= 2`` lets Faà di Bruno skip those structurally-zero
+    terms; the only surviving order-``k`` term is the linear one,
+    ``(x0 > 0) * c_k``.
+    """
+    relu_x0 = relu(x0)
+    d: dict[int, Tensor | None] = {0: relu_x0}
+    if K >= 1:
+        d[1] = (x0 > 0).to(x0.dtype)
+    for k in range(2, K + 1):
+        d[k] = None
+    return relu_x0, d
+
+
 def _pow_derivatives(
     x0: Tensor, exponent: float | int, K: int
 ) -> tuple[Tensor, dict[int, Tensor | None]]:
@@ -400,6 +419,11 @@ def jet_tanh(self: JetTuple) -> JetTuple:
 def jet_sigmoid(self: JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.sigmoid(self)``."""
     return _jet_elementwise(self, _sigmoid_derivatives)
+
+
+def jet_relu(self: JetTuple) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.relu(self)``."""
+    return _jet_elementwise(self, _relu_derivatives)
 
 
 # --- Power ---
@@ -563,6 +587,7 @@ MAPPING: dict = {
     ops.aten.cos.default: jet_cos,
     ops.aten.tanh.default: jet_tanh,
     ops.aten.sigmoid.default: jet_sigmoid,
+    ops.aten.relu.default: jet_relu,
     # Power
     ops.aten.pow.Tensor_Scalar: jet_pow,
     # Arithmetic

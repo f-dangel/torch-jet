@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- **Backward-incompatible.** `laplacian()` and `bilaplacian()` now take
+  `mock_args` as a tuple matching `f`'s positional arguments (was a single
+  `mock_x` tensor), mirroring `jet()`; the returned callable likewise takes
+  one positional argument per argument of `f`. This future-proofs the calling
+  convention so pytree support can be added without another signature change.
+  Only single-tensor functions (one tensor in, one tensor out) are supported
+  for now; a non-single-tensor input or output raises `NotImplementedError`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/143)).
+
 - Add jet rules for `aten.zeros_like.default`, `aten._unsafe_view.default`,
   and `aten.squeeze.dims`. Op dispatch now forwards kwargs to the
   registered rule. Together with the collapsed Leibniz fix in PR #141

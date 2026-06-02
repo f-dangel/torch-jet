@@ -2,7 +2,7 @@
 
 from math import factorial, prod
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from torch import Tensor, device, dtype, empty, manual_seed, randn
 from torch.fx import GraphModule, Node
@@ -26,6 +26,13 @@ Jet = tuple[Tensor, ...]
 type PyTree[Leaf] = (
     Leaf | tuple[PyTree[Leaf], ...] | list[PyTree[Leaf]] | dict[str, PyTree[Leaf]]
 )
+
+
+def _is_jet_leaf(x: Any) -> bool:
+    """``True`` iff ``x`` is a jet tuple: a ``tuple`` of one or more tensors."""
+    return (
+        isinstance(x, tuple) and len(x) >= 1 and all(isinstance(e, Tensor) for e in x)
+    )
 
 
 def run_seeded(f: Callable, seed: int, *args, **kwargs):
@@ -127,6 +134,62 @@ def validate_randomization(
         raise ValueError(f"Unsupported {distribution=} ({supported_distributions=}).")
     if num_samples <= 0:
         raise ValueError(f"{num_samples=} must be positive.")
+
+
+def require_single_tensor_input(
+    mock_args: tuple[PyTree[Tensor], ...], transform: str
+) -> Tensor:
+    """Return the sole input tensor, or raise if ``f`` is not single-tensor.
+
+    The Laplacian / Bi-Laplacian transforms take ``mock_args`` as a tuple
+    matching ``f``'s positional arguments (mirroring :func:`jet.jet`), but
+    only single-tensor inputs are supported so far.
+
+    Args:
+        mock_args: Mock positional arguments for ``f``.
+        transform: Name of the calling transform, used in the error message.
+
+    Returns:
+        The single input tensor ``mock_args[0]``.
+
+    Raises:
+        NotImplementedError: If ``mock_args`` is not a one-tuple of a tensor.
+    """
+    if len(mock_args) != 1 or not isinstance(mock_args[0], Tensor):
+        raise NotImplementedError(
+            f"{transform} currently supports a single-tensor input only; got "
+            f"{len(mock_args)} positional argument(s). Pytree inputs (multiple "
+            "arguments or non-tensor leaves) are not yet supported."
+        )
+    return mock_args[0]
+
+
+def require_single_tensor_output(result: PyTree[Jet], transform: str) -> Jet:
+    """Return the sole output jet, or raise if ``f`` is not single-tensor.
+
+    Mirrors :func:`require_single_tensor_input` on the output side: the
+    Laplacian / Bi-Laplacian transforms unpack a single jet tuple
+    ``(f_0, ..., f_K)``, which only exists when ``f`` returns one tensor. A
+    pytree-valued output yields a nested structure instead, so guard it here
+    to surface a clear error rather than an opaque unpacking failure.
+
+    Args:
+        result: The pytree of jets returned by the jet-transformed ``f``.
+        transform: Name of the calling transform, used in the error message.
+
+    Returns:
+        The single output jet ``result`` (a tuple of coefficient tensors).
+
+    Raises:
+        NotImplementedError: If ``f`` returns a pytree of tensors rather than
+            a single tensor.
+    """
+    if not _is_jet_leaf(result):
+        raise NotImplementedError(
+            f"{transform} currently supports a single-tensor output only; ``f`` "
+            "returned a pytree of tensors, which is not yet supported."
+        )
+    return result
 
 
 def sample(x_meta: Tensor, distribution: str, shape: tuple[int, ...]) -> Tensor:

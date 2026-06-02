@@ -260,7 +260,7 @@ def laplacian_function(
         collapsed = strategy == "jet_simplified"
         laplacian = jet_laplacian(
             f,
-            dummy_x,
+            (dummy_x,),
             randomization=randomization,
             weighting=weighting,
             collapsed=collapsed,
@@ -368,7 +368,7 @@ def bilaplacian_function(
         collapsed = strategy == "jet_simplified"
         bilap_fn = jet_bilaplacian(
             f,
-            dummy_x,
+            (dummy_x,),
             randomization=randomization,
             collapsed=collapsed,
         )

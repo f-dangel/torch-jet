@@ -307,7 +307,7 @@ assert hessian_trace_laplacian.allclose(lap_standard(*in_spec.flatten_up_to((x,)
 # propagates a single "collapsed jet" that directly tracks the summed second-order
 # coefficient.
 
-lap_collapsed = laplacian(f, x)
+lap_collapsed = laplacian(f, (x,))
 collapsed_laplacian = lap_collapsed(x)
 assert hessian_trace_laplacian.allclose(collapsed_laplacian)
 

@@ -1,7 +1,7 @@
 """Taylor-mode automatic differentiation (jets) in PyTorch."""
 
 from math import factorial
-from typing import Any, Callable
+from typing import Callable
 
 from torch import Tensor, tensor, zeros_like
 from torch.autograd import grad
@@ -10,15 +10,8 @@ from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
 
 from jet.jet_interpreter import JetInterpreter
 from jet.tracing import capture_graph
-from jet.utils import Jet, PyTree
+from jet.utils import Jet, PyTree, _is_jet_leaf
 from jet.validation import validate_input_jet
-
-
-def _is_jet_leaf(x: Any) -> bool:
-    """``True`` iff ``x`` is a jet tuple: a ``tuple`` of one or more tensors."""
-    return (
-        isinstance(x, tuple) and len(x) >= 1 and all(isinstance(e, Tensor) for e in x)
-    )
 
 
 def jet(

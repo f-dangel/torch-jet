@@ -64,7 +64,7 @@ def test_bilaplacian(config: dict[str, Any], collapsed: bool, device: str):
     bilap_func = bilaplacian(f, x)
 
     # using jets
-    bilap_fn = jet_bilaplacian(f, x, collapsed=collapsed)
+    bilap_fn = jet_bilaplacian(f, (x,), collapsed=collapsed)
     bilap_jet = bilap_fn(x)
     assert_close(bilap_func, bilap_jet, **tolerances_for(device))
 
@@ -77,9 +77,9 @@ def test_bilaplacian_matches_nested_laplacian(
     """``Δ(Δf)(x) == Δ²f(x)`` -- nesting laplacian twice yields the bilaplacian."""
     f, (x,) = setup_case(config, device)
     lap_of_lap = jet_laplacian(
-        jet_laplacian(f, x, collapsed=collapsed), x, collapsed=collapsed
+        jet_laplacian(f, (x,), collapsed=collapsed), (x,), collapsed=collapsed
     )
-    expected = jet_bilaplacian(f, x, collapsed=collapsed)(x)
+    expected = jet_bilaplacian(f, (x,), collapsed=collapsed)(x)
     assert_close(lap_of_lap(x), expected, **tolerances_for(device))
 
 
@@ -116,7 +116,9 @@ def test_Bilaplacian_randomization(
     randomization = (distribution, chunk_size)
 
     # check convergence of MC estimator
-    bilap_fn = jet_bilaplacian(f, x, randomization=randomization, collapsed=collapsed)
+    bilap_fn = jet_bilaplacian(
+        f, (x,), randomization=randomization, collapsed=collapsed
+    )
 
     converged = _check_mc_convergence(
         bilap,

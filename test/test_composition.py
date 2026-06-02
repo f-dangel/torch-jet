@@ -27,13 +27,7 @@ def _deep_pytree_f(x: Tensor, params: list) -> tuple[Tensor, dict[str, Tensor]]:
 
 
 def _relu_inplace_mlp(device: str) -> Sequential:
-    """MLP with in-place ReLU -- torchvision's pattern.
-
-    ``inplace=True`` ReLU computes via the same ``aten.relu.default`` rule; its
-    functionalized ``copy_`` write-back is dead-code-eliminated mid-network.
-    Paired with a ``randn`` input (straddles 0) so both branches of the ReLU
-    mask are exercised.
-    """
+    """MLP with in-place ReLU -- torchvision's pattern."""
     manual_seed(0)
     kw = device_kw(device)
     return Sequential(

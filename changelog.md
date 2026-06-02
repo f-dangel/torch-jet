@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     ([PR](https://github.com/f-dangel/torch-jet/pull/145)).
   - `aten.max_pool2d_with_indices.default` and `aten.max_pool2d.default`
     ([PR](https://github.com/f-dangel/torch-jet/pull/159)).
+  - `aten._adaptive_avg_pool2d.default`
+    ([PR](https://github.com/f-dangel/torch-jet/pull/149)).
 
 - **Backward-incompatible.** Replace the `Laplacian` / `Bilaplacian`
   `nn.Module`s with `laplacian()` / `bilaplacian()` function transforms that

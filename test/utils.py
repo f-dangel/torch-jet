@@ -52,13 +52,7 @@ def _stateless(f: Callable) -> Callable[[str], Callable]:
 
 
 def tolerances_for(device: str) -> dict[str, float]:
-    """Relaxed ``assert_close`` tolerances for float32 devices.
-
-    Default ``rtol=1.3e-6`` is calibrated for single-op float32 precision;
-    higher-order Taylor coefficients accumulate roundoff and need headroom.
-    Float64 keeps the default (no relaxation). Keyed on dtype (not device)
-    so any future float32-only backend inherits the same headroom.
-    """
+    """Relaxed ``assert_close`` tolerances for float32 devices."""
     return {"rtol": 5e-4, "atol": 5e-6} if dtype_for_device(device) == float32 else {}
 
 
@@ -109,8 +103,7 @@ def setup_case(
 
     - ``"f"``: a builder ``device -> Callable``.
     - ``"args_fn"``: a zero-arg closure returning the positional-args
-      pytree (CPU tensors). ``setup_case`` ``tree_map``s ``.to(device,
-      dtype)`` over the result.
+      pytree (CPU tensors).
 
     Returns:
         Tuple ``(f, args)`` where ``args`` is the migrated positional

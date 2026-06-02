@@ -10,6 +10,7 @@ from pytest import mark
 from torch import (
     addmm,
     cos,
+    float32,
     float64,
     manual_seed,
     ops,
@@ -88,7 +89,21 @@ PRIMITIVE_CASES = [
     {"id": "addmm_mat1_jet", "f": lambda A: addmm(_B, A, _R), "args_fn": shape(3, 4)},
     {"id": "addmm_mat2_jet", "f": lambda B: addmm(_B, _L, B), "args_fn": shape(4, 5)},
     # ---- Reduction -------------------------------------------------------
+    # ``sum()`` (no-dim) lowers to ``aten.sum.default``; the dim/keepdim
+    # variants all lower to ``aten.sum.dim_IntList``.
+    {"id": "sum_all", "f": lambda x: x.sum(), "args_fn": shape(3, 4)},
     {"id": "sum_dim_0", "f": lambda x: x.sum(0), "args_fn": shape(3, 4)},
+    {"id": "sum_dim_list", "f": lambda x: x.sum([0, 1]), "args_fn": shape(3, 4)},
+    {
+        "id": "sum_keepdim",
+        "f": lambda x: x.sum(0, keepdim=True),
+        "args_fn": shape(3, 4),
+    },
+    {
+        "id": "sum_dim_list_keepdim",
+        "f": lambda x: x.sum([0, 1], keepdim=True),
+        "args_fn": shape(3, 4),
+    },
     # ---- Shape-only ops --------------------------------------------------
     {"id": "view", "f": lambda x: x.view(-1), "args_fn": shape(3, 4)},
     # ``_unsafe_view`` is an internal aten op emitted by Linear/addmm
@@ -104,6 +119,15 @@ PRIMITIVE_CASES = [
     {"id": "squeeze_dims", "f": lambda x: x.squeeze([0, 1]), "args_fn": shape(1, 1, 4)},
     # ---- Constant-output ops (zero derivatives at every order) -----------
     {"id": "zeros_like", "f": zeros_like, "args_fn": shape(3, 4)},
+    # ``zeros_like_dtype_cast`` guards ``defzero`` against dropping the
+    # ``dtype`` kwarg when allocating coefficient slots: the per-coefficient
+    # zero tensors must inherit the *output* dtype (``float32``), not the
+    # input coefficient's dtype (``float64``).
+    {
+        "id": "zeros_like_dtype_cast",
+        "f": lambda x: zeros_like(x, dtype=float32),
+        "args_fn": shape(3, 4),
+    },
 ]
 
 

@@ -557,94 +557,7 @@ def jet_addmm(
         return JetTuple((primal, *_apply_linear_coeffs(mat2, lambda c: mm(mat1, c))))
 
 
-def jet_view(self: JetTuple, size: list[int]) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.view(self, size)``.
-
-    Args:
-        self: The primal and its Taylor coefficients.
-        size: The target shape.
-
-    Returns:
-        The value and its Taylor coefficients, each reshaped.
-    """
-    return _apply_linear(self, lambda c: ops.aten.view.default(c, size))
-
-
-def jet_unsqueeze(self: JetTuple, dim: int) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.unsqueeze(self, dim)``.
-
-    Args:
-        self: The primal and its Taylor coefficients.
-        dim: The dimension to unsqueeze.
-
-    Returns:
-        The value and its Taylor coefficients, each unsqueezed.
-    """
-    return _apply_linear(self, lambda c: ops.aten.unsqueeze.default(c, dim))
-
-
-def jet_squeeze_dims(self: JetTuple, dim: list[int]) -> JetTuple:
-    """Taylor-mode arithmetic for the multi-dim ``aten.squeeze.dims`` overload.
-
-    Same linearity argument as :func:`jet_squeeze`; differs only in that
-    ``dim`` is a list of axes to squeeze in one call.
-    """
-    return _apply_linear(self, lambda c: ops.aten.squeeze.dims(c, dim))
-
-
-def jet_squeeze(self: JetTuple, dim: int) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.squeeze(self, dim)``.
-
-    Args:
-        self: The primal and its Taylor coefficients.
-        dim: The dimension to squeeze.
-
-    Returns:
-        The value and its Taylor coefficients, each squeezed.
-    """
-    return _apply_linear(self, lambda c: ops.aten.squeeze.dim(c, dim))
-
-
-# --- Sum (dim reduction) ---
-
-
-def jet_sum(self: JetTuple, dim: list[int], keepdim: bool = False) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.sum(self, dim, keepdim)``.
-
-    Args:
-        self: The primal and its Taylor coefficients.
-        dim: The dimension to sum along, as either an ``int`` or a 1-element
-            ``list[int]``. Multi-dimensional reductions are not supported.
-        keepdim: Whether to keep the reduced dimension. Default: ``False``.
-
-    Returns:
-        The value and its Taylor coefficients.
-
-    Raises:
-        NotImplementedError: If keepdim is True.
-        ValueError: If ``dim`` is a list with anything other than one element.
-    """
-    if keepdim:
-        raise NotImplementedError("keepdim=True is not supported.")
-    (pos,) = (dim,) if isinstance(dim, int) else dim
-    return _apply_linear(self, lambda c: c.sum(pos))
-
-
-# --- Constant-output ops (output independent of input values) ---
-
-
-def jet_zeros_like(self: JetTuple, **kwargs) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.zeros_like(self)``.
-
-    Output does not depend on the input's values, only its shape/dtype, so
-    every Taylor coefficient is zero. Reusing ``zeros_like`` on each input
-    entry yields the right zero of the right shape (the primal's ``S`` for
-    the primal slot; coefficient shapes for the coefficient slots).
-    """
-    return JetTuple(zeros_like(c, **kwargs) for c in self)
-
-
-MAPPING = {
+MAPPING: dict = {
     # Elementwise unary
     ops.aten.sin.default: jet_sin,
     ops.aten.cos.default: jet_cos,
@@ -656,16 +569,63 @@ MAPPING = {
     ops.aten.add.Tensor: jet_add,
     ops.aten.sub.Tensor: jet_sub,
     ops.aten.mul.Tensor: jet_mul,
-    # Linear decomposition
+    # Matrix decomposition
     ops.aten.mm.default: jet_mm,
     ops.aten.addmm.default: jet_addmm,
-    ops.aten.view.default: jet_view,
-    ops.aten._unsafe_view.default: jet_view,
-    ops.aten.unsqueeze.default: jet_unsqueeze,
-    ops.aten.squeeze.dim: jet_squeeze,
-    ops.aten.squeeze.dims: jet_squeeze_dims,
-    # Sum (dim reduction)
-    ops.aten.sum.dim_IntList: jet_sum,
-    # Constant-output ops
-    ops.aten.zeros_like.default: jet_zeros_like,
 }
+
+
+# --- JAX-style helpers: bulk-register categories of ops ---
+#
+# After the dict literal above, two category helpers register the remaining
+# rules in one line per op. They mutate ``MAPPING`` so adding a new op of
+# either category is a one-line edit.
+
+
+def deflinear(prim: Callable) -> None:
+    """Register ``prim`` as a linear op: apply the primitive coefficient-wise.
+
+    The primitive must be ``aten``-style — it takes the tensor as its first
+    positional argument and any structural args (e.g. ``size``, ``dim``)
+    after. Forwards both ``*args`` and ``**kwargs`` straight to ``prim``.
+    """
+
+    def rule(self: JetTuple, *args, **kwargs) -> JetTuple:
+        return _apply_linear(self, lambda c: prim(c, *args, **kwargs))
+
+    MAPPING[prim] = rule
+
+
+def defzero(prim: Callable) -> None:
+    """Register ``prim`` as a constant-output op (output independent of input).
+
+    The Taylor expansion of a constant-output op has all coefficients zero;
+    only the primal carries information. ``prim`` is applied to the primal
+    to produce the output value (which carries any ``dtype`` / ``device`` /
+    ``layout`` kwargs the user passed). Coefficient slots are allocated via
+    ``zeros_like(primal_out)`` so they inherit ``primal_out``'s metadata.
+    """
+
+    def rule(self: JetTuple, *args, **kwargs) -> JetTuple:
+        primal_out = prim(self[0], *args, **kwargs)
+        coeffs = [zeros_like(primal_out) for _ in range(len(self) - 1)]
+        return JetTuple([primal_out, *coeffs])
+
+    MAPPING[prim] = rule
+
+
+# Linear / shape-only ops + reductions: apply the primitive per coefficient.
+for _prim in (
+    ops.aten.view.default,
+    ops.aten._unsafe_view.default,
+    ops.aten.unsqueeze.default,
+    ops.aten.squeeze.dim,
+    ops.aten.squeeze.dims,
+    ops.aten.sum.default,
+    ops.aten.sum.dim_IntList,
+):
+    deflinear(_prim)
+
+# Constant-output ops: primal carries the value, coefficients are zero.
+for _prim in (ops.aten.zeros_like.default,):
+    defzero(_prim)

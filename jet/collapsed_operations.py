@@ -13,7 +13,7 @@ At each nonlinear operation, the K-th output coefficient is computed as:
 from typing import Callable
 
 from scipy.special import comb
-from torch import Tensor, addmm, matmul, mm, ops, zeros_like
+from torch import Tensor, addmm, matmul, mm, ops
 from torch.func import vmap
 from torch.utils._pytree import register_pytree_node
 
@@ -305,61 +305,10 @@ def cjet_addmm(
 
 
 # ---------------------------------------------------------------------------
-# Shape / reduction operations (vmap handles batch dim automatically)
-# ---------------------------------------------------------------------------
-
-
-def cjet_view(self: CollapsedJetTuple, size: list[int]) -> CollapsedJetTuple:
-    """Collapsed jet rule for ``aten.view``."""
-    return _apply_linear(self, lambda x: ops.aten.view.default(x, size))
-
-
-def cjet_unsqueeze(self: CollapsedJetTuple, dim: int) -> CollapsedJetTuple:
-    """Collapsed jet rule for ``aten.unsqueeze``."""
-    return _apply_linear(self, lambda x: ops.aten.unsqueeze.default(x, dim))
-
-
-def cjet_squeeze(self: CollapsedJetTuple, dim: int) -> CollapsedJetTuple:
-    """Collapsed jet rule for ``aten.squeeze``."""
-    return _apply_linear(self, lambda x: ops.aten.squeeze.dim(x, dim))
-
-
-def cjet_squeeze_dims(self: CollapsedJetTuple, dim: list[int]) -> CollapsedJetTuple:
-    """Collapsed jet rule for the multi-dim ``aten.squeeze.dims`` overload."""
-    return _apply_linear(self, lambda x: ops.aten.squeeze.dims(x, dim))
-
-
-def cjet_sum(
-    self: CollapsedJetTuple,
-    dim: list[int] | int,
-    keepdim: bool = False,
-) -> CollapsedJetTuple:
-    """Collapsed jet rule for ``aten.sum``.
-
-    ``dim`` must be an ``int`` or a 1-element ``list[int]`` (multi-dim
-    reductions are not supported); a longer list raises ``ValueError``.
-    """
-    if keepdim:
-        raise NotImplementedError("keepdim=True is not supported.")
-    (pos,) = (dim,) if isinstance(dim, int) else dim
-    return _apply_linear(self, lambda x: x.sum(pos))
-
-
-def cjet_zeros_like(self: CollapsedJetTuple, **kwargs) -> CollapsedJetTuple:
-    """Collapsed jet rule for ``aten.zeros_like``.
-
-    Output does not depend on input values, only shape/dtype. ``zeros_like``
-    on each entry preserves the per-slot shape contract: ``S`` for the
-    primal and the collapsed slot, ``(R, *S)`` for the batched coefficients.
-    """
-    return CollapsedJetTuple(zeros_like(c, **kwargs) for c in self)
-
-
-# ---------------------------------------------------------------------------
 # COLLAPSED_MAPPING
 # ---------------------------------------------------------------------------
 
-COLLAPSED_MAPPING = {
+COLLAPSED_MAPPING: dict = {
     # Elementwise nonlinear
     ops.aten.sin.default: cjet_sin,
     ops.aten.cos.default: cjet_cos,
@@ -374,14 +323,62 @@ COLLAPSED_MAPPING = {
     # Matrix ops
     ops.aten.mm.default: cjet_mm,
     ops.aten.addmm.default: cjet_addmm,
-    # Shape ops
-    ops.aten.view.default: cjet_view,
-    ops.aten._unsafe_view.default: cjet_view,
-    ops.aten.unsqueeze.default: cjet_unsqueeze,
-    ops.aten.squeeze.dim: cjet_squeeze,
-    ops.aten.squeeze.dims: cjet_squeeze_dims,
-    # Reductions
-    ops.aten.sum.dim_IntList: cjet_sum,
-    # Constant-output ops
-    ops.aten.zeros_like.default: cjet_zeros_like,
 }
+
+
+# --- JAX-style helpers: bulk-register categories of ops ---
+#
+# Mirrors :func:`jet.operations.deflinear` / :func:`jet.operations.defzero`,
+# but uses the collapsed ``_apply_linear`` (which vmaps over the leading
+# direction dim for batched coefficients) and respects the collapsed
+# per-slot shape contract for ``defzero``.
+
+
+def deflinear(prim: Callable) -> None:
+    """Register ``prim`` as a linear op (collapsed mode).
+
+    Collapsed ``_apply_linear`` vmaps over the leading ``R`` dim for batched
+    coefficients ``c_1..c_{K-1}`` and applies ``prim`` directly to the primal
+    and the collapsed slot ``c_K``.
+    """
+
+    def rule(self: CollapsedJetTuple, *args, **kwargs) -> CollapsedJetTuple:
+        return _apply_linear(self, lambda c: prim(c, *args, **kwargs))
+
+    COLLAPSED_MAPPING[prim] = rule
+
+
+def defzero(prim: Callable) -> None:
+    """Register ``prim`` as a constant-output op (collapsed mode).
+
+    ``prim`` is applied to the primal; coefficients are filled with zero
+    tensors that take their shape from each input coefficient slot (to
+    preserve the per-slot shape contract — ``(R, *S)`` for ``c_1..c_{K-1}``,
+    ``S`` for ``c_K``) and their dtype / device / layout from ``primal_out``
+    so any ``dtype=`` / ``device=`` etc. kwargs passed to ``prim`` propagate
+    to the coefficients too.
+    """
+
+    def rule(self: CollapsedJetTuple, *args, **kwargs) -> CollapsedJetTuple:
+        primal_out = prim(self[0], *args, **kwargs)
+        coeffs = [primal_out.new_zeros(c.shape) for c in self[1:]]
+        return CollapsedJetTuple([primal_out, *coeffs])
+
+    COLLAPSED_MAPPING[prim] = rule
+
+
+# Linear / shape-only ops + reductions.
+for _prim in (
+    ops.aten.view.default,
+    ops.aten._unsafe_view.default,
+    ops.aten.unsqueeze.default,
+    ops.aten.squeeze.dim,
+    ops.aten.squeeze.dims,
+    ops.aten.sum.default,
+    ops.aten.sum.dim_IntList,
+):
+    deflinear(_prim)
+
+# Constant-output ops.
+for _prim in (ops.aten.zeros_like.default,):
+    defzero(_prim)

@@ -809,6 +809,62 @@ def jet_log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> Je
     return jet_sub(shifted, log_sum_exp)
 
 
+# --- Loss functions ---
+
+
+def jet_nll_loss_forward(
+    self: JetTuple,
+    target: Tensor,
+    weight: Tensor | None,
+    reduction: int,
+    ignore_index: int,
+) -> tuple[JetTuple, Tensor]:
+    """Taylor-mode arithmetic for ``aten.nll_loss_forward``.
+
+    ``nll_loss_forward(input, target, ...)`` is linear in ``input`` (the
+    log-probabilities) once ``target`` / ``weight`` / ``reduction`` are fixed,
+    so the same ATen op is applied to every Taylor coefficient. ``target`` and
+    ``weight`` are constants (a label and per-class weights), not jets.
+
+    The op returns ``(output, total_weight)``; ``total_weight`` depends only on
+    ``target`` / ``weight``, so it is computed once from the primal and passed
+    through as a constant. The result is a plain ``tuple`` so the downstream
+    ``operator.getitem`` (selecting ``output``) falls through to native
+    indexing and recovers the output jet.
+
+    Args:
+        self: The log-probabilities and their Taylor coefficients.
+        target: The (constant) class-index targets.
+        weight: Optional (constant) per-class weights, or ``None``.
+        reduction: The ATen reduction enum -- ``0`` (none), ``1`` (mean),
+            ``2`` (sum).
+        ignore_index: Target value to ignore.
+
+    Returns:
+        A ``(output_jet, total_weight)`` tuple.
+
+    Raises:
+        NotImplementedError: If ``target`` or ``weight`` is Taylor-expanded;
+            both must be constant tensors (the target is a class-index label).
+    """
+    if isinstance(target, JetTuple) or isinstance(weight, JetTuple):
+        raise NotImplementedError(
+            "jet_nll_loss_forward does not support a Taylor-expanded target or "
+            "weight; both must be constant tensors (the target is a class-index "
+            "label)."
+        )
+    output, total_weight = ops.aten.nll_loss_forward.default(
+        self[0], target, weight, reduction, ignore_index
+    )
+    coeffs = _apply_linear_coeffs(
+        self,
+        lambda c: ops.aten.nll_loss_forward.default(
+            c, target, weight, reduction, ignore_index
+        )[0],
+    )
+    return JetTuple((output, *coeffs)), total_weight
+
+
 MAPPING: dict = {
     # Elementwise unary
     ops.aten.sin.default: jet_sin,
@@ -834,6 +890,7 @@ MAPPING: dict = {
     ops.aten.max_pool2d.default: jet_max_pool2d,
     # Loss functions
     ops.aten.mse_loss.default: jet_mse_loss,
+    ops.aten.nll_loss_forward.default: jet_nll_loss_forward,
     # Normalization
     ops.aten._log_softmax.default: jet_log_softmax,
 }

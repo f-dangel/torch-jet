@@ -476,6 +476,59 @@ def cjet_log_softmax(
     return cjet_sub(shifted, log_sum_exp)
 
 
+# ---------------------------------------------------------------------------
+# Loss functions
+# ---------------------------------------------------------------------------
+
+
+def cjet_nll_loss_forward(
+    self: CollapsedJetTuple,
+    target: Tensor,
+    weight: Tensor | None,
+    reduction: int,
+    ignore_index: int,
+) -> tuple[CollapsedJetTuple, Tensor]:
+    """Collapsed jet rule for ``aten.nll_loss_forward``.
+
+    Same linear application as :func:`jet.operations.jet_nll_loss_forward`.
+
+    Args:
+        self: The log-probabilities and their Taylor coefficients.
+        target: The (constant) class-index targets.
+        weight: Optional (constant) per-class weights, or ``None``.
+        reduction: The ATen reduction enum -- ``0`` (none), ``1`` (mean),
+            ``2`` (sum).
+        ignore_index: Target value to ignore.
+
+    Returns:
+        A ``(output_jet, total_weight)`` tuple.
+
+    Raises:
+        NotImplementedError: If ``target`` or ``weight`` is Taylor-expanded;
+            both must be constant tensors (the target is a class-index label).
+    """
+    if isinstance(target, CollapsedJetTuple) or isinstance(weight, CollapsedJetTuple):
+        raise NotImplementedError(
+            "cjet_nll_loss_forward does not support a Taylor-expanded target or "
+            "weight; both must be constant tensors (the target is a class-index "
+            "label)."
+        )
+    output, total_weight = ops.aten.nll_loss_forward.default(
+        self[0], target, weight, reduction, ignore_index
+    )
+    coeffs = _apply_linear_coeffs(
+        self,
+        lambda c: ops.aten.nll_loss_forward.default(
+            c, target, weight, reduction, ignore_index
+        )[0],
+    )
+    return CollapsedJetTuple((output, *coeffs)), total_weight
+
+
+# ---------------------------------------------------------------------------
+# COLLAPSED_MAPPING
+# ---------------------------------------------------------------------------
+
 COLLAPSED_MAPPING: dict = {
     # Elementwise nonlinear
     ops.aten.sin.default: cjet_sin,
@@ -501,6 +554,7 @@ COLLAPSED_MAPPING: dict = {
     ops.aten.max_pool2d.default: cjet_max_pool2d,
     # Loss functions
     ops.aten.mse_loss.default: cjet_mse_loss,
+    ops.aten.nll_loss_forward.default: cjet_nll_loss_forward,
     # Normalization
     ops.aten._log_softmax.default: cjet_log_softmax,
 }

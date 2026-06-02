@@ -460,6 +460,7 @@ for _prim in (
     ops.aten.sum.default,
     ops.aten.sum.dim_IntList,
     ops.aten._adaptive_avg_pool2d.default,
+    ops.aten.mean.dim,
 ):
     deflinear(_prim)
 

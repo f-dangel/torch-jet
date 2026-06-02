@@ -71,10 +71,6 @@ def laplacian(
         To bake the operator into an FX ``GraphModule`` (for graph passes,
         ``torch.compile``, etc.), apply :func:`capture_graph` yourself.
 
-    Raises:
-        NotImplementedError: If ``f`` consumes or returns anything other than a
-            single tensor (pytree inputs/outputs are not yet supported).
-
     Examples:
         >>> from torch import manual_seed, rand, zeros
         >>> from torch.func import hessian

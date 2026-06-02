@@ -7,7 +7,7 @@ Not primitive coverage -- see ``test_primitives.py`` for that.
 from typing import Any
 
 from pytest import mark
-from torch import Tensor, cos, manual_seed, randn, rand, sin, tanh
+from torch import Tensor, cos, manual_seed, rand, randn, sin, tanh
 from torch.nn import Linear, ReLU, Sequential
 
 from test.utils import (

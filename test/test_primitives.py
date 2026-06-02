@@ -274,6 +274,8 @@ PRIMITIVE_CASES = [
         "f": _stateless(lambda x: x.sum([0, 1], keepdim=True)),
         "args_fn": lambda: (rand(3, 4),),
     },
+    # ---- Pointwise-linear ops --------------------------------------------
+    {"id": "neg", "f": _stateless(lambda x: -x), "args_fn": lambda: (rand(3, 4),)},
     # ---- Shape-only ops --------------------------------------------------
     {
         "id": "view",

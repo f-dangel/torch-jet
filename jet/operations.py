@@ -747,8 +747,9 @@ def defzero(prim: Callable) -> None:
     MAPPING[prim] = rule
 
 
-# Linear / shape-only ops + reductions: apply the primitive per coefficient.
+# Linear ops (pointwise-linear, shape-only, reductions): apply per coefficient.
 for _prim in (
+    ops.aten.neg.default,
     ops.aten.view.default,
     ops.aten._unsafe_view.default,
     ops.aten.unsqueeze.default,

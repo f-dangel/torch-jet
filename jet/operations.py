@@ -653,5 +653,3 @@ for _prim in (
 # Constant-output ops: primal carries the value, coefficients are zero.
 for _prim in (ops.aten.zeros_like.default,):
     defzero(_prim)
-
-del _prim

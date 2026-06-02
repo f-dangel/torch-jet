@@ -400,5 +400,3 @@ for _prim in (
 # Constant-output ops.
 for _prim in (ops.aten.zeros_like.default,):
     defzero(_prim)
-
-del _prim

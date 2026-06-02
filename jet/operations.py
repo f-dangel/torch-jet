@@ -581,6 +581,57 @@ def jet_addmm(
         return JetTuple((primal, *_apply_linear_coeffs(mat2, lambda c: mm(mat1, c))))
 
 
+def jet_convolution(
+    input: Tensor | JetTuple,
+    weight: Tensor | JetTuple,
+    bias: Tensor | None,
+    *conv_args: object,
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.convolution(input, weight, bias, ...)``.
+
+    Args:
+        input: The convolution input; a jet or a constant ``Tensor``.
+        weight: The convolution kernel; a jet or a constant ``Tensor``.
+        bias: The bias; a constant ``Tensor`` or ``None``.
+        *conv_args: The remaining ``aten.convolution`` structural arguments
+            (``stride``, ``padding``, ``dilation``, ``transposed``,
+            ``output_padding``, ``groups``), forwarded unchanged.
+
+    Returns:
+        The value and its Taylor coefficients.
+
+    Raises:
+        NotImplementedError: If ``bias`` is Taylor-expanded, or if neither
+            ``input`` nor ``weight`` is Taylor-expanded.
+    """
+    if isinstance(bias, JetTuple):
+        raise NotImplementedError(
+            "jet_convolution does not support a Taylor-expanded bias. "
+            "Expected a constant Tensor or None."
+        )
+    conv = ops.aten.convolution.default
+
+    def cv(a: Tensor, b: Tensor) -> Tensor:
+        """Bias-free convolution -- the bilinear core of ``aten.convolution``."""
+        return conv(a, b, None, *conv_args)
+
+    input_is_jet = isinstance(input, JetTuple)
+    weight_is_jet = isinstance(weight, JetTuple)
+
+    if input_is_jet and weight_is_jet:
+        primal = conv(input[0], weight[0], bias, *conv_args)
+        return JetTuple((primal, *_leibniz(input, weight, cv)))
+    elif input_is_jet:
+        primal = conv(input[0], weight, bias, *conv_args)
+        return JetTuple((primal, *_apply_linear_coeffs(input, lambda c: cv(c, weight))))
+    elif weight_is_jet:
+        primal = conv(input, weight[0], bias, *conv_args)
+        return JetTuple((primal, *_apply_linear_coeffs(weight, lambda c: cv(input, c))))
+    raise NotImplementedError(
+        "jet_convolution expects input and/or weight to be Taylor-expanded."
+    )
+
+
 MAPPING: dict = {
     # Elementwise unary
     ops.aten.sin.default: jet_sin,
@@ -597,6 +648,8 @@ MAPPING: dict = {
     # Matrix decomposition
     ops.aten.mm.default: jet_mm,
     ops.aten.addmm.default: jet_addmm,
+    # Convolution (affine: bias on primal, coefficients convolved bias-free)
+    ops.aten.convolution.default: jet_convolution,
 }
 
 

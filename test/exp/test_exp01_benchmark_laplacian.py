@@ -241,7 +241,7 @@ def test_randomized_bilaplacian_functions_identical(
     first_key = list(bilaps.keys())[0]
     reference = bilaps[first_key]
     for value in bilaps.values():
-        assert_close(reference, value)
+        assert_close(reference, value, **tolerances_for(device))
 
     # different seed must yield a different result (skip for rademacher:
     # v_i^2 = 1 makes the estimator exact for diagonal Hessians / rank-deficient

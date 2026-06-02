@@ -11,7 +11,7 @@ from pytest import mark
 from torch import Tensor, sin, zeros
 
 from jet import jet
-from test.utils import DEVICES, dtype_for_device, make_jet_args
+from test.utils import DEVICES, device_kw, make_jet_args
 
 
 @mark.parametrize("device", DEVICES)
@@ -23,11 +23,11 @@ def test_constant_output_shape(collapsed: bool, device: str):
     - Collapsed mode: ``c_1..c_{K-1}`` are ``(R, *S)`` and ``c_K`` is ``S``.
     """
     K, R, out_shape = 2, 3, (4,)
-    dtype = dtype_for_device(device)
-    mock_args = (zeros(3, dtype=dtype, device=device),)
+    kw = device_kw(device)
+    mock_args = (zeros(3, **kw),)
 
     def f(x: Tensor) -> tuple[Tensor, Tensor]:
-        return sin(x), zeros(*out_shape, dtype=dtype, device=device)
+        return sin(x), zeros(*out_shape, **kw)
 
     args = make_jet_args(mock_args, K, collapsed=collapsed, R=R)
     _, (const, *const_coeffs) = jet(f, mock_args, collapsed=collapsed)(*args)

@@ -81,8 +81,10 @@ def mlp(device: str) -> Sequential:
     requires. ``manual_seed(0)`` keeps the weights deterministic across calls.
     """
     manual_seed(0)
-    net = Sequential(Linear(5, 4, bias=False), Tanh(), Linear(4, 1, bias=True), Tanh())
-    return net.to(device=device, dtype=dtype_for_device(device))
+    kw = device_kw(device)
+    return Sequential(
+        Linear(5, 4, bias=False, **kw), Tanh(), Linear(4, 1, bias=True, **kw), Tanh()
+    )
 
 
 #: Scalar-output cases shared by the laplacian + bilaplacian consumer tests.

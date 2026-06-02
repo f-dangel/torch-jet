@@ -63,9 +63,7 @@ def bilaplacian(
     For functions that produce vectors or tensors, the Bi-Laplacian
     is defined per output component and has the same shape as $f(\mathbf{x})$.
 
-    Only single-tensor functions (one tensor in, one tensor out) are supported;
-    ``mock_args`` mirrors :func:`jet.jet`'s tuple convention so that pytree
-    support can be added later without changing how arguments are passed.
+    Only single-tensor functions (one tensor in, one tensor out) are supported.
 
     Args:
         f: The function whose Bi-Laplacian is computed. Must consume and return

@@ -6,6 +6,7 @@ from scipy.special import comb, factorial, stirling2
 from torch import (
     Tensor,
     addmm,
+    cat,
     cos,
     exp,
     log,
@@ -727,6 +728,36 @@ def jet_max_pool2d(input: JetTuple, *pool_args: object) -> JetTuple:
     return jet
 
 
+# --- Concatenation ---
+
+
+def jet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.cat(tensors, dim)``.
+
+    Concatenation is linear, so each Taylor coefficient is the concatenation of
+    the operands' coefficients. List entries that are constant tensors (not
+    Taylor-expanded) contribute their value to the primal and zeros to every
+    higher coefficient.
+
+    Args:
+        tensors: The list of operands; each is a jet or a constant ``Tensor``.
+        dim: The concatenation dimension.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    K = _jet_order(*tensors)
+
+    def coeff(k: int) -> Tensor:
+        parts = [
+            t[k] if isinstance(t, JetTuple) else (t if k == 0 else zeros_like(t))
+            for t in tensors
+        ]
+        return cat(parts, dim)
+
+    return JetTuple(tuple(coeff(k) for k in range(K + 1)))
+
+
 # --- Loss functions ---
 
 
@@ -888,6 +919,8 @@ MAPPING: dict = {
     # Pooling (piecewise linear: gather coefficients at the primal's arg-max)
     ops.aten.max_pool2d_with_indices.default: jet_max_pool2d_with_indices,
     ops.aten.max_pool2d.default: jet_max_pool2d,
+    # Concatenation (linear; jets nested in the operand list)
+    ops.aten.cat.default: jet_cat,
     # Loss functions
     ops.aten.mse_loss.default: jet_mse_loss,
     ops.aten.nll_loss_forward.default: jet_nll_loss_forward,

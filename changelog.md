@@ -9,9 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
-- Support classic torchvision CNNs (`resnet18`, `vgg11`, `alexnet`,
-  `densenet121`, `googlenet`, `squeezenet1_0`, `regnet_y_400mf`) in Taylor
-  mode by adding jet rules for the ATen ops they need:
+- Support classic torchvision CNNs in Taylor mode by adding jet rules for the
+  ATen ops they need:
   - `aten.relu.default`
     ([PR](https://github.com/f-dangel/torch-jet/pull/144)).
 

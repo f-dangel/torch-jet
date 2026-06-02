@@ -557,31 +557,6 @@ def jet_addmm(
         return JetTuple((primal, *_apply_linear_coeffs(mat2, lambda c: mm(mat1, c))))
 
 
-# --- Sum (dim reduction) ---
-
-
-def jet_sum(self: JetTuple, dim: list[int], keepdim: bool = False) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.sum(self, dim, keepdim)``.
-
-    Args:
-        self: The primal and its Taylor coefficients.
-        dim: The dimension to sum along, as either an ``int`` or a 1-element
-            ``list[int]``. Multi-dimensional reductions are not supported.
-        keepdim: Whether to keep the reduced dimension. Default: ``False``.
-
-    Returns:
-        The value and its Taylor coefficients.
-
-    Raises:
-        NotImplementedError: If keepdim is True.
-        ValueError: If ``dim`` is a list with anything other than one element.
-    """
-    if keepdim:
-        raise NotImplementedError("keepdim=True is not supported.")
-    (pos,) = (dim,) if isinstance(dim, int) else dim
-    return _apply_linear(self, lambda c: c.sum(pos))
-
-
 MAPPING: dict = {
     # Elementwise unary
     ops.aten.sin.default: jet_sin,
@@ -597,8 +572,6 @@ MAPPING: dict = {
     # Matrix decomposition
     ops.aten.mm.default: jet_mm,
     ops.aten.addmm.default: jet_addmm,
-    # Sum (dim reduction; explicit rule because of the ``keepdim`` guard)
-    ops.aten.sum.dim_IntList: jet_sum,
 }
 
 
@@ -640,13 +613,15 @@ def defzero(prim: Callable) -> None:
     MAPPING[prim] = rule
 
 
-# Linear / shape-only ops: apply the primitive per coefficient.
+# Linear / shape-only ops + reductions: apply the primitive per coefficient.
 for _prim in (
     ops.aten.view.default,
     ops.aten._unsafe_view.default,
     ops.aten.unsqueeze.default,
     ops.aten.squeeze.dim,
     ops.aten.squeeze.dims,
+    ops.aten.sum.default,
+    ops.aten.sum.dim_IntList,
 ):
     deflinear(_prim)
 

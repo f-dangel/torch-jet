@@ -88,7 +88,21 @@ PRIMITIVE_CASES = [
     {"id": "addmm_mat1_jet", "f": lambda A: addmm(_B, A, _R), "args_fn": shape(3, 4)},
     {"id": "addmm_mat2_jet", "f": lambda B: addmm(_B, _L, B), "args_fn": shape(4, 5)},
     # ---- Reduction -------------------------------------------------------
+    # ``sum()`` (no-dim) lowers to ``aten.sum.default``; the dim/keepdim
+    # variants all lower to ``aten.sum.dim_IntList``.
+    {"id": "sum_all", "f": lambda x: x.sum(), "args_fn": shape(3, 4)},
     {"id": "sum_dim_0", "f": lambda x: x.sum(0), "args_fn": shape(3, 4)},
+    {"id": "sum_dim_list", "f": lambda x: x.sum([0, 1]), "args_fn": shape(3, 4)},
+    {
+        "id": "sum_keepdim",
+        "f": lambda x: x.sum(0, keepdim=True),
+        "args_fn": shape(3, 4),
+    },
+    {
+        "id": "sum_dim_list_keepdim",
+        "f": lambda x: x.sum([0, 1], keepdim=True),
+        "args_fn": shape(3, 4),
+    },
     # ---- Shape-only ops --------------------------------------------------
     {"id": "view", "f": lambda x: x.view(-1), "args_fn": shape(3, 4)},
     # ``_unsafe_view`` is an internal aten op emitted by Linear/addmm

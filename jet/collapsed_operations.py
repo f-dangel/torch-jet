@@ -305,27 +305,6 @@ def cjet_addmm(
 
 
 # ---------------------------------------------------------------------------
-# Reduction operations (vmap handles batch dim automatically)
-# ---------------------------------------------------------------------------
-
-
-def cjet_sum(
-    self: CollapsedJetTuple,
-    dim: list[int] | int,
-    keepdim: bool = False,
-) -> CollapsedJetTuple:
-    """Collapsed jet rule for ``aten.sum``.
-
-    ``dim`` must be an ``int`` or a 1-element ``list[int]`` (multi-dim
-    reductions are not supported); a longer list raises ``ValueError``.
-    """
-    if keepdim:
-        raise NotImplementedError("keepdim=True is not supported.")
-    (pos,) = (dim,) if isinstance(dim, int) else dim
-    return _apply_linear(self, lambda x: x.sum(pos))
-
-
-# ---------------------------------------------------------------------------
 # COLLAPSED_MAPPING
 # ---------------------------------------------------------------------------
 
@@ -344,8 +323,6 @@ COLLAPSED_MAPPING: dict = {
     # Matrix ops
     ops.aten.mm.default: cjet_mm,
     ops.aten.addmm.default: cjet_addmm,
-    # Reductions
-    ops.aten.sum.dim_IntList: cjet_sum,
 }
 
 
@@ -387,13 +364,15 @@ def defzero(prim: Callable) -> None:
     COLLAPSED_MAPPING[prim] = rule
 
 
-# Linear / shape-only ops.
+# Linear / shape-only ops + reductions.
 for _prim in (
     ops.aten.view.default,
     ops.aten._unsafe_view.default,
     ops.aten.unsqueeze.default,
     ops.aten.squeeze.dim,
     ops.aten.squeeze.dims,
+    ops.aten.sum.default,
+    ops.aten.sum.dim_IntList,
 ):
     deflinear(_prim)
 

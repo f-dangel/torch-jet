@@ -557,6 +557,57 @@ def jet_addmm(
         return JetTuple((primal, *_apply_linear_coeffs(mat2, lambda c: mm(mat1, c))))
 
 
+# --- Loss functions ---
+
+
+def _reduce_loss(loss: JetTuple, reduction: int) -> JetTuple:
+    """Apply a loss reduction coefficient-wise.
+
+    ``reduction`` follows ATen's enum -- ``0`` (none, identity), ``1`` (mean),
+    ``2`` (sum). Reductions are linear, so they apply to each Taylor
+    coefficient independently.
+
+    Args:
+        loss: The per-element loss and its Taylor coefficients.
+        reduction: The ATen reduction enum (``0``/``1``/``2``).
+
+    Returns:
+        The reduced loss and its Taylor coefficients.
+
+    Raises:
+        ValueError: If ``reduction`` is not ``0``, ``1``, or ``2``.
+    """
+    if reduction == 0:  # 'none'
+        return loss
+    if reduction == 1:  # 'mean'
+        return _apply_linear(loss, lambda c: c.mean())
+    if reduction == 2:  # 'sum'
+        return _apply_linear(loss, lambda c: c.sum())
+    raise ValueError(f"Unsupported reduction {reduction}; expected 0, 1, or 2.")
+
+
+def jet_mse_loss(
+    self: Tensor | JetTuple, target: Tensor | JetTuple, reduction: int = 1
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.mse_loss(self, target, reduction)``.
+
+    Computes ``reduce((self - target) ** 2)`` by composing the ``sub`` and
+    ``pow`` rules. ``target`` is typically a constant tensor (a label), but a
+    Taylor-expanded ``target`` is supported too.
+
+    Args:
+        self: The prediction and its Taylor coefficients.
+        target: The target and its Taylor coefficients, or a constant tensor.
+        reduction: The ATen reduction enum -- ``0`` (none), ``1`` (mean, the
+            default), ``2`` (sum).
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    squared_error = jet_pow(jet_sub(self, target), 2)
+    return _reduce_loss(squared_error, reduction)
+
+
 MAPPING: dict = {
     # Elementwise unary
     ops.aten.sin.default: jet_sin,
@@ -572,6 +623,8 @@ MAPPING: dict = {
     # Matrix decomposition
     ops.aten.mm.default: jet_mm,
     ops.aten.addmm.default: jet_addmm,
+    # Loss functions
+    ops.aten.mse_loss.default: jet_mse_loss,
 }
 
 

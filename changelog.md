@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Add a jet rule for `aten.mse_loss.default`, so `nn.MSELoss` (and
+  `torch.nn.functional.mse_loss`) can be wrapped by `jet()` / `laplacian()` /
+  `bilaplacian()`. All three reductions (`none` / `mean` / `sum`) work in both
+  standard and collapsed mode; the target may be a constant or itself carry
+  Taylor coefficients
+  ([PR](https://github.com/f-dangel/torch-jet/pull/146)).
+
 - **Backward-incompatible.** Replace the `Laplacian` / `Bilaplacian`
   `nn.Module`s with `laplacian()` / `bilaplacian()` function transforms that
   return plain Python callables. They take `mock_args` as a tuple matching

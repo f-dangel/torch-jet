@@ -10,7 +10,6 @@ from pytest import mark
 from torch import Tensor, cos, rand, sin, tanh
 
 from test.utils import (
-    DEVICES,
     K_AND_MODE,
     _stateless,
     assert_jet_matches_oracle,
@@ -72,7 +71,6 @@ COMPOSITION_CASES = [
 ]
 
 
-@mark.parametrize("device", DEVICES)
 @mark.parametrize("K, collapsed", K_AND_MODE)
 @mark.parametrize("config", COMPOSITION_CASES, ids=lambda c: c["id"])
 def test_composition(config: dict[str, Any], K: int, collapsed: bool, device: str):

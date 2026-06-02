@@ -20,8 +20,8 @@ from jet.bilaplacian import bilaplacian as jet_bilaplacian
 from jet.laplacian import laplacian as jet_laplacian
 from jet.utils import run_seeded
 from test.test_laplacian import _check_mc_convergence
-from test.utils import DEVICES, setup_case, tolerances_for
 from test.utils import SCALAR_OUTPUT_CASES as BILAPLACIAN_CASES
+from test.utils import setup_case, tolerances_for
 
 
 def bilaplacian(f: Callable[[Tensor], Tensor], x: Tensor) -> Tensor:
@@ -48,7 +48,6 @@ def bilaplacian(f: Callable[[Tensor], Tensor], x: Tensor) -> Tensor:
     return einsum(d4f(x), equation)
 
 
-@mark.parametrize("device", DEVICES)
 @mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
 @mark.parametrize("config", BILAPLACIAN_CASES, ids=lambda c: c["id"])
 def test_bilaplacian(config: dict[str, Any], collapsed: bool, device: str):
@@ -70,7 +69,6 @@ def test_bilaplacian(config: dict[str, Any], collapsed: bool, device: str):
     assert_close(bilap_func, bilap_jet, **tolerances_for(device))
 
 
-@mark.parametrize("device", DEVICES)
 @mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
 @mark.parametrize("config", BILAPLACIAN_CASES, ids=lambda c: c["id"])
 def test_bilaplacian_matches_nested_laplacian(
@@ -85,7 +83,6 @@ def test_bilaplacian_matches_nested_laplacian(
     assert_close(lap_of_lap(x), expected, **tolerances_for(device))
 
 
-@mark.parametrize("device", DEVICES)
 @mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
 @mark.parametrize(
     "distribution", SUPPORTED_DISTRIBUTIONS, ids=lambda d: f"distribution={d}"

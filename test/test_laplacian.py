@@ -13,8 +13,8 @@ from jet.laplacian import SUPPORTED_DISTRIBUTIONS
 from jet.laplacian import laplacian as jet_laplacian
 from jet.utils import run_seeded
 from jet.weighted_laplacian import C_func_diagonal_increments, get_weighting
-from test.utils import DEVICES, setup_case, tolerances_for
 from test.utils import SCALAR_OUTPUT_CASES as LAPLACIAN_CASES
+from test.utils import setup_case, tolerances_for
 
 WEIGHTS = [
     None,
@@ -98,7 +98,6 @@ def get_coefficients(x: Tensor, weights: str | None | tuple[str, float]) -> Tens
     raise ValueError(f"Unsupported {weights=}.")
 
 
-@mark.parametrize("device", DEVICES)
 @mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize("config", LAPLACIAN_CASES, ids=lambda c: c["id"])
@@ -130,7 +129,6 @@ def test_Laplacian(
     assert_close(lap_rev, lap_fn, **tolerances_for(device))
 
 
-@mark.parametrize("device", DEVICES)
 @mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize(

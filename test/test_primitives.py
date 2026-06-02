@@ -22,7 +22,6 @@ from torch import (
 )
 
 from test.utils import (
-    DEVICES,
     K_AND_MODE,
     _stateless,
     assert_jet_matches_oracle,
@@ -236,7 +235,6 @@ PRIMITIVE_CASES = [
 ]
 
 
-@mark.parametrize("device", DEVICES)
 @mark.parametrize("K, collapsed", K_AND_MODE)
 @mark.parametrize("config", PRIMITIVE_CASES, ids=lambda c: c["id"])
 def test_primitive(config: dict[str, Any], K: int, collapsed: bool, device: str):

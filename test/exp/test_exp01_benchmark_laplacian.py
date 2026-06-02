@@ -25,7 +25,7 @@ from test.test_laplacian import (
     get_coefficients,
     laplacian,
 )
-from test.utils import DEVICES, _stateless, mlp, setup_case, tolerances_for
+from test.utils import _stateless, mlp, setup_case, tolerances_for
 
 #: Batch size used by all exp01 tests. The benchmark always runs batched, so
 #: the tests run batched too -- the cases below bake the batch dimension into
@@ -44,7 +44,6 @@ EXP01_CASES = [
 ]
 
 
-@mark.parametrize("device", DEVICES)
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=lambda s: f"strategy={s}")
 @mark.parametrize("config", EXP01_CASES, ids=lambda c: c["id"])
@@ -78,7 +77,6 @@ def test_laplacian_functions(
     assert_close(lap, lap_func, **tolerances_for(device))
 
 
-@mark.parametrize("device", DEVICES)
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize(
     "distribution",
@@ -134,7 +132,6 @@ def test_randomized_laplacian_functions_identical(
         assert not lap_seed_a.allclose(lap_seed_b)
 
 
-@mark.parametrize("device", DEVICES)
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=lambda s: f"strategy={s}")
 @mark.parametrize(
@@ -191,7 +188,6 @@ def test_randomized_laplacian_functions_converge(
     assert converged, f"MC Laplacian ({strategy}, {distribution}) did not converge."
 
 
-@mark.parametrize("device", DEVICES)
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=lambda s: f"strategy={s}")
 @mark.parametrize("config", EXP01_CASES, ids=lambda c: c["id"])
 def test_bilaplacian_functions(config: dict[str, Any], strategy: str, device: str):
@@ -211,7 +207,6 @@ def test_bilaplacian_functions(config: dict[str, Any], strategy: str, device: st
     assert_close(bilap, bilap_func, **tolerances_for(device))
 
 
-@mark.parametrize("device", DEVICES)
 @mark.parametrize(
     "distribution",
     BILAPLACIAN_SUPPORTED_DISTRIBUTIONS,
@@ -253,7 +248,6 @@ def test_randomized_bilaplacian_functions_identical(
         assert not bilap_seed_a.allclose(bilap_seed_b)
 
 
-@mark.parametrize("device", DEVICES)
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=lambda s: f"strategy={s}")
 @mark.parametrize(
     "distribution",

@@ -7,12 +7,14 @@ Not primitive coverage -- see ``test_primitives.py`` for that.
 from typing import Any
 
 from pytest import mark
-from torch import Tensor, cos, rand, sin, tanh
+from torch import Tensor, cos, manual_seed, randn, rand, sin, tanh
+from torch.nn import Linear, ReLU, Sequential
 
 from test.utils import (
     K_AND_MODE,
     _stateless,
     assert_jet_matches_oracle,
+    device_kw,
     mlp,
 )
 
@@ -24,6 +26,25 @@ def _deep_pytree_f(x: Tensor, params: list) -> tuple[Tensor, dict[str, Tensor]]:
     return (h + b0, {"a": cos(h) * b1, "b": tanh(h + b0 + b1)})
 
 
+def _relu_inplace_mlp(device: str) -> Sequential:
+    """MLP with in-place ReLU -- torchvision's pattern.
+
+    ``inplace=True`` ReLU computes via the same ``aten.relu.default`` rule; its
+    functionalized ``copy_`` write-back is dead-code-eliminated mid-network.
+    Paired with a ``randn`` input (straddles 0) so both branches of the ReLU
+    mask are exercised.
+    """
+    manual_seed(0)
+    kw = device_kw(device)
+    return Sequential(
+        Linear(5, 4, **kw),
+        ReLU(inplace=True),
+        Linear(4, 3, **kw),
+        ReLU(inplace=True),
+        Linear(3, 1, **kw),
+    )
+
+
 COMPOSITION_CASES = [
     {
         "id": "scalar_Rn_to_R",
@@ -32,6 +53,7 @@ COMPOSITION_CASES = [
     },
     {"id": "mlp", "f": mlp, "args_fn": lambda: (rand(5),)},
     {"id": "mlp_batched", "f": mlp, "args_fn": lambda: (rand(10, 5),)},
+    {"id": "relu_inplace_mlp", "f": _relu_inplace_mlp, "args_fn": lambda: (randn(5),)},
     {
         "id": "deep_pytree",
         "f": _stateless(_deep_pytree_f),

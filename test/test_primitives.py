@@ -48,11 +48,11 @@ def _consts(device: str) -> dict[str, Any]:
         "R": rand(4, 5, **kw),
         "B": rand(3, 5, **kw),
         "SUB": tensor(2.0, **kw),
-        # conv2d kernels: CONV_W/CONV_B for a plain conv (in=2, out=3, 3x3);
-        # DW_W for a depthwise/grouped conv (groups=2, one channel each).
-        "CONV_W": rand(3, 2, 3, 3, **kw),
-        "CONV_B": rand(3, **kw),
-        "DW_W": rand(2, 1, 3, 3, **kw),
+        # conv2d kernels: CONV_W/CONV_B for a plain conv (in=2, out=4, 3x3);
+        # DW_W for a grouped conv (groups=2, in=2, out=4).
+        "CONV_W": rand(4, 2, 3, 3, **kw),
+        "CONV_B": rand(4, **kw),
+        "DW_W": rand(4, 1, 3, 3, **kw),
     }
 
 
@@ -220,12 +220,12 @@ PRIMITIVE_CASES = [
     {
         "id": "conv2d_weight_jet",
         "f": _conv2d_weight_jet,
-        "args_fn": lambda: (rand(3, 2, 3, 3),),
+        "args_fn": lambda: (rand(4, 2, 3, 3),),
     },
     {
         "id": "conv2d_input_weight_jet",
         "f": _conv2d_input_weight_jet,
-        "args_fn": lambda: (rand(1, 2, 5, 5), rand(3, 2, 3, 3)),
+        "args_fn": lambda: (rand(1, 2, 5, 5), rand(4, 2, 3, 3)),
     },
     # ---- Reduction -------------------------------------------------------
     # ``sum()`` (no-dim) lowers to ``aten.sum.default``; the dim/keepdim
@@ -315,7 +315,7 @@ def test_conv_taylor_expanded_bias_raises(collapsed: bool, device: str):
     def f(b):
         return conv2d(X, W, b, stride=1, padding=1)
 
-    bias = rand(3, **kw)
+    bias = rand(4, **kw)
     jet_args = make_jet_args((bias,), K=2, collapsed=collapsed)
     with raises(NotImplementedError, match="Taylor-expanded bias"):
         jet(f, (bias,), collapsed=collapsed)(*jet_args)

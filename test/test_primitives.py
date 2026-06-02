@@ -10,6 +10,7 @@ from pytest import mark
 from torch import (
     addmm,
     cos,
+    float32,
     float64,
     manual_seed,
     ops,
@@ -118,6 +119,15 @@ PRIMITIVE_CASES = [
     {"id": "squeeze_dims", "f": lambda x: x.squeeze([0, 1]), "args_fn": shape(1, 1, 4)},
     # ---- Constant-output ops (zero derivatives at every order) -----------
     {"id": "zeros_like", "f": zeros_like, "args_fn": shape(3, 4)},
+    # ``zeros_like_dtype_cast`` guards ``defzero`` against dropping the
+    # ``dtype`` kwarg when allocating coefficient slots: the per-coefficient
+    # zero tensors must inherit the *output* dtype (``float32``), not the
+    # input coefficient's dtype (``float64``).
+    {
+        "id": "zeros_like_dtype_cast",
+        "f": lambda x: zeros_like(x, dtype=float32),
+        "args_fn": shape(3, 4),
+    },
 ]
 
 

@@ -13,7 +13,7 @@ At each nonlinear operation, the K-th output coefficient is computed as:
 from typing import Callable
 
 from scipy.special import comb
-from torch import Tensor, addmm, matmul, mm, ops, zeros_like
+from torch import Tensor, addmm, matmul, mm, ops
 from torch.func import vmap
 from torch.utils._pytree import register_pytree_node
 
@@ -351,14 +351,17 @@ def deflinear(prim: Callable) -> None:
 def defzero(prim: Callable) -> None:
     """Register ``prim`` as a constant-output op (collapsed mode).
 
-    ``prim`` is applied to the primal; coefficients are filled with
-    ``zeros_like`` of each input coefficient slot to preserve the per-slot
-    shape contract (``(R, *S)`` for ``c_1..c_{K-1}``, ``S`` for ``c_K``).
+    ``prim`` is applied to the primal; coefficients are filled with zero
+    tensors that take their shape from each input coefficient slot (to
+    preserve the per-slot shape contract — ``(R, *S)`` for ``c_1..c_{K-1}``,
+    ``S`` for ``c_K``) and their dtype / device / layout from ``primal_out``
+    so any ``dtype=`` / ``device=`` etc. kwargs passed to ``prim`` propagate
+    to the coefficients too.
     """
 
     def rule(self: CollapsedJetTuple, *args, **kwargs) -> CollapsedJetTuple:
         primal_out = prim(self[0], *args, **kwargs)
-        coeffs = [zeros_like(c) for c in self[1:]]
+        coeffs = [primal_out.new_zeros(c.shape) for c in self[1:]]
         return CollapsedJetTuple([primal_out, *coeffs])
 
     COLLAPSED_MAPPING[prim] = rule

@@ -601,13 +601,14 @@ def defzero(prim: Callable) -> None:
 
     The Taylor expansion of a constant-output op has all coefficients zero;
     only the primal carries information. ``prim`` is applied to the primal
-    to produce the output value, and the K coefficient slots are filled with
-    distinct ``zeros_like`` allocations of the primal's shape.
+    to produce the output value (which carries any ``dtype`` / ``device`` /
+    ``layout`` kwargs the user passed). Coefficient slots are allocated via
+    ``primal_out.new_zeros(...)`` so they inherit ``primal_out``'s metadata.
     """
 
     def rule(self: JetTuple, *args, **kwargs) -> JetTuple:
         primal_out = prim(self[0], *args, **kwargs)
-        coeffs = [zeros_like(primal_out) for _ in range(len(self) - 1)]
+        coeffs = [primal_out.new_zeros(primal_out.shape) for _ in range(len(self) - 1)]
         return JetTuple([primal_out, *coeffs])
 
     MAPPING[prim] = rule

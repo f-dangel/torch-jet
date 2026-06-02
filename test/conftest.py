@@ -15,10 +15,5 @@ if mps.is_available():
 
 @fixture(params=DEVICES)
 def device(request: FixtureRequest) -> str:
-    """Run the requesting test once per locally available device.
-
-    CPU is always present; CUDA and MPS are added when their backends are
-    available (see ``DEVICES``). Any test taking a ``device`` argument is
-    parametrized over these.
-    """
+    """Run the requesting test once per available device (see ``DEVICES``)."""
     return request.param

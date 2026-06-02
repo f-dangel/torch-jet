@@ -22,7 +22,7 @@ from torch import (
     tensor,
     zeros_like,
 )
-from torch.nn.functional import adaptive_avg_pool2d, conv2d, max_pool2d
+from torch.nn.functional import adaptive_avg_pool2d, avg_pool2d, conv2d, max_pool2d
 
 from jet import jet
 from test.utils import (
@@ -261,6 +261,12 @@ PRIMITIVE_CASES = [
     {
         "id": "mean_dim_keepdim",
         "f": _stateless(lambda x: x.mean(dim=[2, 3], keepdim=True)),
+        "args_fn": lambda: (rand(1, 2, 6, 6),),
+    },
+    # ---- Average pooling (linear) ----------------------------------------
+    {
+        "id": "avg_pool2d",
+        "f": _stateless(lambda x: avg_pool2d(x, kernel_size=2, stride=2)),
         "args_fn": lambda: (rand(1, 2, 6, 6),),
     },
     # ---- Reduction -------------------------------------------------------

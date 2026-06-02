@@ -122,6 +122,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Slim the test suite into per-concern layers
   ([PR](https://github.com/f-dangel/torch-jet/pull/136)).
 
+- Parametrize the test suite over available devices (CPU + CUDA + MPS,
+  auto-detected). MPS uses `float32` with relaxed `assert_close`
+  tolerances since the framework doesn't support `float64`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/139)).
+
 - Drop the `is_batched` parameter from the experiment harness functions
   (`laplacian_function` / `bilaplacian_function` in
   `jet/exp/exp01_benchmark_laplacian/execute.py` and the four matching JAX

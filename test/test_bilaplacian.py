@@ -21,7 +21,7 @@ from jet.laplacian import laplacian as jet_laplacian
 from jet.utils import run_seeded
 from test.test_laplacian import _check_mc_convergence
 from test.utils import SCALAR_OUTPUT_CASES as BILAPLACIAN_CASES
-from test.utils import setup_case
+from test.utils import setup_case, tolerances_for
 
 
 def bilaplacian(f: Callable[[Tensor], Tensor], x: Tensor) -> Tensor:
@@ -50,14 +50,15 @@ def bilaplacian(f: Callable[[Tensor], Tensor], x: Tensor) -> Tensor:
 
 @mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
 @mark.parametrize("config", BILAPLACIAN_CASES, ids=lambda c: c["id"])
-def test_bilaplacian(config: dict[str, Any], collapsed: bool):
+def test_bilaplacian(config: dict[str, Any], collapsed: bool, device: str):
     """Compare Bi-Laplacian implementations.
 
     Args:
         config: Configuration dictionary of the test case.
         collapsed: Whether to use collapsed Taylor mode.
+        device: Device to run the test on.
     """
-    f, (x,) = setup_case(config)
+    f, (x,) = setup_case(config, device)
 
     # using torch.func
     bilap_func = bilaplacian(f, x)
@@ -65,19 +66,21 @@ def test_bilaplacian(config: dict[str, Any], collapsed: bool):
     # using jets
     bilap_fn = jet_bilaplacian(f, x, collapsed=collapsed)
     bilap_jet = bilap_fn(x)
-    assert_close(bilap_func, bilap_jet)
+    assert_close(bilap_func, bilap_jet, **tolerances_for(device))
 
 
 @mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
 @mark.parametrize("config", BILAPLACIAN_CASES, ids=lambda c: c["id"])
-def test_bilaplacian_matches_nested_laplacian(config: dict[str, Any], collapsed: bool):
+def test_bilaplacian_matches_nested_laplacian(
+    config: dict[str, Any], collapsed: bool, device: str
+):
     """``Δ(Δf)(x) == Δ²f(x)`` -- nesting laplacian twice yields the bilaplacian."""
-    f, (x,) = setup_case(config)
+    f, (x,) = setup_case(config, device)
     lap_of_lap = jet_laplacian(
         jet_laplacian(f, x, collapsed=collapsed), x, collapsed=collapsed
     )
     expected = jet_bilaplacian(f, x, collapsed=collapsed)(x)
-    assert_close(lap_of_lap(x), expected)
+    assert_close(lap_of_lap(x), expected, **tolerances_for(device))
 
 
 @mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
@@ -89,6 +92,7 @@ def test_Bilaplacian_randomization(
     config: dict[str, Any],
     distribution: str,
     collapsed: bool,
+    device: str,
     max_num_chunks: int = 500,
     chunk_size: int = 256,
     target_rel_error: float = 1e-2,
@@ -99,11 +103,12 @@ def test_Bilaplacian_randomization(
         config: Configuration dictionary of the test case.
         distribution: The distribution from which to draw random vectors.
         collapsed: Whether to use collapsed Taylor mode.
+        device: Device to run the test on.
         max_num_chunks: Maximum number of chunks to accumulate. Default: `500`.
         chunk_size: Number of samples per chunk. Default: `256`.
         target_rel_error: Target relative error for convergence. Default: `1e-2`.
     """
-    f, (x,) = setup_case(config)
+    f, (x,) = setup_case(config, device)
 
     # reference: Using PyTorch
     bilap = bilaplacian(f, x)

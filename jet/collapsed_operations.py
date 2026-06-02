@@ -310,6 +310,68 @@ def cjet_addmm(
         )
 
 
+def cjet_convolution(
+    input: Tensor | CollapsedJetTuple,
+    weight: Tensor | CollapsedJetTuple,
+    bias: Tensor | None,
+    *conv_args: object,
+) -> CollapsedJetTuple:
+    """Collapsed jet rule for ``aten.convolution``.
+
+    Bilinear in ``(input, weight)`` and affine in ``bias`` -- see
+    :func:`jet.operations.jet_convolution`. The both-jet case uses the
+    collapsed Leibniz rule; the one-sided cases use the collapsed
+    ``_apply_linear_coeffs`` (which vmaps batched coefficients over the
+    direction dim ``R`` and applies the op directly to the collapsed K-th).
+    The ``bias`` lands on the primal only and must be a constant ``Tensor`` or
+    ``None``.
+
+    Args:
+        input: The convolution input; a jet or a constant ``Tensor``.
+        weight: The convolution kernel; a jet or a constant ``Tensor``.
+        bias: The bias; a constant ``Tensor`` or ``None``.
+        *conv_args: The remaining ``aten.convolution`` structural arguments,
+            forwarded unchanged.
+
+    Returns:
+        The value and its Taylor coefficients.
+
+    Raises:
+        NotImplementedError: If ``bias`` is Taylor-expanded, or if neither
+            ``input`` nor ``weight`` is Taylor-expanded.
+    """
+    if isinstance(bias, CollapsedJetTuple):
+        raise NotImplementedError(
+            "cjet_convolution does not support a Taylor-expanded bias. "
+            "Expected a constant Tensor or None."
+        )
+    conv = ops.aten.convolution.default
+
+    def cv(a: Tensor, b: Tensor) -> Tensor:
+        """Bias-free convolution -- the bilinear core of ``aten.convolution``."""
+        return conv(a, b, None, *conv_args)
+
+    input_is_jet = isinstance(input, CollapsedJetTuple)
+    weight_is_jet = isinstance(weight, CollapsedJetTuple)
+
+    if input_is_jet and weight_is_jet:
+        primal = conv(input[0], weight[0], bias, *conv_args)
+        return CollapsedJetTuple((primal, *_collapsed_leibniz(input, weight, cv)))
+    elif input_is_jet:
+        primal = conv(input[0], weight, bias, *conv_args)
+        return CollapsedJetTuple(
+            (primal, *_apply_linear_coeffs(input, lambda c: cv(c, weight)))
+        )
+    elif weight_is_jet:
+        primal = conv(input, weight[0], bias, *conv_args)
+        return CollapsedJetTuple(
+            (primal, *_apply_linear_coeffs(weight, lambda c: cv(input, c)))
+        )
+    raise NotImplementedError(
+        "cjet_convolution expects input and/or weight to be Taylor-expanded."
+    )
+
+
 # ---------------------------------------------------------------------------
 # COLLAPSED_MAPPING
 # ---------------------------------------------------------------------------
@@ -330,6 +392,8 @@ COLLAPSED_MAPPING: dict = {
     # Matrix ops
     ops.aten.mm.default: cjet_mm,
     ops.aten.addmm.default: cjet_addmm,
+    # Convolution (affine: bias on primal, coefficients convolved bias-free)
+    ops.aten.convolution.default: cjet_convolution,
 }
 
 

@@ -6,7 +6,7 @@ registered with :class:`JetInterpreter`.
 
 from typing import Any
 
-from pytest import mark
+from pytest import mark, raises
 from torch import (
     addmm,
     cos,
@@ -22,12 +22,15 @@ from torch import (
     tensor,
     zeros_like,
 )
+from torch.nn.functional import conv2d
 
+from jet import jet
 from test.utils import (
     K_AND_MODE,
     _stateless,
     assert_jet_matches_oracle,
     device_kw,
+    make_jet_args,
 )
 
 
@@ -45,6 +48,11 @@ def _consts(device: str) -> dict[str, Any]:
         "R": rand(4, 5, **kw),
         "B": rand(3, 5, **kw),
         "SUB": tensor(2.0, **kw),
+        # conv2d kernels: CONV_W/CONV_B for a plain conv (in=2, out=3, 3x3);
+        # DW_W for a depthwise/grouped conv (groups=2, one channel each).
+        "CONV_W": rand(3, 2, 3, 3, **kw),
+        "CONV_B": rand(3, **kw),
+        "DW_W": rand(2, 1, 3, 3, **kw),
     }
 
 
@@ -76,6 +84,31 @@ def _addmm_mat1_jet(device):
 def _addmm_mat2_jet(device):
     cs = _consts(device)
     return lambda mat2: addmm(cs["B"], cs["L"], mat2)
+
+
+def _conv2d_jc(device):
+    cs = _consts(device)
+    return lambda x: conv2d(x, cs["CONV_W"], cs["CONV_B"], stride=1, padding=1)
+
+
+def _conv2d_grouped_jc(device):
+    # Depthwise/grouped conv (groups=2, no bias) -- the mobile/ResNet pattern.
+    cs = _consts(device)
+    return lambda x: conv2d(x, cs["DW_W"], None, stride=2, padding=1, groups=2)
+
+
+def _conv2d_weight_jet(device):
+    # Weight is the Taylor-expanded operand (constant input) -- conv is linear
+    # in the kernel just as it is in the input.
+    cs = _consts(device)
+    X = rand(1, 2, 5, 5, **device_kw(device))
+    return lambda w: conv2d(X, w, cs["CONV_B"], stride=1, padding=1)
+
+
+def _conv2d_input_weight_jet(device):
+    # Both operands are jets -> exercises the bilinear Leibniz branch.
+    cs = _consts(device)
+    return lambda x, w: conv2d(x, w, cs["CONV_B"], stride=1, padding=1)
 
 
 _UNARY_POINTWISE = {"sin": sin, "cos": cos, "tanh": tanh, "sigmoid": sigmoid}
@@ -176,6 +209,24 @@ PRIMITIVE_CASES = [
     },
     {"id": "addmm_mat1_jet", "f": _addmm_mat1_jet, "args_fn": lambda: (rand(3, 4),)},
     {"id": "addmm_mat2_jet", "f": _addmm_mat2_jet, "args_fn": lambda: (rand(4, 5),)},
+    # ---- Convolution (bilinear in input/weight; bias is the affine term) --
+    {"id": "conv2d", "f": _conv2d_jc, "args_fn": lambda: (rand(1, 2, 5, 5),)},
+    {
+        "id": "conv2d_grouped",
+        "f": _conv2d_grouped_jc,
+        "args_fn": lambda: (rand(1, 2, 6, 6),),
+    },
+    # Jet weight (constant input) and both-jet (bilinear Leibniz) branches.
+    {
+        "id": "conv2d_weight_jet",
+        "f": _conv2d_weight_jet,
+        "args_fn": lambda: (rand(3, 2, 3, 3),),
+    },
+    {
+        "id": "conv2d_input_weight_jet",
+        "f": _conv2d_input_weight_jet,
+        "args_fn": lambda: (rand(1, 2, 5, 5), rand(3, 2, 3, 3)),
+    },
     # ---- Reduction -------------------------------------------------------
     # ``sum()`` (no-dim) lowers to ``aten.sum.default``; the dim/keepdim
     # variants all lower to ``aten.sum.dim_IntList``.
@@ -252,3 +303,19 @@ PRIMITIVE_CASES = [
 def test_primitive(config: dict[str, Any], K: int, collapsed: bool, device: str):
     """``jet(primitive)`` matches its mode-specific oracle."""
     assert_jet_matches_oracle(config, K, collapsed, device)
+
+
+@mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])
+def test_conv_taylor_expanded_bias_raises(collapsed: bool, device: str):
+    """A Taylor-expanded convolution bias is rejected (bias must be constant)."""
+    cs = _consts(device)
+    kw = device_kw(device)
+    X, W = rand(1, 2, 5, 5, **kw), cs["CONV_W"]
+
+    def f(b):
+        return conv2d(X, W, b, stride=1, padding=1)
+
+    bias = rand(3, **kw)
+    jet_args = make_jet_args((bias,), K=2, collapsed=collapsed)
+    with raises(NotImplementedError, match="Taylor-expanded bias"):
+        jet(f, (bias,), collapsed=collapsed)(*jet_args)

@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mode by adding jet rules for the ATen ops they need:
   - `aten.relu.default`
     ([PR](https://github.com/f-dangel/torch-jet/pull/144)).
+  - `aten.convolution.default`
+    ([PR](https://github.com/f-dangel/torch-jet/pull/145)).
 
 - **Backward-incompatible.** Replace the `Laplacian` / `Bilaplacian`
   `nn.Module`s with `laplacian()` / `bilaplacian()` function transforms that

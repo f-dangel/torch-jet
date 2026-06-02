@@ -642,6 +642,54 @@ def jet_convolution(
     )
 
 
+def _gather_at_indices(c: Tensor, indices: Tensor) -> Tensor:
+    """Select pooling coefficients at the primal's arg-max ``indices``.
+
+    ``indices`` (shape ``(N, C, oH, oW)``, as returned by
+    ``max_pool2d_with_indices``) index into the flattened spatial plane
+    ``H*W`` of ``c`` (shape ``(N, C, H, W)``), per ``(N, C)``. Max pooling is
+    piecewise linear, so every Taylor coefficient is selected at the same
+    positions the primal's max chose.
+    """
+    N, C = c.shape[0], c.shape[1]
+    selected = c.reshape(N, C, -1).gather(2, indices.reshape(N, C, -1))
+    return selected.reshape(indices.shape)
+
+
+def jet_max_pool2d_with_indices(
+    input: JetTuple, *pool_args: object
+) -> tuple[JetTuple, Tensor]:
+    """Taylor-mode arithmetic for ``aten.max_pool2d_with_indices(input, ...)``.
+
+    Returns ``(values_jet, indices)`` mirroring the ATen op's two outputs; a
+    downstream ``getitem`` selects the values jet. Max pooling is piecewise
+    linear: the primal picks the arg-max ``indices``, and every coefficient is
+    gathered at those same positions.
+
+    Args:
+        input: The input and its Taylor coefficients.
+        *pool_args: The remaining ``max_pool2d_with_indices`` structural
+            arguments (``kernel_size``, ``stride``, ``padding``, ``dilation``,
+            ``ceil_mode``), forwarded unchanged.
+
+    Returns:
+        A ``(values_jet, indices)`` tuple.
+    """
+    values0, indices = ops.aten.max_pool2d_with_indices.default(input[0], *pool_args)
+    coeffs = _apply_linear_coeffs(input, lambda c: _gather_at_indices(c, indices))
+    return JetTuple((values0, *coeffs)), indices
+
+
+def jet_max_pool2d(input: JetTuple, *pool_args: object) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.max_pool2d`` (values only).
+
+    The fused, indices-free pooling op some backends emit (e.g. MPS). Delegates
+    to :func:`jet_max_pool2d_with_indices` and drops the indices output.
+    """
+    jet, _ = jet_max_pool2d_with_indices(input, *pool_args)
+    return jet
+
+
 MAPPING: dict = {
     # Elementwise unary
     ops.aten.sin.default: jet_sin,
@@ -660,6 +708,9 @@ MAPPING: dict = {
     ops.aten.addmm.default: jet_addmm,
     # Convolution (affine: bias on primal, coefficients convolved bias-free)
     ops.aten.convolution.default: jet_convolution,
+    # Pooling (piecewise linear: gather coefficients at the primal's arg-max)
+    ops.aten.max_pool2d_with_indices.default: jet_max_pool2d_with_indices,
+    ops.aten.max_pool2d.default: jet_max_pool2d,
 }
 
 

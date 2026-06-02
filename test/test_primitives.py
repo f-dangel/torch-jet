@@ -22,7 +22,7 @@ from torch import (
     tensor,
     zeros_like,
 )
-from torch.nn.functional import conv2d
+from torch.nn.functional import conv2d, max_pool2d
 
 from jet import jet
 from test.utils import (
@@ -226,6 +226,12 @@ PRIMITIVE_CASES = [
         "id": "conv2d_input_weight_jet",
         "f": _conv2d_input_weight_jet,
         "args_fn": lambda: (rand(1, 2, 5, 5), rand(3, 2, 3, 3)),
+    },
+    # ---- Max pooling (piecewise linear; gather at the primal's arg-max) ---
+    {
+        "id": "max_pool2d",
+        "f": _stateless(lambda x: max_pool2d(x, kernel_size=2, stride=2)),
+        "args_fn": lambda: (rand(1, 2, 6, 6),),
     },
     # ---- Reduction -------------------------------------------------------
     # ``sum()`` (no-dim) lowers to ``aten.sum.default``; the dim/keepdim

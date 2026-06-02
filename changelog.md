@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- **Backward-incompatible.** Replace the `Laplacian` / `Bilaplacian`
+  `nn.Module`s with `laplacian()` / `bilaplacian()` function transforms that
+  return plain Python callables. They take `mock_args` as a tuple matching
+  `f`'s positional arguments (mirroring `jet()`) and return a callable taking
+  one positional argument per argument of `f`; the propagation regime is
+  selected via a `collapsed` flag. Only single-tensor functions (one tensor
+  in, one tensor out) are supported for now; a non-single-tensor input or
+  output raises `NotImplementedError`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/143)).
+  Earlier in this release the `nn.Module`s were replaced by the function
+  transforms ([PR #123](https://github.com/f-dangel/torch-jet/pull/123)), and
+  the `use_collapsing` flag was renamed to `collapsed` (bundled with merging
+  the two jet interpreters into one;
+  [PR #132](https://github.com/f-dangel/torch-jet/pull/132)).
+
 - Add jet rules for `aten.zeros_like.default`, `aten._unsafe_view.default`,
   and `aten.squeeze.dims`. Op dispatch now forwards kwargs to the
   registered rule. Together with the collapsed Leibniz fix in PR #141
@@ -39,12 +54,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   use `mod(*in_spec.flatten_up_to(args))` to call the captured graph
   ([PR](https://github.com/f-dangel/torch-jet/pull/134))
 
-- **Backward-incompatible.** Rename the `use_collapsing` parameter on
-  `laplacian()` and `bilaplacian()` to `collapsed` (defaults unchanged).
-  Bundled with an internal cleanup of the jet op dispatch that merges the
-  two jet interpreters into one
-  ([PR](https://github.com/f-dangel/torch-jet/pull/132))
-
 - **Backward-incompatible.** Bundle each argument's primal with its Taylor
   coefficients. The transforms `jet()` and `rev_jet()` now
   take one argument per argument of `f`, where each tensor leaf is a tuple
@@ -65,11 +74,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ```
 
   ([PR](https://github.com/f-dangel/torch-jet/pull/130))
-
-- **Backward-incompatible.** Replace `Laplacian` and `Bilaplacian` `nn.Module`s
-  with `laplacian()` and `bilaplacian()` function transforms that return
-  plain callables
-  ([PR](https://github.com/f-dangel/torch-jet/pull/123))
 
 - **Backward-incompatible.** Switch FX tracing from `symbolic_trace` to `make_fx`.
   `jet()` and `simplify()` now require a `mock_x` tensor argument for concrete

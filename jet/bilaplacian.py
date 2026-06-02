@@ -6,7 +6,13 @@ from torch import Tensor, eye, triu_indices, zeros, zeros_like
 
 from jet import _uncollapsed_via_vmap, jet
 from jet.ttc_coefficients import compute_all_gammas
-from jet.utils import sample, validate_randomization
+from jet.utils import (
+    PyTree,
+    require_single_tensor_input,
+    require_single_tensor_output,
+    sample,
+    validate_randomization,
+)
 
 SUPPORTED_DISTRIBUTIONS = ["normal"]
 
@@ -38,10 +44,10 @@ def _set_up_taylor_coefficients(x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
 
 def bilaplacian(
     f: Callable[[Tensor], Tensor],
-    mock_x: Tensor,
+    mock_args: tuple[PyTree[Tensor], ...],
     randomization: tuple[str, int] | None = None,
     collapsed: bool = True,
-) -> Callable[[Tensor], Tensor]:
+) -> Callable[[*tuple[PyTree[Tensor], ...]], Tensor]:
     r"""Transform f into a function that computes the Bi-Laplacian.
 
     The Bi-Laplacian of a function $f(\mathbf{x}) \in \mathbb{R}$ with
@@ -57,10 +63,15 @@ def bilaplacian(
     For functions that produce vectors or tensors, the Bi-Laplacian
     is defined per output component and has the same shape as $f(\mathbf{x})$.
 
+    Only single-tensor functions (one tensor in, one tensor out) are supported.
+
     Args:
-        f: The function whose Bi-Laplacian is computed.
-        mock_x: A mock input tensor for tracing. Only the shape matters, not
-            the actual values.
+        f: The function whose Bi-Laplacian is computed. Must consume and return
+            a single tensor.
+        mock_args: Mock positional arguments for tracing ``f``, provided as a
+            tuple matching ``f``'s positional arguments. Only shapes and dtypes
+            matter, not the values. Currently must be a one-tuple of a single
+            tensor.
         randomization: Optional tuple containing the distribution type and number
             of samples for randomized Bi-Laplacian. If provided, the Bi-Laplacian
             will be computed using Monte-Carlo sampling. The first element is the
@@ -73,7 +84,7 @@ def bilaplacian(
             4-jets over all directions via ``vmap`` and sums afterward.
 
     Returns:
-        A plain Python callable ``bilap_f(x)`` that maps ``x → bilap(f(x))``.
+        A plain Python callable ``bilap_f(*args)`` that maps ``x → bilap(f(x))``.
         To bake the operator into an FX ``GraphModule`` (for graph passes,
         ``torch.compile``, etc.), apply :func:`capture_graph` yourself.
 
@@ -86,7 +97,7 @@ def bilaplacian(
         >>> f = Sequential(Linear(3, 1), Tanh())
         >>> x0 = rand(3)
         >>> # Compute the Bilaplacian via Taylor mode
-        >>> bilap = bilaplacian(f, zeros(3))(x0)
+        >>> bilap = bilaplacian(f, (zeros(3),))(x0)
         >>> assert bilap.shape == f(x0).shape
         >>> # Compute the Bilaplacian with PyTorch's autodiff
         >>> laplacian_pt = lambda x: hessian(f)(x).squeeze(0).trace().unsqueeze(0)
@@ -94,15 +105,16 @@ def bilaplacian(
         >>> assert bilap.shape == bilaplacian_pt.shape
         >>> assert bilaplacian_pt.allclose(bilap)
     """
+    mock_x = require_single_tensor_input(mock_args, "bilaplacian")
     in_shape = mock_x.shape
     in_dim = mock_x.numel()
 
     validate_randomization(randomization, SUPPORTED_DISTRIBUTIONS)
 
     cjet_f = (
-        jet(f, (mock_x,), collapsed=True)
+        jet(f, mock_args, collapsed=True)
         if collapsed
-        else _uncollapsed_via_vmap(f, (mock_x,), randomization)
+        else _uncollapsed_via_vmap(f, mock_args, randomization)
     )
 
     def _eval_4jet(x: Tensor, X1: Tensor) -> Tensor:
@@ -118,14 +130,16 @@ def bilaplacian(
         z = zeros_like(x)
         R = X1.shape[0]
         Z = zeros(R, *in_shape, dtype=x.dtype, device=x.device)
-        _, _, _, _, F4 = cjet_f((x, X1, Z, Z, z))
+        result = require_single_tensor_output(cjet_f((x, X1, Z, Z, z)), "bilaplacian")
+        _, _, _, _, F4 = result
         return F4
 
-    def bilap_f(x: Tensor) -> Tensor:
+    def bilap_f(*args: PyTree[Tensor]) -> Tensor:
         """Compute the Bi-Laplacian of the function at the input tensor.
 
         Args:
-            x: Input tensor. Must have same shape as mock_x.
+            *args: Positional arguments for ``f`` (currently a single tensor
+                matching the mock input's shape).
 
         Returns:
             The Bi-Laplacian. Has the same shape as f(x).
@@ -133,6 +147,7 @@ def bilaplacian(
         Raises:
             ValueError: If the input shape does not match the expected shape.
         """
+        (x,) = args
         if x.shape != in_shape:
             raise ValueError(f"Expected input shape {in_shape}, got {x.shape}.")
 

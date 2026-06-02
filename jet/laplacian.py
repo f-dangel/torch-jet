@@ -5,18 +5,24 @@ from typing import Callable
 from torch import Tensor, eye, zeros_like
 
 from jet import _uncollapsed_via_vmap, jet
-from jet.utils import sample, validate_randomization
+from jet.utils import (
+    PyTree,
+    require_single_tensor_input,
+    require_single_tensor_output,
+    sample,
+    validate_randomization,
+)
 
 SUPPORTED_DISTRIBUTIONS = ["normal", "rademacher"]
 
 
 def laplacian(
     f: Callable[[Tensor], Tensor],
-    mock_x: Tensor,
+    mock_args: tuple[PyTree[Tensor], ...],
     randomization: tuple[str, int] | None = None,
     weighting: tuple[Callable[[Tensor, Tensor], Tensor], int] | None = None,
     collapsed: bool = True,
-) -> Callable[[Tensor], Tensor]:
+) -> Callable[[*tuple[PyTree[Tensor], ...]], Tensor]:
     r"""Transform f into a function that computes lap(f(x)).
 
     The Laplacian of a function $f(\mathbf{x}) \in \mathbb{R}$ with
@@ -32,10 +38,15 @@ def laplacian(
     For functions that produce vectors or tensors, the Laplacian
     is defined per output component and has the same shape as $f(\mathbf{x})$.
 
+    Only single-tensor functions (one tensor in, one tensor out) are supported.
+
     Args:
-        f: The function whose Laplacian is computed.
-        mock_x: A mock input tensor for tracing. Does not need to be the actual
-            input; only the shape matters.
+        f: The function whose Laplacian is computed. Must consume and return a
+            single tensor.
+        mock_args: Mock positional arguments for tracing ``f``, provided as a
+            tuple matching ``f``'s positional arguments. Does not need to be the
+            actual input; only shapes and dtypes matter. Currently must be a
+            one-tuple of a single tensor.
         randomization: Optional tuple containing the distribution type and number
             of samples for randomized Laplacian. If provided, the Laplacian will
             be computed using Monte-Carlo sampling. The first element is the
@@ -56,7 +67,7 @@ def laplacian(
             2-jets over all directions via ``vmap`` and sums afterward.
 
     Returns:
-        A plain Python callable ``lap_f(x)`` that maps ``x → lap(f(x))``.
+        A plain Python callable ``lap_f(*args)`` that maps ``x → lap(f(x))``.
         To bake the operator into an FX ``GraphModule`` (for graph passes,
         ``torch.compile``, etc.), apply :func:`capture_graph` yourself.
 
@@ -69,13 +80,14 @@ def laplacian(
         >>> f = Sequential(Linear(3, 1), Tanh())
         >>> x0 = rand(3)
         >>> # Compute the Laplacian via Taylor mode
-        >>> lap = laplacian(f, zeros(3))(x0)
+        >>> lap = laplacian(f, (zeros(3),))(x0)
         >>> assert lap.shape == f(x0).shape
         >>> # Compute the Laplacian with PyTorch's autodiff (Hessian trace)
         >>> lap_pt = hessian(f)(x0).squeeze(0).trace().unsqueeze(0)
         >>> assert lap.shape == lap_pt.shape
         >>> assert lap_pt.allclose(lap)
     """
+    mock_x = require_single_tensor_input(mock_args, "laplacian")
     in_shape = mock_x.shape
     in_dim = mock_x.numel()
 
@@ -91,17 +103,17 @@ def laplacian(
     )
 
     cjet_f = (
-        jet(f, (mock_x,), collapsed=True)
+        jet(f, mock_args, collapsed=True)
         if collapsed
-        else _uncollapsed_via_vmap(f, (mock_x,), randomization)
+        else _uncollapsed_via_vmap(f, mock_args, randomization)
     )
 
-    def lap_f(x: Tensor) -> Tensor:
+    def lap_f(*args: PyTree[Tensor]) -> Tensor:
         """Compute the (weighted and/or randomized) Laplacian of f at x.
 
         Args:
-            x: Input tensor. Must have same shape as the mock input that was
-                passed to `laplacian`.
+            *args: Positional arguments for ``f`` (currently a single tensor
+                matching the mock input's shape).
 
         Returns:
             The (weighted and/or randomized) Laplacian. Has the same shape as
@@ -110,6 +122,7 @@ def laplacian(
         Raises:
             ValueError: If the input shape does not match the mock input shape.
         """
+        (x,) = args
         if x.shape != in_shape:
             raise ValueError(f"Expected input shape {in_shape}, got {x.shape}.")
 
@@ -124,7 +137,7 @@ def laplacian(
         X1 = apply_weightings(x, V)
         z = zeros_like(x)
 
-        _, _, F2 = cjet_f((x, X1, z))
+        _, _, F2 = require_single_tensor_output(cjet_f((x, X1, z)), "laplacian")
 
         if randomization is not None:
             monte_carlo_scaling = 1.0 / randomization[1]

@@ -125,7 +125,7 @@ def test_Laplacian(
 
     # Using a manually-vmapped jet
     weighting = get_weighting(x, weights)
-    lap_fn = jet_laplacian(f, x, weighting=weighting, collapsed=collapsed)(x)
+    lap_fn = jet_laplacian(f, (x,), weighting=weighting, collapsed=collapsed)(x)
     assert_close(lap_rev, lap_fn, **tolerances_for(device))
 
 
@@ -170,7 +170,7 @@ def test_Laplacian_randomization(
     weighting = get_weighting(x, weights, randomization=randomization)
 
     lap_fn = jet_laplacian(
-        f, x, randomization=randomization, weighting=weighting, collapsed=collapsed
+        f, (x,), randomization=randomization, weighting=weighting, collapsed=collapsed
     )
 
     converged = _check_mc_convergence(

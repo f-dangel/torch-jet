@@ -5,7 +5,6 @@ from typing import Any, Callable
 from pytest import param
 from torch import (
     Tensor,
-    cuda,
     dtype,
     float32,
     float64,
@@ -16,20 +15,11 @@ from torch import (
     stack,
     zeros_like,
 )
-from torch.backends import mps
 from torch.nn import Linear, Sequential, Tanh
 from torch.testing import assert_close
 from torch.utils._pytree import tree_flatten, tree_map
 
 from jet import _is_jet_leaf, jet, rev_jet
-
-#: Devices the test suite parametrizes over. CPU is always present; CUDA and
-#: MPS are added when their respective backends are available.
-DEVICES = ["cpu"]
-if cuda.is_available():
-    DEVICES.append("cuda")
-if mps.is_available():
-    DEVICES.append("mps")
 
 
 def dtype_for_device(device: str) -> dtype:

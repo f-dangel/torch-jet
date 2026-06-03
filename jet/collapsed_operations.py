@@ -22,6 +22,7 @@ from jet.operations import (
     _exp_derivatives,
     _faa_di_bruno,
     _gather_at_indices,
+    _log_derivatives,
     _order,
     _pow_derivatives,
     _relu_derivatives,
@@ -201,6 +202,11 @@ def cjet_relu(self: CollapsedJetTuple) -> CollapsedJetTuple:
 def cjet_exp(self: CollapsedJetTuple) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.exp``."""
     return _cjet_elementwise(self, _exp_derivatives)
+
+
+def cjet_log(self: CollapsedJetTuple) -> CollapsedJetTuple:
+    """Collapsed jet rule for ``aten.log``."""
+    return _cjet_elementwise(self, _log_derivatives)
 
 
 def cjet_pow(self: CollapsedJetTuple, exponent: float | int) -> CollapsedJetTuple:
@@ -455,6 +461,7 @@ COLLAPSED_MAPPING: dict = {
     ops.aten.sigmoid.default: cjet_sigmoid,
     ops.aten.relu.default: cjet_relu,
     ops.aten.exp.default: cjet_exp,
+    ops.aten.log.default: cjet_log,
     # Power
     ops.aten.pow.Tensor_Scalar: cjet_pow,
     # Arithmetic

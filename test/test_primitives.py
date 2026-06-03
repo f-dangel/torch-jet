@@ -12,6 +12,7 @@ from torch import (
     cos,
     exp,
     float32,
+    log,
     manual_seed,
     ops,
     rand,
@@ -169,6 +170,16 @@ PRIMITIVE_CASES = [
             "id": f"relu-{sid}",
             "f": _stateless(relu),
             "args_fn": lambda dims=dims: (randn(*dims),),
+        }
+        for sid, dims in _UNARY_SHAPES.items()
+    ),
+    # ---- log (positive domain; ``rand + 0.5`` keeps inputs in [0.5, 1.5)
+    # so the ``1 / x0**k`` derivatives stay well-conditioned) --------------
+    *(
+        {
+            "id": f"log-{sid}",
+            "f": _stateless(log),
+            "args_fn": lambda dims=dims: (rand(*dims) + 0.5,),
         }
         for sid, dims in _UNARY_SHAPES.items()
     ),

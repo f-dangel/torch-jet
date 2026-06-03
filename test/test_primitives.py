@@ -10,6 +10,7 @@ from pytest import mark, raises
 from torch import (
     addmm,
     cos,
+    exp,
     float32,
     manual_seed,
     ops,
@@ -134,7 +135,13 @@ def _conv2d_input_weight_jet(device):
     return lambda x, w: conv2d(x, w, cs["CONV_B"], stride=1, padding=1)
 
 
-_UNARY_POINTWISE = {"sin": sin, "cos": cos, "tanh": tanh, "sigmoid": sigmoid}
+_UNARY_POINTWISE = {
+    "sin": sin,
+    "cos": cos,
+    "tanh": tanh,
+    "sigmoid": sigmoid,
+    "exp": exp,
+}
 _UNARY_SHAPES = {"1d": (4,), "2d": (3, 4)}
 
 PRIMITIVE_CASES = [

@@ -19,6 +19,7 @@ from torch.utils._pytree import register_pytree_node
 
 from jet.operations import (
     _cos_derivatives,
+    _exp_derivatives,
     _faa_di_bruno,
     _gather_at_indices,
     _order,
@@ -195,6 +196,11 @@ def cjet_sigmoid(self: CollapsedJetTuple) -> CollapsedJetTuple:
 def cjet_relu(self: CollapsedJetTuple) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.relu``."""
     return _cjet_elementwise(self, _relu_derivatives)
+
+
+def cjet_exp(self: CollapsedJetTuple) -> CollapsedJetTuple:
+    """Collapsed jet rule for ``aten.exp``."""
+    return _cjet_elementwise(self, _exp_derivatives)
 
 
 def cjet_pow(self: CollapsedJetTuple, exponent: float | int) -> CollapsedJetTuple:
@@ -448,6 +454,7 @@ COLLAPSED_MAPPING: dict = {
     ops.aten.tanh.default: cjet_tanh,
     ops.aten.sigmoid.default: cjet_sigmoid,
     ops.aten.relu.default: cjet_relu,
+    ops.aten.exp.default: cjet_exp,
     # Power
     ops.aten.pow.Tensor_Scalar: cjet_pow,
     # Arithmetic

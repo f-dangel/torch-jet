@@ -3,7 +3,7 @@
 from typing import Callable
 
 from scipy.special import comb, factorial, stirling2
-from torch import Tensor, addmm, cos, mm, ops, relu, sigmoid, sin, tanh, zeros_like
+from torch import Tensor, addmm, cos, exp, mm, ops, relu, sigmoid, sin, tanh, zeros_like
 from torch.utils._pytree import register_pytree_node
 
 from jet.utils import integer_partitions, multiplicity
@@ -358,6 +358,16 @@ def _relu_derivatives(x0: Tensor, K: int) -> tuple[Tensor, dict[int, Tensor | No
     return relu_x0, d
 
 
+def _exp_derivatives(x0: Tensor, K: int) -> tuple[Tensor, dict[int, Tensor]]:
+    """Compute ``exp(x0)`` and its derivatives up to order *K*.
+
+    Every derivative of ``exp`` is ``exp`` itself, so all orders share the
+    single ``exp(x0)`` tensor.
+    """
+    exp_x0 = exp(x0)
+    return exp_x0, dict.fromkeys(range(K + 1), exp_x0)
+
+
 def _pow_derivatives(
     x0: Tensor, exponent: float | int, K: int
 ) -> tuple[Tensor, dict[int, Tensor | None]]:
@@ -424,6 +434,11 @@ def jet_sigmoid(self: JetTuple) -> JetTuple:
 def jet_relu(self: JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.relu(self)``."""
     return _jet_elementwise(self, _relu_derivatives)
+
+
+def jet_exp(self: JetTuple) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.exp(self)``."""
+    return _jet_elementwise(self, _exp_derivatives)
 
 
 # --- Power ---
@@ -742,6 +757,7 @@ MAPPING: dict = {
     ops.aten.tanh.default: jet_tanh,
     ops.aten.sigmoid.default: jet_sigmoid,
     ops.aten.relu.default: jet_relu,
+    ops.aten.exp.default: jet_exp,
     # Power
     ops.aten.pow.Tensor_Scalar: jet_pow,
     # Arithmetic

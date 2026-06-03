@@ -778,6 +778,37 @@ def jet_mse_loss(
     return _reduce_loss(squared_error, reduction)
 
 
+# --- Normalization ---
+
+
+def jet_log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten._log_softmax(self, dim, half_to_float)``.
+
+    Uses the shift-invariant identity
+    ``log_softmax(x) = (x - m) - log(sum(exp(x - m), dim))`` with
+    ``m = max(x, dim)`` a constant taken from the primal. ``exp`` and ``log``
+    reuse the elementwise machinery, the sum over ``dim`` is linear, and the
+    final subtraction broadcasts. This is the log-sum-exp trick, and it
+    stabilizes the whole jet -- not just the forward pass.
+
+    Args:
+        self: The logits and their Taylor coefficients.
+        dim: The dimension along which to normalize.
+        half_to_float: Whether inputs were promoted from half precision.
+            Accepted for ATen-signature compatibility; does not affect the
+            float32/float64 paths.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    shift = self[0].amax(dim, keepdim=True)
+    shifted = jet_sub(self, shift)
+    exp_jet = jet_exp(shifted)
+    sum_exp = jet_sum(exp_jet, dim, keepdim=True)
+    log_sum_exp = jet_log(sum_exp)
+    return jet_sub(shifted, log_sum_exp)
+
+
 MAPPING: dict = {
     # Elementwise unary
     ops.aten.sin.default: jet_sin,
@@ -803,6 +834,8 @@ MAPPING: dict = {
     ops.aten.max_pool2d.default: jet_max_pool2d,
     # Loss functions
     ops.aten.mse_loss.default: jet_mse_loss,
+    # Normalization
+    ops.aten._log_softmax.default: jet_log_softmax,
 }
 
 
@@ -813,18 +846,21 @@ MAPPING: dict = {
 # either category is a one-line edit.
 
 
-def deflinear(prim: Callable) -> None:
+def deflinear(prim: Callable) -> Callable:
     """Register ``prim`` as a linear op: apply the primitive coefficient-wise.
 
     The primitive must be ``aten``-style — it takes the tensor as its first
     positional argument and any structural args (e.g. ``size``, ``dim``)
     after. Forwards both ``*args`` and ``**kwargs`` straight to ``prim``.
+    Returns the registered rule so it can also be bound to a name and reused
+    inside composite rules (e.g. ``jet_sum`` in ``jet_log_softmax``).
     """
 
     def rule(self: JetTuple, *args, **kwargs) -> JetTuple:
         return _apply_linear(self, lambda c: prim(c, *args, **kwargs))
 
     MAPPING[prim] = rule
+    return rule
 
 
 def defzero(prim: Callable) -> None:
@@ -855,13 +891,15 @@ for _prim in (
     ops.aten.squeeze.dim,
     ops.aten.squeeze.dims,
     ops.aten.sum.default,
-    ops.aten.sum.dim_IntList,
     ops.aten._adaptive_avg_pool2d.default,
     ops.aten.avg_pool2d.default,
     ops.aten.mean.default,
     ops.aten.mean.dim,
 ):
     deflinear(_prim)
+
+# Bound to a name so composite rules can reuse it (e.g. ``jet_log_softmax``).
+jet_sum = deflinear(ops.aten.sum.dim_IntList)
 
 # Constant-output ops: primal carries the value, coefficients are zero.
 for _prim in (ops.aten.zeros_like.default,):

@@ -28,6 +28,7 @@ from torch.nn.functional import (
     adaptive_avg_pool2d,
     avg_pool2d,
     conv2d,
+    log_softmax,
     max_pool2d,
     mse_loss,
 )
@@ -316,6 +317,22 @@ PRIMITIVE_CASES = [
         "f": _stateless(lambda x: avg_pool2d(x, kernel_size=2, stride=2)),
         "args_fn": lambda: (rand(1, 2, 6, 6),),
     },
+    # ---- Normalization ---------------------------------------------------
+    # ``log_softmax`` couples elements along ``dim`` via logsumexp; the rule
+    # composes elementwise exp/log with a linear sum and a broadcast sub.
+    # Cover a positive dim, a negative dim, and a 1d (dim-0) case.
+    *(
+        {
+            "id": sid,
+            "f": _stateless(lambda x, d=dim: log_softmax(x, dim=d)),
+            "args_fn": lambda shape=shape: (rand(*shape),),
+        }
+        for sid, dim, shape in (
+            ("log_softmax_dim1", 1, (3, 4)),
+            ("log_softmax_dim_neg1", -1, (3, 4)),
+            ("log_softmax_dim0_1d", 0, (4,)),
+        )
+    ),
     # ---- Reduction -------------------------------------------------------
     # ``sum()`` (no-dim) lowers to ``aten.sum.default``; the dim/keepdim
     # variants all lower to ``aten.sum.dim_IntList``.

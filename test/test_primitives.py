@@ -22,7 +22,7 @@ from torch import (
     tensor,
     zeros_like,
 )
-from torch.nn.functional import conv2d, max_pool2d
+from torch.nn.functional import adaptive_avg_pool2d, conv2d, max_pool2d
 
 from jet import jet
 from test.utils import (
@@ -238,6 +238,13 @@ PRIMITIVE_CASES = [
         "id": "max_pool2d_unbatched",
         "f": _stateless(lambda x: max_pool2d(x, kernel_size=2, stride=2)),
         "args_fn": lambda: (rand(2, 6, 6),),
+    },
+    # ---- Adaptive average pooling (linear); non-(1,1) output keeps it as
+    # ``aten._adaptive_avg_pool2d`` (a (1,1) target lowers to ``mean.dim``) ----
+    {
+        "id": "adaptive_avg_pool2d",
+        "f": _stateless(lambda x: adaptive_avg_pool2d(x, (2, 2))),
+        "args_fn": lambda: (rand(1, 2, 6, 6),),
     },
     # ---- Reduction -------------------------------------------------------
     # ``sum()`` (no-dim) lowers to ``aten.sum.default``; the dim/keepdim

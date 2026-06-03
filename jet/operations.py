@@ -105,6 +105,19 @@ def _apply_linear_coeffs(
     return tuple(op(c) for c in self[1:])
 
 
+def _broadcast_coeffs(self: JetTuple, primal: Tensor) -> list[Tensor]:
+    """Broadcast a jet's coefficients up to ``primal``'s shape.
+
+    For ``jet + constant`` (and ``sub``) where the constant is larger than the
+    jet: the constant contributes nothing to the coefficients, but the result
+    primal broadcasts up, so each coefficient must broadcast to match. A no-op
+    when the coefficient is already ``primal``-shaped (the common case).
+    """
+    return [
+        c if c.shape == primal.shape else c.broadcast_to(primal.shape) for c in self[1:]
+    ]
+
+
 def _leibniz(
     self: JetTuple,
     other: JetTuple,
@@ -511,12 +524,12 @@ def jet_add(
 
     if self_is_jet and other_is_jet:
         _jet_order(self, other)  # validates K-consistency, raises on mismatch
-        coeffs = (s + o for s, o in zip(self, other))
-    elif self_is_jet:
-        coeffs = (self[0] + other, *self[1:])
-    else:
-        coeffs = (other[0] + self, *other[1:])
-    return JetTuple(coeffs)
+        return JetTuple(s + o for s, o in zip(self, other))
+    if self_is_jet:
+        primal = self[0] + other
+        return JetTuple((primal, *_broadcast_coeffs(self, primal)))
+    primal = other[0] + self
+    return JetTuple((primal, *_broadcast_coeffs(other, primal)))
 
 
 def jet_sub(
@@ -537,12 +550,12 @@ def jet_sub(
 
     if self_is_jet and other_is_jet:
         _jet_order(self, other)  # validates K-consistency, raises on mismatch
-        coeffs = (s - o for s, o in zip(self, other))
-    elif self_is_jet:
-        coeffs = (self[0] - other, *self[1:])
-    else:
-        coeffs = (self - other[0], *(-c for c in other[1:]))
-    return JetTuple(coeffs)
+        return JetTuple(s - o for s, o in zip(self, other))
+    if self_is_jet:
+        primal = self[0] - other
+        return JetTuple((primal, *_broadcast_coeffs(self, primal)))
+    primal = self - other[0]
+    return JetTuple((primal, *(-c for c in _broadcast_coeffs(other, primal))))
 
 
 def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:

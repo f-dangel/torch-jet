@@ -167,12 +167,11 @@ _POW_EXPONENTS = {
     "pow_int_negative": -2.0,
 }
 
-# Elementwise binary ops over a broadcasting stress matrix (both operands jets).
-# In collapsed mode the batched coefficients carry a leading direction dim ``R``;
-# right-aligned broadcasting must not shift it. The same-rank pairs broadcast
-# without moving ``R``; the different-rank pairs are the ones that previously
-# collided ``R`` with a primal dim (for ``add`` / ``sub`` -- ``mul`` already
-# aligned via vmap).
+# Elementwise binary ops over a broadcasting stress matrix, covering every
+# dispatch branch: ``JJ`` (both operands jets), ``JC`` (jet + constant), ``CJ``
+# (constant + jet). In collapsed mode the batched coefficients carry a leading
+# direction dim ``R`` that right-aligned broadcasting must not shift; the JC/CJ
+# branches also stress a jet broadcasting *up* to a larger constant.
 _BROADCAST_BINOPS = {
     "add": lambda x, y: x + y,
     "sub": lambda x, y: x - y,
@@ -188,6 +187,42 @@ _BROADCAST_PAIRS = [
     ((2, 1, 4), (1, 3, 1)),  # higher rank, same rank, mutual
     ((2, 1, 4), (3, 1)),  # higher rank, different rank
 ]
+
+
+def _binop_case(name, op, sa, sb, variant: str) -> dict[str, Any]:
+    """One broadcasting case for ``op`` over operand shapes ``sa``/``sb``.
+
+    ``variant`` selects the dispatch branch: ``"JJ"`` (both jets), ``"JC"``
+    (first operand ``sa`` a jet, second ``sb`` a frozen constant), ``"CJ"``
+    (first ``sa`` a frozen constant, second ``sb`` a jet). Constants are drawn
+    under ``manual_seed(3)`` on the device.
+    """
+    cid = f"{name}_{'x'.join(map(str, sa))}_{'x'.join(map(str, sb))}_{variant}"
+    if variant == "JJ":
+        return {
+            "id": cid,
+            "f": _stateless(op),
+            "args_fn": lambda sa=sa, sb=sb: (rand(*sa), rand(*sb)),
+        }
+    const_shape, jet_shape = (sb, sa) if variant == "JC" else (sa, sb)
+
+    def build(device, op=op, cs=const_shape, variant=variant):
+        manual_seed(3)
+        c = rand(*cs, **device_kw(device))
+        return (lambda x: op(x, c)) if variant == "JC" else (lambda x: op(c, x))
+
+    return {"id": cid, "f": build, "args_fn": lambda js=jet_shape: (rand(*js),)}
+
+
+def _binop_cases() -> list[dict[str, Any]]:
+    """Every (op, shape-pair, dispatch-branch) broadcasting case for add/sub/mul."""
+    return [
+        _binop_case(name, op, sa, sb, variant)
+        for name, op in _BROADCAST_BINOPS.items()
+        for sa, sb in _BROADCAST_PAIRS
+        for variant in ("JJ", "JC", "CJ")
+    ]
+
 
 PRIMITIVE_CASES = [
     # ---- Unary pointwise (cross-product over shapes) ---------------------
@@ -277,17 +312,9 @@ PRIMITIVE_CASES = [
     },
     {"id": "mul_JC", "f": _stateless(lambda x: x * 3.0), "args_fn": lambda: (rand(4),)},
     {"id": "mul_CJ", "f": _stateless(lambda x: 3.0 * x), "args_fn": lambda: (rand(4),)},
-    # ---- Broadcasting stress matrix (binary ops, both operands jets) ------
-    # See ``_BROADCAST_PAIRS`` / ``_BROADCAST_BINOPS``.
-    *(
-        {
-            "id": f"{name}_bcast_{'x'.join(map(str, sa))}_{'x'.join(map(str, sb))}",
-            "f": _stateless(op),
-            "args_fn": lambda sa=sa, sb=sb: (rand(*sa), rand(*sb)),
-        }
-        for name, op in _BROADCAST_BINOPS.items()
-        for sa, sb in _BROADCAST_PAIRS
-    ),
+    # ---- Broadcasting stress matrix (add/sub/mul; JJ/JC/CJ branches) ------
+    # See ``_binop_cases`` / ``_BROADCAST_PAIRS`` / ``_BROADCAST_BINOPS``.
+    *_binop_cases(),
     # ---- Matrix multiply (non-commutative) -------------------------------
     {
         "id": "mm_JJ",

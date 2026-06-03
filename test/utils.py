@@ -19,7 +19,7 @@ from torch.nn import Linear, Sequential, Tanh
 from torch.testing import assert_close
 from torch.utils._pytree import tree_flatten, tree_map
 
-from jet import _is_jet_leaf, jet, rev_jet
+from jet import _is_jet_leaf, _rev_jet, jet
 
 
 def dtype_for_device(device: str) -> dtype:
@@ -139,19 +139,19 @@ def make_jet_args(
 
 
 def rev_collapsed_jet(f: Callable[..., Any]) -> Callable[..., Any]:
-    """Reference implementation for collapsed Taylor mode via :func:`jet.rev_jet`.
+    """Reference implementation for collapsed Taylor mode via :func:`jet._rev_jet`.
 
-    Built on :func:`jet.rev_jet` (nested reverse-mode AD), so independent of
+    Built on :func:`jet._rev_jet` (nested reverse-mode AD), so independent of
     the FX-trace and interpreter machinery. See :func:`jet.jet` for the
     collapsed-mode shape contract.
 
-    Run a standard ``rev_jet`` per direction (full ``c_K`` into direction 0,
+    Run a standard ``_rev_jet`` per direction (full ``c_K`` into direction 0,
     zeros into the rest, exploiting that ``o_K`` is linear in ``c_K``), then
-    combine: orders 1..K-1 stack across ``R``, order K sums. (``rev_jet``
+    combine: orders 1..K-1 stack across ``R``, order K sums. (``_rev_jet``
     uses :func:`torch.autograd.grad` which does not compose with
     :func:`torch.func.vmap`, hence the explicit Python loop over ``R``.)
     """
-    std_jet = rev_jet(f)
+    std_jet = _rev_jet(f)
 
     def cjet_f(*args: Any) -> Any:
         leaves, _ = tree_flatten(args, is_leaf=_is_jet_leaf)
@@ -195,13 +195,13 @@ def assert_jet_matches_oracle(
 ) -> None:
     """Assert ``jet(f, mock_args, collapsed)`` matches its mode-specific oracle.
 
-    The oracle is :func:`jet.rev_jet` (standard) or :func:`rev_collapsed_jet`
+    The oracle is :func:`jet._rev_jet` (standard) or :func:`rev_collapsed_jet`
     (collapsed). Both are built on nested reverse-mode AD and are independent
     of the FX-trace + interpreter machinery under test.
     """
     f, mock_args = setup_case(config, device)
     jet_args = make_jet_args(mock_args, K, collapsed=collapsed)
-    oracle = rev_collapsed_jet(f) if collapsed else rev_jet(f)
+    oracle = rev_collapsed_jet(f) if collapsed else _rev_jet(f)
     actual = jet(f, mock_args, collapsed=collapsed)(*jet_args)
     expected = oracle(*jet_args)
     assert_close(actual, expected, **tolerances_for(device))

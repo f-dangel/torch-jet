@@ -19,7 +19,7 @@ Jet = tuple[Tensor, ...]
 #:
 #: - ``PyTree[Tensor]`` — public input side (``mock_args``).
 #: - ``PyTree[Jet]`` — public jet-form: arguments to and return value of the
-#:   callable returned by :func:`jet.jet` and :func:`jet.rev_jet`, where each
+#:   callable returned by :func:`jet.jet` and :func:`jet._rev_jet`, where each
 #:   tensor leaf is replaced by a jet ``(primal, c_1, ..., c_K)``.
 #: - ``PyTree[JetTuple | CollapsedJetTuple | Tensor]`` — interpreter-internal
 #:   form, returned by ``JetInterpreter.run``.

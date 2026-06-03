@@ -94,6 +94,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
+- Fix the failing Read the Docs build by removing the gallery example's
+  "Unsupported Operations" subsection
+  ([PR](https://github.com/f-dangel/torch-jet/pull/158)).
+
 - Fix collapsed-mode Leibniz misaligning the leading direction dim `R` when
   product operands have different primal ranks (`cjet_mul` / `cjet_mm` /
   `cjet_addmm`). Right-aligned PyTorch broadcasting collided one operand's

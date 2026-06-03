@@ -20,6 +20,7 @@ from torch.utils._pytree import register_pytree_node
 from jet.operations import (
     _cos_derivatives,
     _faa_di_bruno,
+    _gather_at_indices,
     _order,
     _pow_derivatives,
     _relu_derivatives,
@@ -368,6 +369,22 @@ def cjet_convolution(
 # COLLAPSED_MAPPING
 # ---------------------------------------------------------------------------
 
+
+def cjet_max_pool2d_with_indices(
+    input: CollapsedJetTuple, *pool_args: object
+) -> tuple[CollapsedJetTuple, Tensor]:
+    """Collapsed jet rule for ``aten.max_pool2d_with_indices``."""
+    values0, indices = ops.aten.max_pool2d_with_indices.default(input[0], *pool_args)
+    coeffs = _apply_linear_coeffs(input, lambda c: _gather_at_indices(c, indices))
+    return CollapsedJetTuple((values0, *coeffs)), indices
+
+
+def cjet_max_pool2d(input: CollapsedJetTuple, *pool_args: object) -> CollapsedJetTuple:
+    """Collapsed jet rule for ``aten.max_pool2d`` (values only; e.g. MPS)."""
+    jet, _ = cjet_max_pool2d_with_indices(input, *pool_args)
+    return jet
+
+
 COLLAPSED_MAPPING: dict = {
     # Elementwise nonlinear
     ops.aten.sin.default: cjet_sin,
@@ -386,6 +403,9 @@ COLLAPSED_MAPPING: dict = {
     ops.aten.addmm.default: cjet_addmm,
     # Convolution (affine: bias on primal, coefficients convolved bias-free)
     ops.aten.convolution.default: cjet_convolution,
+    # Pooling (piecewise linear: gather coefficients at the primal's arg-max)
+    ops.aten.max_pool2d_with_indices.default: cjet_max_pool2d_with_indices,
+    ops.aten.max_pool2d.default: cjet_max_pool2d,
 }
 
 

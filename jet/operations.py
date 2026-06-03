@@ -631,55 +631,77 @@ def jet_addmm(
     return jet_add(self, product)
 
 
+def _align_conv_bias(bias: Tensor | JetTuple, ndim: int) -> Tensor | JetTuple:
+    """Reshape a 1-D conv bias to broadcast over the output's batch/spatial dims.
+
+    The bias indexes the channel dim (dim 1 of an ``ndim``-D conv output);
+    appending ``ndim - 2`` trailing size-1 dims lets ``add`` broadcast it over
+    the batch and spatial dims. A jet bias is reshaped coefficient-wise; the
+    type-agnostic ``Tensor`` check and ``type(bias)`` reconstruction also serve
+    the collapsed rule's ``CollapsedJetTuple`` bias.
+
+    Args:
+        bias: The 1-D bias; a jet or a constant ``Tensor``.
+        ndim: The convolution output's rank.
+
+    Returns:
+        The bias reshaped to ``(C_out, 1, ...)``.
+    """
+    tail = (1,) * (ndim - 2)
+    if isinstance(bias, Tensor):
+        return bias.reshape(*bias.shape, *tail)
+    return type(bias)(b.reshape(*b.shape, *tail) for b in bias)
+
+
 def jet_convolution(
     input: Tensor | JetTuple,
     weight: Tensor | JetTuple,
-    bias: Tensor | None,
+    bias: Tensor | JetTuple | None,
     *conv_args: object,
 ) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.convolution(input, weight, bias, ...)``.
 
+    ``convolution(input, weight, bias) == convolution(input, weight, None) +
+    bias``, so the rule composes the bilinear bias-free convolution (the Leibniz
+    rule when both are jets, else coefficient-wise) with the affine bias addition
+    via :func:`jet_add`, mirroring :func:`jet_addmm`. Any operand may be
+    Taylor-expanded, including the bias.
+
     Args:
         input: The convolution input; a jet or a constant ``Tensor``.
         weight: The convolution kernel; a jet or a constant ``Tensor``.
-        bias: The bias; a constant ``Tensor`` or ``None``.
+        bias: The bias; a jet, a constant ``Tensor``, or ``None``.
         *conv_args: The remaining ``aten.convolution`` structural arguments
             (``stride``, ``padding``, ``dilation``, ``transposed``,
             ``output_padding``, ``groups``), forwarded unchanged.
 
     Returns:
         The value and its Taylor coefficients.
-
-    Raises:
-        NotImplementedError: If ``bias`` is Taylor-expanded, or if neither
-            ``input`` nor ``weight`` is Taylor-expanded.
     """
-    if isinstance(bias, JetTuple):
-        raise NotImplementedError(
-            "jet_convolution does not support a Taylor-expanded bias. "
-            "Expected a constant Tensor or None."
-        )
-    conv = ops.aten.convolution.default
 
     def cv(a: Tensor, b: Tensor) -> Tensor:
         """Bias-free convolution -- the bilinear core of ``aten.convolution``."""
-        return conv(a, b, None, *conv_args)
+        return ops.aten.convolution.default(a, b, None, *conv_args)
 
     input_is_jet = isinstance(input, JetTuple)
     weight_is_jet = isinstance(weight, JetTuple)
-
     if input_is_jet and weight_is_jet:
-        primal = conv(input[0], weight[0], bias, *conv_args)
-        return JetTuple((primal, *_leibniz(input, weight, cv)))
+        product = JetTuple((cv(input[0], weight[0]), *_leibniz(input, weight, cv)))
     elif input_is_jet:
-        primal = conv(input[0], weight, bias, *conv_args)
-        return JetTuple((primal, *_apply_linear_coeffs(input, lambda c: cv(c, weight))))
+        product = _apply_linear(input, lambda c: cv(c, weight))
     elif weight_is_jet:
-        primal = conv(input, weight[0], bias, *conv_args)
-        return JetTuple((primal, *_apply_linear_coeffs(weight, lambda c: cv(input, c))))
-    raise NotImplementedError(
-        "jet_convolution expects input and/or weight to be Taylor-expanded."
-    )
+        product = _apply_linear(weight, lambda c: cv(input, c))
+    else:
+        product = cv(input, weight)
+
+    if bias is None:
+        return product
+    # convolution(input, weight, bias) == convolution(input, weight, None) +
+    # bias; reshape the 1-D bias to broadcast over the output's batch and spatial
+    # dims (channel is dim 1) and defer the add to jet_add. Conv preserves rank,
+    # so the output ndim is the input ndim.
+    ndim = (input[0] if input_is_jet else input).ndim
+    return jet_add(_align_conv_bias(bias, ndim), product)
 
 
 def _gather_at_indices(c: Tensor, indices: Tensor) -> Tensor:
@@ -920,7 +942,7 @@ MAPPING: dict = {
     # Matrix decomposition
     ops.aten.mm.default: jet_mm,
     ops.aten.addmm.default: jet_addmm,
-    # Convolution (affine: bias on primal, coefficients convolved bias-free)
+    # Convolution (bilinear in input/weight; bias is the affine term)
     ops.aten.convolution.default: jet_convolution,
     # Pooling (piecewise linear: gather coefficients at the primal's arg-max)
     ops.aten.max_pool2d_with_indices.default: jet_max_pool2d_with_indices,

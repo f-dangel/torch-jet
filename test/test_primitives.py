@@ -36,7 +36,6 @@ from torch.nn.functional import (
     nll_loss,
 )
 
-from jet import jet
 from jet.collapsed_operations import CollapsedJetTuple, cjet_nll_loss_forward
 from jet.operations import JetTuple, jet_nll_loss_forward
 from test.utils import (
@@ -45,7 +44,6 @@ from test.utils import (
     assert_jet_matches_oracle,
     class_index_loss,
     device_kw,
-    make_jet_args,
 )
 
 
@@ -63,11 +61,6 @@ def _consts(device: str) -> dict[str, Any]:
         "R": rand(4, 5, **kw),
         "B": rand(3, 5, **kw),
         "SUB": tensor(2.0, **kw),
-        # conv2d kernels: CONV_W/CONV_B for a plain conv (in=2, out=4, 3x3);
-        # DW_W for a grouped conv (groups=2, in=2, out=4).
-        "CONV_W": rand(4, 2, 3, 3, **kw),
-        "CONV_B": rand(4, **kw),
-        "DW_W": rand(4, 1, 3, 3, **kw),
     }
 
 
@@ -158,29 +151,95 @@ def _mse_loss(reduction: str, shape: tuple[int, ...]) -> Callable[[str], Callabl
     return build
 
 
-def _conv2d_jc(device):
-    cs = _consts(device)
-    return lambda x: conv2d(x, cs["CONV_W"], cs["CONV_B"], stride=1, padding=1)
+# Convolution shapes -- single source of truth. A plain
+# conv maps C_IN -> C_OUT channels with a K x K kernel over an H x W image; the
+# grouped variant uses GROUPS (depthwise-style weight (C_OUT, C_IN/GROUPS, K, K)).
+# Every conv shape derives from these four numbers, so changing the channel
+# count (or kernel/groups) touches exactly one place.
+_C_IN, _C_OUT, _K, _GROUPS = 2, 4, 3, 2
+_CONV_SHAPES = {
+    "x": (1, _C_IN, 5, 5),  # input (N, C_in, H, W)
+    "x_grouped": (1, _C_IN, 6, 6),  # input for the strided grouped conv
+    "w": (_C_OUT, _C_IN, _K, _K),  # weight (C_out, C_in, kH, kW)
+    "dw": (_C_OUT, _C_IN // _GROUPS, _K, _K),  # grouped weight
+    "b": (_C_OUT,),  # bias (C_out,)
+}
 
 
-def _conv2d_grouped_jc(device):
-    # Depthwise/grouped conv (groups=2, no bias) -- the mobile/ResNet pattern.
-    cs = _consts(device)
-    return lambda x: conv2d(x, cs["DW_W"], None, stride=2, padding=1, groups=2)
+def _conv_consts(device: str) -> dict[str, Any]:
+    """Frozen conv operands on ``device`` (one tensor per ``_CONV_SHAPES`` entry)."""
+    manual_seed(0)
+    kw = device_kw(device)
+    return {name: rand(*shape, **kw) for name, shape in _CONV_SHAPES.items()}
 
 
-def _conv2d_weight_jet(device):
-    # Weight is the Taylor-expanded operand (constant input) -- conv is linear
-    # in the kernel just as it is in the input.
-    cs = _consts(device)
-    X = rand(1, 2, 5, 5, **device_kw(device))
-    return lambda w: conv2d(X, w, cs["CONV_B"], stride=1, padding=1)
+def _conv_case(input: str, weight: str, bias: str) -> dict[str, Any]:
+    """Build one ``{id, f, args_fn}`` case for an ``(input, weight, bias)`` combo.
+
+    Each operand code is ``"C"`` (constant) or ``"J"`` (jet); ``bias`` may also be
+    ``"N"`` (absent). Jet operands are consumed positionally in the order
+    ``input, weight, bias`` so the harness attaches Taylor coefficients to them;
+    constants are frozen via :func:`_conv_consts`. All combos use a plain
+    stride-1, padding-1 conv. The id signature is ``conv2d_<input><weight><bias>``
+    (the absent-bias letter is dropped, so a bias-free conv reads ``conv2d_JC``).
+    """
+    input_jet, weight_jet, bias_jet = input == "J", weight == "J", bias == "J"
+
+    def builder(device):
+        c = _conv_consts(device)
+
+        def f(*args: Any):
+            it = iter(args)
+            x = next(it) if input_jet else c["x"]
+            w = next(it) if weight_jet else c["w"]
+            b = next(it) if bias_jet else (c["b"] if bias == "C" else None)
+            return conv2d(x, w, b, stride=1, padding=1)
+
+        return f
+
+    def args_fn():
+        out = []
+        if input_jet:
+            out.append(rand(*_CONV_SHAPES["x"]))
+        if weight_jet:
+            out.append(rand(*_CONV_SHAPES["w"]))
+        if bias_jet:
+            out.append(rand(*_CONV_SHAPES["b"]))
+        return tuple(out)
+
+    sig = f"{input}{weight}" + ("" if bias == "N" else bias)
+    return {"id": f"conv2d_{sig}", "f": builder, "args_fn": args_fn}
 
 
-def _conv2d_input_weight_jet(device):
-    # Both operands are jets -> exercises the bilinear Leibniz branch.
-    cs = _consts(device)
-    return lambda x, w: conv2d(x, w, cs["CONV_B"], stride=1, padding=1)
+def _conv2d_grouped_jet(device):
+    """Depthwise/grouped conv (groups=2, no bias) -- the mobile/ResNet pattern."""
+    c = _conv_consts(device)
+    return lambda x: conv2d(x, c["dw"], None, stride=2, padding=1, groups=_GROUPS)
+
+
+def _conv_cases() -> list[dict[str, Any]]:
+    """Exhaustive ``(input, weight, bias)`` dispatch matrix for ``convolution``.
+
+    Conv is bilinear in ``input`` / ``weight`` with an affine ``bias``. Each of
+    ``input`` / ``weight`` is a constant (``C``) or a jet (``J``); ``bias`` is
+    absent (``N`` -> bias-free conv), constant (``C``), or a jet (``J``). Combos
+    with no jet operand are skipped (nothing to differentiate). Plus one grouped
+    (depthwise) conv -- a distinct weight shape, stride, and ``groups`` -- to
+    exercise the grouped dispatch path.
+    """
+    cases = [
+        _conv_case(input, weight, bias)
+        for input, weight, bias in product("CJ", "CJ", "NCJ")
+        if "J" in (input, weight, bias)
+    ]
+    cases.append(
+        {
+            "id": "conv2d_grouped",
+            "f": _conv2d_grouped_jet,
+            "args_fn": lambda: (rand(*_CONV_SHAPES["x_grouped"]),),
+        }
+    )
+    return cases
 
 
 def _cat_jet_const(device):
@@ -364,23 +423,7 @@ PRIMITIVE_CASES = [
     # ``_matmul_cases``.
     *_matmul_cases(),
     # ---- Convolution (bilinear in input/weight; bias is the affine term) --
-    {"id": "conv2d", "f": _conv2d_jc, "args_fn": lambda: (rand(1, 2, 5, 5),)},
-    {
-        "id": "conv2d_grouped",
-        "f": _conv2d_grouped_jc,
-        "args_fn": lambda: (rand(1, 2, 6, 6),),
-    },
-    # Jet weight (constant input) and both-jet (bilinear Leibniz) branches.
-    {
-        "id": "conv2d_weight_jet",
-        "f": _conv2d_weight_jet,
-        "args_fn": lambda: (rand(4, 2, 3, 3),),
-    },
-    {
-        "id": "conv2d_input_weight_jet",
-        "f": _conv2d_input_weight_jet,
-        "args_fn": lambda: (rand(1, 2, 5, 5), rand(4, 2, 3, 3)),
-    },
+    *_conv_cases(),
     # ---- Max pooling (piecewise linear; gather at the primal's arg-max) ---
     {
         "id": "max_pool2d",
@@ -591,22 +634,6 @@ PRIMITIVE_CASES = [
 def test_primitive(config: dict[str, Any], K: int, collapsed: bool, device: str):
     """``jet(primitive)`` matches its mode-specific oracle."""
     assert_jet_matches_oracle(config, K, collapsed, device)
-
-
-@mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])
-def test_conv_taylor_expanded_bias_raises(collapsed: bool, device: str):
-    """A Taylor-expanded convolution bias is rejected (bias must be constant)."""
-    cs = _consts(device)
-    kw = device_kw(device)
-    X, W = rand(1, 2, 5, 5, **kw), cs["CONV_W"]
-
-    def f(b):
-        return conv2d(X, W, b, stride=1, padding=1)
-
-    bias = rand(4, **kw)
-    jet_args = make_jet_args((bias,), K=2, collapsed=collapsed)
-    with raises(NotImplementedError, match="Taylor-expanded bias"):
-        jet(f, (bias,), collapsed=collapsed)(*jet_args)
 
 
 @mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])

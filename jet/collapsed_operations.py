@@ -19,6 +19,7 @@ from torch.func import vmap
 from torch.utils._pytree import register_pytree_node
 
 from jet.operations import (
+    _align_conv_bias,
     _cos_derivatives,
     _exp_derivatives,
     _faa_di_bruno,
@@ -361,55 +362,39 @@ def cjet_addmm(
 def cjet_convolution(
     input: Tensor | CollapsedJetTuple,
     weight: Tensor | CollapsedJetTuple,
-    bias: Tensor | None,
+    bias: Tensor | CollapsedJetTuple | None,
     *conv_args: object,
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.convolution``.
 
-    Args:
-        input: The convolution input; a jet or a constant ``Tensor``.
-        weight: The convolution kernel; a jet or a constant ``Tensor``.
-        bias: The bias; a constant ``Tensor`` or ``None``.
-        *conv_args: The remaining ``aten.convolution`` structural arguments,
-            forwarded unchanged.
-
-    Returns:
-        The value and its Taylor coefficients.
-
-    Raises:
-        NotImplementedError: If ``bias`` is Taylor-expanded, or if neither
-            ``input`` nor ``weight`` is Taylor-expanded.
+    See :func:`jet.operations.jet_convolution`: composes the bilinear bias-free
+    convolution with the affine bias addition, ``cjet_add(bias, conv(input,
+    weight, None))``. The 1-D bias is reshaped to broadcast over the output's
+    batch and spatial dims (channel is dim 1); the direction-dim ``R`` alignment
+    of the batched coefficients is handled by :func:`cjet_add`.
     """
-    if isinstance(bias, CollapsedJetTuple):
-        raise NotImplementedError(
-            "cjet_convolution does not support a Taylor-expanded bias. "
-            "Expected a constant Tensor or None."
-        )
-    conv = ops.aten.convolution.default
 
     def cv(a: Tensor, b: Tensor) -> Tensor:
         """Bias-free convolution -- the bilinear core of ``aten.convolution``."""
-        return conv(a, b, None, *conv_args)
+        return ops.aten.convolution.default(a, b, None, *conv_args)
 
-    input_is_jet = isinstance(input, CollapsedJetTuple)
-    weight_is_jet = isinstance(weight, CollapsedJetTuple)
+    input_is = isinstance(input, CollapsedJetTuple)
+    weight_is = isinstance(weight, CollapsedJetTuple)
+    if input_is and weight_is:
+        primal = cv(input[0], weight[0])
+        product = CollapsedJetTuple((primal, *_collapsed_leibniz(input, weight, cv)))
+    elif input_is:
+        product = _apply_linear(input, lambda c: cv(c, weight))
+    elif weight_is:
+        product = _apply_linear(weight, lambda c: cv(input, c))
+    else:
+        product = cv(input, weight)
 
-    if input_is_jet and weight_is_jet:
-        primal = conv(input[0], weight[0], bias, *conv_args)
-        return CollapsedJetTuple((primal, *_collapsed_leibniz(input, weight, cv)))
-    elif input_is_jet:
-        primal = conv(input[0], weight, bias, *conv_args)
-        return CollapsedJetTuple(
-            (primal, *_apply_linear_coeffs(input, lambda c: cv(c, weight)))
-        )
-    elif weight_is_jet:
-        primal = conv(input, weight[0], bias, *conv_args)
-        return CollapsedJetTuple(
-            (primal, *_apply_linear_coeffs(weight, lambda c: cv(input, c)))
-        )
-    raise NotImplementedError(
-        "cjet_convolution expects input and/or weight to be Taylor-expanded."
-    )
+    if bias is None:
+        return product
+    # conv preserves rank, so the output ndim is the input ndim.
+    ndim = (input[0] if input_is else input).ndim
+    return cjet_add(_align_conv_bias(bias, ndim), product)
 
 
 # ---------------------------------------------------------------------------
@@ -610,7 +595,7 @@ COLLAPSED_MAPPING: dict = {
     # Matrix ops
     ops.aten.mm.default: cjet_mm,
     ops.aten.addmm.default: cjet_addmm,
-    # Convolution (affine: bias on primal, coefficients convolved bias-free)
+    # Convolution (bilinear in input/weight; bias is the affine term)
     ops.aten.convolution.default: cjet_convolution,
     # Pooling (piecewise linear: gather coefficients at the primal's arg-max)
     ops.aten.max_pool2d_with_indices.default: cjet_max_pool2d_with_indices,

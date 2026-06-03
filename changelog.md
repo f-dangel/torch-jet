@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     ([PR](https://github.com/f-dangel/torch-jet/pull/156)).
   - `aten.exp.default`
     ([PR](https://github.com/f-dangel/torch-jet/pull/162)).
+  - `aten.log.default`
+    ([PR](https://github.com/f-dangel/torch-jet/pull/163)).
 
 - **Backward-incompatible.** Replace the `Laplacian` / `Bilaplacian`
   `nn.Module`s with `laplacian()` / `bilaplacian()` function transforms that

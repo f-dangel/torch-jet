@@ -157,6 +157,28 @@ _POW_EXPONENTS = {
     "pow_int_negative": -2.0,
 }
 
+# Elementwise binary ops over a broadcasting stress matrix (both operands jets).
+# In collapsed mode the batched coefficients carry a leading direction dim ``R``;
+# right-aligned broadcasting must not shift it. The same-rank pairs broadcast
+# without moving ``R``; the different-rank pairs are the ones that previously
+# collided ``R`` with a primal dim (for ``add`` / ``sub`` -- ``mul`` already
+# aligned via vmap).
+_BROADCAST_BINOPS = {
+    "add": lambda x, y: x + y,
+    "sub": lambda x, y: x - y,
+    "mul": lambda x, y: x * y,
+}
+_BROADCAST_PAIRS = [
+    ((1, 4), (3, 1)),  # same rank, mutual broadcast
+    ((1, 1), (3, 4)),  # same rank, scalar-like broadcast
+    ((4,), (3, 4)),  # different rank
+    ((3, 4), (4,)),  # different rank (reversed)
+    ((4,), (3, 1)),  # different rank, mutual broadcast
+    ((3, 1), (4,)),  # different rank, mutual broadcast (reversed)
+    ((2, 1, 4), (1, 3, 1)),  # higher rank, same rank, mutual
+    ((2, 1, 4), (3, 1)),  # higher rank, different rank
+]
+
 PRIMITIVE_CASES = [
     # ---- Unary pointwise (cross-product over shapes) ---------------------
     *(
@@ -245,6 +267,17 @@ PRIMITIVE_CASES = [
     },
     {"id": "mul_JC", "f": _stateless(lambda x: x * 3.0), "args_fn": lambda: (rand(4),)},
     {"id": "mul_CJ", "f": _stateless(lambda x: 3.0 * x), "args_fn": lambda: (rand(4),)},
+    # ---- Broadcasting stress matrix (binary ops, both operands jets) ------
+    # See ``_BROADCAST_PAIRS`` / ``_BROADCAST_BINOPS``.
+    *(
+        {
+            "id": f"{name}_bcast_{'x'.join(map(str, sa))}_{'x'.join(map(str, sb))}",
+            "f": _stateless(op),
+            "args_fn": lambda sa=sa, sb=sb: (rand(*sa), rand(*sb)),
+        }
+        for name, op in _BROADCAST_BINOPS.items()
+        for sa, sb in _BROADCAST_PAIRS
+    ),
     # ---- Matrix multiply (non-commutative) -------------------------------
     {
         "id": "mm_JJ",

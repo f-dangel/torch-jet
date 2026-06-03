@@ -122,6 +122,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
+- Fix `cjet_add` / `cjet_sub` mis-broadcasting in collapsed mode when the two
+  Taylor-expanded operands have different primal ranks (e.g. `x + y` with shapes
+  `(4,)` and `(3, 4)`), similar to #141
+  ([PR](https://github.com/f-dangel/torch-jet/pull/166)).
+
 - Fix Taylor-mode coefficients for power functions with non-positive exponents.
   `_pow_derivatives` no longer truncates the derivatives of negative integer
   exponents (e.g. `x ** -2`), and Faà di Bruno now materializes a structurally

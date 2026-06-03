@@ -348,11 +348,7 @@ def cjet_addmm(
     """Collapsed jet rule for ``aten.addmm`` (supports a Taylor-expanded bias).
 
     See :func:`jet.operations.jet_addmm`: composes the matrix-product rule with
-    the affine bias addition, ``cjet_add(self, cjet_mm(mat1, mat2))``. Aligning
-    a lower-rank bias over the product's rows (including the direction dim ``R``
-    of the batched coefficients) is handled by :func:`cjet_add` via
-    :func:`_broadcast_coeffs`. When both matrices are constant the product is a
-    plain tensor.
+    the affine bias addition, ``cjet_add(self, cjet_mm(mat1, mat2))``.
     """
     product = (
         cjet_mm(mat1, mat2)

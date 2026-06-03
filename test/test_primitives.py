@@ -143,6 +143,13 @@ _UNARY_POINTWISE = {
     "exp": exp,
 }
 _UNARY_SHAPES = {"1d": (4,), "2d": (3, 4)}
+_POW_EXPONENTS = {
+    "pow_float": 2.5,
+    "pow_int_0": 0,
+    "pow_int_5": 5,
+    "pow_int_10": 10,
+    "pow_int_negative": -2.0,
+}
 
 PRIMITIVE_CASES = [
     # ---- Unary pointwise (cross-product over shapes) ---------------------
@@ -167,18 +174,17 @@ PRIMITIVE_CASES = [
     ),
     # ---- Unary with scalar exponent (float + low/high integer) -----------
     # ``pow_int_5`` at ``K=5`` hits the order-equals-exponent edge where the
-    # K-th derivative of ``x**5`` vanishes.
-    {
-        "id": "pow_float",
-        "f": _stateless(lambda x: x**2.5),
-        "args_fn": lambda: (rand(4),),
-    },
-    {"id": "pow_int_5", "f": _stateless(lambda x: x**5), "args_fn": lambda: (rand(4),)},
-    {
-        "id": "pow_int_10",
-        "f": _stateless(lambda x: x**10),
-        "args_fn": lambda: (rand(4),),
-    },
+    # K-th derivative of ``x**5`` vanishes; ``pow_int_0`` is the constant case
+    # (every derivative structurally zero). ``pow_int_negative`` exercises a
+    # negative integer exponent (its inputs are shifted off zero).
+    *(
+        {
+            "id": pid,
+            "f": _stateless(lambda x, p=p: x**p),
+            "args_fn": lambda p=p: (rand(4) + 0.5,) if p < 0 else (rand(4),),
+        }
+        for pid, p in _POW_EXPONENTS.items()
+    ),
     # ---- Binary add (commutative; 3 dispatch branches + aliased) ---------
     {
         "id": "add_JJ",

@@ -115,6 +115,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
+- Fix Taylor-mode coefficients for power functions with non-positive exponents.
+  `_pow_derivatives` no longer truncates the derivatives of negative integer
+  exponents (e.g. `x ** -2`), and Faà di Bruno now materializes a structurally
+  zero coefficient as an explicit zero tensor instead of leaking ``None`` --
+  which previously broke constant elementwise outputs such as `x ** 0`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/164)).
+
 - Fix the failing Read the Docs build by removing the gallery example's
   "Unsupported Operations" subsection
   ([PR](https://github.com/f-dangel/torch-jet/pull/158)).

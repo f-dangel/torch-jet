@@ -248,7 +248,12 @@ def _faa_di_bruno(
                 term = _partition_term(vs, sigma, dn)
                 if term is not None:
                     result = term if result is None else result + term
-            vs_out.append(result)
+            # ``result is None`` means every Faà di Bruno term vanished
+            # structurally (all required outer derivatives are ``None``), as
+            # happens for a constant outer function like ``x ** 0``. Materialize
+            # the zero coefficient with the matching input-coefficient shape
+            # (``vs[k]`` is ``(R, *S)`` in collapsed mode, ``S`` in standard).
+            vs_out.append(zeros_like(vs[k]) if result is None else result)
     return vs_out
 
 
@@ -375,7 +380,7 @@ def _pow_derivatives(
     pow_x0 = x0**exponent
     d = {0: pow_x0}
     for k in range(1, K + 1):
-        if exponent - k < 0 and int(exponent) == exponent:
+        if exponent - k < 0 and int(exponent) == exponent and exponent >= 0:
             d[k] = None
         elif exponent == k:
             d[k] = factorial(exponent, exact=True)

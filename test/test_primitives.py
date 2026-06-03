@@ -355,21 +355,14 @@ PRIMITIVE_CASES = [
     # ``mse_loss`` composes ``sub`` + ``pow`` then a linear reduction, against
     # a frozen target (the common loss usage). Cover all three reduction
     # enums: none (elementwise), mean, sum.
-    {
-        "id": "mse_loss_none",
-        "f": _mse_loss("none", (3, 4)),
-        "args_fn": lambda: (rand(3, 4),),
-    },
-    {
-        "id": "mse_loss_mean",
-        "f": _mse_loss("mean", (3, 4)),
-        "args_fn": lambda: (rand(3, 4),),
-    },
-    {
-        "id": "mse_loss_sum",
-        "f": _mse_loss("sum", (3, 4)),
-        "args_fn": lambda: (rand(3, 4),),
-    },
+    *(
+        {
+            "id": f"mse_loss_{reduction}",
+            "f": _mse_loss(reduction, (3, 4)),
+            "args_fn": lambda: (rand(3, 4),),
+        }
+        for reduction in ("none", "mean", "sum")
+    ),
     # ---- Constant-output ops (zero derivatives at every order) -----------
     {"id": "zeros_like", "f": _stateless(zeros_like), "args_fn": lambda: (rand(3, 4),)},
     # ``zeros_like_dtype_cast`` guards ``defzero`` against dropping the

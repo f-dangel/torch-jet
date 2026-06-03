@@ -3,7 +3,7 @@
 from typing import Callable
 
 from scipy.special import comb, factorial, stirling2
-from torch import Tensor, addmm, cos, mm, ops, sigmoid, sin, tanh, zeros_like
+from torch import Tensor, addmm, cos, mm, ops, relu, sigmoid, sin, tanh, zeros_like
 from torch.utils._pytree import register_pytree_node
 
 from jet.utils import integer_partitions, multiplicity
@@ -339,6 +339,25 @@ def _sigmoid_derivatives(x0: Tensor, K: int) -> tuple[Tensor, dict[int, Tensor]]
     return sigmoid_x0, d
 
 
+def _relu_derivatives(x0: Tensor, K: int) -> tuple[Tensor, dict[int, Tensor | None]]:
+    """Compute ``relu(x0)`` and its derivatives up to order *K*.
+
+    ReLU is piecewise linear, so its first derivative is the indicator
+    ``x0 > 0`` and every higher derivative vanishes (we adopt the subgradient
+    convention ``relu'(0) = 0``, matching PyTorch's autograd). Returning
+    ``None`` for orders ``>= 2`` lets Faà di Bruno skip those structurally-zero
+    terms; the only surviving order-``k`` term is the linear one,
+    ``(x0 > 0) * c_k``.
+    """
+    relu_x0 = relu(x0)
+    d: dict[int, Tensor | None] = {0: relu_x0}
+    if K >= 1:
+        d[1] = (x0 > 0).to(x0.dtype)
+    for k in range(2, K + 1):
+        d[k] = None
+    return relu_x0, d
+
+
 def _pow_derivatives(
     x0: Tensor, exponent: float | int, K: int
 ) -> tuple[Tensor, dict[int, Tensor | None]]:
@@ -400,6 +419,11 @@ def jet_tanh(self: JetTuple) -> JetTuple:
 def jet_sigmoid(self: JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.sigmoid(self)``."""
     return _jet_elementwise(self, _sigmoid_derivatives)
+
+
+def jet_relu(self: JetTuple) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.relu(self)``."""
+    return _jet_elementwise(self, _relu_derivatives)
 
 
 # --- Power ---
@@ -557,6 +581,109 @@ def jet_addmm(
         return JetTuple((primal, *_apply_linear_coeffs(mat2, lambda c: mm(mat1, c))))
 
 
+def jet_convolution(
+    input: Tensor | JetTuple,
+    weight: Tensor | JetTuple,
+    bias: Tensor | None,
+    *conv_args: object,
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.convolution(input, weight, bias, ...)``.
+
+    Args:
+        input: The convolution input; a jet or a constant ``Tensor``.
+        weight: The convolution kernel; a jet or a constant ``Tensor``.
+        bias: The bias; a constant ``Tensor`` or ``None``.
+        *conv_args: The remaining ``aten.convolution`` structural arguments
+            (``stride``, ``padding``, ``dilation``, ``transposed``,
+            ``output_padding``, ``groups``), forwarded unchanged.
+
+    Returns:
+        The value and its Taylor coefficients.
+
+    Raises:
+        NotImplementedError: If ``bias`` is Taylor-expanded, or if neither
+            ``input`` nor ``weight`` is Taylor-expanded.
+    """
+    if isinstance(bias, JetTuple):
+        raise NotImplementedError(
+            "jet_convolution does not support a Taylor-expanded bias. "
+            "Expected a constant Tensor or None."
+        )
+    conv = ops.aten.convolution.default
+
+    def cv(a: Tensor, b: Tensor) -> Tensor:
+        """Bias-free convolution -- the bilinear core of ``aten.convolution``."""
+        return conv(a, b, None, *conv_args)
+
+    input_is_jet = isinstance(input, JetTuple)
+    weight_is_jet = isinstance(weight, JetTuple)
+
+    if input_is_jet and weight_is_jet:
+        primal = conv(input[0], weight[0], bias, *conv_args)
+        return JetTuple((primal, *_leibniz(input, weight, cv)))
+    elif input_is_jet:
+        primal = conv(input[0], weight, bias, *conv_args)
+        return JetTuple((primal, *_apply_linear_coeffs(input, lambda c: cv(c, weight))))
+    elif weight_is_jet:
+        primal = conv(input, weight[0], bias, *conv_args)
+        return JetTuple((primal, *_apply_linear_coeffs(weight, lambda c: cv(input, c))))
+    raise NotImplementedError(
+        "jet_convolution expects input and/or weight to be Taylor-expanded."
+    )
+
+
+def _gather_at_indices(c: Tensor, indices: Tensor) -> Tensor:
+    """Select pooling coefficients at the primal's arg-max ``indices``.
+
+    ``indices`` (shape ``(*lead, oH, oW)``, as returned by
+    ``max_pool2d_with_indices``) index into the flattened spatial plane ``H*W``
+    of ``c`` (shape ``(*lead, H, W)``), per leading dim. The leading dims
+    ``lead`` are ``(N, C)`` for a batched ``(N, C, H, W)`` input and ``(C,)``
+    for an unbatched ``(C, H, W)`` one. Max pooling is piecewise linear, so
+    every Taylor coefficient is selected at the same positions the primal's
+    max chose.
+    """
+    *lead, H, W = c.shape
+    *_, oH, oW = indices.shape
+    flat = c.reshape(*lead, H * W)
+    selected = flat.gather(flat.dim() - 1, indices.reshape(*lead, oH * oW))
+    return selected.reshape(*lead, oH, oW)
+
+
+def jet_max_pool2d_with_indices(
+    input: JetTuple, *pool_args: object
+) -> tuple[JetTuple, Tensor]:
+    """Taylor-mode arithmetic for ``aten.max_pool2d_with_indices(input, ...)``.
+
+    Returns ``(values_jet, indices)`` mirroring the ATen op's two outputs; a
+    downstream ``getitem`` selects the values jet. Max pooling is piecewise
+    linear: the primal picks the arg-max ``indices``, and every coefficient is
+    gathered at those same positions.
+
+    Args:
+        input: The input and its Taylor coefficients.
+        *pool_args: The remaining ``max_pool2d_with_indices`` structural
+            arguments (``kernel_size``, ``stride``, ``padding``, ``dilation``,
+            ``ceil_mode``), forwarded unchanged.
+
+    Returns:
+        A ``(values_jet, indices)`` tuple.
+    """
+    values0, indices = ops.aten.max_pool2d_with_indices.default(input[0], *pool_args)
+    coeffs = _apply_linear_coeffs(input, lambda c: _gather_at_indices(c, indices))
+    return JetTuple((values0, *coeffs)), indices
+
+
+def jet_max_pool2d(input: JetTuple, *pool_args: object) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.max_pool2d`` (values only).
+
+    The fused, indices-free pooling op some backends emit (e.g. MPS). Delegates
+    to :func:`jet_max_pool2d_with_indices` and drops the indices output.
+    """
+    jet, _ = jet_max_pool2d_with_indices(input, *pool_args)
+    return jet
+
+
 # --- Loss functions ---
 
 
@@ -614,6 +741,7 @@ MAPPING: dict = {
     ops.aten.cos.default: jet_cos,
     ops.aten.tanh.default: jet_tanh,
     ops.aten.sigmoid.default: jet_sigmoid,
+    ops.aten.relu.default: jet_relu,
     # Power
     ops.aten.pow.Tensor_Scalar: jet_pow,
     # Arithmetic
@@ -623,6 +751,11 @@ MAPPING: dict = {
     # Matrix decomposition
     ops.aten.mm.default: jet_mm,
     ops.aten.addmm.default: jet_addmm,
+    # Convolution (affine: bias on primal, coefficients convolved bias-free)
+    ops.aten.convolution.default: jet_convolution,
+    # Pooling (piecewise linear: gather coefficients at the primal's arg-max)
+    ops.aten.max_pool2d_with_indices.default: jet_max_pool2d_with_indices,
+    ops.aten.max_pool2d.default: jet_max_pool2d,
     # Loss functions
     ops.aten.mse_loss.default: jet_mse_loss,
 }
@@ -667,8 +800,9 @@ def defzero(prim: Callable) -> None:
     MAPPING[prim] = rule
 
 
-# Linear / shape-only ops + reductions: apply the primitive per coefficient.
+# Linear ops (pointwise-linear, shape-only, reductions): apply per coefficient.
 for _prim in (
+    ops.aten.neg.default,
     ops.aten.view.default,
     ops.aten._unsafe_view.default,
     ops.aten.unsqueeze.default,
@@ -676,6 +810,10 @@ for _prim in (
     ops.aten.squeeze.dims,
     ops.aten.sum.default,
     ops.aten.sum.dim_IntList,
+    ops.aten._adaptive_avg_pool2d.default,
+    ops.aten.avg_pool2d.default,
+    ops.aten.mean.default,
+    ops.aten.mean.dim,
 ):
     deflinear(_prim)
 

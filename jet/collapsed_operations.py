@@ -20,8 +20,10 @@ from torch.utils._pytree import register_pytree_node
 from jet.operations import (
     _cos_derivatives,
     _faa_di_bruno,
+    _gather_at_indices,
     _order,
     _pow_derivatives,
+    _relu_derivatives,
     _sigmoid_derivatives,
     _sin_derivatives,
     _tanh_derivatives,
@@ -190,6 +192,11 @@ def cjet_sigmoid(self: CollapsedJetTuple) -> CollapsedJetTuple:
     return _cjet_elementwise(self, _sigmoid_derivatives)
 
 
+def cjet_relu(self: CollapsedJetTuple) -> CollapsedJetTuple:
+    """Collapsed jet rule for ``aten.relu``."""
+    return _cjet_elementwise(self, _relu_derivatives)
+
+
 def cjet_pow(self: CollapsedJetTuple, exponent: float | int) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.pow``."""
     assert isinstance(exponent, (float, int))
@@ -304,6 +311,60 @@ def cjet_addmm(
         )
 
 
+def cjet_convolution(
+    input: Tensor | CollapsedJetTuple,
+    weight: Tensor | CollapsedJetTuple,
+    bias: Tensor | None,
+    *conv_args: object,
+) -> CollapsedJetTuple:
+    """Collapsed jet rule for ``aten.convolution``.
+
+    Args:
+        input: The convolution input; a jet or a constant ``Tensor``.
+        weight: The convolution kernel; a jet or a constant ``Tensor``.
+        bias: The bias; a constant ``Tensor`` or ``None``.
+        *conv_args: The remaining ``aten.convolution`` structural arguments,
+            forwarded unchanged.
+
+    Returns:
+        The value and its Taylor coefficients.
+
+    Raises:
+        NotImplementedError: If ``bias`` is Taylor-expanded, or if neither
+            ``input`` nor ``weight`` is Taylor-expanded.
+    """
+    if isinstance(bias, CollapsedJetTuple):
+        raise NotImplementedError(
+            "cjet_convolution does not support a Taylor-expanded bias. "
+            "Expected a constant Tensor or None."
+        )
+    conv = ops.aten.convolution.default
+
+    def cv(a: Tensor, b: Tensor) -> Tensor:
+        """Bias-free convolution -- the bilinear core of ``aten.convolution``."""
+        return conv(a, b, None, *conv_args)
+
+    input_is_jet = isinstance(input, CollapsedJetTuple)
+    weight_is_jet = isinstance(weight, CollapsedJetTuple)
+
+    if input_is_jet and weight_is_jet:
+        primal = conv(input[0], weight[0], bias, *conv_args)
+        return CollapsedJetTuple((primal, *_collapsed_leibniz(input, weight, cv)))
+    elif input_is_jet:
+        primal = conv(input[0], weight, bias, *conv_args)
+        return CollapsedJetTuple(
+            (primal, *_apply_linear_coeffs(input, lambda c: cv(c, weight)))
+        )
+    elif weight_is_jet:
+        primal = conv(input, weight[0], bias, *conv_args)
+        return CollapsedJetTuple(
+            (primal, *_apply_linear_coeffs(weight, lambda c: cv(input, c)))
+        )
+    raise NotImplementedError(
+        "cjet_convolution expects input and/or weight to be Taylor-expanded."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Loss functions
 # ---------------------------------------------------------------------------
@@ -364,12 +425,29 @@ def cjet_mse_loss(
 # COLLAPSED_MAPPING
 # ---------------------------------------------------------------------------
 
+
+def cjet_max_pool2d_with_indices(
+    input: CollapsedJetTuple, *pool_args: object
+) -> tuple[CollapsedJetTuple, Tensor]:
+    """Collapsed jet rule for ``aten.max_pool2d_with_indices``."""
+    values0, indices = ops.aten.max_pool2d_with_indices.default(input[0], *pool_args)
+    coeffs = _apply_linear_coeffs(input, lambda c: _gather_at_indices(c, indices))
+    return CollapsedJetTuple((values0, *coeffs)), indices
+
+
+def cjet_max_pool2d(input: CollapsedJetTuple, *pool_args: object) -> CollapsedJetTuple:
+    """Collapsed jet rule for ``aten.max_pool2d`` (values only; e.g. MPS)."""
+    jet, _ = cjet_max_pool2d_with_indices(input, *pool_args)
+    return jet
+
+
 COLLAPSED_MAPPING: dict = {
     # Elementwise nonlinear
     ops.aten.sin.default: cjet_sin,
     ops.aten.cos.default: cjet_cos,
     ops.aten.tanh.default: cjet_tanh,
     ops.aten.sigmoid.default: cjet_sigmoid,
+    ops.aten.relu.default: cjet_relu,
     # Power
     ops.aten.pow.Tensor_Scalar: cjet_pow,
     # Arithmetic
@@ -379,6 +457,11 @@ COLLAPSED_MAPPING: dict = {
     # Matrix ops
     ops.aten.mm.default: cjet_mm,
     ops.aten.addmm.default: cjet_addmm,
+    # Convolution (affine: bias on primal, coefficients convolved bias-free)
+    ops.aten.convolution.default: cjet_convolution,
+    # Pooling (piecewise linear: gather coefficients at the primal's arg-max)
+    ops.aten.max_pool2d_with_indices.default: cjet_max_pool2d_with_indices,
+    ops.aten.max_pool2d.default: cjet_max_pool2d,
     # Loss functions
     ops.aten.mse_loss.default: cjet_mse_loss,
 }
@@ -425,8 +508,9 @@ def defzero(prim: Callable) -> None:
     COLLAPSED_MAPPING[prim] = rule
 
 
-# Linear / shape-only ops + reductions.
+# Linear ops (pointwise-linear, shape-only, reductions).
 for _prim in (
+    ops.aten.neg.default,
     ops.aten.view.default,
     ops.aten._unsafe_view.default,
     ops.aten.unsqueeze.default,
@@ -434,6 +518,10 @@ for _prim in (
     ops.aten.squeeze.dims,
     ops.aten.sum.default,
     ops.aten.sum.dim_IntList,
+    ops.aten._adaptive_avg_pool2d.default,
+    ops.aten.avg_pool2d.default,
+    ops.aten.mean.default,
+    ops.aten.mean.dim,
 ):
     deflinear(_prim)
 

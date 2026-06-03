@@ -9,12 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
-- Add a jet rule for `aten.mse_loss.default`, so `nn.MSELoss` (and
-  `torch.nn.functional.mse_loss`) can be wrapped by `jet()` / `laplacian()` /
-  `bilaplacian()`. All three reductions (`none` / `mean` / `sum`) work in both
-  standard and collapsed mode; the target may be a constant or itself carry
-  Taylor coefficients
-  ([PR](https://github.com/f-dangel/torch-jet/pull/146)).
+- Support classic torchvision CNNs in Taylor mode by adding jet rules for the
+  ATen ops they need:
+  - `aten.relu.default`
+    ([PR](https://github.com/f-dangel/torch-jet/pull/144)).
+  - `aten.convolution.default`
+    ([PR](https://github.com/f-dangel/torch-jet/pull/145)).
+  - `aten.max_pool2d_with_indices.default` and `aten.max_pool2d.default`
+    ([PR](https://github.com/f-dangel/torch-jet/pull/159)).
+  - `aten._adaptive_avg_pool2d.default`
+    ([PR](https://github.com/f-dangel/torch-jet/pull/149)).
+  - `aten.mean.dim` and `aten.mean.default`
+    ([PR](https://github.com/f-dangel/torch-jet/pull/150)).
+  - `aten.avg_pool2d.default`
+    ([PR](https://github.com/f-dangel/torch-jet/pull/151)).
+
+- Support loss functions in Taylor mode by adding jet rules for the ATen ops
+  they need:
+  - `aten.neg.default`
+    ([PR](https://github.com/f-dangel/torch-jet/pull/155)).
+  - `aten.mse_loss.default`, so `nn.MSELoss` (and
+    `torch.nn.functional.mse_loss`) can be wrapped by `jet()` / `laplacian()` /
+    `bilaplacian()`. All three reductions (`none` / `mean` / `sum`) work in both
+    standard and collapsed mode; the target may be a constant or itself carry
+    Taylor coefficients
+    ([PR](https://github.com/f-dangel/torch-jet/pull/146)).
 
 - **Backward-incompatible.** Replace the `Laplacian` / `Bilaplacian`
   `nn.Module`s with `laplacian()` / `bilaplacian()` function transforms that
@@ -95,6 +114,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([PR](https://github.com/f-dangel/torch-jet/pull/126))
 
 ### Fixed/Removed
+
+- Fix the failing Read the Docs build by removing the gallery example's
+  "Unsupported Operations" subsection
+  ([PR](https://github.com/f-dangel/torch-jet/pull/158)).
 
 - Fix collapsed-mode Leibniz misaligning the leading direction dim `R` when
   product operands have different primal ranks (`cjet_mul` / `cjet_mm` /

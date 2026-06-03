@@ -6,7 +6,7 @@ registered with :class:`JetInterpreter`.
 
 from typing import Any, Callable
 
-from pytest import mark
+from pytest import mark, raises
 from torch import (
     addmm,
     cos,
@@ -14,19 +14,29 @@ from torch import (
     manual_seed,
     ops,
     rand,
+    randn,
+    relu,
     sigmoid,
     sin,
     tanh,
     tensor,
     zeros_like,
 )
-from torch.nn.functional import mse_loss
+from torch.nn.functional import (
+    adaptive_avg_pool2d,
+    avg_pool2d,
+    conv2d,
+    max_pool2d,
+    mse_loss,
+)
 
+from jet import jet
 from test.utils import (
     K_AND_MODE,
     _stateless,
     assert_jet_matches_oracle,
     device_kw,
+    make_jet_args,
 )
 
 
@@ -44,6 +54,11 @@ def _consts(device: str) -> dict[str, Any]:
         "R": rand(4, 5, **kw),
         "B": rand(3, 5, **kw),
         "SUB": tensor(2.0, **kw),
+        # conv2d kernels: CONV_W/CONV_B for a plain conv (in=2, out=4, 3x3);
+        # DW_W for a grouped conv (groups=2, in=2, out=4).
+        "CONV_W": rand(4, 2, 3, 3, **kw),
+        "CONV_B": rand(4, **kw),
+        "DW_W": rand(4, 1, 3, 3, **kw),
     }
 
 
@@ -94,6 +109,31 @@ def _mse_loss(reduction: str, shape: tuple[int, ...]) -> Callable[[str], Callabl
     return build
 
 
+def _conv2d_jc(device):
+    cs = _consts(device)
+    return lambda x: conv2d(x, cs["CONV_W"], cs["CONV_B"], stride=1, padding=1)
+
+
+def _conv2d_grouped_jc(device):
+    # Depthwise/grouped conv (groups=2, no bias) -- the mobile/ResNet pattern.
+    cs = _consts(device)
+    return lambda x: conv2d(x, cs["DW_W"], None, stride=2, padding=1, groups=2)
+
+
+def _conv2d_weight_jet(device):
+    # Weight is the Taylor-expanded operand (constant input) -- conv is linear
+    # in the kernel just as it is in the input.
+    cs = _consts(device)
+    X = rand(1, 2, 5, 5, **device_kw(device))
+    return lambda w: conv2d(X, w, cs["CONV_B"], stride=1, padding=1)
+
+
+def _conv2d_input_weight_jet(device):
+    # Both operands are jets -> exercises the bilinear Leibniz branch.
+    cs = _consts(device)
+    return lambda x, w: conv2d(x, w, cs["CONV_B"], stride=1, padding=1)
+
+
 _UNARY_POINTWISE = {"sin": sin, "cos": cos, "tanh": tanh, "sigmoid": sigmoid}
 _UNARY_SHAPES = {"1d": (4,), "2d": (3, 4)}
 
@@ -106,6 +146,16 @@ PRIMITIVE_CASES = [
             "args_fn": lambda dims=dims: (rand(*dims),),
         }
         for name, fn in _UNARY_POINTWISE.items()
+        for sid, dims in _UNARY_SHAPES.items()
+    ),
+    # ---- ReLU (piecewise linear; ``randn`` straddles 0 to exercise both
+    # the active ``x>0`` mask and the zeroed-out ``x<0`` branch) -----------
+    *(
+        {
+            "id": f"relu-{sid}",
+            "f": _stateless(relu),
+            "args_fn": lambda dims=dims: (randn(*dims),),
+        }
         for sid, dims in _UNARY_SHAPES.items()
     ),
     # ---- Unary with scalar exponent (float + low/high integer) -----------
@@ -182,6 +232,66 @@ PRIMITIVE_CASES = [
     },
     {"id": "addmm_mat1_jet", "f": _addmm_mat1_jet, "args_fn": lambda: (rand(3, 4),)},
     {"id": "addmm_mat2_jet", "f": _addmm_mat2_jet, "args_fn": lambda: (rand(4, 5),)},
+    # ---- Convolution (bilinear in input/weight; bias is the affine term) --
+    {"id": "conv2d", "f": _conv2d_jc, "args_fn": lambda: (rand(1, 2, 5, 5),)},
+    {
+        "id": "conv2d_grouped",
+        "f": _conv2d_grouped_jc,
+        "args_fn": lambda: (rand(1, 2, 6, 6),),
+    },
+    # Jet weight (constant input) and both-jet (bilinear Leibniz) branches.
+    {
+        "id": "conv2d_weight_jet",
+        "f": _conv2d_weight_jet,
+        "args_fn": lambda: (rand(4, 2, 3, 3),),
+    },
+    {
+        "id": "conv2d_input_weight_jet",
+        "f": _conv2d_input_weight_jet,
+        "args_fn": lambda: (rand(1, 2, 5, 5), rand(4, 2, 3, 3)),
+    },
+    # ---- Max pooling (piecewise linear; gather at the primal's arg-max) ---
+    {
+        "id": "max_pool2d",
+        "f": _stateless(lambda x: max_pool2d(x, kernel_size=2, stride=2)),
+        "args_fn": lambda: (rand(1, 2, 6, 6),),
+    },
+    # Unbatched (C, H, W) input -- exercises the leading-dim gather path.
+    {
+        "id": "max_pool2d_unbatched",
+        "f": _stateless(lambda x: max_pool2d(x, kernel_size=2, stride=2)),
+        "args_fn": lambda: (rand(2, 6, 6),),
+    },
+    # ---- Adaptive average pooling (linear); non-(1,1) output keeps it as
+    # ``aten._adaptive_avg_pool2d`` (a (1,1) target lowers to ``mean.dim``) ----
+    {
+        "id": "adaptive_avg_pool2d",
+        "f": _stateless(lambda x: adaptive_avg_pool2d(x, (2, 2))),
+        "args_fn": lambda: (rand(1, 2, 6, 6),),
+    },
+    # ---- mean (linear); ``mean()`` (all dims) lowers to ``aten.mean.default``,
+    # ``mean(dim=...)`` to ``aten.mean.dim`` (the global-average-pool pattern) --
+    {
+        "id": "mean_all",
+        "f": _stateless(lambda x: x.mean()),
+        "args_fn": lambda: (rand(1, 2, 6, 6),),
+    },
+    {
+        "id": "mean_dim",
+        "f": _stateless(lambda x: x.mean(dim=[2, 3])),
+        "args_fn": lambda: (rand(1, 2, 6, 6),),
+    },
+    {
+        "id": "mean_dim_keepdim",
+        "f": _stateless(lambda x: x.mean(dim=[2, 3], keepdim=True)),
+        "args_fn": lambda: (rand(1, 2, 6, 6),),
+    },
+    # ---- Average pooling (linear) ----------------------------------------
+    {
+        "id": "avg_pool2d",
+        "f": _stateless(lambda x: avg_pool2d(x, kernel_size=2, stride=2)),
+        "args_fn": lambda: (rand(1, 2, 6, 6),),
+    },
     # ---- Reduction -------------------------------------------------------
     # ``sum()`` (no-dim) lowers to ``aten.sum.default``; the dim/keepdim
     # variants all lower to ``aten.sum.dim_IntList``.
@@ -210,6 +320,8 @@ PRIMITIVE_CASES = [
         "f": _stateless(lambda x: x.sum([0, 1], keepdim=True)),
         "args_fn": lambda: (rand(3, 4),),
     },
+    # ---- Pointwise-linear ops --------------------------------------------
+    {"id": "neg", "f": _stateless(lambda x: -x), "args_fn": lambda: (rand(3, 4),)},
     # ---- Shape-only ops --------------------------------------------------
     {
         "id": "view",
@@ -277,3 +389,19 @@ PRIMITIVE_CASES = [
 def test_primitive(config: dict[str, Any], K: int, collapsed: bool, device: str):
     """``jet(primitive)`` matches its mode-specific oracle."""
     assert_jet_matches_oracle(config, K, collapsed, device)
+
+
+@mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])
+def test_conv_taylor_expanded_bias_raises(collapsed: bool, device: str):
+    """A Taylor-expanded convolution bias is rejected (bias must be constant)."""
+    cs = _consts(device)
+    kw = device_kw(device)
+    X, W = rand(1, 2, 5, 5, **kw), cs["CONV_W"]
+
+    def f(b):
+        return conv2d(X, W, b, stride=1, padding=1)
+
+    bias = rand(4, **kw)
+    jet_args = make_jet_args((bias,), K=2, collapsed=collapsed)
+    with raises(NotImplementedError, match="Taylor-expanded bias"):
+        jet(f, (bias,), collapsed=collapsed)(*jet_args)

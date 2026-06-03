@@ -13,7 +13,6 @@ from pytest import raises
 from torch import Tensor, cos, manual_seed, ones_like, rand, sin, zeros_like
 from torch.func import hessian
 from torch.nn import Linear, Sequential, Tanh
-from torch.nn.functional import relu
 
 from jet import jet
 from jet.tracing import capture_graph
@@ -429,21 +428,6 @@ assert f_2jet_val[2].allclose(f_jet(x_2jet)[2])
 # **Some limitations are a consequence of our still evolving know-how
 # how to properly implement `jet` in PyTorch. So if you have suggestions how to fix
 # them, please reach out to us, open an issue, or submit a pull request :wink:.**
-#
-#### Unsupported Operations
-#
-# **`jet` supports only a small number of operations.**
-#
-# As described above, `jet` replaces the original function with its Taylor arithmetic.
-# This overloading must be specified and correctly implemented for each operation.
-# Typically, if a function is not supported, you will encounter an error. For instance,
-# the ReLU function is currently not supported:
-
-
-x_relu = rand(3)
-f_relu_jet = jet(lambda x: relu(x), (x_relu,))  # noqa: PLW0108
-with raises(NotImplementedError):
-    f_relu_jet((x_relu, zeros_like(x_relu), zeros_like(x_relu)))
 
 # %%
 #

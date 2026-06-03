@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     ([PR](https://github.com/f-dangel/torch-jet/pull/150)).
   - `aten.avg_pool2d.default`
     ([PR](https://github.com/f-dangel/torch-jet/pull/151)).
+  - `aten.cat.default` (dispatch now also detects jets nested in `list` args)
+    ([PR](https://github.com/f-dangel/torch-jet/pull/154)).
 
 - Support loss functions in Taylor mode by adding jet rules for the ATen ops
   they need:

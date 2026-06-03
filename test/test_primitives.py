@@ -246,6 +246,23 @@ PRIMITIVE_CASES = [
         "f": _stateless(lambda x: adaptive_avg_pool2d(x, (2, 2))),
         "args_fn": lambda: (rand(1, 2, 6, 6),),
     },
+    # ---- mean (linear); ``mean()`` (all dims) lowers to ``aten.mean.default``,
+    # ``mean(dim=...)`` to ``aten.mean.dim`` (the global-average-pool pattern) --
+    {
+        "id": "mean_all",
+        "f": _stateless(lambda x: x.mean()),
+        "args_fn": lambda: (rand(1, 2, 6, 6),),
+    },
+    {
+        "id": "mean_dim",
+        "f": _stateless(lambda x: x.mean(dim=[2, 3])),
+        "args_fn": lambda: (rand(1, 2, 6, 6),),
+    },
+    {
+        "id": "mean_dim_keepdim",
+        "f": _stateless(lambda x: x.mean(dim=[2, 3], keepdim=True)),
+        "args_fn": lambda: (rand(1, 2, 6, 6),),
+    },
     # ---- Reduction -------------------------------------------------------
     # ``sum()`` (no-dim) lowers to ``aten.sum.default``; the dim/keepdim
     # variants all lower to ``aten.sum.dim_IntList``.

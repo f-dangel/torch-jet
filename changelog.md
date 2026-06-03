@@ -100,11 +100,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
-- Fix the Laplacian docstring formula (the Hessian trace was written
-  `\sum_{i=d}^D` but sums over `x_d`; corrected to `\sum_{d=1}^D`) and
-  document the previously-undocumented `visualize_graph` helper in `api.md`
-  ([PR](https://github.com/f-dangel/torch-jet/pull/161)).
-
 - Fix the failing Read the Docs build by removing the gallery example's
   "Unsupported Operations" subsection
   ([PR](https://github.com/f-dangel/torch-jet/pull/158)).
@@ -131,9 +126,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
-- Rename `rev_jet` to `_rev_jet` to mark it internal. It is a reference
-  implementation used only for testing `jet` and is absent from the public
-  API docs
+- API doc cleanups: rename `rev_jet` to `_rev_jet` to mark it internal (a
+  reference implementation used only for testing `jet`, absent from the public
+  API docs), document the previously-undocumented `visualize_graph` helper in
+  `api.md`, and fix the Laplacian docstring formula (the Hessian trace was
+  written `\sum_{i=d}^D` but sums over `x_d`; corrected to `\sum_{d=1}^D`)
   ([PR](https://github.com/f-dangel/torch-jet/pull/161)).
 
 - Add JAX-style `deflinear(prim)` / `defzero(prim)` helpers in

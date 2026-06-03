@@ -4,7 +4,7 @@ Each row in ``PRIMITIVE_CASES`` exercises one dispatch branch of a primitive
 registered with :class:`JetInterpreter`.
 """
 
-from typing import Any
+from typing import Any, Callable
 
 from pytest import mark, raises
 from torch import (
@@ -22,7 +22,13 @@ from torch import (
     tensor,
     zeros_like,
 )
-from torch.nn.functional import adaptive_avg_pool2d, avg_pool2d, conv2d, max_pool2d
+from torch.nn.functional import (
+    adaptive_avg_pool2d,
+    avg_pool2d,
+    conv2d,
+    max_pool2d,
+    mse_loss,
+)
 
 from jet import jet
 from test.utils import (
@@ -84,6 +90,23 @@ def _addmm_mat1_jet(device):
 def _addmm_mat2_jet(device):
     cs = _consts(device)
     return lambda mat2: addmm(cs["B"], cs["L"], mat2)
+
+
+def _mse_loss(reduction: str, shape: tuple[int, ...]) -> Callable[[str], Callable]:
+    """Build ``mse_loss(x, target, reduction)`` against a frozen target.
+
+    The target is drawn under ``manual_seed(1)`` so it differs from the
+    ``setup_case`` input (seeded with ``0``); otherwise ``x - target`` would be
+    zero and the order-1 coefficient ``2 * (x - target) * x'`` would vanish,
+    masking bugs in that term.
+    """
+
+    def build(device: str) -> Callable:
+        manual_seed(1)
+        target = rand(*shape, **device_kw(device))
+        return lambda x: mse_loss(x, target, reduction=reduction)
+
+    return build
 
 
 def _conv2d_jc(device):
@@ -328,6 +351,33 @@ PRIMITIVE_CASES = [
         "f": _stateless(lambda x: x.squeeze([0, 1])),
         "args_fn": lambda: (rand(1, 1, 4),),
     },
+    # ---- Loss functions --------------------------------------------------
+    # ``mse_loss`` composes ``sub`` + ``pow`` then a linear reduction, against
+    # a frozen target (the common loss usage). Cover all three reduction
+    # enums: none (elementwise), mean, sum.
+    *(
+        {
+            "id": f"mse_loss_{reduction}",
+            "f": _mse_loss(reduction, (3, 4)),
+            "args_fn": lambda: (rand(3, 4),),
+        }
+        for reduction in ("none", "mean", "sum")
+    ),
+    # Both prediction and target are jets -> the ``sub`` operand-pair branch.
+    # The two ``rand`` draws differ, so ``x - target`` (and its order-1
+    # coefficient) stays nonzero.
+    *(
+        {
+            "id": f"mse_loss_jet_target_{reduction}",
+            "f": _stateless(
+                lambda x, target, reduction=reduction: mse_loss(
+                    x, target, reduction=reduction
+                )
+            ),
+            "args_fn": lambda: (rand(3, 4), rand(3, 4)),
+        }
+        for reduction in ("none", "mean", "sum")
+    ),
     # ---- Constant-output ops (zero derivatives at every order) -----------
     {"id": "zeros_like", "f": _stateless(zeros_like), "args_fn": lambda: (rand(3, 4),)},
     # ``zeros_like_dtype_cast`` guards ``defzero`` against dropping the

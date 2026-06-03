@@ -453,6 +453,29 @@ def cjet_max_pool2d(input: CollapsedJetTuple, *pool_args: object) -> CollapsedJe
     return jet
 
 
+def cjet_log_softmax(
+    self: CollapsedJetTuple, dim: int, half_to_float: bool = False
+) -> CollapsedJetTuple:
+    """Collapsed jet rule for ``aten._log_softmax(self, dim, half_to_float)``.
+
+    Args:
+        self: The logits and their Taylor coefficients.
+        dim: The dimension along which to normalize.
+        half_to_float: Whether inputs were promoted from half precision.
+            Accepted for ATen-signature compatibility; does not affect the
+            float32/float64 paths.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    shift = self[0].amax(dim, keepdim=True)
+    shifted = cjet_sub(self, shift)
+    exp_jet = cjet_exp(shifted)
+    sum_exp = cjet_sum(exp_jet, dim, keepdim=True)
+    log_sum_exp = cjet_log(sum_exp)
+    return cjet_sub(shifted, log_sum_exp)
+
+
 COLLAPSED_MAPPING: dict = {
     # Elementwise nonlinear
     ops.aten.sin.default: cjet_sin,
@@ -478,6 +501,8 @@ COLLAPSED_MAPPING: dict = {
     ops.aten.max_pool2d.default: cjet_max_pool2d,
     # Loss functions
     ops.aten.mse_loss.default: cjet_mse_loss,
+    # Normalization
+    ops.aten._log_softmax.default: cjet_log_softmax,
 }
 
 
@@ -489,18 +514,21 @@ COLLAPSED_MAPPING: dict = {
 # per-slot shape contract for ``defzero``.
 
 
-def deflinear(prim: Callable) -> None:
+def deflinear(prim: Callable) -> Callable:
     """Register ``prim`` as a linear op (collapsed mode).
 
     Collapsed ``_apply_linear`` vmaps over the leading ``R`` dim for batched
     coefficients ``c_1..c_{K-1}`` and applies ``prim`` directly to the primal
-    and the collapsed slot ``c_K``.
+    and the collapsed slot ``c_K``. Returns the registered rule so it can also
+    be bound to a name and reused inside composite rules (e.g. ``cjet_sum`` in
+    ``cjet_log_softmax``).
     """
 
     def rule(self: CollapsedJetTuple, *args, **kwargs) -> CollapsedJetTuple:
         return _apply_linear(self, lambda c: prim(c, *args, **kwargs))
 
     COLLAPSED_MAPPING[prim] = rule
+    return rule
 
 
 def defzero(prim: Callable) -> None:
@@ -532,13 +560,15 @@ for _prim in (
     ops.aten.squeeze.dim,
     ops.aten.squeeze.dims,
     ops.aten.sum.default,
-    ops.aten.sum.dim_IntList,
     ops.aten._adaptive_avg_pool2d.default,
     ops.aten.avg_pool2d.default,
     ops.aten.mean.default,
     ops.aten.mean.dim,
 ):
     deflinear(_prim)
+
+# Bound to a name so composite rules can reuse it (e.g. ``cjet_log_softmax``).
+cjet_sum = deflinear(ops.aten.sum.dim_IntList)
 
 # Constant-output ops.
 for _prim in (ops.aten.zeros_like.default,):

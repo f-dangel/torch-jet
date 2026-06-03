@@ -38,6 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     ([PR](https://github.com/f-dangel/torch-jet/pull/163)).
   - `aten._log_softmax.default`
     ([PR](https://github.com/f-dangel/torch-jet/pull/152)).
+  - `aten.nll_loss_forward.default`, together with `_log_softmax` this enables
+    `nn.CrossEntropyLoss`
+    ([PR](https://github.com/f-dangel/torch-jet/pull/153)).
 
 - **Backward-incompatible.** Replace the `Laplacian` / `Bilaplacian`
   `nn.Module`s with `laplacian()` / `bilaplacian()` function transforms that

@@ -31,13 +31,17 @@ from torch.nn.functional import (
     log_softmax,
     max_pool2d,
     mse_loss,
+    nll_loss,
 )
 
 from jet import jet
+from jet.collapsed_operations import CollapsedJetTuple, cjet_nll_loss_forward
+from jet.operations import JetTuple, jet_nll_loss_forward
 from test.utils import (
     K_AND_MODE,
     _stateless,
     assert_jet_matches_oracle,
+    class_index_loss,
     device_kw,
     make_jet_args,
 )
@@ -333,6 +337,21 @@ PRIMITIVE_CASES = [
             ("log_softmax_dim0_1d", 0, (4,)),
         )
     ),
+    # ---- Loss functions --------------------------------------------------
+    # ``nll_loss`` is linear in the (log-prob) input given a frozen integer
+    # target, so the same op applies to every coefficient. It returns
+    # ``(output, total_weight)``; cover all three reductions and the
+    # ``getitem`` that selects ``output``, both with and without per-class
+    # weights (the weighted ``mean`` exercises the ``total_weight`` divisor).
+    *(
+        {
+            "id": f"nll_loss_{reduction}" + ("_weighted" if weighted else ""),
+            "f": class_index_loss(nll_loss, reduction, 8, 5, weighted=weighted),
+            "args_fn": lambda: (rand(8, 5),),
+        }
+        for reduction in ("none", "mean", "sum")
+        for weighted in (False, True)
+    ),
     # ---- Reduction -------------------------------------------------------
     # ``sum()`` (no-dim) lowers to ``aten.sum.default``; the dim/keepdim
     # variants all lower to ``aten.sum.dim_IntList``.
@@ -461,3 +480,19 @@ def test_conv_taylor_expanded_bias_raises(collapsed: bool, device: str):
     jet_args = make_jet_args((bias,), K=2, collapsed=collapsed)
     with raises(NotImplementedError, match="Taylor-expanded bias"):
         jet(f, (bias,), collapsed=collapsed)(*jet_args)
+
+
+@mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])
+def test_nll_loss_taylor_expanded_target_raises(collapsed: bool, device: str):
+    """A Taylor-expanded nll_loss target (label) is rejected (must be constant).
+
+    Labels are class indices, not differentiable; the rule must reject a
+    Taylor-expanded target with a clear error rather than a cryptic ATen one.
+    """
+    kw = device_kw(device)
+    rule = cjet_nll_loss_forward if collapsed else jet_nll_loss_forward
+    tup = CollapsedJetTuple if collapsed else JetTuple
+    logits = tup((rand(8, 5, **kw), rand(8, 5, **kw)))
+    target = tup((rand(8, **kw), rand(8, **kw)))  # a Taylor-expanded label
+    with raises(NotImplementedError, match="Taylor-expanded target"):
+        rule(logits, target, None, 1, -100)

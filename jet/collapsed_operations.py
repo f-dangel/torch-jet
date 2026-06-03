@@ -14,7 +14,7 @@ from operator import add, sub
 from typing import Callable
 
 from scipy.special import comb
-from torch import Tensor, addmm, cat, matmul, mm, ops, zeros_like
+from torch import Tensor, cat, matmul, mm, ops, zeros_like
 from torch.func import vmap
 from torch.utils._pytree import register_pytree_node
 
@@ -347,50 +347,19 @@ def cjet_addmm(
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.addmm`` (supports a Taylor-expanded bias).
 
-    See :func:`jet.operations.jet_addmm`. The bias's coefficients are added to
-    the matrix-product coefficients; for the batched coefficients (orders
-    ``1..K-1``, which carry the direction dim ``R``) the addition is vmapped
-    over ``R`` so a lower-rank bias broadcasts over the product's rows just as
-    it does in the primal.
+    See :func:`jet.operations.jet_addmm`: composes the matrix-product rule with
+    the affine bias addition, ``cjet_add(self, cjet_mm(mat1, mat2))``. Aligning
+    a lower-rank bias over the product's rows (including the direction dim ``R``
+    of the batched coefficients) is handled by :func:`cjet_add` via
+    :func:`_broadcast_coeffs`. When both matrices are constant the product is a
+    plain tensor.
     """
-    self_is = isinstance(self, CollapsedJetTuple)
-    mat1_is = isinstance(mat1, CollapsedJetTuple)
-    mat2_is = isinstance(mat2, CollapsedJetTuple)
-
-    bias_val = self[0] if self_is else self
-    mat1_val = mat1[0] if mat1_is else mat1
-    mat2_val = mat2[0] if mat2_is else mat2
-    primal = addmm(bias_val, mat1_val, mat2_val)
-
-    if mat1_is and mat2_is:
-        coeffs = list(_collapsed_leibniz(mat1, mat2, matmul))
-    elif mat1_is:
-        coeffs = list(_apply_linear_coeffs(mat1, lambda c: mm(c, mat2_val)))
-    elif mat2_is:
-        coeffs = list(_apply_linear_coeffs(mat2, lambda c: mm(mat1_val, c)))
-    else:
-        coeffs = []
-
-    if self_is:
-        K = _cjet_order(self, mat1, mat2)  # validates a single shared order
-        n_prod = len(coeffs)
-        coeffs += [None] * (K - n_prod)  # pad missing product coefficients
-        # ``base`` (output-shaped zero) only serves to broadcast the bias up to
-        # the product shape where a product coefficient is missing (both
-        # matrices constant); skip the allocation when every order has one.
-        base = zeros_like(primal) if n_prod < K else None
-        out = []
-        for k in range(1, K + 1):
-            bias_c, prod_c = self[k], coeffs[k - 1]
-            if k < K:  # batched coefficient: align the direction dim R via vmap
-                if prod_c is None:
-                    out.append(vmap(lambda b: b + base)(bias_c))
-                else:
-                    out.append(vmap(lambda p, b: p + b, in_dims=(0, 0))(prod_c, bias_c))
-            else:  # collapsed K-th coefficient: bias broadcasts directly
-                out.append(bias_c + base if prod_c is None else prod_c + bias_c)
-        coeffs = out
-    return CollapsedJetTuple((primal, *coeffs))
+    product = (
+        cjet_mm(mat1, mat2)
+        if isinstance(mat1, CollapsedJetTuple) or isinstance(mat2, CollapsedJetTuple)
+        else mm(mat1, mat2)
+    )
+    return cjet_add(self, product)
 
 
 def cjet_convolution(

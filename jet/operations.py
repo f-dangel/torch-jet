@@ -5,7 +5,6 @@ from typing import Callable
 from scipy.special import comb, factorial, stirling2
 from torch import (
     Tensor,
-    addmm,
     cat,
     cos,
     exp,
@@ -610,9 +609,11 @@ def jet_addmm(
 ) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.addmm(self, mat1, mat2)``.
 
-    ``addmm(self, mat1, mat2) == self + mat1 @ mat2``: bilinear in
-    ``(mat1, mat2)`` (handled by the Leibniz rule) and affine in the bias
-    ``self``. Any operand may be Taylor-expanded, including the bias.
+    ``addmm(self, mat1, mat2) == self + mat1 @ mat2``, so the rule composes the
+    matrix-product rule with the affine bias addition: ``jet_add(self,
+    jet_mm(mat1, mat2))``. Any operand may be Taylor-expanded, including the
+    bias; :func:`jet_add` broadcasts a lower-rank bias over the product's rows.
+    When both matrices are constant the product is a plain tensor.
 
     Args:
         self: The bias; a jet or a constant ``Tensor``.
@@ -622,32 +623,12 @@ def jet_addmm(
     Returns:
         The value and its Taylor coefficients.
     """
-    self_is_jet = isinstance(self, JetTuple)
-    mat1_is_jet = isinstance(mat1, JetTuple)
-    mat2_is_jet = isinstance(mat2, JetTuple)
-
-    bias_val = self[0] if self_is_jet else self
-    mat1_val = mat1[0] if mat1_is_jet else mat1
-    mat2_val = mat2[0] if mat2_is_jet else mat2
-    primal = addmm(bias_val, mat1_val, mat2_val)
-
-    if mat1_is_jet and mat2_is_jet:
-        coeffs = list(_leibniz(mat1, mat2, mm))
-    elif mat1_is_jet:
-        coeffs = list(_apply_linear_coeffs(mat1, lambda c: mm(c, mat2_val)))
-    elif mat2_is_jet:
-        coeffs = list(_apply_linear_coeffs(mat2, lambda c: mm(mat1_val, c)))
-    else:
-        coeffs = []
-
-    if self_is_jet:
-        K = _jet_order(self, mat1, mat2)  # validates a single shared order
-        # Pad product coefficients (none when both matrices are constant) up to
-        # ``K`` with zeros of the output shape, then add the bias's own Taylor
-        # coefficients, broadcasting them over the product's rows.
-        coeffs += [zeros_like(primal) for _ in range(K - len(coeffs))]
-        coeffs = [c + self[k] for k, c in enumerate(coeffs, start=1)]
-    return JetTuple((primal, *coeffs))
+    product = (
+        jet_mm(mat1, mat2)
+        if isinstance(mat1, JetTuple) or isinstance(mat2, JetTuple)
+        else mm(mat1, mat2)
+    )
+    return jet_add(self, product)
 
 
 def jet_convolution(

@@ -122,10 +122,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
-- Fix `cjet_add` / `cjet_sub` mis-broadcasting in collapsed mode when the two
-  Taylor-expanded operands have different primal ranks (e.g. `x + y` with shapes
-  `(4,)` and `(3, 4)`), similar to #141
-  ([PR](https://github.com/f-dangel/torch-jet/pull/166)).
+- Fix `add` / `sub` mis-broadcasting between operands of different rank
+  (similar to #141). In collapsed mode, two Taylor-expanded operands of
+  different primal rank collided the direction dim `R` (e.g. `x + y` with shapes
+  `(4,)` and `(3, 4)`); and, in both standard and collapsed mode, a jet combined
+  with a larger constant did not broadcast its coefficients up to the result
+  shape. A broadcasting stress matrix now covers every dispatch branch
+  (`JJ` / `JC` / `CJ`) of `add` / `sub` / `mul`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/166),
+  [PR](https://github.com/f-dangel/torch-jet/pull/167)).
 
 - Fix Taylor-mode coefficients for power functions with non-positive exponents.
   `_pow_derivatives` no longer truncates the derivatives of negative integer

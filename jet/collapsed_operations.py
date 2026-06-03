@@ -126,6 +126,31 @@ def _collapsed_pointwise(
     return CollapsedJetTuple(coeffs)
 
 
+def _broadcast_coeffs(self: CollapsedJetTuple, primal: Tensor) -> list[Tensor]:
+    """Broadcast a collapsed jet's coefficients up to ``primal``'s shape.
+
+    For ``jet + constant`` (and ``sub``) where the constant is larger than the
+    jet. The batched coefficients (orders ``1..K-1``) carry a leading direction
+    dim ``R``, so the broadcast is R-aware: insert size-1 dims after ``R`` (as
+    in :func:`_rank_align`), then expand. The collapsed ``K``-th coefficient and
+    the primal carry no ``R`` and broadcast normally. No-op when already shaped.
+    """
+    K = len(self) - 1
+    out = []
+    for k in range(1, K + 1):
+        c = self[k]
+        if k < K:  # batched (R, *S) -> (R, *primal.shape)
+            target = (c.shape[0], *primal.shape)
+            if c.shape != target:
+                pad = primal.ndim - (c.ndim - 1)
+                reshaped = c.reshape(c.shape[0], *([1] * pad), *c.shape[1:])
+                c = reshaped.broadcast_to(target)
+        elif c.shape != primal.shape:  # collapsed K-th (no R)
+            c = c.broadcast_to(primal.shape)
+        out.append(c)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Collapsed Leibniz rule (for products: mul, mm)
 # ---------------------------------------------------------------------------
@@ -273,8 +298,10 @@ def cjet_add(
     if self_is and other_is:
         return _collapsed_pointwise(self, other, add)
     if self_is:
-        return CollapsedJetTuple((self[0] + other, *self[1:]))
-    return CollapsedJetTuple((other[0] + self, *other[1:]))
+        primal = self[0] + other
+        return CollapsedJetTuple((primal, *_broadcast_coeffs(self, primal)))
+    primal = other[0] + self
+    return CollapsedJetTuple((primal, *_broadcast_coeffs(other, primal)))
 
 
 def cjet_sub(
@@ -287,8 +314,10 @@ def cjet_sub(
     if self_is and other_is:
         return _collapsed_pointwise(self, other, sub)
     if self_is:
-        return CollapsedJetTuple((self[0] - other, *self[1:]))
-    return CollapsedJetTuple((self - other[0], *(-c for c in other[1:])))
+        primal = self[0] - other
+        return CollapsedJetTuple((primal, *_broadcast_coeffs(self, primal)))
+    primal = self - other[0]
+    return CollapsedJetTuple((primal, *(-c for c in _broadcast_coeffs(other, primal))))
 
 
 def cjet_mul(

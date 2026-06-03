@@ -14,7 +14,7 @@ from operator import add, sub
 from typing import Callable
 
 from scipy.special import comb
-from torch import Tensor, addmm, cat, matmul, mm, ops, zeros_like
+from torch import Tensor, cat, matmul, mm, ops, zeros_like
 from torch.func import vmap
 from torch.utils._pytree import register_pytree_node
 
@@ -341,31 +341,21 @@ def cjet_mm(
 
 
 def cjet_addmm(
-    self: Tensor,
+    self: Tensor | CollapsedJetTuple,
     mat1: Tensor | CollapsedJetTuple,
     mat2: Tensor | CollapsedJetTuple,
 ) -> CollapsedJetTuple:
-    """Collapsed jet rule for ``aten.addmm``."""
-    if isinstance(self, CollapsedJetTuple):
-        raise NotImplementedError(
-            "cjet_addmm does not support a Taylor-expanded bias (self). "
-            "Expected a constant Tensor."
-        )
-    mat1_is = isinstance(mat1, CollapsedJetTuple)
-    mat2_is = isinstance(mat2, CollapsedJetTuple)
-    if mat1_is and mat2_is:
-        primal = addmm(self, mat1[0], mat2[0])
-        return CollapsedJetTuple((primal, *_collapsed_leibniz(mat1, mat2, matmul)))
-    elif mat1_is:
-        primal = addmm(self, mat1[0], mat2)
-        return CollapsedJetTuple(
-            (primal, *_apply_linear_coeffs(mat1, lambda c: mm(c, mat2)))
-        )
-    else:
-        primal = addmm(self, mat1, mat2[0])
-        return CollapsedJetTuple(
-            (primal, *_apply_linear_coeffs(mat2, lambda c: mm(mat1, c)))
-        )
+    """Collapsed jet rule for ``aten.addmm`` (supports a Taylor-expanded bias).
+
+    See :func:`jet.operations.jet_addmm`: composes the matrix-product rule with
+    the affine bias addition, ``cjet_add(self, cjet_mm(mat1, mat2))``.
+    """
+    product = (
+        cjet_mm(mat1, mat2)
+        if isinstance(mat1, CollapsedJetTuple) or isinstance(mat2, CollapsedJetTuple)
+        else mm(mat1, mat2)
+    )
+    return cjet_add(self, product)
 
 
 def cjet_convolution(

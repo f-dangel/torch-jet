@@ -5,7 +5,6 @@ from typing import Callable
 from scipy.special import comb, factorial, stirling2
 from torch import (
     Tensor,
-    addmm,
     cat,
     cos,
     exp,
@@ -606,36 +605,30 @@ def jet_mm(self: Tensor | JetTuple, mat2: Tensor | JetTuple) -> JetTuple:
 
 
 def jet_addmm(
-    self: Tensor, mat1: Tensor | JetTuple, mat2: Tensor | JetTuple
+    self: Tensor | JetTuple, mat1: Tensor | JetTuple, mat2: Tensor | JetTuple
 ) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.addmm(self, mat1, mat2)``.
 
+    ``addmm(self, mat1, mat2) == self + mat1 @ mat2``, so the rule composes the
+    matrix-product rule with the affine bias addition: ``jet_add(self,
+    jet_mm(mat1, mat2))``. Any operand may be Taylor-expanded, including the
+    bias; :func:`jet_add` broadcasts a lower-rank bias over the product's rows.
+    When both matrices are constant the product is a plain tensor.
+
     Args:
-        self: The bias tensor. Must be a constant ``Tensor``, not a ``JetTuple``.
-        mat1: The first matrix and its Taylor coefficients.
-        mat2: The second matrix and its Taylor coefficients.
+        self: The bias; a jet or a constant ``Tensor``.
+        mat1: The first matrix; a jet or a constant ``Tensor``.
+        mat2: The second matrix; a jet or a constant ``Tensor``.
 
     Returns:
         The value and its Taylor coefficients.
     """
-    if isinstance(self, JetTuple):
-        raise NotImplementedError(
-            "jet_addmm does not support a Taylor-expanded bias (self). "
-            "Expected a constant Tensor."
-        )
-
-    mat1_is_jet = isinstance(mat1, JetTuple)
-    mat2_is_jet = isinstance(mat2, JetTuple)
-
-    if mat1_is_jet and mat2_is_jet:
-        primal = addmm(self, mat1[0], mat2[0])
-        return JetTuple((primal, *_leibniz(mat1, mat2, mm)))
-    elif mat1_is_jet:
-        primal = addmm(self, mat1[0], mat2)
-        return JetTuple((primal, *_apply_linear_coeffs(mat1, lambda c: mm(c, mat2))))
-    else:
-        primal = addmm(self, mat1, mat2[0])
-        return JetTuple((primal, *_apply_linear_coeffs(mat2, lambda c: mm(mat1, c))))
+    product = (
+        jet_mm(mat1, mat2)
+        if isinstance(mat1, JetTuple) or isinstance(mat2, JetTuple)
+        else mm(mat1, mat2)
+    )
+    return jet_add(self, product)
 
 
 def jet_convolution(

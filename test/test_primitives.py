@@ -4,6 +4,7 @@ Each row in ``PRIMITIVE_CASES`` exercises one dispatch branch of a primitive
 registered with :class:`JetInterpreter`.
 """
 
+from itertools import product
 from typing import Any, Callable
 
 from pytest import mark, raises
@@ -75,29 +76,69 @@ def _sub_cj(device):
     return lambda x: SUB - x
 
 
-def _mm_jc(device):
-    R = _consts(device)["R"]
-    return lambda A: A @ R
+#: Bias-shape variants for a jet bias: full ``(3, 5)`` and the row-broadcast
+#: 1D ``(5,)`` that must broadcast over the product's rows in every coefficient.
+_BIAS_SHAPES = {"full": (3, 5), "bcast": (5,)}
 
 
-def _mm_cj(device):
-    L = _consts(device)["L"]
-    return lambda B: L @ B
+def _matmul_case(bias: str, mat1: str, mat2: str, bias_shape: str) -> dict[str, Any]:
+    """Build one ``{id, f, args_fn}`` case for a ``(bias, mat1, mat2)`` combo.
+
+    Each operand code is ``"C"`` (constant) or ``"J"`` (jet); ``bias`` may also
+    be ``"N"`` (absent -> plain ``mm``). Jet operands are consumed positionally
+    in the order ``bias, mat1, mat2`` so the harness attaches Taylor
+    coefficients to them; constants are frozen via :func:`_consts`. A jet bias
+    uses ``bias_shape`` -- ``"full"`` ``(3, 5)`` or row-broadcast ``"bcast"``
+    ``(5,)``. The id signature is ``<op>_<bias?><mat1><mat2>`` (the absent-bias
+    letter is dropped, so plain ``mm`` reads ``mm_JC`` etc.).
+    """
+    mat1_jet, mat2_jet = mat1 == "J", mat2 == "J"
+
+    def builder(device):
+        cs = _consts(device)
+
+        def f(*args: Any):
+            it = iter(args)
+            b = next(it) if bias == "J" else (cs["B"] if bias == "C" else None)
+            m1 = next(it) if mat1_jet else cs["L"]
+            m2 = next(it) if mat2_jet else cs["R"]
+            return m1 @ m2 if b is None else addmm(b, m1, m2)
+
+        return f
+
+    def args_fn():
+        out = []
+        if bias == "J":
+            out.append(rand(*_BIAS_SHAPES[bias_shape]))
+        if mat1_jet:
+            out.append(rand(3, 4))
+        if mat2_jet:
+            out.append(rand(4, 5))
+        return tuple(out)
+
+    op = "mm" if bias == "N" else "addmm"
+    sig = f"{mat1}{mat2}" if bias == "N" else f"{bias}{mat1}{mat2}"
+    suffix = "_bcast" if bias_shape == "bcast" else ""
+    return {"id": f"{op}_{sig}{suffix}", "f": builder, "args_fn": args_fn}
 
 
-def _addmm_jj(device):
-    B = _consts(device)["B"]
-    return lambda mat1, mat2: addmm(B, mat1, mat2)
+def _matmul_cases() -> list[dict[str, Any]]:
+    """Exhaustive ``(bias, mat1, mat2)`` dispatch matrix for ``mm`` / ``addmm``.
 
-
-def _addmm_mat1_jet(device):
-    cs = _consts(device)
-    return lambda mat1: addmm(cs["B"], mat1, cs["R"])
-
-
-def _addmm_mat2_jet(device):
-    cs = _consts(device)
-    return lambda mat2: addmm(cs["B"], cs["L"], mat2)
+    ``addmm(bias, mat1, mat2) == bias + mat1 @ mat2``. Each of ``mat1`` /
+    ``mat2`` is a constant (``C``) or a jet (``J``); ``bias`` is absent
+    (``N`` -> plain ``mm``), constant (``C``), or a jet (``J``). Combos with no
+    jet operand are skipped (nothing to differentiate). A jet bias is tested
+    both full-shape and row-broadcast 1D -- it is the only operand whose own
+    coefficients must broadcast over the product's rows.
+    """
+    cases = []
+    for bias, mat1, mat2 in product("NCJ", "CJ", "CJ"):
+        if "J" not in (bias, mat1, mat2):
+            continue  # no jet operand -> nothing to differentiate
+        for shape in ["full", "bcast"] if bias == "J" else ["full"]:
+            cases.append(_matmul_case(bias, mat1, mat2, shape))
+    return cases
 
 
 def _mse_loss(reduction: str, shape: tuple[int, ...]) -> Callable[[str], Callable]:
@@ -315,22 +356,13 @@ PRIMITIVE_CASES = [
     # ---- Broadcasting stress matrix (add/sub/mul; JJ/JC/CJ branches) ------
     # See ``_binop_cases`` / ``_BROADCAST_PAIRS`` / ``_BROADCAST_BINOPS``.
     *_binop_cases(),
-    # ---- Matrix multiply (non-commutative) -------------------------------
-    {
-        "id": "mm_JJ",
-        "f": _stateless(lambda A, B: A @ B),
-        "args_fn": lambda: (rand(3, 4), rand(4, 5)),
-    },
-    {"id": "mm_JC", "f": _mm_jc, "args_fn": lambda: (rand(3, 4),)},
-    {"id": "mm_CJ", "f": _mm_cj, "args_fn": lambda: (rand(4, 5),)},
-    # ---- addmm (3 dispatch branches over mat1/mat2; bias must be const) ---
-    {
-        "id": "addmm_mat1_mat2_jet",
-        "f": _addmm_jj,
-        "args_fn": lambda: (rand(3, 4), rand(4, 5)),
-    },
-    {"id": "addmm_mat1_jet", "f": _addmm_mat1_jet, "args_fn": lambda: (rand(3, 4),)},
-    {"id": "addmm_mat2_jet", "f": _addmm_mat2_jet, "args_fn": lambda: (rand(4, 5),)},
+    # ---- Matrix multiply / addmm -----------------------------------------
+    # Exhaustive (bias, mat1, mat2) dispatch matrix: bias in {absent -> mm,
+    # const, jet}; mat1, mat2 in {const, jet}. Covers every Taylor-expanded-
+    # bias path, including a jet bias combined with exactly one jet matrix
+    # (bias coefficients added onto a single-matrix product). See
+    # ``_matmul_cases``.
+    *_matmul_cases(),
     # ---- Convolution (bilinear in input/weight; bias is the affine term) --
     {"id": "conv2d", "f": _conv2d_jc, "args_fn": lambda: (rand(1, 2, 5, 5),)},
     {

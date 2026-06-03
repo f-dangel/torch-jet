@@ -606,36 +606,48 @@ def jet_mm(self: Tensor | JetTuple, mat2: Tensor | JetTuple) -> JetTuple:
 
 
 def jet_addmm(
-    self: Tensor, mat1: Tensor | JetTuple, mat2: Tensor | JetTuple
+    self: Tensor | JetTuple, mat1: Tensor | JetTuple, mat2: Tensor | JetTuple
 ) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.addmm(self, mat1, mat2)``.
 
+    ``addmm(self, mat1, mat2) == self + mat1 @ mat2``: bilinear in
+    ``(mat1, mat2)`` (handled by the Leibniz rule) and affine in the bias
+    ``self``. Any operand may be Taylor-expanded, including the bias.
+
     Args:
-        self: The bias tensor. Must be a constant ``Tensor``, not a ``JetTuple``.
-        mat1: The first matrix and its Taylor coefficients.
-        mat2: The second matrix and its Taylor coefficients.
+        self: The bias; a jet or a constant ``Tensor``.
+        mat1: The first matrix; a jet or a constant ``Tensor``.
+        mat2: The second matrix; a jet or a constant ``Tensor``.
 
     Returns:
         The value and its Taylor coefficients.
     """
-    if isinstance(self, JetTuple):
-        raise NotImplementedError(
-            "jet_addmm does not support a Taylor-expanded bias (self). "
-            "Expected a constant Tensor."
-        )
-
+    self_is_jet = isinstance(self, JetTuple)
     mat1_is_jet = isinstance(mat1, JetTuple)
     mat2_is_jet = isinstance(mat2, JetTuple)
 
+    bias_val = self[0] if self_is_jet else self
+    mat1_val = mat1[0] if mat1_is_jet else mat1
+    mat2_val = mat2[0] if mat2_is_jet else mat2
+    primal = addmm(bias_val, mat1_val, mat2_val)
+
     if mat1_is_jet and mat2_is_jet:
-        primal = addmm(self, mat1[0], mat2[0])
-        return JetTuple((primal, *_leibniz(mat1, mat2, mm)))
+        coeffs = list(_leibniz(mat1, mat2, mm))
     elif mat1_is_jet:
-        primal = addmm(self, mat1[0], mat2)
-        return JetTuple((primal, *_apply_linear_coeffs(mat1, lambda c: mm(c, mat2))))
+        coeffs = list(_apply_linear_coeffs(mat1, lambda c: mm(c, mat2_val)))
+    elif mat2_is_jet:
+        coeffs = list(_apply_linear_coeffs(mat2, lambda c: mm(mat1_val, c)))
     else:
-        primal = addmm(self, mat1, mat2[0])
-        return JetTuple((primal, *_apply_linear_coeffs(mat2, lambda c: mm(mat1, c))))
+        coeffs = []
+
+    if self_is_jet:
+        K = _jet_order(self, mat1, mat2)  # validates a single shared order
+        # Pad product coefficients (none when both matrices are constant) up to
+        # ``K`` with zeros of the output shape, then add the bias's own Taylor
+        # coefficients, broadcasting them over the product's rows.
+        coeffs += [zeros_like(primal) for _ in range(K - len(coeffs))]
+        coeffs = [c + self[k] for k, c in enumerate(coeffs, start=1)]
+    return JetTuple((primal, *coeffs))
 
 
 def jet_convolution(

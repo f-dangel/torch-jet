@@ -44,6 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `nn.CrossEntropyLoss`
     ([PR](https://github.com/f-dangel/torch-jet/pull/153)).
 
+- Support a Taylor-expanded bias in `aten.addmm` (both standard and collapsed
+  modes), removing the restriction that the bias must be a constant `Tensor`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/147)).
+
 - **Backward-incompatible.** Replace the `Laplacian` / `Bilaplacian`
   `nn.Module`s with `laplacian()` / `bilaplacian()` function transforms that
   return plain Python callables. They take `mock_args` as a tuple matching

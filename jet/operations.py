@@ -803,6 +803,7 @@ def defzero(prim: Callable) -> None:
 # Linear ops (pointwise-linear, shape-only, reductions): apply per coefficient.
 for _prim in (
     ops.aten.neg.default,
+    ops.aten.div.Scalar,
     ops.aten.view.default,
     ops.aten._unsafe_view.default,
     ops.aten.unsqueeze.default,

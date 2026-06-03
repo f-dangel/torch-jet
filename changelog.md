@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     ([PR](https://github.com/f-dangel/torch-jet/pull/155)).
   - `aten.mse_loss.default`
     ([PR](https://github.com/f-dangel/torch-jet/pull/146)).
+  - `aten.div.Scalar`
+    ([PR](https://github.com/f-dangel/torch-jet/pull/156)).
 
 - **Backward-incompatible.** Replace the `Laplacian` / `Bilaplacian`
   `nn.Module`s with `laplacian()` / `bilaplacian()` function transforms that

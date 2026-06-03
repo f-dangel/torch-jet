@@ -322,6 +322,13 @@ PRIMITIVE_CASES = [
     },
     # ---- Pointwise-linear ops --------------------------------------------
     {"id": "neg", "f": _stateless(lambda x: -x), "args_fn": lambda: (rand(3, 4),)},
+    # ``div.Scalar`` (division by a constant scalar) is reached only via the
+    # explicit overload; ``x / 2.0`` lowers to ``aten.div.Tensor``.
+    {
+        "id": "div_scalar",
+        "f": _stateless(lambda x: ops.aten.div.Scalar(x, 2.0)),
+        "args_fn": lambda: (rand(3, 4),),
+    },
     # ---- Shape-only ops --------------------------------------------------
     {
         "id": "view",

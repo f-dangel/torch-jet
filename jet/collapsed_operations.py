@@ -10,6 +10,7 @@ At each nonlinear operation, the K-th output coefficient is computed as:
   out_K = LINEAR_TERM(in_K_collapsed) + NONLINEAR_TERMS(in_1..K-1).sum(0)
 """
 
+from operator import add, sub
 from typing import Callable
 
 from scipy.special import comb
@@ -82,6 +83,49 @@ def _apply_linear_coeffs(
     return tuple(vop(jet[k]) if k < K else op(jet[k]) for k in range(1, K + 1))
 
 
+def _rank_align(x: Tensor, y: Tensor) -> tuple[Tensor, Tensor]:
+    """Insert size-1 dims after the leading direction dim so ``x``/``y`` match ndim.
+
+    The batched coefficients ``c_1..c_{K-1}`` carry a leading direction dim ``R``
+    at dim 0. PyTorch broadcasting left-pads the lower-rank operand with size-1
+    dims at the *front*, which shifts ``R`` so it collides with a primal dim
+    whenever the operands have different primal ranks. Padding right *after*
+    ``R`` instead keeps ``R`` aligned and lets the trailing primal dims broadcast
+    normally.
+    """
+    pad = abs(x.ndim - y.ndim)
+    if pad:
+        if x.ndim < y.ndim:
+            x = x.reshape(x.shape[0], *([1] * pad), *x.shape[1:])
+        else:
+            y = y.reshape(y.shape[0], *([1] * pad), *y.shape[1:])
+    return x, y
+
+
+def _collapsed_pointwise(
+    self: CollapsedJetTuple,
+    other: CollapsedJetTuple,
+    op: Callable[[Tensor, Tensor], Tensor],
+) -> CollapsedJetTuple:
+    """Apply pointwise ``op`` to two collapsed jets of equal order.
+
+    Rank-aligns the batched coefficients (orders ``1..K-1``) via
+    :func:`_rank_align` before ``op`` so different-rank operands broadcast over
+    their primal dims without colliding ``R``. The primal (order 0) and the
+    collapsed ``K``-th coefficient carry no ``R`` and broadcast normally.
+
+    ``op`` must be elementwise (it broadcasts over leading dims), so explicit
+    rank alignment suffices; the product rules use per-direction ``vmap``
+    instead (see :func:`_collapsed_leibniz`) for ops like ``conv`` that cannot.
+    """
+    K = _cjet_order(self, other)  # validates K-consistency, raises on mismatch
+    coeffs = [
+        op(s, o) if k in {0, K} else op(*_rank_align(s, o))
+        for k, (s, o) in enumerate(zip(self, other))
+    ]
+    return CollapsedJetTuple(coeffs)
+
+
 # ---------------------------------------------------------------------------
 # Collapsed Leibniz rule (for products: mul, mm)
 # ---------------------------------------------------------------------------
@@ -116,17 +160,13 @@ def _collapsed_leibniz(
     K = len(self) - 1
 
     def apply(a, b, a_batched, b_batched):
-        # Each coefficient ``c_k`` for ``k >= 1`` carries a leading direction
-        # dim ``R``; ``c_0`` does not. Plain ``binary_op(a, b)`` would
-        # right-align via PyTorch broadcasting, which collides ``R`` against
-        # a middle primal dim of the other operand whenever ``a``'s and
-        # ``b``'s primal shapes have different ranks (e.g. ``mul`` of operands
-        # with primal shapes ``(3,)`` and ``(2, 3)``, where ``R`` coincides
-        # with the size-2 primal dim of the other). ``vmap`` over ``R`` with
-        # the right ``in_dims`` aligns ``R`` per-direction explicitly and
-        # broadcasts the suffixes correctly.
-        if not (a_batched or b_batched):
-            return binary_op(a, b)
+        # ``binary_op`` here is a general bilinear op (elementwise ``mul``,
+        # ``matmul``, or ``conv``), not necessarily one that broadcasts over a
+        # leading batch dim -- ``conv`` in particular cannot -- so the direction
+        # dim ``R`` is mapped explicitly with ``vmap`` (per direction), which
+        # also keeps ``R`` aligned when the operands' primal ranks differ. At
+        # least one operand is always batched here (the two coefficient indices
+        # sum to ``k >= 1``), so ``in_dims`` is never all-``None``.
         in_dims = (0 if a_batched else None, 0 if b_batched else None)
         return vmap(binary_op, in_dims=in_dims)(a, b)
 
@@ -231,13 +271,10 @@ def cjet_add(
     self_is = isinstance(self, CollapsedJetTuple)
     other_is = isinstance(other, CollapsedJetTuple)
     if self_is and other_is:
-        _cjet_order(self, other)  # validates K-consistency, raises on mismatch
-        coeffs = (s + o for s, o in zip(self, other))
-    elif self_is:
-        coeffs = (self[0] + other, *self[1:])
-    else:
-        coeffs = (other[0] + self, *other[1:])
-    return CollapsedJetTuple(coeffs)
+        return _collapsed_pointwise(self, other, add)
+    if self_is:
+        return CollapsedJetTuple((self[0] + other, *self[1:]))
+    return CollapsedJetTuple((other[0] + self, *other[1:]))
 
 
 def cjet_sub(
@@ -248,13 +285,10 @@ def cjet_sub(
     self_is = isinstance(self, CollapsedJetTuple)
     other_is = isinstance(other, CollapsedJetTuple)
     if self_is and other_is:
-        _cjet_order(self, other)  # validates K-consistency, raises on mismatch
-        coeffs = (s - o for s, o in zip(self, other))
-    elif self_is:
-        coeffs = (self[0] - other, *self[1:])
-    else:
-        coeffs = (self - other[0], *(-c for c in other[1:]))
-    return CollapsedJetTuple(coeffs)
+        return _collapsed_pointwise(self, other, sub)
+    if self_is:
+        return CollapsedJetTuple((self[0] - other, *self[1:]))
+    return CollapsedJetTuple((self - other[0], *(-c for c in other[1:])))
 
 
 def cjet_mul(

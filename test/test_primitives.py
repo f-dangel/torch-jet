@@ -363,6 +363,21 @@ PRIMITIVE_CASES = [
         }
         for reduction in ("none", "mean", "sum")
     ),
+    # Both prediction and target are jets -> the ``sub`` operand-pair branch.
+    # The two ``rand`` draws differ, so ``x - target`` (and its order-1
+    # coefficient) stays nonzero.
+    *(
+        {
+            "id": f"mse_loss_jet_target_{reduction}",
+            "f": _stateless(
+                lambda x, target, reduction=reduction: mse_loss(
+                    x, target, reduction=reduction
+                )
+            ),
+            "args_fn": lambda: (rand(3, 4), rand(3, 4)),
+        }
+        for reduction in ("none", "mean", "sum")
+    ),
     # ---- Constant-output ops (zero derivatives at every order) -----------
     {"id": "zeros_like", "f": _stateless(zeros_like), "args_fn": lambda: (rand(3, 4),)},
     # ``zeros_like_dtype_cast`` guards ``defzero`` against dropping the

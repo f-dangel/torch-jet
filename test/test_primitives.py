@@ -9,6 +9,7 @@ from typing import Any, Callable
 from pytest import mark, raises
 from torch import (
     addmm,
+    cat,
     cos,
     exp,
     float32,
@@ -139,6 +140,15 @@ def _conv2d_input_weight_jet(device):
     # Both operands are jets -> exercises the bilinear Leibniz branch.
     cs = _consts(device)
     return lambda x, w: conv2d(x, w, cs["CONV_B"], stride=1, padding=1)
+
+
+def _cat_jet_const(device):
+    # Concatenate a jet with a constant tensor (along the channel dim). Seed
+    # first so the captured constant is deterministic: ``setup_case`` re-seeds
+    # only after building ``f`` (mirrors ``_consts``).
+    manual_seed(0)
+    const = rand(1, 2, 6, 6, **device_kw(device))
+    return lambda x: cat([x, const], dim=1)
 
 
 _UNARY_POINTWISE = {
@@ -353,6 +363,31 @@ PRIMITIVE_CASES = [
         "id": "avg_pool2d",
         "f": _stateless(lambda x: avg_pool2d(x, kernel_size=2, stride=2)),
         "args_fn": lambda: (rand(1, 2, 6, 6),),
+    },
+    # ---- Concatenation (linear; jets nested in the operand list) ---------
+    {
+        "id": "cat_JJ",
+        "f": _stateless(lambda x, y: cat([x, y], dim=1)),
+        "args_fn": lambda: (rand(1, 2, 6, 6), rand(1, 3, 6, 6)),
+    },
+    # ``dim=0`` exercises the collapsed-mode ``dim + 1`` shift for a
+    # non-negative concat dim (cat_JJ uses dim=1).
+    {
+        "id": "cat_JJ_dim0",
+        "f": _stateless(lambda x, y: cat([x, y], dim=0)),
+        "args_fn": lambda: (rand(2, 3, 4), rand(1, 3, 4)),
+    },
+    # A negative ``dim`` skips the collapsed-mode shift: it already counts from
+    # the end, past the leading direction dim of the batched coefficients.
+    {
+        "id": "cat_JJ_dim_neg",
+        "f": _stateless(lambda x, y: cat([x, y], dim=-1)),
+        "args_fn": lambda: (rand(1, 2, 6, 6), rand(1, 2, 6, 3)),
+    },
+    {
+        "id": "cat_jet_const",
+        "f": _cat_jet_const,
+        "args_fn": lambda: (rand(1, 4, 6, 6),),
     },
     # ---- Normalization ---------------------------------------------------
     # ``log_softmax`` couples elements along ``dim`` via logsumexp; the rule

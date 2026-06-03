@@ -14,7 +14,7 @@ from operator import add, sub
 from typing import Callable
 
 from scipy.special import comb
-from torch import Tensor, addmm, matmul, mm, ops
+from torch import Tensor, addmm, cat, matmul, mm, ops, zeros_like
 from torch.func import vmap
 from torch.utils._pytree import register_pytree_node
 
@@ -487,6 +487,34 @@ def cjet_max_pool2d(input: CollapsedJetTuple, *pool_args: object) -> CollapsedJe
     return jet
 
 
+def cjet_cat(
+    tensors: list[Tensor | CollapsedJetTuple], dim: int = 0
+) -> CollapsedJetTuple:
+    """Collapsed jet rule for ``aten.cat(tensors, dim)``.
+
+    Concatenation is linear -- see :func:`jet.operations.jet_cat`. The batched
+    coefficients (orders ``1..K-1``) carry a leading direction dim ``R``, so a
+    non-negative concat ``dim`` shifts by one there, and constant operands
+    contribute ``(R, *shape)`` zeros to match the batched jet coefficients.
+    """
+    K = _cjet_order(*tensors)
+    R = next(t for t in tensors if isinstance(t, CollapsedJetTuple))[1].shape[0]
+
+    def part(t: object, k: int, batched: bool) -> Tensor:
+        if isinstance(t, CollapsedJetTuple):
+            return t[k]
+        if k == 0:
+            return t
+        return t.new_zeros(R, *t.shape) if batched else zeros_like(t)
+
+    out = []
+    for k in range(K + 1):
+        batched = 0 < k < K
+        d = dim + 1 if (batched and dim >= 0) else dim
+        out.append(cat([part(t, k, batched) for t in tensors], d))
+    return CollapsedJetTuple(tuple(out))
+
+
 def cjet_log_softmax(
     self: CollapsedJetTuple, dim: int, half_to_float: bool = False
 ) -> CollapsedJetTuple:
@@ -586,6 +614,8 @@ COLLAPSED_MAPPING: dict = {
     # Pooling (piecewise linear: gather coefficients at the primal's arg-max)
     ops.aten.max_pool2d_with_indices.default: cjet_max_pool2d_with_indices,
     ops.aten.max_pool2d.default: cjet_max_pool2d,
+    # Concatenation (linear; jets nested in the operand list)
+    ops.aten.cat.default: cjet_cat,
     # Loss functions
     ops.aten.mse_loss.default: cjet_mse_loss,
     ops.aten.nll_loss_forward.default: cjet_nll_loss_forward,

@@ -94,10 +94,20 @@ class JetInterpreter(Interpreter):
         Raises:
             NotImplementedError: If a Taylor-dependent op has no jet rule.
         """
-        # TODO Only checks top-level args. Jets nested inside tuple/list/dict
-        # args (e.g. for aten.stack, aten.cat) will be missed, causing a
-        # TypeError instead of a clear NotImplementedError.
-        has_jet_arg = any(isinstance(a, self.jet_type) for a in args)
+
+        # Jets may appear at the top level or nested one level inside a ``list``
+        # arg (e.g. ``aten.cat([j1, j2], dim)``). Only ``list`` args are scanned,
+        # not ``tuple``: multi-output ops (e.g. ``max_pool2d_with_indices``)
+        # return a ``tuple`` whose element 0 is a jet, and the following
+        # ``getitem`` must fall through to the default op, not dispatch here.
+        def _jet_in(a: Argument) -> bool:
+            if isinstance(a, self.jet_type):
+                return True
+            if isinstance(a, list):
+                return any(isinstance(e, self.jet_type) for e in a)
+            return False
+
+        has_jet_arg = any(_jet_in(a) for a in args)
         if has_jet_arg:
             if target not in self.mapping:
                 raise NotImplementedError(

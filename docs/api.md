@@ -11,3 +11,5 @@
 ### ::: jet.capture_graph
 
 ### ::: jet.simplify.common_subexpression_elimination
+
+### ::: jet.utils.visualize_graph

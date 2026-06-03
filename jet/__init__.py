@@ -83,7 +83,7 @@ def jet(
     return transformed
 
 
-def rev_jet(
+def _rev_jet(
     f: Callable[[*tuple[PyTree[Tensor], ...]], PyTree[Tensor]], detach: bool = True
 ) -> Callable[[*tuple[PyTree[Jet], ...]], PyTree[Jet]]:
     """Implement Taylor-mode via nested reverse-mode autodiff.

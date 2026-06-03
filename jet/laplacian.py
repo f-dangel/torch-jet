@@ -31,7 +31,7 @@ def laplacian(
     $$
     \Delta f(\mathbf{x})
     =
-    \sum_{i=d}^D
+    \sum_{d=1}^D
     \frac{\partial^2 f(\mathbf{x})}{\partial x_d^2} \in \mathbb{R}\,.
     $$
 

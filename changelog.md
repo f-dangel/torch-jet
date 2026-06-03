@@ -122,8 +122,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
-- Fix `add` / `sub` mis-broadcasting between operands of different rank
-  (similar to #141). In collapsed mode, two Taylor-expanded operands of
+- Correctly handle broadcasting in `add` / `sub` between operands of different
+  rank (similar to #141). In collapsed mode, two Taylor-expanded operands of
   different primal rank collided the direction dim `R` (e.g. `x + y` with shapes
   `(4,)` and `(3, 4)`); and, in both standard and collapsed mode, a jet combined
   with a larger constant did not broadcast its coefficients up to the result

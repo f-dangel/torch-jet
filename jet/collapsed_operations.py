@@ -83,25 +83,6 @@ def _apply_linear_coeffs(
     return tuple(vop(jet[k]) if k < K else op(jet[k]) for k in range(1, K + 1))
 
 
-def _rank_align(x: Tensor, y: Tensor) -> tuple[Tensor, Tensor]:
-    """Insert size-1 dims after the leading direction dim so ``x``/``y`` match ndim.
-
-    The batched coefficients ``c_1..c_{K-1}`` carry a leading direction dim ``R``
-    at dim 0. PyTorch broadcasting left-pads the lower-rank operand with size-1
-    dims at the *front*, which shifts ``R`` so it collides with a primal dim
-    whenever the operands have different primal ranks. Padding right *after*
-    ``R`` instead keeps ``R`` aligned and lets the trailing primal dims broadcast
-    normally.
-    """
-    pad = abs(x.ndim - y.ndim)
-    if pad:
-        if x.ndim < y.ndim:
-            x = x.reshape(x.shape[0], *([1] * pad), *x.shape[1:])
-        else:
-            y = y.reshape(y.shape[0], *([1] * pad), *y.shape[1:])
-    return x, y
-
-
 def _collapsed_pointwise(
     self: CollapsedJetTuple,
     other: CollapsedJetTuple,
@@ -109,31 +90,32 @@ def _collapsed_pointwise(
 ) -> CollapsedJetTuple:
     """Apply pointwise ``op`` to two collapsed jets of equal order.
 
-    Rank-aligns the batched coefficients (orders ``1..K-1``) via
-    :func:`_rank_align` before ``op`` so different-rank operands broadcast over
-    their primal dims without colliding ``R``. The primal (order 0) and the
-    collapsed ``K``-th coefficient carry no ``R`` and broadcast normally.
+    Broadcasts both operands' coefficients up to the result primal's shape via
+    :func:`_broadcast_coeffs` before ``op``, so different-rank operands align
+    over their primal dims without colliding the leading direction dim ``R``.
 
-    ``op`` must be elementwise (it broadcasts over leading dims), so explicit
-    rank alignment suffices; the product rules use per-direction ``vmap``
-    instead (see :func:`_collapsed_leibniz`) for ops like ``conv`` that cannot.
+    ``op`` must be elementwise (it broadcasts over leading dims); the product
+    rules use per-direction ``vmap`` instead (see :func:`_collapsed_leibniz`)
+    for ops like ``conv`` that cannot.
     """
-    K = _cjet_order(self, other)  # validates K-consistency, raises on mismatch
-    coeffs = [
-        op(s, o) if k in {0, K} else op(*_rank_align(s, o))
-        for k, (s, o) in enumerate(zip(self, other))
-    ]
-    return CollapsedJetTuple(coeffs)
+    _cjet_order(self, other)  # validates K-consistency, raises on mismatch
+    primal = op(self[0], other[0])
+    s_coeffs = _broadcast_coeffs(self, primal)
+    o_coeffs = _broadcast_coeffs(other, primal)
+    coeffs = (op(s, o) for s, o in zip(s_coeffs, o_coeffs))
+    return CollapsedJetTuple((primal, *coeffs))
 
 
 def _broadcast_coeffs(self: CollapsedJetTuple, primal: Tensor) -> list[Tensor]:
     """Broadcast a collapsed jet's coefficients up to ``primal``'s shape.
 
-    For ``jet + constant`` (and ``sub``) where the constant is larger than the
-    jet. The batched coefficients (orders ``1..K-1``) carry a leading direction
-    dim ``R``, so the broadcast is R-aware: insert size-1 dims after ``R`` (as
-    in :func:`_rank_align`), then expand. The collapsed ``K``-th coefficient and
-    the primal carry no ``R`` and broadcast normally. No-op when already shaped.
+    Also used by :func:`_collapsed_pointwise` to align two jets before an
+    elementwise ``op``. The batched coefficients (orders ``1..K-1``) carry a
+    leading direction dim ``R``, so the broadcast is R-aware: insert size-1 dims
+    after ``R``, then expand. PyTorch broadcasting would instead left-pad at the
+    front, shifting ``R`` so it collides with a primal dim when ranks differ.
+    The collapsed ``K``-th coefficient and the primal carry no ``R`` and
+    broadcast normally. No-op when already shaped.
     """
     K = len(self) - 1
     out = []

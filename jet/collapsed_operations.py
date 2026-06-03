@@ -164,14 +164,14 @@ def _collapsed_leibniz(
 
 def _cjet_elementwise(
     self: CollapsedJetTuple,
-    deriv_fn: Callable[[Tensor, int], tuple[Tensor, dict[int, Tensor]]],
+    deriv_fn: Callable[[Tensor, int], dict[int, Tensor]],
 ) -> CollapsedJetTuple:
     """Generic collapsed elementwise using shared helpers."""
     K = _cjet_order(self)
     self0, vs = self[0], self[1:]
-    primal, dn = deriv_fn(self0, K)
+    dn = deriv_fn(self0, K)
     vs_out = _faa_di_bruno(vs, dn, collapsed=True)
-    return CollapsedJetTuple((primal, *vs_out))
+    return CollapsedJetTuple((dn[0], *vs_out))
 
 
 def cjet_sin(self: CollapsedJetTuple) -> CollapsedJetTuple:
@@ -213,9 +213,9 @@ def cjet_pow(self: CollapsedJetTuple, exponent: float | int) -> CollapsedJetTupl
     """Collapsed jet rule for ``aten.pow``."""
     assert isinstance(exponent, (float, int))
     self0, vs = self[0], self[1:]
-    primal, dpow = _pow_derivatives(self0, exponent, _cjet_order(self))
+    dpow = _pow_derivatives(self0, exponent, _cjet_order(self))
     vs_out = _faa_di_bruno(vs, dpow, collapsed=True)
-    return CollapsedJetTuple((primal, *vs_out))
+    return CollapsedJetTuple((dpow[0], *vs_out))
 
 
 # ---------------------------------------------------------------------------

@@ -450,8 +450,9 @@ def defzero(prim: Callable) -> None:
     COLLAPSED_MAPPING[prim] = rule
 
 
-# Linear / shape-only ops + reductions.
+# Linear ops (pointwise-linear, shape-only, reductions).
 for _prim in (
+    ops.aten.neg.default,
     ops.aten.view.default,
     ops.aten._unsafe_view.default,
     ops.aten.unsqueeze.default,

@@ -273,8 +273,8 @@ def _faa_di_bruno(
 # --- Derivative helpers (shared with collapsed mode) ---
 
 
-def _sin_derivatives(x0: Tensor, K: int) -> tuple[Tensor, dict[int, Tensor]]:
-    """Compute ``sin(x0)`` and its derivatives up to order *K*."""
+def _sin_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:
+    """Compute ``sin(x0)`` and its derivatives up to order *K* (order 0 is the value)."""
     sin_x0 = sin(x0)
     d = {0: sin_x0}
     for k in range(1, K + 1):
@@ -284,11 +284,11 @@ def _sin_derivatives(x0: Tensor, K: int) -> tuple[Tensor, dict[int, Tensor]]:
             d[k] = -1 * d[k - 2]
         else:
             d[k] = d[k - 4]
-    return sin_x0, d
+    return d
 
 
-def _cos_derivatives(x0: Tensor, K: int) -> tuple[Tensor, dict[int, Tensor]]:
-    """Compute ``cos(x0)`` and its derivatives up to order *K*."""
+def _cos_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:
+    """Compute ``cos(x0)`` and its derivatives up to order *K* (order 0 is the value)."""
     cos_x0 = cos(x0)
     d = {0: cos_x0}
     for k in range(1, K + 1):
@@ -298,11 +298,11 @@ def _cos_derivatives(x0: Tensor, K: int) -> tuple[Tensor, dict[int, Tensor]]:
             d[k] = -1 * d[k - 2]
         else:
             d[k] = d[k - 4]
-    return cos_x0, d
+    return d
 
 
-def _tanh_derivatives(x0: Tensor, K: int) -> tuple[Tensor, dict[int, Tensor]]:
-    """Compute ``tanh(x0)`` and its derivatives up to order *K*."""
+def _tanh_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:
+    """Compute ``tanh(x0)`` and its derivatives up to order *K* (order 0 is the value)."""
     # Use the explicit form of the derivative polynomials for tanh from "Derivative
     # polynomials for tanh, tan, sech and sec in explicit form" by Boyadzhiev (2006)
     # (https://www.fq.math.ca/Papers1/45-4/quartboyadzhiev04_2007.pdf);
@@ -327,11 +327,11 @@ def _tanh_derivatives(x0: Tensor, K: int) -> tuple[Tensor, dict[int, Tensor]]:
                 )
                 term = term_k if term is None else term + term_k
             d[m] = (-2) ** m * tanh_inc * term
-    return tanh_x0, d
+    return d
 
 
-def _sigmoid_derivatives(x0: Tensor, K: int) -> tuple[Tensor, dict[int, Tensor]]:
-    """Compute ``sigmoid(x0)`` and its derivatives up to order *K*."""
+def _sigmoid_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:
+    """Compute ``sigmoid(x0)`` and its derivatives up to order *K* (order 0 is the value)."""
     # Use the Stirling form of the sigmoid derivatives, see Equation 20
     # of "On the Derivatives of the Sigmoid" by Minai and Williams (1993)
     # (https://eecs.ceas.uc.edu/~minaiaa/papers/minai_sigmoids_NN93.pdf)
@@ -354,10 +354,10 @@ def _sigmoid_derivatives(x0: Tensor, K: int) -> tuple[Tensor, dict[int, Tensor]]
                 )
                 term = term_k if term is None else term + term_k
             d[n] = term
-    return sigmoid_x0, d
+    return d
 
 
-def _relu_derivatives(x0: Tensor, K: int) -> tuple[Tensor, dict[int, Tensor | None]]:
+def _relu_derivatives(x0: Tensor, K: int) -> dict[int, Tensor | None]:
     """Compute ``relu(x0)`` and its derivatives up to order *K*.
 
     ReLU is piecewise linear, so its first derivative is the indicator
@@ -373,25 +373,23 @@ def _relu_derivatives(x0: Tensor, K: int) -> tuple[Tensor, dict[int, Tensor | No
         d[1] = (x0 > 0).to(x0.dtype)
     for k in range(2, K + 1):
         d[k] = None
-    return relu_x0, d
+    return d
 
 
-def _exp_derivatives(x0: Tensor, K: int) -> tuple[Tensor, dict[int, Tensor]]:
-    """Compute ``exp(x0)`` and its derivatives up to order *K*.
+def _exp_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:
+    """Compute ``exp(x0)`` and its derivatives up to order *K* (order 0 is the value).
 
     Every derivative of ``exp`` is ``exp`` itself, so all orders share the
     single ``exp(x0)`` tensor.
     """
-    exp_x0 = exp(x0)
-    return exp_x0, dict.fromkeys(range(K + 1), exp_x0)
+    return dict.fromkeys(range(K + 1), exp(x0))
 
 
 def _pow_derivatives(
     x0: Tensor, exponent: float | int, K: int
-) -> tuple[Tensor, dict[int, Tensor | None]]:
-    """Compute ``x0 ** exponent`` and its derivatives up to order *K*."""
-    pow_x0 = x0**exponent
-    d = {0: pow_x0}
+) -> dict[int, Tensor | None]:
+    """Compute ``x0 ** exponent`` and its derivatives up to order *K* (order 0 is the value)."""
+    d = {0: x0**exponent}
     for k in range(1, K + 1):
         if exponent - k < 0 and int(exponent) == exponent and exponent >= 0:
             d[k] = None
@@ -402,14 +400,14 @@ def _pow_derivatives(
             for i in range(1, k + 1):
                 scale *= exponent + 1 - i
             d[k] = scale * x0 if exponent - k == 1 else scale * x0 ** (exponent - k)
-    return pow_x0, d
+    return d
 
 
-def _log_derivatives(x0: Tensor, K: int) -> tuple[Tensor, dict[int, Tensor]]:
-    """Compute ``log(x0)`` and its derivatives up to order *K*."""
+def _log_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:
+    """Compute ``log(x0)`` and its derivatives up to order *K* (order 0 is the value)."""
     log_x0 = log(x0)
-    _, dpow = _pow_derivatives(x0, -1, K - 1)
-    return log_x0, {k: log_x0 if k == 0 else dpow[k - 1] for k in range(K + 1)}
+    dpow = _pow_derivatives(x0, -1, K - 1)
+    return {k: log_x0 if k == 0 else dpow[k - 1] for k in range(K + 1)}
 
 
 # --- Elementwise unary ---
@@ -417,23 +415,23 @@ def _log_derivatives(x0: Tensor, K: int) -> tuple[Tensor, dict[int, Tensor]]:
 
 def _jet_elementwise(
     self: JetTuple,
-    deriv_fn: Callable[[Tensor, int], tuple[Tensor, dict[int, Tensor]]],
+    deriv_fn: Callable[[Tensor, int], dict[int, Tensor]],
 ) -> JetTuple:
     """Generic elementwise jet rule using shared derivative helpers.
 
     Args:
         self: The primal and its Taylor coefficients.
-        deriv_fn: Returns the primal and the function's derivatives ``dn`` at
-            the primal, e.g. ``_sin_derivatives``.
+        deriv_fn: Returns the function's derivatives ``dn`` at the primal, with
+            ``dn[0]`` the primal itself, e.g. ``_sin_derivatives``.
 
     Returns:
         The value and its Taylor coefficients.
     """
     K = _jet_order(self)
     self0, vs = self[0], self[1:]
-    primal, dn = deriv_fn(self0, K)
+    dn = deriv_fn(self0, K)
     vs_out = _faa_di_bruno(vs, dn)
-    return JetTuple((primal, *vs_out))
+    return JetTuple((dn[0], *vs_out))
 
 
 def jet_sin(self: JetTuple) -> JetTuple:
@@ -486,9 +484,9 @@ def jet_pow(self: JetTuple, exponent: float | int) -> JetTuple:
     """
     assert isinstance(exponent, (float, int))
     self0, vs = self[0], self[1:]
-    pow_self0, dpow = _pow_derivatives(self0, exponent, _jet_order(self))
+    dpow = _pow_derivatives(self0, exponent, _jet_order(self))
     vs_out = _faa_di_bruno(vs, dpow)
-    return JetTuple((pow_self0, *vs_out))
+    return JetTuple((dpow[0], *vs_out))
 
 
 # --- Arithmetic ---

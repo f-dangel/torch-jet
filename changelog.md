@@ -150,6 +150,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Drop the redundant primal from the `_*_derivatives` helpers' return value.
+  Each helper already stored the primal at `dn[0]` and also returned it as a
+  separate first element; the helpers now return just the derivative dict and
+  `_jet_elementwise` / `_cjet_elementwise` / `jet_pow` / `cjet_pow` read the
+  primal from `dn[0]`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/165)).
+
 - API doc cleanups: rename `rev_jet` to `_rev_jet` to mark it internal (a
   reference implementation used only for testing `jet`, absent from the public
   API docs), document the previously-undocumented `visualize_graph` helper in

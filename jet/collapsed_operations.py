@@ -10,7 +10,7 @@ At each nonlinear operation, the K-th output coefficient is computed as:
   out_K = LINEAR_TERM(in_K_collapsed) + NONLINEAR_TERMS(in_1..K-1).sum(0)
 """
 
-from operator import add, sub
+from operator import add, mul, sub
 from typing import Callable
 
 from scipy.special import comb
@@ -20,6 +20,7 @@ from torch.utils._pytree import register_pytree_node
 
 from jet.operations import (
     _align_conv_bias,
+    _bn_channel_view,
     _cos_derivatives,
     _exp_derivatives,
     _faa_di_bruno,
@@ -581,8 +582,67 @@ def cjet_nll_loss_forward(
 
 
 # ---------------------------------------------------------------------------
+# Batch norm
+# ---------------------------------------------------------------------------
+
+
+def cjet_native_batch_norm(
+    input: Tensor | CollapsedJetTuple,
+    weight: Tensor | None,
+    bias: Tensor | None,
+    running_mean: Tensor | None,
+    running_var: Tensor | None,
+    training: bool,
+    momentum: float,
+    eps: float,
+) -> tuple[CollapsedJetTuple, Tensor, Tensor]:
+    """Collapsed jet rule for ``aten.native_batch_norm`` (eval mode).
+
+    Mirrors :func:`jet.operations.jet_native_batch_norm` with the collapsed
+    arithmetic helpers (sharing only the pure-tensor :func:`_bn_channel_view`):
+    an affine per-channel map ``input * scale + shift`` from the frozen running
+    statistics. Any of ``input`` / ``weight`` / ``bias`` may be a jet, a constant,
+    or (``weight`` / ``bias``) ``None``; any input rank is supported. Training
+    mode is not yet implemented.
+    """
+    if training:
+        raise NotImplementedError(
+            "Taylor-mode native_batch_norm currently supports eval mode only; "
+            "training-mode (batch-statistic) normalization is not yet implemented."
+        )
+
+    def is_jet(x):
+        return isinstance(x, CollapsedJetTuple)
+
+    def reshape(p, view):
+        if is_jet(p):
+            return _apply_linear(p, lambda c: c.reshape(view))
+        return p.reshape(view)
+
+    def affine(jet_op, plain_op, a, b):
+        # Jet op when either operand is a jet; plain (stdlib operator) op when
+        # both are constant (the jet ops assume at least one jet operand).
+        return jet_op(a, b) if (is_jet(a) or is_jet(b)) else plain_op(a, b)
+
+    primal = input[0] if is_jet(input) else input
+    view = _bn_channel_view(primal)
+    rstd = (running_var + eps).rsqrt()
+    scale = rstd if weight is None else affine(cjet_mul, mul, weight, rstd)
+    if bias is None:
+        shift = affine(cjet_mul, mul, scale, -running_mean)
+    else:
+        rm_scale = affine(cjet_mul, mul, scale, running_mean)
+        shift = affine(cjet_sub, sub, bias, rm_scale)
+    out = affine(cjet_mul, mul, input, reshape(scale, view))
+    out = affine(cjet_add, add, out, reshape(shift, view))
+    empty = primal.new_empty(0)
+    return out, empty, empty
+
+
+# ---------------------------------------------------------------------------
 # COLLAPSED_MAPPING
 # ---------------------------------------------------------------------------
+
 
 COLLAPSED_MAPPING: dict = {
     # Elementwise nonlinear
@@ -614,6 +674,8 @@ COLLAPSED_MAPPING: dict = {
     ops.aten.nll_loss_forward.default: cjet_nll_loss_forward,
     # Normalization
     ops.aten._log_softmax.default: cjet_log_softmax,
+    # Batch norm (affine in eval; composed batch statistics in training)
+    ops.aten.native_batch_norm.default: cjet_native_batch_norm,
 }
 
 

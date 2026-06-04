@@ -1,5 +1,6 @@
 """Implementation of AD primitives in Taylor-mode arithmetic."""
 
+import operator
 from typing import Callable
 
 from scipy.special import comb, factorial, stirling2
@@ -941,6 +942,80 @@ def jet_nll_loss_forward(
     return JetTuple((output, *coeffs)), total_weight
 
 
+# --- Batch norm ---
+
+
+def _bn_channel_view(primal: Tensor) -> tuple[int, ...]:
+    """Per-channel broadcast view ``(1, C, 1, ...)`` for an ndim-D batch-norm input.
+
+    Reshaping a per-channel ``weight`` / ``bias`` / scale / shift to this view
+    lets it broadcast over the batch and spatial dims of an ``input`` of any rank
+    (1d/2d/3d batch norm). A pure-tensor helper shared with the collapsed rule.
+    """
+    return (1, primal.shape[1]) + (1,) * (primal.dim() - 2)
+
+
+def jet_native_batch_norm(
+    input: Tensor | JetTuple,
+    weight: Tensor | None,
+    bias: Tensor | None,
+    running_mean: Tensor | None,
+    running_var: Tensor | None,
+    training: bool,
+    momentum: float,
+    eps: float,
+) -> tuple[JetTuple, Tensor, Tensor]:
+    """Taylor-mode arithmetic for ``aten.native_batch_norm`` (eval mode).
+
+    Eval-mode batch norm is an affine per-channel map ``input * scale + shift``
+    built from the frozen running statistics. Any of ``input`` / ``weight`` /
+    ``bias`` may be a jet, a constant, or (``weight`` / ``bias``) ``None`` --
+    constant-only sub-expressions stay in plain torch and meet the jet operands at
+    the affine; any input rank (1d/2d/3d batch norm) is supported. Mirrored by
+    :func:`jet.collapsed_operations.cjet_native_batch_norm`. Training mode
+    (composed batch statistics) is not yet implemented.
+
+    Returns the ATen op's ``(output, save_mean, save_invstd)`` triple;
+    ``save_mean`` / ``save_invstd`` are empty (only the forward output is consumed
+    in a Taylor-mode pass).
+
+    Raises:
+        NotImplementedError: In training mode.
+    """
+    if training:
+        raise NotImplementedError(
+            "Taylor-mode native_batch_norm currently supports eval mode only; "
+            "training-mode (batch-statistic) normalization is not yet implemented."
+        )
+
+    def is_jet(x):
+        return isinstance(x, JetTuple)
+
+    def reshape(p, view):
+        if is_jet(p):
+            return _apply_linear(p, lambda c: c.reshape(view))
+        return p.reshape(view)
+
+    def affine(jet_op, plain_op, a, b):
+        # Jet op when either operand is a jet; plain (stdlib operator) op when
+        # both are constant (the jet ops assume at least one jet operand).
+        return jet_op(a, b) if (is_jet(a) or is_jet(b)) else plain_op(a, b)
+
+    primal = input[0] if is_jet(input) else input
+    view = _bn_channel_view(primal)
+    rstd = (running_var + eps).rsqrt()
+    scale = rstd if weight is None else affine(jet_mul, operator.mul, weight, rstd)
+    if bias is None:
+        shift = affine(jet_mul, operator.mul, scale, -running_mean)
+    else:
+        rm_scale = affine(jet_mul, operator.mul, scale, running_mean)
+        shift = affine(jet_sub, operator.sub, bias, rm_scale)
+    out = affine(jet_mul, operator.mul, input, reshape(scale, view))
+    out = affine(jet_add, operator.add, out, reshape(shift, view))
+    empty = primal.new_empty(0)
+    return out, empty, empty
+
+
 MAPPING: dict = {
     # Elementwise unary
     ops.aten.sin.default: jet_sin,
@@ -971,6 +1046,8 @@ MAPPING: dict = {
     ops.aten.nll_loss_forward.default: jet_nll_loss_forward,
     # Normalization
     ops.aten._log_softmax.default: jet_log_softmax,
+    # Batch norm (affine in eval; composed batch statistics in training)
+    ops.aten.native_batch_norm.default: jet_native_batch_norm,
 }
 
 

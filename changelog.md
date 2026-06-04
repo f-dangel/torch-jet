@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Support `aten.t.default` (matrix transpose) in Taylor mode (both standard and
+  collapsed modes)
+  ([PR](https://github.com/f-dangel/torch-jet/pull/168)).
+
 - Support a Taylor-expanded bias in `aten.convolution` (both standard and
   collapsed modes), removing the restriction that the bias must be a constant
   `Tensor` or `None`

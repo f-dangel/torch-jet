@@ -560,6 +560,9 @@ PRIMITIVE_CASES = [
         "args_fn": lambda: (rand(3, 4),),
     },
     # ---- Shape-only ops --------------------------------------------------
+    # ``t`` (matrix transpose) is emitted by ``Linear`` (``addmm(b, x, W.t())``);
+    # it changes the coefficients' shape, so collapsed mode must vmap over R.
+    {"id": "t", "f": _stateless(lambda x: x.t()), "args_fn": lambda: (rand(3, 4),)},
     {
         "id": "view",
         "f": _stateless(lambda x: x.view(-1)),

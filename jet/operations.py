@@ -1003,6 +1003,7 @@ def defzero(prim: Callable) -> None:
 for _prim in (
     ops.aten.neg.default,
     ops.aten.div.Scalar,
+    ops.aten.t.default,
     ops.aten.view.default,
     ops.aten._unsafe_view.default,
     ops.aten.unsqueeze.default,

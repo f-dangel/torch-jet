@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Support a Taylor-expanded bias in `aten.convolution` (both standard and
+  collapsed modes), removing the restriction that the bias must be a constant
+  `Tensor` or `None`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/160)).
+
 - Support classic torchvision CNNs in Taylor mode by adding jet rules for the
   ATen ops they need:
   - `aten.relu.default`

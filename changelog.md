@@ -180,6 +180,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Extract an `_apply_bilinear(op, a, b)` combinator (standard and collapsed
+  modes) for product-like jet ops
+  ([PR](https://github.com/f-dangel/torch-jet/pull/170)).
+
 - Drop the redundant primal from the `_*_derivatives` helpers' return value.
   Each helper already stored the primal at `dn[0]` and also returned it as a
   separate first element; the helpers now return just the derivative dict and

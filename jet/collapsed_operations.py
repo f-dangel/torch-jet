@@ -10,7 +10,7 @@ At each nonlinear operation, the K-th output coefficient is computed as:
   out_K = LINEAR_TERM(in_K_collapsed) + NONLINEAR_TERMS(in_1..K-1).sum(0)
 """
 
-from operator import add, mul, sub
+from operator import add, sub
 from typing import Callable
 
 from scipy.special import comb
@@ -600,10 +600,11 @@ def cjet_native_batch_norm(
 
     Mirrors :func:`jet.operations.jet_native_batch_norm` with the collapsed
     arithmetic helpers (sharing only the pure-tensor :func:`_bn_channel_view`):
-    an affine per-channel map ``input * scale + shift`` from the frozen running
-    statistics. Any of ``input`` / ``weight`` / ``bias`` may be a jet, a constant,
-    or (``weight`` / ``bias``) ``None``; any input rank is supported. Training
-    mode (and eval mode without running statistics) is not yet implemented.
+    normalizes each channel with the frozen running statistics,
+    ``(input - running_mean) / sqrt(running_var + eps) * weight + bias``. Any of
+    ``input`` / ``weight`` / ``bias`` may be a jet, a constant, or
+    (``weight`` / ``bias``) ``None``; any input rank is supported. Training mode
+    (and eval mode without running statistics) is not yet implemented.
     """
     if training:
         raise NotImplementedError(
@@ -617,30 +618,18 @@ def cjet_native_batch_norm(
             "statistics, which is not yet implemented."
         )
 
-    def is_jet(x):
-        return isinstance(x, CollapsedJetTuple)
-
-    def reshape(p, view):
-        if is_jet(p):
-            return _apply_linear(p, lambda c: c.reshape(view))
-        return p.reshape(view)
-
-    def affine(jet_op, plain_op, a, b):
-        # Jet op when either operand is a jet; plain (stdlib operator) op when
-        # both are constant (the jet ops assume at least one jet operand).
-        return jet_op(a, b) if (is_jet(a) or is_jet(b)) else plain_op(a, b)
-
-    primal = input[0] if is_jet(input) else input
-    view = _bn_channel_view(primal)
+    primal = input[0] if isinstance(input, CollapsedJetTuple) else input
+    shape = _bn_channel_view(primal)
     rstd = (running_var + eps).rsqrt()
-    scale = rstd if weight is None else affine(cjet_mul, mul, weight, rstd)
-    if bias is None:
-        shift = affine(cjet_mul, mul, scale, -running_mean)
-    else:
-        rm_scale = affine(cjet_mul, mul, scale, running_mean)
-        shift = affine(cjet_sub, sub, bias, rm_scale)
-    out = affine(cjet_mul, mul, input, reshape(scale, view))
-    out = affine(cjet_add, add, out, reshape(shift, view))
+    # (input - running_mean) / sqrt(running_var + eps) * weight + bias, per
+    # channel; cjet_view reshapes each per-channel operand (jet or constant) to
+    # broadcast over the batch and spatial dims.
+    out = cjet_sub(input, cjet_view(running_mean, shape))
+    out = cjet_mul(out, cjet_view(rstd, shape))
+    if weight is not None:
+        out = cjet_mul(out, cjet_view(weight, shape))
+    if bias is not None:
+        out = cjet_add(out, cjet_view(bias, shape))
     empty = primal.new_empty(0)
     return out, empty, empty
 
@@ -700,10 +689,16 @@ def deflinear(prim: Callable) -> Callable:
     coefficients ``c_1..c_{K-1}`` and applies ``prim`` directly to the primal
     and the collapsed slot ``c_K``. Returns the registered rule so it can also
     be bound to a name and reused inside composite rules (e.g. ``cjet_sum`` in
-    ``cjet_log_softmax``).
+    ``cjet_log_softmax``, or ``cjet_view`` to reshape a possibly-constant
+    operand). The rule is total over constants: a non-jet argument is passed
+    straight to ``prim``.
     """
 
-    def rule(self: CollapsedJetTuple, *args, **kwargs) -> CollapsedJetTuple:
+    def rule(
+        self: Tensor | CollapsedJetTuple, *args, **kwargs
+    ) -> Tensor | CollapsedJetTuple:
+        if not isinstance(self, CollapsedJetTuple):
+            return prim(self, *args, **kwargs)
         return _apply_linear(self, lambda c: prim(c, *args, **kwargs))
 
     COLLAPSED_MAPPING[prim] = rule
@@ -734,7 +729,6 @@ for _prim in (
     ops.aten.neg.default,
     ops.aten.div.Scalar,
     ops.aten.t.default,
-    ops.aten.view.default,
     ops.aten._unsafe_view.default,
     ops.aten.unsqueeze.default,
     ops.aten.squeeze.dim,
@@ -747,8 +741,10 @@ for _prim in (
 ):
     deflinear(_prim)
 
-# Bound to a name so composite rules can reuse it (e.g. ``cjet_log_softmax``).
+# Bound to names so composite rules can reuse them: ``cjet_sum`` in
+# ``cjet_log_softmax``; ``cjet_view`` to reshape a possibly-constant operand.
 cjet_sum = deflinear(ops.aten.sum.dim_IntList)
+cjet_view = deflinear(ops.aten.view.default)
 
 # Constant-output ops.
 for _prim in (ops.aten.zeros_like.default,):

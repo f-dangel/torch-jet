@@ -1,6 +1,5 @@
 """Implementation of AD primitives in Taylor-mode arithmetic."""
 
-from operator import add, mul, sub
 from typing import Callable
 
 from scipy.special import comb, factorial, stirling2
@@ -967,10 +966,11 @@ def jet_native_batch_norm(
 ) -> tuple[JetTuple, Tensor, Tensor]:
     """Taylor-mode arithmetic for ``aten.native_batch_norm`` (eval mode).
 
-    Eval-mode batch norm is an affine per-channel map ``input * scale + shift``
-    built from the frozen running statistics. Any of ``input`` / ``weight`` /
-    ``bias`` may be a jet, a constant, or (``weight`` / ``bias``) ``None`` --
-    any input rank (1d/2d/3d batch norm) is supported. Mirrored by
+    Eval-mode batch norm normalizes each channel with the frozen running
+    statistics: ``(input - running_mean) / sqrt(running_var + eps) * weight +
+    bias``. Any of ``input`` / ``weight`` / ``bias`` may be a jet, a constant, or
+    (``weight`` / ``bias``) ``None`` -- any input rank (1d/2d/3d batch norm) is
+    supported. Mirrored by
     :func:`jet.collapsed_operations.cjet_native_batch_norm`. Training mode
     (composed batch statistics) is not yet implemented.
 
@@ -995,30 +995,18 @@ def jet_native_batch_norm(
             "statistics, which is not yet implemented."
         )
 
-    def is_jet(x):
-        return isinstance(x, JetTuple)
-
-    def reshape(p, view):
-        if is_jet(p):
-            return _apply_linear(p, lambda c: c.reshape(view))
-        return p.reshape(view)
-
-    def affine(jet_op, plain_op, a, b):
-        # Jet op when either operand is a jet; plain (stdlib operator) op when
-        # both are constant (the jet ops assume at least one jet operand).
-        return jet_op(a, b) if (is_jet(a) or is_jet(b)) else plain_op(a, b)
-
-    primal = input[0] if is_jet(input) else input
-    view = _bn_channel_view(primal)
+    primal = input[0] if isinstance(input, JetTuple) else input
+    shape = _bn_channel_view(primal)
     rstd = (running_var + eps).rsqrt()
-    scale = rstd if weight is None else affine(jet_mul, mul, weight, rstd)
-    if bias is None:
-        shift = affine(jet_mul, mul, scale, -running_mean)
-    else:
-        rm_scale = affine(jet_mul, mul, scale, running_mean)
-        shift = affine(jet_sub, sub, bias, rm_scale)
-    out = affine(jet_mul, mul, input, reshape(scale, view))
-    out = affine(jet_add, add, out, reshape(shift, view))
+    # (input - running_mean) / sqrt(running_var + eps) * weight + bias, per
+    # channel; jet_view reshapes each per-channel operand (jet or constant) to
+    # broadcast over the batch and spatial dims.
+    out = jet_sub(input, jet_view(running_mean, shape))
+    out = jet_mul(out, jet_view(rstd, shape))
+    if weight is not None:
+        out = jet_mul(out, jet_view(weight, shape))
+    if bias is not None:
+        out = jet_add(out, jet_view(bias, shape))
     empty = primal.new_empty(0)
     return out, empty, empty
 
@@ -1072,10 +1060,14 @@ def deflinear(prim: Callable) -> Callable:
     positional argument and any structural args (e.g. ``size``, ``dim``)
     after. Forwards both ``*args`` and ``**kwargs`` straight to ``prim``.
     Returns the registered rule so it can also be bound to a name and reused
-    inside composite rules (e.g. ``jet_sum`` in ``jet_log_softmax``).
+    inside composite rules (e.g. ``jet_sum`` in ``jet_log_softmax``, or
+    ``jet_view`` to reshape a possibly-constant operand). The rule is total over
+    constants: a non-jet argument is passed straight to ``prim``.
     """
 
-    def rule(self: JetTuple, *args, **kwargs) -> JetTuple:
+    def rule(self: Tensor | JetTuple, *args, **kwargs) -> Tensor | JetTuple:
+        if not isinstance(self, JetTuple):
+            return prim(self, *args, **kwargs)
         return _apply_linear(self, lambda c: prim(c, *args, **kwargs))
 
     MAPPING[prim] = rule
@@ -1105,7 +1097,6 @@ for _prim in (
     ops.aten.neg.default,
     ops.aten.div.Scalar,
     ops.aten.t.default,
-    ops.aten.view.default,
     ops.aten._unsafe_view.default,
     ops.aten.unsqueeze.default,
     ops.aten.squeeze.dim,
@@ -1118,8 +1109,11 @@ for _prim in (
 ):
     deflinear(_prim)
 
-# Bound to a name so composite rules can reuse it (e.g. ``jet_log_softmax``).
+# Bound to names so composite rules can reuse them: ``jet_sum`` in
+# ``jet_log_softmax``; ``jet_view`` to reshape a possibly-constant operand
+# (``.reshape`` of a contiguous tensor lowers to ``aten.view``).
 jet_sum = deflinear(ops.aten.sum.dim_IntList)
+jet_view = deflinear(ops.aten.view.default)
 
 # Constant-output ops: primal carries the value, coefficients are zero.
 for _prim in (ops.aten.zeros_like.default,):

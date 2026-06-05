@@ -165,7 +165,7 @@ def _leibniz(
     return coeffs
 
 
-def _bilinear(
+def _apply_bilinear(
     op: Callable[[Tensor, Tensor], Tensor],
     self: Tensor | JetTuple,
     other: Tensor | JetTuple,
@@ -186,7 +186,7 @@ def _bilinear(
 
     Only valid for **bilinear** (product-like) ops; ``add`` / ``sub`` follow the
     additive rule (coefficient-wise sum), not Leibniz. Mirrors
-    :func:`jet.collapsed_operations._bilinear`.
+    :func:`jet.collapsed_operations._apply_bilinear`.
 
     Args:
         op: A bilinear function of two coefficient tensors.
@@ -610,7 +610,7 @@ def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
     Returns:
         The value and its Taylor coefficients.
     """
-    return _bilinear(lambda a, b: a * b, self, other)
+    return _apply_bilinear(lambda a, b: a * b, self, other)
 
 
 # --- Linear decomposition ---
@@ -626,7 +626,7 @@ def jet_mm(self: Tensor | JetTuple, mat2: Tensor | JetTuple) -> JetTuple:
     Returns:
         The value and its Taylor coefficients.
     """
-    return _bilinear(mm, self, mat2)
+    return _apply_bilinear(mm, self, mat2)
 
 
 def jet_addmm(
@@ -636,9 +636,9 @@ def jet_addmm(
 
     ``addmm(self, mat1, mat2) == self + mat1 @ mat2``, so the rule composes the
     matrix-product rule with the affine bias addition: ``jet_add(self,
-    _bilinear(mm, mat1, mat2))``. Any operand may be Taylor-expanded, including
+    _apply_bilinear(mm, mat1, mat2))``. Any operand may be Taylor-expanded, including
     the bias; :func:`jet_add` broadcasts a lower-rank bias over the product's
-    rows. When both matrices are constant :func:`_bilinear` returns a plain
+    rows. When both matrices are constant :func:`_apply_bilinear` returns a plain
     tensor.
 
     Args:
@@ -649,7 +649,7 @@ def jet_addmm(
     Returns:
         The value and its Taylor coefficients.
     """
-    return jet_add(self, _bilinear(mm, mat1, mat2))
+    return jet_add(self, _apply_bilinear(mm, mat1, mat2))
 
 
 def _align_conv_bias(bias: Tensor | JetTuple, ndim: int) -> Tensor | JetTuple:
@@ -704,7 +704,7 @@ def jet_convolution(
         """Bias-free convolution -- the bilinear core of ``aten.convolution``."""
         return ops.aten.convolution.default(a, b, None, *conv_args)
 
-    product = _bilinear(cv, input, weight)
+    product = _apply_bilinear(cv, input, weight)
     if bias is None:
         return product
     # convolution(input, weight, bias) == convolution(input, weight, None) +

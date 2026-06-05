@@ -180,7 +180,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
-- Extract a `_bilinear(op, a, b)` combinator (standard and collapsed modes) for
+- Extract an `_apply_bilinear(op, a, b)` combinator (standard and collapsed modes) for
   product-like jet ops. The both/either/neither dispatch (primal + Leibniz when
   both operands are jets, coefficient-wise when one is, plain op when neither)
   was duplicated across `jet_mul` / `jet_mm` and the bias-free cores of

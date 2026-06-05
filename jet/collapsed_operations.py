@@ -205,14 +205,14 @@ def _collapsed_leibniz(
     return coeffs
 
 
-def _bilinear(
+def _apply_bilinear(
     op: Callable[[Tensor, Tensor], Tensor],
     self: Tensor | CollapsedJetTuple,
     other: Tensor | CollapsedJetTuple,
 ) -> Tensor | CollapsedJetTuple:
     """Lift a bilinear tensor ``op`` to operands each of which may be jet or constant.
 
-    Collapsed mirror of :func:`jet.operations._bilinear`: both-jet uses the
+    Collapsed mirror of :func:`jet.operations._apply_bilinear`: both-jet uses the
     collapsed Leibniz rule (:func:`_collapsed_leibniz`, which sums the nonlinear
     terms over the direction dim ``R``); one-sided maps coefficient-wise via the
     collapsed :func:`_apply_linear` (vmapping the batched coefficients); neither
@@ -343,7 +343,7 @@ def cjet_mul(
     other: Tensor | CollapsedJetTuple,
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.mul``."""
-    return _bilinear(lambda a, b: a * b, self, other)
+    return _apply_bilinear(lambda a, b: a * b, self, other)
 
 
 # ---------------------------------------------------------------------------
@@ -355,7 +355,7 @@ def cjet_mm(
     self: Tensor | CollapsedJetTuple, mat2: Tensor | CollapsedJetTuple
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.mm``."""
-    return _bilinear(matmul, self, mat2)
+    return _apply_bilinear(matmul, self, mat2)
 
 
 def cjet_addmm(
@@ -366,9 +366,9 @@ def cjet_addmm(
     """Collapsed jet rule for ``aten.addmm`` (supports a Taylor-expanded bias).
 
     See :func:`jet.operations.jet_addmm`: composes the matrix-product rule with
-    the affine bias addition, ``cjet_add(self, _bilinear(matmul, mat1, mat2))``.
+    the affine bias addition, ``cjet_add(self, _apply_bilinear(matmul, mat1, mat2))``.
     """
-    return cjet_add(self, _bilinear(matmul, mat1, mat2))
+    return cjet_add(self, _apply_bilinear(matmul, mat1, mat2))
 
 
 def cjet_convolution(
@@ -390,7 +390,7 @@ def cjet_convolution(
         """Bias-free convolution -- the bilinear core of ``aten.convolution``."""
         return ops.aten.convolution.default(a, b, None, *conv_args)
 
-    product = _bilinear(cv, input, weight)
+    product = _apply_bilinear(cv, input, weight)
     if bias is None:
         return product
     # conv preserves rank, so the output ndim is the input ndim.

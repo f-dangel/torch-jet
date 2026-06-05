@@ -1,6 +1,6 @@
 """Implementation of AD primitives in Taylor-mode arithmetic."""
 
-import operator
+from operator import add, mul, sub
 from typing import Callable
 
 from scipy.special import comb, factorial, stirling2
@@ -970,14 +970,14 @@ def jet_native_batch_norm(
     Eval-mode batch norm is an affine per-channel map ``input * scale + shift``
     built from the frozen running statistics. Any of ``input`` / ``weight`` /
     ``bias`` may be a jet, a constant, or (``weight`` / ``bias``) ``None`` --
-    constant-only sub-expressions stay in plain torch and meet the jet operands at
-    the affine; any input rank (1d/2d/3d batch norm) is supported. Mirrored by
+    any input rank (1d/2d/3d batch norm) is supported. Mirrored by
     :func:`jet.collapsed_operations.cjet_native_batch_norm`. Training mode
     (composed batch statistics) is not yet implemented.
 
-    Returns the ATen op's ``(output, save_mean, save_invstd)`` triple;
-    ``save_mean`` / ``save_invstd`` are empty (only the forward output is consumed
-    in a Taylor-mode pass).
+    Returns:
+        The ATen op's ``(output, save_mean, save_invstd)`` triple. ``save_mean``
+        / ``save_invstd`` are empty (only the forward output is consumed in a
+        Taylor-mode pass).
 
     Raises:
         NotImplementedError: In training mode, or in eval mode without running
@@ -1011,14 +1011,14 @@ def jet_native_batch_norm(
     primal = input[0] if is_jet(input) else input
     view = _bn_channel_view(primal)
     rstd = (running_var + eps).rsqrt()
-    scale = rstd if weight is None else affine(jet_mul, operator.mul, weight, rstd)
+    scale = rstd if weight is None else affine(jet_mul, mul, weight, rstd)
     if bias is None:
-        shift = affine(jet_mul, operator.mul, scale, -running_mean)
+        shift = affine(jet_mul, mul, scale, -running_mean)
     else:
-        rm_scale = affine(jet_mul, operator.mul, scale, running_mean)
-        shift = affine(jet_sub, operator.sub, bias, rm_scale)
-    out = affine(jet_mul, operator.mul, input, reshape(scale, view))
-    out = affine(jet_add, operator.add, out, reshape(shift, view))
+        rm_scale = affine(jet_mul, mul, scale, running_mean)
+        shift = affine(jet_sub, sub, bias, rm_scale)
+    out = affine(jet_mul, mul, input, reshape(scale, view))
+    out = affine(jet_add, add, out, reshape(shift, view))
     empty = primal.new_empty(0)
     return out, empty, empty
 

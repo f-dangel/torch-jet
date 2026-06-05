@@ -225,19 +225,19 @@ def _apply_bilinear(
         other: The second operand; a jet or a constant ``Tensor``.
 
     Returns:
-        The collapsed jet of ``op(self, other)``, or a plain ``Tensor`` when both
+        The collapsed jet of ``op(self, other)``, or a plain constant when both
         operands are constants.
     """
-    self_is = isinstance(self, CollapsedJetTuple)
-    other_is = isinstance(other, CollapsedJetTuple)
-    if self_is and other_is:
-        primal = op(self[0], other[0])
-        return CollapsedJetTuple((primal, *_collapsed_leibniz(self, other, op)))
-    if self_is:
-        return _apply_linear(self, lambda c: op(c, other))
-    if other_is:
-        return _apply_linear(other, lambda c: op(self, c))
-    return op(self, other)
+    match self, other:
+        case CollapsedJetTuple(), CollapsedJetTuple():
+            primal = op(self[0], other[0])
+            return CollapsedJetTuple((primal, *_collapsed_leibniz(self, other, op)))
+        case CollapsedJetTuple(), _:
+            return _apply_linear(self, lambda c: op(c, other))
+        case _, CollapsedJetTuple():
+            return _apply_linear(other, lambda c: op(self, c))
+        case _, _:
+            return op(self, other)
 
 
 # ---------------------------------------------------------------------------

@@ -588,8 +588,8 @@ def cjet_nll_loss_forward(
 
 def cjet_native_batch_norm(
     input: Tensor | CollapsedJetTuple,
-    weight: Tensor | None,
-    bias: Tensor | None,
+    weight: Tensor | CollapsedJetTuple | None,
+    bias: Tensor | CollapsedJetTuple | None,
     running_mean: Tensor | None,
     running_var: Tensor | None,
     training: bool,
@@ -603,12 +603,18 @@ def cjet_native_batch_norm(
     an affine per-channel map ``input * scale + shift`` from the frozen running
     statistics. Any of ``input`` / ``weight`` / ``bias`` may be a jet, a constant,
     or (``weight`` / ``bias``) ``None``; any input rank is supported. Training
-    mode is not yet implemented.
+    mode (and eval mode without running statistics) is not yet implemented.
     """
     if training:
         raise NotImplementedError(
             "Taylor-mode native_batch_norm currently supports eval mode only; "
             "training-mode (batch-statistic) normalization is not yet implemented."
+        )
+    if running_mean is None or running_var is None:
+        raise NotImplementedError(
+            "Taylor-mode native_batch_norm requires running statistics in eval "
+            "mode; missing running_mean/running_var falls back to batch "
+            "statistics, which is not yet implemented."
         )
 
     def is_jet(x):

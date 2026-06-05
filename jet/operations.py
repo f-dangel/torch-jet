@@ -957,8 +957,8 @@ def _bn_channel_view(primal: Tensor) -> tuple[int, ...]:
 
 def jet_native_batch_norm(
     input: Tensor | JetTuple,
-    weight: Tensor | None,
-    bias: Tensor | None,
+    weight: Tensor | JetTuple | None,
+    bias: Tensor | JetTuple | None,
     running_mean: Tensor | None,
     running_var: Tensor | None,
     training: bool,
@@ -980,12 +980,19 @@ def jet_native_batch_norm(
     in a Taylor-mode pass).
 
     Raises:
-        NotImplementedError: In training mode.
+        NotImplementedError: In training mode, or in eval mode without running
+            statistics (the batch-statistic path, not the affine eval map).
     """
     if training:
         raise NotImplementedError(
             "Taylor-mode native_batch_norm currently supports eval mode only; "
             "training-mode (batch-statistic) normalization is not yet implemented."
+        )
+    if running_mean is None or running_var is None:
+        raise NotImplementedError(
+            "Taylor-mode native_batch_norm requires running statistics in eval "
+            "mode; missing running_mean/running_var falls back to batch "
+            "statistics, which is not yet implemented."
         )
 
     def is_jet(x):

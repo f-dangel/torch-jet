@@ -39,8 +39,12 @@ from torch.nn.functional import (
 from torch.testing import assert_close
 
 from jet import _rev_jet, jet
-from jet.collapsed_operations import CollapsedJetTuple, cjet_nll_loss_forward
-from jet.operations import JetTuple, jet_nll_loss_forward
+from jet.collapsed_operations import (
+    CollapsedJetTuple,
+    cjet_native_batch_norm,
+    cjet_nll_loss_forward,
+)
+from jet.operations import JetTuple, jet_native_batch_norm, jet_nll_loss_forward
 from test.utils import (
     K_AND_MODE,
     _stateless,
@@ -788,6 +792,23 @@ def test_batch_norm_training_raises(collapsed: bool, device: str):
     jet_args = make_jet_args((x,), 2, collapsed=collapsed)
     with raises(NotImplementedError, match="eval mode only"):
         jet(f, (x,), collapsed=collapsed)(*jet_args)
+
+
+@mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])
+def test_batch_norm_eval_without_running_stats_raises(collapsed: bool, device: str):
+    """Eval-mode batch norm without running statistics must raise clearly.
+
+    With ``running_mean``/``running_var`` set to ``None``, ATen falls back to
+    batch statistics even in eval mode -- the non-affine path the rule does not
+    implement. It must raise a clear error rather than a cryptic ``TypeError``
+    from ``None + eps``.
+    """
+    kw = device_kw(device)
+    rule = cjet_native_batch_norm if collapsed else jet_native_batch_norm
+    tup = CollapsedJetTuple if collapsed else JetTuple
+    x = tup((rand(4, 3, 5, 5, **kw), rand(4, 3, 5, 5, **kw)))
+    with raises(NotImplementedError, match="running statistics"):
+        rule(x, None, None, None, None, False, 0.1, 1e-5)
 
 
 @mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])

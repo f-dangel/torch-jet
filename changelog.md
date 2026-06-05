@@ -180,6 +180,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Extract a `_bilinear(op, a, b)` combinator (standard and collapsed modes) for
+  product-like jet ops. The both/either/neither dispatch (primal + Leibniz when
+  both operands are jets, coefficient-wise when one is, plain op when neither)
+  was duplicated across `jet_mul` / `jet_mm` and the bias-free cores of
+  `jet_addmm` / `jet_convolution`; all five now route through the helper. Only
+  valid for product-like ops — `add` / `sub` keep the additive rule
+  ([PR](https://github.com/f-dangel/torch-jet/pull/170)).
+
 - Drop the redundant primal from the `_*_derivatives` helpers' return value.
   Each helper already stored the primal at `dn[0]` and also returned it as a
   separate first element; the helpers now return just the derivative dict and

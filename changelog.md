@@ -180,6 +180,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Make `jet_add` / `jet_sub` (and collapsed) total over constant operands:
+  `add` / `sub` on two constants now return the plain result instead of
+  indexing a non-jet operand, completing the `{jet, constant}` totality that
+  #170 gave the product ops
+  ([PR](https://github.com/f-dangel/torch-jet/pull/171)).
+
 - Extract an `_apply_bilinear(op, a, b)` combinator (standard and collapsed
   modes) for product-like jet ops
   ([PR](https://github.com/f-dangel/torch-jet/pull/170)).

@@ -309,7 +309,7 @@ def cjet_pow(self: CollapsedJetTuple, exponent: float | int) -> CollapsedJetTupl
 def cjet_add(
     self: Tensor | CollapsedJetTuple | float | int,
     other: Tensor | CollapsedJetTuple | float | int,
-) -> CollapsedJetTuple:
+) -> Tensor | CollapsedJetTuple | float | int:
     """Collapsed jet rule for ``aten.add``."""
     self_is = isinstance(self, CollapsedJetTuple)
     other_is = isinstance(other, CollapsedJetTuple)
@@ -318,14 +318,16 @@ def cjet_add(
     if self_is:
         primal = self[0] + other
         return CollapsedJetTuple((primal, *_broadcast_coeffs(self, primal)))
-    primal = other[0] + self
-    return CollapsedJetTuple((primal, *_broadcast_coeffs(other, primal)))
+    if other_is:
+        primal = other[0] + self
+        return CollapsedJetTuple((primal, *_broadcast_coeffs(other, primal)))
+    return self + other
 
 
 def cjet_sub(
     self: Tensor | CollapsedJetTuple | float | int,
     other: Tensor | CollapsedJetTuple | float | int,
-) -> CollapsedJetTuple:
+) -> Tensor | CollapsedJetTuple | float | int:
     """Collapsed jet rule for ``aten.sub``."""
     self_is = isinstance(self, CollapsedJetTuple)
     other_is = isinstance(other, CollapsedJetTuple)
@@ -334,8 +336,12 @@ def cjet_sub(
     if self_is:
         primal = self[0] - other
         return CollapsedJetTuple((primal, *_broadcast_coeffs(self, primal)))
-    primal = self - other[0]
-    return CollapsedJetTuple((primal, *(-c for c in _broadcast_coeffs(other, primal))))
+    if other_is:
+        primal = self - other[0]
+        return CollapsedJetTuple(
+            (primal, *(-c for c in _broadcast_coeffs(other, primal)))
+        )
+    return self - other
 
 
 def cjet_mul(

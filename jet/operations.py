@@ -551,15 +551,16 @@ def jet_pow(self: JetTuple, exponent: float | int) -> JetTuple:
 def jet_add(
     self: Tensor | JetTuple | float | int,
     other: Tensor | JetTuple | float | int,
-) -> JetTuple:
+) -> Tensor | JetTuple | float | int:
     """Taylor-mode arithmetic for ``aten.add(self, other)``.
 
     Args:
-        self: The first operand and its Taylor coefficients, or a scalar.
-        other: The second operand and its Taylor coefficients, or a scalar.
+        self: The first operand and its Taylor coefficients, or a constant.
+        other: The second operand and its Taylor coefficients, or a constant.
 
     Returns:
-        The value and its Taylor coefficients.
+        The value and its Taylor coefficients, or a plain constant when both
+        operands are constants.
     """
     self_is_jet = isinstance(self, JetTuple)
     other_is_jet = isinstance(other, JetTuple)
@@ -570,22 +571,25 @@ def jet_add(
     if self_is_jet:
         primal = self[0] + other
         return JetTuple((primal, *_broadcast_coeffs(self, primal)))
-    primal = other[0] + self
-    return JetTuple((primal, *_broadcast_coeffs(other, primal)))
+    if other_is_jet:
+        primal = other[0] + self
+        return JetTuple((primal, *_broadcast_coeffs(other, primal)))
+    return self + other
 
 
 def jet_sub(
     self: Tensor | JetTuple | float | int,
     other: Tensor | JetTuple | float | int,
-) -> JetTuple:
+) -> Tensor | JetTuple | float | int:
     """Taylor-mode arithmetic for ``aten.sub(self, other)``.
 
     Args:
-        self: The first operand and its Taylor coefficients, or a scalar.
-        other: The second operand and its Taylor coefficients, or a scalar.
+        self: The first operand and its Taylor coefficients, or a constant.
+        other: The second operand and its Taylor coefficients, or a constant.
 
     Returns:
-        The value and its Taylor coefficients.
+        The value and its Taylor coefficients, or a plain constant when both
+        operands are constants.
     """
     self_is_jet = isinstance(self, JetTuple)
     other_is_jet = isinstance(other, JetTuple)
@@ -596,8 +600,10 @@ def jet_sub(
     if self_is_jet:
         primal = self[0] - other
         return JetTuple((primal, *_broadcast_coeffs(self, primal)))
-    primal = self - other[0]
-    return JetTuple((primal, *(-c for c in _broadcast_coeffs(other, primal))))
+    if other_is_jet:
+        primal = self - other[0]
+        return JetTuple((primal, *(-c for c in _broadcast_coeffs(other, primal))))
+    return self - other
 
 
 def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:

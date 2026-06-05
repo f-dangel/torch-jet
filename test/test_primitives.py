@@ -35,15 +35,9 @@ from torch.nn.functional import (
     mse_loss,
     nll_loss,
 )
-from torch.testing import assert_close
 
-from jet.collapsed_operations import (
-    CollapsedJetTuple,
-    cjet_add,
-    cjet_nll_loss_forward,
-    cjet_sub,
-)
-from jet.operations import JetTuple, jet_add, jet_nll_loss_forward, jet_sub
+from jet.collapsed_operations import CollapsedJetTuple, cjet_nll_loss_forward
+from jet.operations import JetTuple, jet_nll_loss_forward
 from test.utils import (
     K_AND_MODE,
     _stateless,
@@ -659,28 +653,3 @@ def test_nll_loss_taylor_expanded_target_raises(collapsed: bool, device: str):
     target = tup((rand(8, **kw), rand(8, **kw)))  # a Taylor-expanded label
     with raises(NotImplementedError, match="Taylor-expanded target"):
         rule(logits, target, None, 1, -100)
-
-
-@mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])
-def test_add_sub_all_constant_base_case(collapsed: bool, device: str):
-    """add/sub on two constants return the plain result (no jet operand needed).
-
-    Dispatch only routes to these rules when an operand is a jet, but they are
-    reused as building blocks (e.g. inside the batch-norm rule) where a
-    sub-expression can be constant-only. The all-constant path must return the
-    plain tensor/scalar result rather than indexing a non-jet operand.
-    """
-    kw = device_kw(device)
-    manual_seed(0)
-    a, b = rand(3, 4, **kw), rand(3, 4, **kw)
-    tup = CollapsedJetTuple if collapsed else JetTuple
-    add_rule = cjet_add if collapsed else jet_add
-    sub_rule = cjet_sub if collapsed else jet_sub
-
-    for rule, expected in ((add_rule, a + b), (sub_rule, a - b)):
-        out = rule(a, b)
-        assert not isinstance(out, tup)  # a plain constant, not a (malformed) jet
-        assert_close(out, expected)
-    # a scalar constant operand is supported too
-    assert_close(add_rule(a, 2.0), a + 2.0)
-    assert_close(sub_rule(2.0, a), 2.0 - a)

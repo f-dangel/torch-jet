@@ -197,15 +197,15 @@ def _apply_bilinear(
         The jet of ``op(self, other)``, or a plain constant when both operands
         are constants.
     """
-    match self, other:
-        case JetTuple(), JetTuple():
-            return JetTuple((op(self[0], other[0]), *_leibniz(self, other, op)))
-        case JetTuple(), _:
-            return _apply_linear(self, lambda c: op(c, other))
-        case _, JetTuple():
-            return _apply_linear(other, lambda c: op(self, c))
-        case _, _:
-            return op(self, other)
+    self_is_jet = isinstance(self, JetTuple)
+    other_is_jet = isinstance(other, JetTuple)
+    if self_is_jet and other_is_jet:
+        return JetTuple((op(self[0], other[0]), *_leibniz(self, other, op)))
+    if self_is_jet:
+        return _apply_linear(self, lambda c: op(c, other))
+    if other_is_jet:
+        return _apply_linear(other, lambda c: op(self, c))
+    return op(self, other)
 
 
 def _partition_term(

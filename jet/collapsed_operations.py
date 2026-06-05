@@ -14,7 +14,7 @@ from operator import add, sub
 from typing import Callable
 
 from scipy.special import comb
-from torch import Tensor, cat, matmul, mm, ops, zeros_like
+from torch import Tensor, cat, matmul, ops, zeros_like
 from torch.func import vmap
 from torch.utils._pytree import register_pytree_node
 
@@ -205,6 +205,41 @@ def _collapsed_leibniz(
     return coeffs
 
 
+def _bilinear(
+    op: Callable[[Tensor, Tensor], Tensor],
+    self: Tensor | CollapsedJetTuple,
+    other: Tensor | CollapsedJetTuple,
+) -> Tensor | CollapsedJetTuple:
+    """Lift a bilinear tensor ``op`` to operands each of which may be jet or constant.
+
+    Collapsed mirror of :func:`jet.operations._bilinear`: both-jet uses the
+    collapsed Leibniz rule (:func:`_collapsed_leibniz`, which sums the nonlinear
+    terms over the direction dim ``R``); one-sided maps coefficient-wise via the
+    collapsed :func:`_apply_linear` (vmapping the batched coefficients); neither
+    falls back to a plain ``op`` on two constants. Only valid for **bilinear**
+    (product-like) ops -- ``add`` / ``sub`` use the additive rule.
+
+    Args:
+        op: A bilinear function of two coefficient tensors.
+        self: The first operand; a jet or a constant ``Tensor``.
+        other: The second operand; a jet or a constant ``Tensor``.
+
+    Returns:
+        The collapsed jet of ``op(self, other)``, or a plain ``Tensor`` when both
+        operands are constants.
+    """
+    self_is = isinstance(self, CollapsedJetTuple)
+    other_is = isinstance(other, CollapsedJetTuple)
+    if self_is and other_is:
+        primal = op(self[0], other[0])
+        return CollapsedJetTuple((primal, *_collapsed_leibniz(self, other, op)))
+    if self_is:
+        return _apply_linear(self, lambda c: op(c, other))
+    if other_is:
+        return _apply_linear(other, lambda c: op(self, c))
+    return op(self, other)
+
+
 # ---------------------------------------------------------------------------
 # Elementwise nonlinear (shared derivative helpers + collapsed Faà di Bruno)
 # ---------------------------------------------------------------------------
@@ -308,17 +343,7 @@ def cjet_mul(
     other: Tensor | CollapsedJetTuple,
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.mul``."""
-    self_is = isinstance(self, CollapsedJetTuple)
-    other_is = isinstance(other, CollapsedJetTuple)
-    if self_is and other_is:
-        primal = self[0] * other[0]
-        return CollapsedJetTuple(
-            (primal, *_collapsed_leibniz(self, other, lambda a, b: a * b))
-        )
-    elif self_is:
-        return _apply_linear(self, lambda c: other * c)
-    else:
-        return _apply_linear(other, lambda c: self * c)
+    return _bilinear(lambda a, b: a * b, self, other)
 
 
 # ---------------------------------------------------------------------------
@@ -330,15 +355,7 @@ def cjet_mm(
     self: Tensor | CollapsedJetTuple, mat2: Tensor | CollapsedJetTuple
 ) -> CollapsedJetTuple:
     """Collapsed jet rule for ``aten.mm``."""
-    self_is = isinstance(self, CollapsedJetTuple)
-    mat2_is = isinstance(mat2, CollapsedJetTuple)
-    if self_is and mat2_is:
-        primal = matmul(self[0], mat2[0])
-        return CollapsedJetTuple((primal, *_collapsed_leibniz(self, mat2, matmul)))
-    elif self_is:
-        return _apply_linear(self, lambda c: mm(c, mat2))
-    else:
-        return _apply_linear(mat2, lambda c: mm(self, c))
+    return _bilinear(matmul, self, mat2)
 
 
 def cjet_addmm(
@@ -349,14 +366,9 @@ def cjet_addmm(
     """Collapsed jet rule for ``aten.addmm`` (supports a Taylor-expanded bias).
 
     See :func:`jet.operations.jet_addmm`: composes the matrix-product rule with
-    the affine bias addition, ``cjet_add(self, cjet_mm(mat1, mat2))``.
+    the affine bias addition, ``cjet_add(self, _bilinear(matmul, mat1, mat2))``.
     """
-    product = (
-        cjet_mm(mat1, mat2)
-        if isinstance(mat1, CollapsedJetTuple) or isinstance(mat2, CollapsedJetTuple)
-        else mm(mat1, mat2)
-    )
-    return cjet_add(self, product)
+    return cjet_add(self, _bilinear(matmul, mat1, mat2))
 
 
 def cjet_convolution(
@@ -378,22 +390,11 @@ def cjet_convolution(
         """Bias-free convolution -- the bilinear core of ``aten.convolution``."""
         return ops.aten.convolution.default(a, b, None, *conv_args)
 
-    input_is = isinstance(input, CollapsedJetTuple)
-    weight_is = isinstance(weight, CollapsedJetTuple)
-    if input_is and weight_is:
-        primal = cv(input[0], weight[0])
-        product = CollapsedJetTuple((primal, *_collapsed_leibniz(input, weight, cv)))
-    elif input_is:
-        product = _apply_linear(input, lambda c: cv(c, weight))
-    elif weight_is:
-        product = _apply_linear(weight, lambda c: cv(input, c))
-    else:
-        product = cv(input, weight)
-
+    product = _bilinear(cv, input, weight)
     if bias is None:
         return product
     # conv preserves rank, so the output ndim is the input ndim.
-    ndim = (input[0] if input_is else input).ndim
+    ndim = (input[0] if isinstance(input, CollapsedJetTuple) else input).ndim
     return cjet_add(_align_conv_bias(bias, ndim), product)
 
 

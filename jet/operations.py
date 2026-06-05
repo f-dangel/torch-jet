@@ -165,6 +165,49 @@ def _leibniz(
     return coeffs
 
 
+def _bilinear(
+    op: Callable[[Tensor, Tensor], Tensor],
+    self: Tensor | JetTuple,
+    other: Tensor | JetTuple,
+) -> Tensor | JetTuple:
+    """Lift a bilinear tensor ``op`` to operands each of which may be jet or constant.
+
+    For a product-like bilinear ``op`` (elementwise ``mul``, ``mm``, a bias-free
+    convolution), the Taylor rule depends on which operands carry coefficients:
+
+    - both jets: the primal ``op(self[0], other[0])`` plus the Leibniz product
+      rule (:func:`_leibniz`) for orders 1..K;
+    - one jet: ``op`` is linear in that operand, so it maps coefficient-wise
+      (:func:`_apply_linear`);
+    - neither: a plain ``op`` on two constants -- the all-constant sub-expression
+      that arises *inside* ``addmm`` / ``convolution`` / ``native_batch_norm``.
+      The binary jet ops assume at least one jet operand, so this fallback keeps
+      the composed rule total.
+
+    Only valid for **bilinear** (product-like) ops; ``add`` / ``sub`` follow the
+    additive rule (coefficient-wise sum), not Leibniz. Mirrors
+    :func:`jet.collapsed_operations._bilinear`.
+
+    Args:
+        op: A bilinear function of two coefficient tensors.
+        self: The first operand; a jet or a constant ``Tensor``.
+        other: The second operand; a jet or a constant ``Tensor``.
+
+    Returns:
+        The jet of ``op(self, other)``, or a plain ``Tensor`` when both operands
+        are constants.
+    """
+    self_is_jet = isinstance(self, JetTuple)
+    other_is_jet = isinstance(other, JetTuple)
+    if self_is_jet and other_is_jet:
+        return JetTuple((op(self[0], other[0]), *_leibniz(self, other, op)))
+    if self_is_jet:
+        return _apply_linear(self, lambda c: op(c, other))
+    if other_is_jet:
+        return _apply_linear(other, lambda c: op(self, c))
+    return op(self, other)
+
+
 def _partition_term(
     vs: tuple[Tensor, ...], sigma: tuple[int, ...], dn: dict[int, Tensor]
 ) -> Tensor | None:
@@ -567,16 +610,7 @@ def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
     Returns:
         The value and its Taylor coefficients.
     """
-    self_is_jet = isinstance(self, JetTuple)
-    other_is_jet = isinstance(other, JetTuple)
-
-    if self_is_jet and other_is_jet:
-        primal = self[0] * other[0]
-        return JetTuple((primal, *_leibniz(self, other, lambda a, b: a * b)))
-    elif self_is_jet:
-        return _apply_linear(self, lambda c: other * c)
-    else:
-        return _apply_linear(other, lambda c: self * c)
+    return _bilinear(lambda a, b: a * b, self, other)
 
 
 # --- Linear decomposition ---
@@ -592,16 +626,7 @@ def jet_mm(self: Tensor | JetTuple, mat2: Tensor | JetTuple) -> JetTuple:
     Returns:
         The value and its Taylor coefficients.
     """
-    self_is_jet = isinstance(self, JetTuple)
-    mat2_is_jet = isinstance(mat2, JetTuple)
-
-    if self_is_jet and mat2_is_jet:
-        primal = mm(self[0], mat2[0])
-        return JetTuple((primal, *_leibniz(self, mat2, mm)))
-    elif self_is_jet:
-        return _apply_linear(self, lambda c: mm(c, mat2))
-    else:
-        return _apply_linear(mat2, lambda c: mm(self, c))
+    return _bilinear(mm, self, mat2)
 
 
 def jet_addmm(
@@ -611,9 +636,10 @@ def jet_addmm(
 
     ``addmm(self, mat1, mat2) == self + mat1 @ mat2``, so the rule composes the
     matrix-product rule with the affine bias addition: ``jet_add(self,
-    jet_mm(mat1, mat2))``. Any operand may be Taylor-expanded, including the
-    bias; :func:`jet_add` broadcasts a lower-rank bias over the product's rows.
-    When both matrices are constant the product is a plain tensor.
+    _bilinear(mm, mat1, mat2))``. Any operand may be Taylor-expanded, including
+    the bias; :func:`jet_add` broadcasts a lower-rank bias over the product's
+    rows. When both matrices are constant :func:`_bilinear` returns a plain
+    tensor.
 
     Args:
         self: The bias; a jet or a constant ``Tensor``.
@@ -623,12 +649,7 @@ def jet_addmm(
     Returns:
         The value and its Taylor coefficients.
     """
-    product = (
-        jet_mm(mat1, mat2)
-        if isinstance(mat1, JetTuple) or isinstance(mat2, JetTuple)
-        else mm(mat1, mat2)
-    )
-    return jet_add(self, product)
+    return jet_add(self, _bilinear(mm, mat1, mat2))
 
 
 def _align_conv_bias(bias: Tensor | JetTuple, ndim: int) -> Tensor | JetTuple:
@@ -683,24 +704,14 @@ def jet_convolution(
         """Bias-free convolution -- the bilinear core of ``aten.convolution``."""
         return ops.aten.convolution.default(a, b, None, *conv_args)
 
-    input_is_jet = isinstance(input, JetTuple)
-    weight_is_jet = isinstance(weight, JetTuple)
-    if input_is_jet and weight_is_jet:
-        product = JetTuple((cv(input[0], weight[0]), *_leibniz(input, weight, cv)))
-    elif input_is_jet:
-        product = _apply_linear(input, lambda c: cv(c, weight))
-    elif weight_is_jet:
-        product = _apply_linear(weight, lambda c: cv(input, c))
-    else:
-        product = cv(input, weight)
-
+    product = _bilinear(cv, input, weight)
     if bias is None:
         return product
     # convolution(input, weight, bias) == convolution(input, weight, None) +
     # bias; reshape the 1-D bias to broadcast over the output's batch and spatial
     # dims (channel is dim 1) and defer the add to jet_add. Conv preserves rank,
     # so the output ndim is the input ndim.
-    ndim = (input[0] if input_is_jet else input).ndim
+    ndim = (input[0] if isinstance(input, JetTuple) else input).ndim
     return jet_add(_align_conv_bias(bias, ndim), product)
 
 

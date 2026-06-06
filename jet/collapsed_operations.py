@@ -604,12 +604,15 @@ def cjet_native_batch_norm(
     ``(input - running_mean) / sqrt(running_var + eps) * weight + bias``. Any of
     ``input`` / ``weight`` / ``bias`` may be a jet, a constant, or
     (``weight`` / ``bias``) ``None``; any input rank is supported. Training mode
-    (and eval mode without running statistics) is not yet implemented.
+    is deferred until PyTorch fixes its fused ``native_batch_norm``'s incorrect
+    higher-order autograd in training (pytorch/pytorch#186256); eval mode without
+    running statistics is likewise unsupported.
     """
     if training:
         raise NotImplementedError(
-            "Taylor-mode native_batch_norm currently supports eval mode only; "
-            "training-mode (batch-statistic) normalization is not yet implemented."
+            "Taylor-mode native_batch_norm supports eval mode only. Training mode "
+            "is deferred until PyTorch fixes the fused op's incorrect higher-order "
+            "autograd in training (pytorch/pytorch#186256)."
         )
     if running_mean is None or running_var is None:
         raise NotImplementedError(

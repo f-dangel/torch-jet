@@ -971,8 +971,10 @@ def jet_native_batch_norm(
     bias``. Any of ``input`` / ``weight`` / ``bias`` may be a jet, a constant, or
     (``weight`` / ``bias``) ``None`` -- any input rank (1d/2d/3d batch norm) is
     supported. Mirrored by
-    :func:`jet.collapsed_operations.cjet_native_batch_norm`. Training mode
-    (composed batch statistics) is not yet implemented.
+    :func:`jet.collapsed_operations.cjet_native_batch_norm`. Training mode is
+    deferred until PyTorch fixes its fused ``native_batch_norm``'s incorrect
+    higher-order autograd in training (pytorch/pytorch#186256), without which a
+    training rule cannot be validated.
 
     Returns:
         The ATen op's ``(output, save_mean, save_invstd)`` triple. ``save_mean``
@@ -985,8 +987,9 @@ def jet_native_batch_norm(
     """
     if training:
         raise NotImplementedError(
-            "Taylor-mode native_batch_norm currently supports eval mode only; "
-            "training-mode (batch-statistic) normalization is not yet implemented."
+            "Taylor-mode native_batch_norm supports eval mode only. Training mode "
+            "is deferred until PyTorch fixes the fused op's incorrect higher-order "
+            "autograd in training (pytorch/pytorch#186256)."
         )
     if running_mean is None or running_var is None:
         raise NotImplementedError(

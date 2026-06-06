@@ -941,6 +941,76 @@ def jet_nll_loss_forward(
     return JetTuple((output, *coeffs)), total_weight
 
 
+# --- Batch norm ---
+
+
+def _bn_channel_view(primal: Tensor) -> tuple[int, ...]:
+    """Per-channel broadcast view ``(1, C, 1, ...)`` for an ndim-D batch-norm input.
+
+    Reshaping a per-channel ``weight`` / ``bias`` / scale / shift to this view
+    lets it broadcast over the batch and spatial dims of an ``input`` of any rank
+    (1d/2d/3d batch norm). A pure-tensor helper shared with the collapsed rule.
+    """
+    return (1, primal.shape[1]) + (1,) * (primal.dim() - 2)
+
+
+def jet_native_batch_norm(
+    input: Tensor | JetTuple,
+    weight: Tensor | JetTuple | None,
+    bias: Tensor | JetTuple | None,
+    running_mean: Tensor | None,
+    running_var: Tensor | None,
+    training: bool,
+    momentum: float,
+    eps: float,
+) -> tuple[JetTuple, Tensor, Tensor]:
+    """Taylor-mode arithmetic for ``aten.native_batch_norm`` (eval mode).
+
+    Eval-mode batch norm normalizes each channel with the frozen running
+    statistics: ``(input - running_mean) / sqrt(running_var + eps) * weight +
+    bias``. Any of ``input`` / ``weight`` / ``bias`` may be a jet, a constant, or
+    (``weight`` / ``bias``) ``None`` -- any input rank (1d/2d/3d batch norm) is
+    supported. Mirrored by
+    :func:`jet.collapsed_operations.cjet_native_batch_norm`. Training mode is
+    deferred until PyTorch fixes its fused ``native_batch_norm``'s incorrect
+    higher-order autograd in training (pytorch/pytorch#186256), without which a
+    training rule cannot be validated.
+
+    Returns:
+        The ATen op's ``(output, save_mean, save_invstd)`` triple. ``save_mean``
+        / ``save_invstd`` are empty (only the forward output is consumed in a
+        Taylor-mode pass).
+
+    Raises:
+        NotImplementedError: In training mode, or in eval mode without running
+            statistics (the batch-statistic path, not the affine eval map).
+    """
+    if training:
+        raise NotImplementedError(
+            "Taylor-mode native_batch_norm supports eval mode only. Training mode "
+            "is deferred until PyTorch fixes the fused op's incorrect higher-order "
+            "autograd in training (pytorch/pytorch#186256)."
+        )
+    if running_mean is None or running_var is None:
+        raise NotImplementedError(
+            "Taylor-mode native_batch_norm requires running statistics in eval "
+            "mode; missing running_mean/running_var falls back to batch "
+            "statistics, which is not yet implemented."
+        )
+
+    primal = input[0] if isinstance(input, JetTuple) else input
+    shape = _bn_channel_view(primal)
+    rstd = (running_var + eps).rsqrt()
+    out = jet_sub(input, jet_view(running_mean, shape))
+    out = jet_mul(out, jet_view(rstd, shape))
+    if weight is not None:
+        out = jet_mul(out, jet_view(weight, shape))
+    if bias is not None:
+        out = jet_add(out, jet_view(bias, shape))
+    empty = primal.new_empty(0)
+    return out, empty, empty
+
+
 MAPPING: dict = {
     # Elementwise unary
     ops.aten.sin.default: jet_sin,
@@ -971,6 +1041,8 @@ MAPPING: dict = {
     ops.aten.nll_loss_forward.default: jet_nll_loss_forward,
     # Normalization
     ops.aten._log_softmax.default: jet_log_softmax,
+    # Batch norm (affine in eval; composed batch statistics in training)
+    ops.aten.native_batch_norm.default: jet_native_batch_norm,
 }
 
 
@@ -988,10 +1060,14 @@ def deflinear(prim: Callable) -> Callable:
     positional argument and any structural args (e.g. ``size``, ``dim``)
     after. Forwards both ``*args`` and ``**kwargs`` straight to ``prim``.
     Returns the registered rule so it can also be bound to a name and reused
-    inside composite rules (e.g. ``jet_sum`` in ``jet_log_softmax``).
+    inside composite rules (e.g. ``jet_sum`` in ``jet_log_softmax``, or
+    ``jet_view`` to reshape a possibly-constant operand). The rule is total over
+    constants: a non-jet argument is passed straight to ``prim``.
     """
 
-    def rule(self: JetTuple, *args, **kwargs) -> JetTuple:
+    def rule(self: Tensor | JetTuple, *args, **kwargs) -> Tensor | JetTuple:
+        if not isinstance(self, JetTuple):
+            return prim(self, *args, **kwargs)
         return _apply_linear(self, lambda c: prim(c, *args, **kwargs))
 
     MAPPING[prim] = rule
@@ -1021,7 +1097,6 @@ for _prim in (
     ops.aten.neg.default,
     ops.aten.div.Scalar,
     ops.aten.t.default,
-    ops.aten.view.default,
     ops.aten._unsafe_view.default,
     ops.aten.unsqueeze.default,
     ops.aten.squeeze.dim,
@@ -1034,8 +1109,11 @@ for _prim in (
 ):
     deflinear(_prim)
 
-# Bound to a name so composite rules can reuse it (e.g. ``jet_log_softmax``).
+# Bound to names so composite rules can reuse them: ``jet_sum`` in
+# ``jet_log_softmax``; ``jet_view`` to reshape a possibly-constant operand
+# (``.reshape`` of a contiguous tensor lowers to ``aten.view``).
 jet_sum = deflinear(ops.aten.sum.dim_IntList)
+jet_view = deflinear(ops.aten.view.default)
 
 # Constant-output ops: primal carries the value, coefficients are zero.
 for _prim in (ops.aten.zeros_like.default,):

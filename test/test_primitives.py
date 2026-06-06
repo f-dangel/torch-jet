@@ -295,11 +295,7 @@ def _batch_norm_builders(
 
     Each of ``input`` / ``weight`` / ``bias`` is ``"J"`` (a jet arg), ``"C"``
     (captured constant), or -- for ``weight`` / ``bias`` -- ``"N"`` (absent); at
-    least one is a jet. Eval-mode batch norm is an affine map, so the fused ATen
-    op's own reverse-mode autograd already gives the exact Taylor coefficients
-    and serves as the oracle -- no manual re-implementation needed, the same
-    convention as every other primitive. (Training mode is where the fused op's
-    higher-order autograd breaks, which is why training is unsupported.)
+    least one is a jet.
     """
     C = shape[1]
     manual_seed(0)

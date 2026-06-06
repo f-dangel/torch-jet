@@ -293,9 +293,13 @@ def cjet_log(self: CollapsedJetTuple) -> CollapsedJetTuple:
     return _cjet_elementwise(self, _log_derivatives)
 
 
-def cjet_pow(self: CollapsedJetTuple, exponent: float | int) -> CollapsedJetTuple:
-    """Collapsed jet rule for ``aten.pow``."""
+def cjet_pow(
+    self: Tensor | CollapsedJetTuple, exponent: float | int
+) -> Tensor | CollapsedJetTuple:
+    """Collapsed jet rule for ``aten.pow`` (total over constants)."""
     assert isinstance(exponent, (float, int))
+    if not isinstance(self, CollapsedJetTuple):
+        return self**exponent
     self0, vs = self[0], self[1:]
     dpow = _pow_derivatives(self0, exponent, _cjet_order(self))
     vs_out = _faa_di_bruno(vs, dpow, collapsed=True)
@@ -596,36 +600,33 @@ def cjet_native_batch_norm(
     momentum: float,
     eps: float,
 ) -> tuple[CollapsedJetTuple, Tensor, Tensor]:
-    """Collapsed jet rule for ``aten.native_batch_norm`` (eval mode).
+    """Collapsed jet rule for ``aten.native_batch_norm``.
 
     Mirrors :func:`jet.operations.jet_native_batch_norm` with the collapsed
     arithmetic helpers (sharing only the pure-tensor :func:`_bn_channel_view`):
-    normalizes each channel with the frozen running statistics,
-    ``(input - running_mean) / sqrt(running_var + eps) * weight + bias``. Any of
-    ``input`` / ``weight`` / ``bias`` may be a jet, a constant, or
-    (``weight`` / ``bias``) ``None``; any input rank is supported. Training mode
-    is deferred until PyTorch fixes its fused ``native_batch_norm``'s incorrect
-    higher-order autograd in training (pytorch/pytorch#186256); eval mode without
-    running statistics is likewise unsupported.
+    normalizes each channel -- with the frozen running statistics in eval mode,
+    or the input-dependent batch mean / variance in training mode -- then applies
+    the per-channel affine ``normalized * weight + bias``. Any of ``input`` /
+    ``weight`` / ``bias`` may be a jet, a constant, or (``weight`` / ``bias``)
+    ``None``; any input rank is supported.
     """
-    if training:
-        raise NotImplementedError(
-            "Taylor-mode native_batch_norm supports eval mode only. Training mode "
-            "is deferred until PyTorch fixes the fused op's incorrect higher-order "
-            "autograd in training (pytorch/pytorch#186256)."
-        )
-    if running_mean is None or running_var is None:
-        raise NotImplementedError(
-            "Taylor-mode native_batch_norm requires running statistics in eval "
-            "mode; missing running_mean/running_var falls back to batch "
-            "statistics, which is not yet implemented."
-        )
-
     primal = input[0] if isinstance(input, CollapsedJetTuple) else input
     shape = _bn_channel_view(primal)
-    rstd = (running_var + eps).rsqrt()
-    out = cjet_sub(input, cjet_view(running_mean, shape))
-    out = cjet_mul(out, cjet_view(rstd, shape))
+    if training:
+        reduce_dims = [0, *range(2, primal.dim())]
+        centered = cjet_sub(input, cjet_mean(input, reduce_dims, True))
+        var = cjet_mean(cjet_mul(centered, centered), reduce_dims, True)
+        out = cjet_mul(centered, cjet_pow(cjet_add(var, eps), -0.5))
+    else:
+        if running_mean is None or running_var is None:
+            raise NotImplementedError(
+                "Taylor-mode native_batch_norm requires running statistics in "
+                "eval mode; missing running_mean/running_var falls back to batch "
+                "statistics, which is not yet implemented."
+            )
+        rstd = (running_var + eps).rsqrt()
+        out = cjet_sub(input, cjet_view(running_mean, shape))
+        out = cjet_mul(out, cjet_view(rstd, shape))
     if weight is not None:
         out = cjet_mul(out, cjet_view(weight, shape))
     if bias is not None:
@@ -737,14 +738,15 @@ for _prim in (
     ops.aten._adaptive_avg_pool2d.default,
     ops.aten.avg_pool2d.default,
     ops.aten.mean.default,
-    ops.aten.mean.dim,
 ):
     deflinear(_prim)
 
 # Bound to names so composite rules can reuse them: ``cjet_sum`` in
-# ``cjet_log_softmax``; ``cjet_view`` to reshape a possibly-constant operand.
+# ``cjet_log_softmax``; ``cjet_view`` to reshape a possibly-constant operand;
+# ``cjet_mean`` for the batch statistics of training-mode batch norm.
 cjet_sum = deflinear(ops.aten.sum.dim_IntList)
 cjet_view = deflinear(ops.aten.view.default)
+cjet_mean = deflinear(ops.aten.mean.dim)
 
 # Constant-output ops.
 for _prim in (ops.aten.zeros_like.default,):

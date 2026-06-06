@@ -528,17 +528,22 @@ def jet_log(self: JetTuple) -> JetTuple:
 # --- Power ---
 
 
-def jet_pow(self: JetTuple, exponent: float | int) -> JetTuple:
+def jet_pow(self: Tensor | JetTuple, exponent: float | int) -> Tensor | JetTuple:
     """Taylor-mode arithmetic for ``aten.pow(self, exponent)``.
 
+    Total over constants: a non-jet ``self`` returns ``self ** exponent``, so the
+    rule composes inside larger rules on constant-only sub-expressions.
+
     Args:
-        self: The primal and its Taylor coefficients.
+        self: The primal and its Taylor coefficients, or a constant.
         exponent: The scalar exponent.
 
     Returns:
-        The value and its Taylor coefficients.
+        The value and its Taylor coefficients, or a plain constant.
     """
     assert isinstance(exponent, (float, int))
+    if not isinstance(self, JetTuple):
+        return self**exponent
     self0, vs = self[0], self[1:]
     dpow = _pow_derivatives(self0, exponent, _jet_order(self))
     vs_out = _faa_di_bruno(vs, dpow)
@@ -964,17 +969,23 @@ def jet_native_batch_norm(
     momentum: float,
     eps: float,
 ) -> tuple[JetTuple, Tensor, Tensor]:
-    """Taylor-mode arithmetic for ``aten.native_batch_norm`` (eval mode).
+    """Taylor-mode arithmetic for ``aten.native_batch_norm``.
 
-    Eval-mode batch norm normalizes each channel with the frozen running
-    statistics: ``(input - running_mean) / sqrt(running_var + eps) * weight +
-    bias``. Any of ``input`` / ``weight`` / ``bias`` may be a jet, a constant, or
-    (``weight`` / ``bias``) ``None`` -- any input rank (1d/2d/3d batch norm) is
-    supported. Mirrored by
-    :func:`jet.collapsed_operations.cjet_native_batch_norm`. Training mode is
-    deferred until PyTorch fixes its fused ``native_batch_norm``'s incorrect
-    higher-order autograd in training (pytorch/pytorch#186256), without which a
-    training rule cannot be validated.
+    Normalizes each channel, then applies the per-channel affine
+    ``normalized * weight + bias``. In **eval** mode the statistics are the frozen
+    ``running_mean`` / ``running_var``: ``(input - running_mean) /
+    sqrt(running_var + eps)``. In **training** mode they are the batch mean /
+    variance over the batch and spatial dims, which depend on ``input``
+    (``running_mean`` / ``running_var`` / ``momentum`` govern only the
+    running-stat update, which a forward Taylor pass does not perform). Any of
+    ``input`` / ``weight`` / ``bias`` may be a jet, a constant, or (``weight`` /
+    ``bias``) ``None``; any input rank (1d/2d/3d batch norm) is supported.
+    Mirrored by :func:`jet.collapsed_operations.cjet_native_batch_norm`.
+
+    PyTorch's fused ``native_batch_norm`` has incorrect higher-order autograd in
+    training (pytorch/pytorch#186256), so the training rule is validated against
+    the fused op's own autograd only up to 2nd order -- the orders PyTorch gets
+    right (see ``test_batch_norm_train``).
 
     Returns:
         The ATen op's ``(output, save_mean, save_invstd)`` triple. ``save_mean``
@@ -982,27 +993,26 @@ def jet_native_batch_norm(
         Taylor-mode pass).
 
     Raises:
-        NotImplementedError: In training mode, or in eval mode without running
-            statistics (the batch-statistic path, not the affine eval map).
+        NotImplementedError: In eval mode without running statistics (the
+            batch-statistic fallback, not the affine eval map).
     """
-    if training:
-        raise NotImplementedError(
-            "Taylor-mode native_batch_norm supports eval mode only. Training mode "
-            "is deferred until PyTorch fixes the fused op's incorrect higher-order "
-            "autograd in training (pytorch/pytorch#186256)."
-        )
-    if running_mean is None or running_var is None:
-        raise NotImplementedError(
-            "Taylor-mode native_batch_norm requires running statistics in eval "
-            "mode; missing running_mean/running_var falls back to batch "
-            "statistics, which is not yet implemented."
-        )
-
     primal = input[0] if isinstance(input, JetTuple) else input
     shape = _bn_channel_view(primal)
-    rstd = (running_var + eps).rsqrt()
-    out = jet_sub(input, jet_view(running_mean, shape))
-    out = jet_mul(out, jet_view(rstd, shape))
+    if training:
+        reduce_dims = [0, *range(2, primal.dim())]
+        centered = jet_sub(input, jet_mean(input, reduce_dims, True))
+        var = jet_mean(jet_mul(centered, centered), reduce_dims, True)
+        out = jet_mul(centered, jet_pow(jet_add(var, eps), -0.5))
+    else:
+        if running_mean is None or running_var is None:
+            raise NotImplementedError(
+                "Taylor-mode native_batch_norm requires running statistics in "
+                "eval mode; missing running_mean/running_var falls back to batch "
+                "statistics, which is not yet implemented."
+            )
+        rstd = (running_var + eps).rsqrt()
+        out = jet_sub(input, jet_view(running_mean, shape))
+        out = jet_mul(out, jet_view(rstd, shape))
     if weight is not None:
         out = jet_mul(out, jet_view(weight, shape))
     if bias is not None:
@@ -1105,15 +1115,16 @@ for _prim in (
     ops.aten._adaptive_avg_pool2d.default,
     ops.aten.avg_pool2d.default,
     ops.aten.mean.default,
-    ops.aten.mean.dim,
 ):
     deflinear(_prim)
 
 # Bound to names so composite rules can reuse them: ``jet_sum`` in
 # ``jet_log_softmax``; ``jet_view`` to reshape a possibly-constant operand
-# (``.reshape`` of a contiguous tensor lowers to ``aten.view``).
+# (``.reshape`` of a contiguous tensor lowers to ``aten.view``); ``jet_mean``
+# for the batch statistics of training-mode batch norm.
 jet_sum = deflinear(ops.aten.sum.dim_IntList)
 jet_view = deflinear(ops.aten.view.default)
+jet_mean = deflinear(ops.aten.mean.dim)
 
 # Constant-output ops: primal carries the value, coefficients are zero.
 for _prim in (ops.aten.zeros_like.default,):

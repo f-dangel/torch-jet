@@ -36,8 +36,9 @@ from torch.nn.functional import (
     mse_loss,
     nll_loss,
 )
+from torch.testing import assert_close
 
-from jet import jet
+from jet import _rev_jet, jet
 from jet.collapsed_operations import (
     CollapsedJetTuple,
     cjet_native_batch_norm,
@@ -51,6 +52,9 @@ from test.utils import (
     class_index_loss,
     device_kw,
     make_jet_args,
+    rev_collapsed_jet,
+    setup_case,
+    tolerances_for,
 )
 
 
@@ -286,14 +290,15 @@ def _bn_primals(shape, inp: str, weight: str, bias: str):
     return tuple(out)
 
 
-def _bn_case(inp: str, weight: str, bias: str, shape, eps: float) -> dict[str, Any]:
-    """Build one ``{id, f, args_fn}`` eval batch-norm case.
+def _bn_case(
+    inp: str, weight: str, bias: str, shape, eps: float, training: bool = False
+) -> dict[str, Any]:
+    """Build one ``{id, f, args_fn}`` batch-norm case (eval or training).
 
     Each operand code is ``"J"`` (jet) or ``"C"`` (constant); ``weight`` /
     ``bias`` may also be ``"N"`` (absent, ``affine=False``). Jet operands are
     consumed positionally in the order input, weight, bias; constants and the
-    running statistics are captured. Eval-mode batch norm is affine, so the
-    generic oracle (reverse-mode AD of the fused op) is exact -- no bespoke test.
+    running statistics are captured.
     """
     C = shape[1]
 
@@ -306,12 +311,13 @@ def _bn_case(inp: str, weight: str, bias: str, shape, eps: float) -> dict[str, A
 
         def f(*args):
             x, w, b = _bn_pick(args, inp, weight, bias, x_const, w_const, b_const)
-            return batch_norm(x, rm, rv, w, b, training=False, eps=eps)
+            return batch_norm(x, rm, rv, w, b, training=training, eps=eps)
 
         return f
 
+    mode = "train" if training else "eval"
     suffix = "_eps" if eps != 1e-5 else ""
-    cid = f"batch_norm_in{inp}_w{weight}_b{bias}_{len(shape)}d{suffix}"
+    cid = f"batch_norm_{mode}_in{inp}_w{weight}_b{bias}_{len(shape)}d{suffix}"
     return {
         "id": cid,
         "f": builder,
@@ -319,8 +325,8 @@ def _bn_case(inp: str, weight: str, bias: str, shape, eps: float) -> dict[str, A
     }
 
 
-def _bn_cases() -> list[dict[str, Any]]:
-    """Eval batch-norm dispatch matrix (see :func:`_bn_case`).
+def _bn_cases(training: bool = False) -> list[dict[str, Any]]:
+    """Batch-norm dispatch matrix (see :func:`_bn_case`).
 
     ``input`` is a jet ``J`` or constant ``C``; weight and bias are coupled by
     BatchNorm's ``affine`` flag -- both learnable (each ``J`` or ``C``) or both
@@ -333,14 +339,14 @@ def _bn_cases() -> list[dict[str, Any]]:
     affine = (("N", "N"), ("J", "J"), ("J", "C"), ("C", "J"), ("C", "C"))
     ranks = ((4, 3, 7), (4, 3, 2, 3, 3), (4, 3))  # 3d / 5d / 2d
     cases = [
-        _bn_case(i, w, b, (4, 3, 5, 5), 1e-5)
+        _bn_case(i, w, b, (4, 3, 5, 5), 1e-5, training)
         for i in ("J", "C")
         for w, b in affine
         if "J" in (i, w, b)
     ]
-    cases.append(_bn_case("J", "C", "C", (4, 3, 5, 5), 1e-2))  # non-default eps
-    cases += [_bn_case("J", "C", "C", s, 1e-5) for s in ranks]
-    cases += [_bn_case("J", "J", "J", s, 1e-5) for s in ranks]
+    cases.append(_bn_case("J", "C", "C", (4, 3, 5, 5), 1e-2, training))  # non-def eps
+    cases += [_bn_case("J", "C", "C", s, 1e-5, training) for s in ranks]
+    cases += [_bn_case("J", "J", "J", s, 1e-5, training) for s in ranks]
     return cases
 
 
@@ -734,27 +740,53 @@ def test_primitive(config: dict[str, Any], K: int, collapsed: bool, device: str)
     assert_jet_matches_oracle(config, K, collapsed, device)
 
 
-@mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])
-def test_batch_norm_training_raises(collapsed: bool, device: str):
-    """Training-mode batch norm is unsupported and must raise clearly.
+@mark.parametrize("config", _bn_cases(training=True), ids=lambda c: c["id"])
+@mark.parametrize("K, collapsed", K_AND_MODE)
+def test_batch_norm_train(config: dict[str, Any], K: int, collapsed: bool, device: str):
+    """Training-mode batch norm matches the fused op's autograd up to 2nd order.
 
-    Only eval mode is implemented. Training is deferred until PyTorch fixes its
-    fused ``native_batch_norm``'s incorrect higher-order autograd in training
-    (pytorch/pytorch#186256): until then the fused op cannot serve as a
-    correctness oracle, and we do not maintain a separate manual normalization
-    just to validate a training rule. A ``training=True`` call must raise a clear
-    error rather than silently mis-normalize.
+    Training normalizes with input-dependent batch statistics. PyTorch's fused
+    ``native_batch_norm`` has correct autograd only through 2nd order in training
+    (pytorch/pytorch#186256), so the rule is validated against it up to order 2;
+    orders >= 3 are pinned by the xfail canary
+    :func:`test_batch_norm_train_high_order_diverges`. Same fused-autograd oracle
+    convention as the eval cases, just capped where PyTorch is trustworthy.
     """
-    manual_seed(0)
-    kw = device_kw(device)
-    (x,) = (rand(4, 3, 5, 5, **kw),)
+    f, primals = setup_case(config, device)
+    jet_args = make_jet_args(primals, K, collapsed=collapsed)
+    actual = jet(f, primals, collapsed=collapsed)(*jet_args)
+    oracle = rev_collapsed_jet(f) if collapsed else _rev_jet(f)
+    expected = oracle(*jet_args)
+    tol = tolerances_for(device)
+    for k in range(min(K, 2) + 1):
+        assert_close(actual[k], expected[k], **tol)
 
-    def f(x):
-        return batch_norm(x, None, None, None, None, training=True, eps=1e-5)
 
-    jet_args = make_jet_args((x,), 2, collapsed=collapsed)
-    with raises(NotImplementedError, match="eval mode only"):
-        jet(f, (x,), collapsed=collapsed)(*jet_args)
+@mark.xfail(
+    reason="fused native_batch_norm training autograd is wrong at order >= 3 "
+    "(pytorch/pytorch#186256); xpasses once PyTorch fixes the fused op",
+    strict=True,
+)
+@mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])
+def test_batch_norm_train_high_order_diverges(collapsed: bool, device: str):
+    """Canary: the training rule and the fused op's autograd diverge at order >= 3.
+
+    The fused double-backward saves mean / invstd without autograd history, so its
+    >= 3rd-order derivatives are wrong (pytorch/pytorch#186256). Our jet rule is
+    correct, so the two DISAGREE -- this test asserts agreement and is expected to
+    fail; once PyTorch fixes the fused op it xpasses, flagging that the order-2 cap
+    in :func:`test_batch_norm_train` can be lifted.
+    """
+    config = _bn_case("J", "C", "C", (4, 3, 5, 5), 1e-5, training=True)
+    f, primals = setup_case(config, device)
+    K = 5
+    jet_args = make_jet_args(primals, K, collapsed=collapsed)
+    actual = jet(f, primals, collapsed=collapsed)(*jet_args)
+    oracle = rev_collapsed_jet(f) if collapsed else _rev_jet(f)
+    expected = oracle(*jet_args)
+    tol = tolerances_for(device)
+    for k in range(3, K + 1):
+        assert_close(actual[k], expected[k], **tol)
 
 
 @mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])

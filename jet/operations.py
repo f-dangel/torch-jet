@@ -998,9 +998,6 @@ def jet_native_batch_norm(
     primal = input[0] if isinstance(input, JetTuple) else input
     shape = _bn_channel_view(primal)
     rstd = (running_var + eps).rsqrt()
-    # (input - running_mean) / sqrt(running_var + eps) * weight + bias, per
-    # channel; jet_view reshapes each per-channel operand (jet or constant) to
-    # broadcast over the batch and spatial dims.
     out = jet_sub(input, jet_view(running_mean, shape))
     out = jet_mul(out, jet_view(rstd, shape))
     if weight is not None:

@@ -621,9 +621,6 @@ def cjet_native_batch_norm(
     primal = input[0] if isinstance(input, CollapsedJetTuple) else input
     shape = _bn_channel_view(primal)
     rstd = (running_var + eps).rsqrt()
-    # (input - running_mean) / sqrt(running_var + eps) * weight + bias, per
-    # channel; cjet_view reshapes each per-channel operand (jet or constant) to
-    # broadcast over the batch and spatial dims.
     out = cjet_sub(input, cjet_view(running_mean, shape))
     out = cjet_mul(out, cjet_view(rstd, shape))
     if weight is not None:

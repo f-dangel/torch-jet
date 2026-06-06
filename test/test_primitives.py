@@ -36,9 +36,8 @@ from torch.nn.functional import (
     mse_loss,
     nll_loss,
 )
-from torch.testing import assert_close
 
-from jet import _rev_jet, jet
+from jet import jet
 from jet.collapsed_operations import (
     CollapsedJetTuple,
     cjet_native_batch_norm,
@@ -52,8 +51,6 @@ from test.utils import (
     class_index_loss,
     device_kw,
     make_jet_args,
-    rev_collapsed_jet,
-    tolerances_for,
 )
 
 
@@ -273,42 +270,78 @@ def _bn_pick(args, inp: str, weight: str, bias: str, x_const, w_const, b_const):
     return x, w, b
 
 
-def _bn_primals(shape, inp: str, weight: str, bias: str, **kw):
-    # Jet primals for a batch-norm case, in the order input, weight, bias -- only
-    # the entries flagged ``"J"`` (Taylor-expanded). Seeded apart from the
-    # captured constants so the values differ. ``kw`` carries device/dtype.
+def _bn_primals(shape, inp: str, weight: str, bias: str):
+    # Jet primals (CPU) for a batch-norm case, in the order input, weight, bias --
+    # only the entries flagged ``"J"`` (Taylor-expanded). Seeded apart from the
+    # captured constants so the values differ; ``setup_case`` migrates these to
+    # the device/dtype.
     manual_seed(1)
     out = []
     if inp == "J":
-        out.append(rand(*shape, **kw))
+        out.append(rand(*shape))
     if weight == "J":
-        out.append(rand(shape[1], **kw))
+        out.append(rand(shape[1]))
     if bias == "J":
-        out.append(rand(shape[1], **kw))
+        out.append(rand(shape[1]))
     return tuple(out)
 
 
-def _batch_norm_builders(
-    device, inp="J", weight="C", bias="C", shape=(4, 3, 5, 5), eps=1e-5
-):
-    """An eval-mode batch-norm function (constants captured) and its jet primals.
+def _bn_case(inp: str, weight: str, bias: str, shape, eps: float) -> dict[str, Any]:
+    """Build one ``{id, f, args_fn}`` eval batch-norm case.
 
-    Each of ``input`` / ``weight`` / ``bias`` is ``"J"`` (a jet arg), ``"C"``
-    (captured constant), or -- for ``weight`` / ``bias`` -- ``"N"`` (absent); at
-    least one is a jet.
+    Each operand code is ``"J"`` (jet) or ``"C"`` (constant); ``weight`` /
+    ``bias`` may also be ``"N"`` (absent, ``affine=False``). Jet operands are
+    consumed positionally in the order input, weight, bias; constants and the
+    running statistics are captured. Eval-mode batch norm is affine, so the
+    generic oracle (reverse-mode AD of the fused op) is exact -- no bespoke test.
     """
     C = shape[1]
-    manual_seed(0)
-    kw = device_kw(device)
-    x_const = randn(*shape, **kw)
-    w_const, b_const = randn(C, **kw), randn(C, **kw)
-    rm, rv = randn(C, **kw), rand(C, **kw) + 0.5  # running stats (constant)
 
-    def fused(*args):
-        x, w, b = _bn_pick(args, inp, weight, bias, x_const, w_const, b_const)
-        return batch_norm(x, rm, rv, w, b, training=False, eps=eps)
+    def builder(device):
+        manual_seed(0)
+        kw = device_kw(device)
+        x_const = randn(*shape, **kw)
+        w_const, b_const = randn(C, **kw), randn(C, **kw)
+        rm, rv = randn(C, **kw), rand(C, **kw) + 0.5  # running stats (constant)
 
-    return fused, _bn_primals(shape, inp, weight, bias, **kw)
+        def f(*args):
+            x, w, b = _bn_pick(args, inp, weight, bias, x_const, w_const, b_const)
+            return batch_norm(x, rm, rv, w, b, training=False, eps=eps)
+
+        return f
+
+    suffix = "_eps" if eps != 1e-5 else ""
+    cid = f"batch_norm_in{inp}_w{weight}_b{bias}_{len(shape)}d{suffix}"
+    return {
+        "id": cid,
+        "f": builder,
+        "args_fn": lambda: _bn_primals(shape, inp, weight, bias),
+    }
+
+
+def _bn_cases() -> list[dict[str, Any]]:
+    """Eval batch-norm dispatch matrix (see :func:`_bn_case`).
+
+    ``input`` is a jet ``J`` or constant ``C``; weight and bias are coupled by
+    BatchNorm's ``affine`` flag -- both learnable (each ``J`` or ``C``) or both
+    absent (``N``). ``nn.BatchNorm`` never produces weight-only / bias-only.
+    Configs keep at least one jet, at 4D, plus a non-default ``eps`` and the
+    non-4D ranks (1d/3d/... batch norm) swept with constant and jet weight/bias
+    -- reshaping a *jet* weight/bias to the per-channel view is the
+    rank-sensitive path (vmapped over the direction dim ``R`` in collapsed mode).
+    """
+    affine = (("N", "N"), ("J", "J"), ("J", "C"), ("C", "J"), ("C", "C"))
+    ranks = ((4, 3, 7), (4, 3, 2, 3, 3), (4, 3))  # 3d / 5d / 2d
+    cases = [
+        _bn_case(i, w, b, (4, 3, 5, 5), 1e-5)
+        for i in ("J", "C")
+        for w, b in affine
+        if "J" in (i, w, b)
+    ]
+    cases.append(_bn_case("J", "C", "C", (4, 3, 5, 5), 1e-2))  # non-default eps
+    cases += [_bn_case("J", "C", "C", s, 1e-5) for s in ranks]
+    cases += [_bn_case("J", "J", "J", s, 1e-5) for s in ranks]
+    return cases
 
 
 _UNARY_POINTWISE = {
@@ -484,6 +517,8 @@ PRIMITIVE_CASES = [
     *_matmul_cases(),
     # ---- Convolution (bilinear in input/weight; bias is the affine term) --
     *_conv_cases(),
+    # ---- Batch norm (eval; affine per-channel map from running statistics) -
+    *_bn_cases(),
     # ---- Max pooling (piecewise linear; gather at the primal's arg-max) ---
     {
         "id": "max_pool2d",
@@ -700,65 +735,6 @@ PRIMITIVE_CASES = [
 def test_primitive(config: dict[str, Any], K: int, collapsed: bool, device: str):
     """``jet(primitive)`` matches its mode-specific oracle."""
     assert_jet_matches_oracle(config, K, collapsed, device)
-
-
-# Batch-norm eval configs. ``input`` is a jet ``J`` or constant ``C``; weight and
-# bias are coupled by BatchNorm's ``affine`` flag -- both learnable (each tested
-# as a jet ``J`` or constant ``C``) or both absent (``N``, ``affine=False``).
-# nn.BatchNorm never produces weight-only / bias-only, so those combos are not
-# tested (and PyTorch's fused-BN backward is broken for a jet bias without a
-# weight anyway). Configs keep at least one jet, at 4D, plus a non-default
-# ``eps`` and the non-4D ranks (1d/3d/... batch norm); the ranks are swept with
-# both constant and jet weight/bias, since reshaping a *jet* weight/bias to the
-# per-channel ``view`` is the rank-sensitive path (vmapped over the direction
-# dim ``R`` in collapsed mode).
-_RANKS = ((4, 3, 7), (4, 3, 2, 3, 3), (4, 3))  # 3d / 5d / 2d
-_AFFINE = (("N", "N"), ("J", "J"), ("J", "C"), ("C", "J"), ("C", "C"))
-_BN_CONFIGS = [
-    *(
-        (i, w, b, (4, 3, 5, 5), 1e-5)
-        for i in ("J", "C")
-        for w, b in _AFFINE
-        if "J" in (i, w, b)
-    ),
-    ("J", "C", "C", (4, 3, 5, 5), 1e-2),  # non-default eps
-    *(("J", "C", "C", shape, 1e-5) for shape in _RANKS),
-    *(("J", "J", "J", shape, 1e-5) for shape in _RANKS),
-]
-
-
-@mark.parametrize(
-    "inp, weight, bias, shape, eps",
-    _BN_CONFIGS,
-    ids=[
-        f"in{i}_w{w}_b{b}_{len(s)}d{'_eps' if e != 1e-5 else ''}"
-        for i, w, b, s, e in _BN_CONFIGS
-    ],
-)
-@mark.parametrize("K, collapsed", K_AND_MODE)
-def test_batch_norm(
-    K: int,
-    collapsed: bool,
-    inp: str,
-    weight: str,
-    bias: str,
-    shape,
-    eps: float,
-    device: str,
-):
-    """``jet(native_batch_norm)`` (eval) matches the fused op's own autograd.
-
-    Covers every input/weight/bias combo (jet / constant / absent, at least one
-    jet), every batch-norm rank, and a non-default ``eps``. Eval-mode batch norm
-    is affine, so reverse-mode AD of the fused op gives the true Taylor
-    coefficients and is the oracle -- the same convention as every other
-    primitive (see :func:`test.utils.assert_jet_matches_oracle`).
-    """
-    fused, primals = _batch_norm_builders(device, inp, weight, bias, shape, eps)
-    jet_args = make_jet_args(primals, K, collapsed=collapsed)
-    oracle = rev_collapsed_jet(fused) if collapsed else _rev_jet(fused)
-    actual = jet(fused, primals, collapsed=collapsed)(*jet_args)
-    assert_close(actual, oracle(*jet_args), **tolerances_for(device))
 
 
 @mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])

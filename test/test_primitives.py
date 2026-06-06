@@ -617,9 +617,6 @@ PRIMITIVE_CASES = [
         for reduction in ("none", "mean", "sum")
         for weighted in (False, True)
     ),
-    # ---- Batch norm: covered by its own parametrized ``test_batch_norm`` (a
-    # large input/weight/bias/rank matrix), validated against the fused op's own
-    # autograd like the cases here. --------------------------------------------
     # ---- Reduction -------------------------------------------------------
     # ``sum()`` (no-dim) lowers to ``aten.sum.default``; the dim/keepdim
     # variants all lower to ``aten.sum.dim_IntList``.

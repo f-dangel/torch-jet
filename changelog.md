@@ -16,6 +16,15 @@ supported, though coverage is still growing.
   now importable from the top level (e.g. `from jet import laplacian`)
   ([PR](https://github.com/f-dangel/torch-jet/pull/172)).
 
+- Support `aten.t.default` (matrix transpose) in Taylor mode (both standard and
+  collapsed modes)
+  ([PR](https://github.com/f-dangel/torch-jet/pull/168)).
+
+- Support a Taylor-expanded bias in `aten.convolution` (both standard and
+  collapsed modes), removing the restriction that the bias must be a constant
+  `Tensor` or `None`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/160)).
+
 - Support classic torchvision CNNs in Taylor mode by adding jet rules for the
   ATen ops they need:
   - `aten.relu.default`
@@ -30,6 +39,12 @@ supported, though coverage is still growing.
     ([PR](https://github.com/f-dangel/torch-jet/pull/150)).
   - `aten.avg_pool2d.default`
     ([PR](https://github.com/f-dangel/torch-jet/pull/151)).
+  - `aten.cat.default` (dispatch now also detects jets nested in `list` args)
+    ([PR](https://github.com/f-dangel/torch-jet/pull/154)).
+  - `aten.native_batch_norm.default` in eval mode (affine per channel);
+    training mode is deferred until PyTorch fixes its fused op's incorrect
+    higher-order autograd in training ([pytorch/pytorch#186256](https://github.com/pytorch/pytorch/issues/186256))
+    ([PR](https://github.com/f-dangel/torch-jet/pull/157)).
 
 - Support loss functions in Taylor mode by adding jet rules for the ATen ops
   they need:
@@ -43,6 +58,15 @@ supported, though coverage is still growing.
     ([PR](https://github.com/f-dangel/torch-jet/pull/162)).
   - `aten.log.default`
     ([PR](https://github.com/f-dangel/torch-jet/pull/163)).
+  - `aten._log_softmax.default`
+    ([PR](https://github.com/f-dangel/torch-jet/pull/152)).
+  - `aten.nll_loss_forward.default`, together with `_log_softmax` this enables
+    `nn.CrossEntropyLoss`
+    ([PR](https://github.com/f-dangel/torch-jet/pull/153)).
+
+- Support a Taylor-expanded bias in `aten.addmm` (both standard and collapsed
+  modes), removing the restriction that the bias must be a constant `Tensor`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/147)).
 
 - **Backward-incompatible.** Replace the `Laplacian` / `Bilaplacian`
   `nn.Module`s with `laplacian()` / `bilaplacian()` function transforms that
@@ -124,6 +148,16 @@ supported, though coverage is still growing.
 
 ### Fixed/Removed
 
+- Correctly handle broadcasting in `add` / `sub` between operands of different
+  rank (similar to #141). In collapsed mode, two Taylor-expanded operands of
+  different primal rank collided the direction dim `R` (e.g. `x + y` with shapes
+  `(4,)` and `(3, 4)`); and, in both standard and collapsed mode, a jet combined
+  with a larger constant did not broadcast its coefficients up to the result
+  shape. A broadcasting stress matrix now covers every dispatch branch
+  (`JJ` / `JC` / `CJ`) of `add` / `sub` / `mul`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/166),
+  [PR](https://github.com/f-dangel/torch-jet/pull/167)).
+
 - Fix Taylor-mode coefficients for power functions with non-positive exponents.
   `_pow_derivatives` no longer truncates the derivatives of negative integer
   exponents (e.g. `x ** -2`), and Faà di Bruno now materializes a structurally
@@ -156,6 +190,16 @@ supported, though coverage is still growing.
   ([PR](https://github.com/f-dangel/torch-jet/pull/129))
 
 ### Internal
+
+- Make `jet_add` / `jet_sub` (and collapsed) total over constant operands:
+  `add` / `sub` on two constants now return the plain result instead of
+  indexing a non-jet operand, completing the `{jet, constant}` totality that
+  #170 gave the product ops
+  ([PR](https://github.com/f-dangel/torch-jet/pull/171)).
+
+- Extract an `_apply_bilinear(op, a, b)` combinator (standard and collapsed
+  modes) for product-like jet ops
+  ([PR](https://github.com/f-dangel/torch-jet/pull/170)).
 
 - Drop the redundant primal from the `_*_derivatives` helpers' return value.
   Each helper already stored the primal at `dn[0]` and also returned it as a

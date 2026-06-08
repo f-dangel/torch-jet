@@ -4,11 +4,13 @@ Each row in ``PRIMITIVE_CASES`` exercises one dispatch branch of a primitive
 registered with :class:`JetInterpreter`.
 """
 
+from itertools import product
 from typing import Any, Callable
 
 from pytest import mark, raises
 from torch import (
     addmm,
+    cat,
     cos,
     exp,
     float32,
@@ -27,16 +29,26 @@ from torch import (
 from torch.nn.functional import (
     adaptive_avg_pool2d,
     avg_pool2d,
+    batch_norm,
     conv2d,
+    log_softmax,
     max_pool2d,
     mse_loss,
+    nll_loss,
 )
 
 from jet import jet
+from jet.collapsed_operations import (
+    CollapsedJetTuple,
+    cjet_native_batch_norm,
+    cjet_nll_loss_forward,
+)
+from jet.operations import JetTuple, jet_native_batch_norm, jet_nll_loss_forward
 from test.utils import (
     K_AND_MODE,
     _stateless,
     assert_jet_matches_oracle,
+    class_index_loss,
     device_kw,
     make_jet_args,
 )
@@ -56,11 +68,6 @@ def _consts(device: str) -> dict[str, Any]:
         "R": rand(4, 5, **kw),
         "B": rand(3, 5, **kw),
         "SUB": tensor(2.0, **kw),
-        # conv2d kernels: CONV_W/CONV_B for a plain conv (in=2, out=4, 3x3);
-        # DW_W for a grouped conv (groups=2, in=2, out=4).
-        "CONV_W": rand(4, 2, 3, 3, **kw),
-        "CONV_B": rand(4, **kw),
-        "DW_W": rand(4, 1, 3, 3, **kw),
     }
 
 
@@ -69,29 +76,69 @@ def _sub_cj(device):
     return lambda x: SUB - x
 
 
-def _mm_jc(device):
-    R = _consts(device)["R"]
-    return lambda A: A @ R
+#: Bias-shape variants for a jet bias: full ``(3, 5)`` and the row-broadcast
+#: 1D ``(5,)`` that must broadcast over the product's rows in every coefficient.
+_BIAS_SHAPES = {"full": (3, 5), "bcast": (5,)}
 
 
-def _mm_cj(device):
-    L = _consts(device)["L"]
-    return lambda B: L @ B
+def _matmul_case(bias: str, mat1: str, mat2: str, bias_shape: str) -> dict[str, Any]:
+    """Build one ``{id, f, args_fn}`` case for a ``(bias, mat1, mat2)`` combo.
+
+    Each operand code is ``"C"`` (constant) or ``"J"`` (jet); ``bias`` may also
+    be ``"N"`` (absent -> plain ``mm``). Jet operands are consumed positionally
+    in the order ``bias, mat1, mat2`` so the harness attaches Taylor
+    coefficients to them; constants are frozen via :func:`_consts`. A jet bias
+    uses ``bias_shape`` -- ``"full"`` ``(3, 5)`` or row-broadcast ``"bcast"``
+    ``(5,)``. The id signature is ``<op>_<bias?><mat1><mat2>`` (the absent-bias
+    letter is dropped, so plain ``mm`` reads ``mm_JC`` etc.).
+    """
+    mat1_jet, mat2_jet = mat1 == "J", mat2 == "J"
+
+    def builder(device):
+        cs = _consts(device)
+
+        def f(*args: Any):
+            it = iter(args)
+            b = next(it) if bias == "J" else (cs["B"] if bias == "C" else None)
+            m1 = next(it) if mat1_jet else cs["L"]
+            m2 = next(it) if mat2_jet else cs["R"]
+            return m1 @ m2 if b is None else addmm(b, m1, m2)
+
+        return f
+
+    def args_fn():
+        out = []
+        if bias == "J":
+            out.append(rand(*_BIAS_SHAPES[bias_shape]))
+        if mat1_jet:
+            out.append(rand(3, 4))
+        if mat2_jet:
+            out.append(rand(4, 5))
+        return tuple(out)
+
+    op = "mm" if bias == "N" else "addmm"
+    sig = f"{mat1}{mat2}" if bias == "N" else f"{bias}{mat1}{mat2}"
+    suffix = "_bcast" if bias_shape == "bcast" else ""
+    return {"id": f"{op}_{sig}{suffix}", "f": builder, "args_fn": args_fn}
 
 
-def _addmm_jj(device):
-    B = _consts(device)["B"]
-    return lambda mat1, mat2: addmm(B, mat1, mat2)
+def _matmul_cases() -> list[dict[str, Any]]:
+    """Exhaustive ``(bias, mat1, mat2)`` dispatch matrix for ``mm`` / ``addmm``.
 
-
-def _addmm_mat1_jet(device):
-    cs = _consts(device)
-    return lambda mat1: addmm(cs["B"], mat1, cs["R"])
-
-
-def _addmm_mat2_jet(device):
-    cs = _consts(device)
-    return lambda mat2: addmm(cs["B"], cs["L"], mat2)
+    ``addmm(bias, mat1, mat2) == bias + mat1 @ mat2``. Each of ``mat1`` /
+    ``mat2`` is a constant (``C``) or a jet (``J``); ``bias`` is absent
+    (``N`` -> plain ``mm``), constant (``C``), or a jet (``J``). Combos with no
+    jet operand are skipped (nothing to differentiate). A jet bias is tested
+    both full-shape and row-broadcast 1D -- it is the only operand whose own
+    coefficients must broadcast over the product's rows.
+    """
+    cases = []
+    for bias, mat1, mat2 in product("NCJ", "CJ", "CJ"):
+        if "J" not in (bias, mat1, mat2):
+            continue  # no jet operand -> nothing to differentiate
+        for shape in ["full", "bcast"] if bias == "J" else ["full"]:
+            cases.append(_matmul_case(bias, mat1, mat2, shape))
+    return cases
 
 
 def _mse_loss(reduction: str, shape: tuple[int, ...]) -> Callable[[str], Callable]:
@@ -111,29 +158,190 @@ def _mse_loss(reduction: str, shape: tuple[int, ...]) -> Callable[[str], Callabl
     return build
 
 
-def _conv2d_jc(device):
-    cs = _consts(device)
-    return lambda x: conv2d(x, cs["CONV_W"], cs["CONV_B"], stride=1, padding=1)
+# Convolution shapes -- single source of truth. A plain
+# conv maps C_IN -> C_OUT channels with a K x K kernel over an H x W image; the
+# grouped variant uses GROUPS (depthwise-style weight (C_OUT, C_IN/GROUPS, K, K)).
+# Every conv shape derives from these four numbers, so changing the channel
+# count (or kernel/groups) touches exactly one place.
+_C_IN, _C_OUT, _K, _GROUPS = 2, 4, 3, 2
+_CONV_SHAPES = {
+    "x": (1, _C_IN, 5, 5),  # input (N, C_in, H, W)
+    "x_grouped": (1, _C_IN, 6, 6),  # input for the strided grouped conv
+    "w": (_C_OUT, _C_IN, _K, _K),  # weight (C_out, C_in, kH, kW)
+    "dw": (_C_OUT, _C_IN // _GROUPS, _K, _K),  # grouped weight
+    "b": (_C_OUT,),  # bias (C_out,)
+}
 
 
-def _conv2d_grouped_jc(device):
-    # Depthwise/grouped conv (groups=2, no bias) -- the mobile/ResNet pattern.
-    cs = _consts(device)
-    return lambda x: conv2d(x, cs["DW_W"], None, stride=2, padding=1, groups=2)
+def _conv_consts(device: str) -> dict[str, Any]:
+    """Frozen conv operands on ``device`` (one tensor per ``_CONV_SHAPES`` entry)."""
+    manual_seed(0)
+    kw = device_kw(device)
+    return {name: rand(*shape, **kw) for name, shape in _CONV_SHAPES.items()}
 
 
-def _conv2d_weight_jet(device):
-    # Weight is the Taylor-expanded operand (constant input) -- conv is linear
-    # in the kernel just as it is in the input.
-    cs = _consts(device)
-    X = rand(1, 2, 5, 5, **device_kw(device))
-    return lambda w: conv2d(X, w, cs["CONV_B"], stride=1, padding=1)
+def _conv_case(input: str, weight: str, bias: str) -> dict[str, Any]:
+    """Build one ``{id, f, args_fn}`` case for an ``(input, weight, bias)`` combo.
+
+    Each operand code is ``"C"`` (constant) or ``"J"`` (jet); ``bias`` may also be
+    ``"N"`` (absent). Jet operands are consumed positionally in the order
+    ``input, weight, bias`` so the harness attaches Taylor coefficients to them;
+    constants are frozen via :func:`_conv_consts`. All combos use a plain
+    stride-1, padding-1 conv. The id signature is ``conv2d_<input><weight><bias>``
+    (the absent-bias letter is dropped, so a bias-free conv reads ``conv2d_JC``).
+    """
+    input_jet, weight_jet, bias_jet = input == "J", weight == "J", bias == "J"
+
+    def builder(device):
+        c = _conv_consts(device)
+
+        def f(*args: Any):
+            it = iter(args)
+            x = next(it) if input_jet else c["x"]
+            w = next(it) if weight_jet else c["w"]
+            b = next(it) if bias_jet else (c["b"] if bias == "C" else None)
+            return conv2d(x, w, b, stride=1, padding=1)
+
+        return f
+
+    def args_fn():
+        out = []
+        if input_jet:
+            out.append(rand(*_CONV_SHAPES["x"]))
+        if weight_jet:
+            out.append(rand(*_CONV_SHAPES["w"]))
+        if bias_jet:
+            out.append(rand(*_CONV_SHAPES["b"]))
+        return tuple(out)
+
+    sig = f"{input}{weight}" + ("" if bias == "N" else bias)
+    return {"id": f"conv2d_{sig}", "f": builder, "args_fn": args_fn}
 
 
-def _conv2d_input_weight_jet(device):
-    # Both operands are jets -> exercises the bilinear Leibniz branch.
-    cs = _consts(device)
-    return lambda x, w: conv2d(x, w, cs["CONV_B"], stride=1, padding=1)
+def _conv2d_grouped_jet(device):
+    """Depthwise/grouped conv (groups=2, no bias) -- the mobile/ResNet pattern."""
+    c = _conv_consts(device)
+    return lambda x: conv2d(x, c["dw"], None, stride=2, padding=1, groups=_GROUPS)
+
+
+def _conv_cases() -> list[dict[str, Any]]:
+    """Exhaustive ``(input, weight, bias)`` dispatch matrix for ``convolution``.
+
+    Conv is bilinear in ``input`` / ``weight`` with an affine ``bias``. Each of
+    ``input`` / ``weight`` is a constant (``C``) or a jet (``J``); ``bias`` is
+    absent (``N`` -> bias-free conv), constant (``C``), or a jet (``J``). Combos
+    with no jet operand are skipped (nothing to differentiate). Plus one grouped
+    (depthwise) conv -- a distinct weight shape, stride, and ``groups`` -- to
+    exercise the grouped dispatch path.
+    """
+    cases = [
+        _conv_case(input, weight, bias)
+        for input, weight, bias in product("CJ", "CJ", "NCJ")
+        if "J" in (input, weight, bias)
+    ]
+    cases.append(
+        {
+            "id": "conv2d_grouped",
+            "f": _conv2d_grouped_jet,
+            "args_fn": lambda: (rand(*_CONV_SHAPES["x_grouped"]),),
+        }
+    )
+    return cases
+
+
+def _cat_jet_const(device):
+    # Concatenate a jet with a constant tensor (along the channel dim). Seed
+    # first so the captured constant is deterministic: ``setup_case`` re-seeds
+    # only after building ``f`` (mirrors ``_consts``).
+    manual_seed(0)
+    const = rand(1, 2, 6, 6, **device_kw(device))
+    return lambda x: cat([x, const], dim=1)
+
+
+def _bn_pick(args, inp: str, weight: str, bias: str, x_const, w_const, b_const):
+    # Resolve input/weight/bias from the positional jet args (order: input,
+    # weight, bias). ``inp`` is ``"J"`` (a jet arg) or ``"C"`` (captured
+    # constant); ``weight`` / ``bias`` add ``"N"`` (absent). Jets are consumed
+    # from ``args`` in order; constants/None come from the captured closures.
+    it = iter(args)
+    x = next(it) if inp == "J" else x_const
+    w = next(it) if weight == "J" else (w_const if weight == "C" else None)
+    b = next(it) if bias == "J" else (b_const if bias == "C" else None)
+    return x, w, b
+
+
+def _bn_primals(shape, inp: str, weight: str, bias: str):
+    # Jet primals (CPU) for a batch-norm case, in the order input, weight, bias --
+    # only the entries flagged ``"J"`` (Taylor-expanded). Seeded apart from the
+    # captured constants so the values differ; ``setup_case`` migrates these to
+    # the device/dtype.
+    manual_seed(1)
+    out = []
+    if inp == "J":
+        out.append(rand(*shape))
+    if weight == "J":
+        out.append(rand(shape[1]))
+    if bias == "J":
+        out.append(rand(shape[1]))
+    return tuple(out)
+
+
+def _bn_case(inp: str, weight: str, bias: str, shape, eps: float) -> dict[str, Any]:
+    """Build one ``{id, f, args_fn}`` eval batch-norm case.
+
+    Each operand code is ``"J"`` (jet) or ``"C"`` (constant); ``weight`` /
+    ``bias`` may also be ``"N"`` (absent, ``affine=False``). Jet operands are
+    consumed positionally in the order input, weight, bias; constants and the
+    running statistics are captured. Eval-mode batch norm is affine, so the
+    generic oracle (reverse-mode AD of the fused op) is exact -- no bespoke test.
+    """
+    C = shape[1]
+
+    def builder(device):
+        manual_seed(0)
+        kw = device_kw(device)
+        x_const = randn(*shape, **kw)
+        w_const, b_const = randn(C, **kw), randn(C, **kw)
+        rm, rv = randn(C, **kw), rand(C, **kw) + 0.5  # running stats (constant)
+
+        def f(*args):
+            x, w, b = _bn_pick(args, inp, weight, bias, x_const, w_const, b_const)
+            return batch_norm(x, rm, rv, w, b, training=False, eps=eps)
+
+        return f
+
+    suffix = "_eps" if eps != 1e-5 else ""
+    cid = f"batch_norm_in{inp}_w{weight}_b{bias}_{len(shape)}d{suffix}"
+    return {
+        "id": cid,
+        "f": builder,
+        "args_fn": lambda: _bn_primals(shape, inp, weight, bias),
+    }
+
+
+def _bn_cases() -> list[dict[str, Any]]:
+    """Eval batch-norm dispatch matrix (see :func:`_bn_case`).
+
+    ``input`` is a jet ``J`` or constant ``C``; weight and bias are coupled by
+    BatchNorm's ``affine`` flag -- both learnable (each ``J`` or ``C``) or both
+    absent (``N``). ``nn.BatchNorm`` never produces weight-only / bias-only.
+    Configs keep at least one jet, at 4D, plus a non-default ``eps`` and the
+    non-4D ranks (1d/3d/... batch norm) swept with constant and jet weight/bias
+    -- reshaping a *jet* weight/bias to the per-channel view is the
+    rank-sensitive path (vmapped over the direction dim ``R`` in collapsed mode).
+    """
+    affine = (("N", "N"), ("J", "J"), ("J", "C"), ("C", "J"), ("C", "C"))
+    ranks = ((4, 3, 7), (4, 3, 2, 3, 3), (4, 3))  # 3d / 5d / 2d
+    cases = [
+        _bn_case(i, w, b, (4, 3, 5, 5), 1e-5)
+        for i in ("J", "C")
+        for w, b in affine
+        if "J" in (i, w, b)
+    ]
+    cases.append(_bn_case("J", "C", "C", (4, 3, 5, 5), 1e-2))  # non-default eps
+    cases += [_bn_case("J", "C", "C", s, 1e-5) for s in ranks]
+    cases += [_bn_case("J", "J", "J", s, 1e-5) for s in ranks]
+    return cases
 
 
 _UNARY_POINTWISE = {
@@ -151,6 +359,63 @@ _POW_EXPONENTS = {
     "pow_int_10": 10,
     "pow_int_negative": -2.0,
 }
+
+# Elementwise binary ops over a broadcasting stress matrix, covering every
+# dispatch branch: ``JJ`` (both operands jets), ``JC`` (jet + constant), ``CJ``
+# (constant + jet). In collapsed mode the batched coefficients carry a leading
+# direction dim ``R`` that right-aligned broadcasting must not shift; the JC/CJ
+# branches also stress a jet broadcasting *up* to a larger constant.
+_BROADCAST_BINOPS = {
+    "add": lambda x, y: x + y,
+    "sub": lambda x, y: x - y,
+    "mul": lambda x, y: x * y,
+}
+_BROADCAST_PAIRS = [
+    ((1, 4), (3, 1)),  # same rank, mutual broadcast
+    ((1, 1), (3, 4)),  # same rank, scalar-like broadcast
+    ((4,), (3, 4)),  # different rank
+    ((3, 4), (4,)),  # different rank (reversed)
+    ((4,), (3, 1)),  # different rank, mutual broadcast
+    ((3, 1), (4,)),  # different rank, mutual broadcast (reversed)
+    ((2, 1, 4), (1, 3, 1)),  # higher rank, same rank, mutual
+    ((2, 1, 4), (3, 1)),  # higher rank, different rank
+]
+
+
+def _binop_case(name, op, sa, sb, variant: str) -> dict[str, Any]:
+    """One broadcasting case for ``op`` over operand shapes ``sa``/``sb``.
+
+    ``variant`` selects the dispatch branch: ``"JJ"`` (both jets), ``"JC"``
+    (first operand ``sa`` a jet, second ``sb`` a frozen constant), ``"CJ"``
+    (first ``sa`` a frozen constant, second ``sb`` a jet). Constants are drawn
+    under ``manual_seed(3)`` on the device.
+    """
+    cid = f"{name}_{'x'.join(map(str, sa))}_{'x'.join(map(str, sb))}_{variant}"
+    if variant == "JJ":
+        return {
+            "id": cid,
+            "f": _stateless(op),
+            "args_fn": lambda sa=sa, sb=sb: (rand(*sa), rand(*sb)),
+        }
+    const_shape, jet_shape = (sb, sa) if variant == "JC" else (sa, sb)
+
+    def build(device, op=op, cs=const_shape, variant=variant):
+        manual_seed(3)
+        c = rand(*cs, **device_kw(device))
+        return (lambda x: op(x, c)) if variant == "JC" else (lambda x: op(c, x))
+
+    return {"id": cid, "f": build, "args_fn": lambda js=jet_shape: (rand(*js),)}
+
+
+def _binop_cases() -> list[dict[str, Any]]:
+    """Every (op, shape-pair, dispatch-branch) broadcasting case for add/sub/mul."""
+    return [
+        _binop_case(name, op, sa, sb, variant)
+        for name, op in _BROADCAST_BINOPS.items()
+        for sa, sb in _BROADCAST_PAIRS
+        for variant in ("JJ", "JC", "CJ")
+    ]
+
 
 PRIMITIVE_CASES = [
     # ---- Unary pointwise (cross-product over shapes) ---------------------
@@ -240,40 +505,20 @@ PRIMITIVE_CASES = [
     },
     {"id": "mul_JC", "f": _stateless(lambda x: x * 3.0), "args_fn": lambda: (rand(4),)},
     {"id": "mul_CJ", "f": _stateless(lambda x: 3.0 * x), "args_fn": lambda: (rand(4),)},
-    # ---- Matrix multiply (non-commutative) -------------------------------
-    {
-        "id": "mm_JJ",
-        "f": _stateless(lambda A, B: A @ B),
-        "args_fn": lambda: (rand(3, 4), rand(4, 5)),
-    },
-    {"id": "mm_JC", "f": _mm_jc, "args_fn": lambda: (rand(3, 4),)},
-    {"id": "mm_CJ", "f": _mm_cj, "args_fn": lambda: (rand(4, 5),)},
-    # ---- addmm (3 dispatch branches over mat1/mat2; bias must be const) ---
-    {
-        "id": "addmm_mat1_mat2_jet",
-        "f": _addmm_jj,
-        "args_fn": lambda: (rand(3, 4), rand(4, 5)),
-    },
-    {"id": "addmm_mat1_jet", "f": _addmm_mat1_jet, "args_fn": lambda: (rand(3, 4),)},
-    {"id": "addmm_mat2_jet", "f": _addmm_mat2_jet, "args_fn": lambda: (rand(4, 5),)},
+    # ---- Broadcasting stress matrix (add/sub/mul; JJ/JC/CJ branches) ------
+    # See ``_binop_cases`` / ``_BROADCAST_PAIRS`` / ``_BROADCAST_BINOPS``.
+    *_binop_cases(),
+    # ---- Matrix multiply / addmm -----------------------------------------
+    # Exhaustive (bias, mat1, mat2) dispatch matrix: bias in {absent -> mm,
+    # const, jet}; mat1, mat2 in {const, jet}. Covers every Taylor-expanded-
+    # bias path, including a jet bias combined with exactly one jet matrix
+    # (bias coefficients added onto a single-matrix product). See
+    # ``_matmul_cases``.
+    *_matmul_cases(),
     # ---- Convolution (bilinear in input/weight; bias is the affine term) --
-    {"id": "conv2d", "f": _conv2d_jc, "args_fn": lambda: (rand(1, 2, 5, 5),)},
-    {
-        "id": "conv2d_grouped",
-        "f": _conv2d_grouped_jc,
-        "args_fn": lambda: (rand(1, 2, 6, 6),),
-    },
-    # Jet weight (constant input) and both-jet (bilinear Leibniz) branches.
-    {
-        "id": "conv2d_weight_jet",
-        "f": _conv2d_weight_jet,
-        "args_fn": lambda: (rand(4, 2, 3, 3),),
-    },
-    {
-        "id": "conv2d_input_weight_jet",
-        "f": _conv2d_input_weight_jet,
-        "args_fn": lambda: (rand(1, 2, 5, 5), rand(4, 2, 3, 3)),
-    },
+    *_conv_cases(),
+    # ---- Batch norm (eval; affine per-channel map from running statistics) -
+    *_bn_cases(),
     # ---- Max pooling (piecewise linear; gather at the primal's arg-max) ---
     {
         "id": "max_pool2d",
@@ -316,6 +561,62 @@ PRIMITIVE_CASES = [
         "f": _stateless(lambda x: avg_pool2d(x, kernel_size=2, stride=2)),
         "args_fn": lambda: (rand(1, 2, 6, 6),),
     },
+    # ---- Concatenation (linear; jets nested in the operand list) ---------
+    {
+        "id": "cat_JJ",
+        "f": _stateless(lambda x, y: cat([x, y], dim=1)),
+        "args_fn": lambda: (rand(1, 2, 6, 6), rand(1, 3, 6, 6)),
+    },
+    # ``dim=0`` exercises the collapsed-mode ``dim + 1`` shift for a
+    # non-negative concat dim (cat_JJ uses dim=1).
+    {
+        "id": "cat_JJ_dim0",
+        "f": _stateless(lambda x, y: cat([x, y], dim=0)),
+        "args_fn": lambda: (rand(2, 3, 4), rand(1, 3, 4)),
+    },
+    # A negative ``dim`` skips the collapsed-mode shift: it already counts from
+    # the end, past the leading direction dim of the batched coefficients.
+    {
+        "id": "cat_JJ_dim_neg",
+        "f": _stateless(lambda x, y: cat([x, y], dim=-1)),
+        "args_fn": lambda: (rand(1, 2, 6, 6), rand(1, 2, 6, 3)),
+    },
+    {
+        "id": "cat_jet_const",
+        "f": _cat_jet_const,
+        "args_fn": lambda: (rand(1, 4, 6, 6),),
+    },
+    # ---- Normalization ---------------------------------------------------
+    # ``log_softmax`` couples elements along ``dim`` via logsumexp; the rule
+    # composes elementwise exp/log with a linear sum and a broadcast sub.
+    # Cover a positive dim, a negative dim, and a 1d (dim-0) case.
+    *(
+        {
+            "id": sid,
+            "f": _stateless(lambda x, d=dim: log_softmax(x, dim=d)),
+            "args_fn": lambda shape=shape: (rand(*shape),),
+        }
+        for sid, dim, shape in (
+            ("log_softmax_dim1", 1, (3, 4)),
+            ("log_softmax_dim_neg1", -1, (3, 4)),
+            ("log_softmax_dim0_1d", 0, (4,)),
+        )
+    ),
+    # ---- Loss functions --------------------------------------------------
+    # ``nll_loss`` is linear in the (log-prob) input given a frozen integer
+    # target, so the same op applies to every coefficient. It returns
+    # ``(output, total_weight)``; cover all three reductions and the
+    # ``getitem`` that selects ``output``, both with and without per-class
+    # weights (the weighted ``mean`` exercises the ``total_weight`` divisor).
+    *(
+        {
+            "id": f"nll_loss_{reduction}" + ("_weighted" if weighted else ""),
+            "f": class_index_loss(nll_loss, reduction, 8, 5, weighted=weighted),
+            "args_fn": lambda: (rand(8, 5),),
+        }
+        for reduction in ("none", "mean", "sum")
+        for weighted in (False, True)
+    ),
     # ---- Reduction -------------------------------------------------------
     # ``sum()`` (no-dim) lowers to ``aten.sum.default``; the dim/keepdim
     # variants all lower to ``aten.sum.dim_IntList``.
@@ -354,6 +655,9 @@ PRIMITIVE_CASES = [
         "args_fn": lambda: (rand(3, 4),),
     },
     # ---- Shape-only ops --------------------------------------------------
+    # ``t`` (matrix transpose) is emitted by ``Linear`` (``addmm(b, x, W.t())``);
+    # it changes the coefficients' shape, so collapsed mode must vmap over R.
+    {"id": "t", "f": _stateless(lambda x: x.t()), "args_fn": lambda: (rand(3, 4),)},
     {
         "id": "view",
         "f": _stateless(lambda x: x.view(-1)),
@@ -431,16 +735,56 @@ def test_primitive(config: dict[str, Any], K: int, collapsed: bool, device: str)
 
 
 @mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])
-def test_conv_taylor_expanded_bias_raises(collapsed: bool, device: str):
-    """A Taylor-expanded convolution bias is rejected (bias must be constant)."""
-    cs = _consts(device)
+def test_batch_norm_training_raises(collapsed: bool, device: str):
+    """Training-mode batch norm is unsupported and must raise clearly.
+
+    Only eval mode is implemented. Training is deferred until PyTorch fixes its
+    fused ``native_batch_norm``'s incorrect higher-order autograd in training
+    (pytorch/pytorch#186256): until then the fused op cannot serve as a
+    correctness oracle, and we do not maintain a separate manual normalization
+    just to validate a training rule. A ``training=True`` call must raise a clear
+    error rather than silently mis-normalize.
+    """
+    manual_seed(0)
     kw = device_kw(device)
-    X, W = rand(1, 2, 5, 5, **kw), cs["CONV_W"]
+    (x,) = (rand(4, 3, 5, 5, **kw),)
 
-    def f(b):
-        return conv2d(X, W, b, stride=1, padding=1)
+    def f(x):
+        return batch_norm(x, None, None, None, None, training=True, eps=1e-5)
 
-    bias = rand(4, **kw)
-    jet_args = make_jet_args((bias,), K=2, collapsed=collapsed)
-    with raises(NotImplementedError, match="Taylor-expanded bias"):
-        jet(f, (bias,), collapsed=collapsed)(*jet_args)
+    jet_args = make_jet_args((x,), 2, collapsed=collapsed)
+    with raises(NotImplementedError, match="eval mode only"):
+        jet(f, (x,), collapsed=collapsed)(*jet_args)
+
+
+@mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])
+def test_batch_norm_eval_without_running_stats_raises(collapsed: bool, device: str):
+    """Eval-mode batch norm without running statistics must raise clearly.
+
+    With ``running_mean``/``running_var`` set to ``None``, ATen falls back to
+    batch statistics even in eval mode -- the non-affine path the rule does not
+    implement. It must raise a clear error rather than a cryptic ``TypeError``
+    from ``None + eps``.
+    """
+    kw = device_kw(device)
+    rule = cjet_native_batch_norm if collapsed else jet_native_batch_norm
+    tup = CollapsedJetTuple if collapsed else JetTuple
+    x = tup((rand(4, 3, 5, 5, **kw), rand(4, 3, 5, 5, **kw)))
+    with raises(NotImplementedError, match="running statistics"):
+        rule(x, None, None, None, None, False, 0.1, 1e-5)
+
+
+@mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])
+def test_nll_loss_taylor_expanded_target_raises(collapsed: bool, device: str):
+    """A Taylor-expanded nll_loss target (label) is rejected (must be constant).
+
+    Labels are class indices, not differentiable; the rule must reject a
+    Taylor-expanded target with a clear error rather than a cryptic ATen one.
+    """
+    kw = device_kw(device)
+    rule = cjet_nll_loss_forward if collapsed else jet_nll_loss_forward
+    tup = CollapsedJetTuple if collapsed else JetTuple
+    logits = tup((rand(8, 5, **kw), rand(8, 5, **kw)))
+    target = tup((rand(8, **kw), rand(8, **kw)))  # a Taylor-expanded label
+    with raises(NotImplementedError, match="Taylor-expanded target"):
+        rule(logits, target, None, 1, -100)

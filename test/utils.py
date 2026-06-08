@@ -11,6 +11,7 @@ from torch import (
     manual_seed,
     rand,
     rand_like,
+    randint,
     sigmoid,
     stack,
     zeros_like,
@@ -40,6 +41,28 @@ def device_kw(device: str) -> dict[str, Any]:
 def _stateless(f: Callable) -> Callable[[str], Callable]:
     """Wrap a device-independent test function as a device-aware builder."""
     return lambda device: f
+
+
+def class_index_loss(
+    loss_fn: Callable, reduction: str, N: int, C: int, weighted: bool = False
+) -> Callable[[str], Callable]:
+    """Build ``loss_fn(input, target, weight, reduction)`` against class indices.
+
+    Shared by the ``nll_loss`` and ``cross_entropy`` test cases. The integer
+    ``target`` (and, when ``weighted``, the positive per-class ``weight``) are
+    drawn under ``manual_seed(1)`` (distinct from the ``setup_case`` input) and
+    live on ``device``; ``setup_case`` migrates only the float input, not
+    closed-over constants. ``weight`` exercises the per-class weighting and (for
+    ``mean``) the ``total_weight`` normalization.
+    """
+
+    def build(device: str) -> Callable:
+        manual_seed(1)
+        target = randint(0, C, (N,), device=device)
+        weight = rand(C, **device_kw(device)) + 0.5 if weighted else None
+        return lambda x: loss_fn(x, target, weight=weight, reduction=reduction)
+
+    return build
 
 
 def tolerances_for(device: str) -> dict[str, float]:

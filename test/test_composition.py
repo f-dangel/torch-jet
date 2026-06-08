@@ -9,11 +9,13 @@ from typing import Any
 from pytest import mark
 from torch import Tensor, cos, manual_seed, rand, randn, sin, tanh
 from torch.nn import Linear, ReLU, Sequential
+from torch.nn.functional import cross_entropy
 
 from test.utils import (
     K_AND_MODE,
     _stateless,
     assert_jet_matches_oracle,
+    class_index_loss,
     device_kw,
     mlp,
 )
@@ -84,6 +86,20 @@ COMPOSITION_CASES = [
         "f": _stateless(lambda params, x: params["scale"] * sin(x) + params["bias"]),
         "args_fn": lambda: ({"scale": rand(3), "bias": rand(3)}, rand(3)),
     },
+    # ``nn.CrossEntropyLoss`` (class-index targets) decomposes into
+    # ``_log_softmax`` + ``nll_loss_forward`` + ``getitem``. Differentiate
+    # w.r.t. the logits; the integer target (and optional per-class weight) are
+    # frozen constants.
+    *(
+        {
+            "id": f"cross_entropy_class_index_{reduction}"
+            + ("_weighted" if weighted else ""),
+            "f": class_index_loss(cross_entropy, reduction, 8, 5, weighted=weighted),
+            "args_fn": lambda: (rand(8, 5),),
+        }
+        for reduction in ("mean", "sum", "none")
+        for weighted in (False, True)
+    ),
 ]
 
 

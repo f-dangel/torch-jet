@@ -7,18 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+`jet` is now in Beta: the public API is stable and more operators are
+supported, though coverage is still growing.
+
 ### Added/New
 
-- **Backward-incompatible.** Flatten the public API: `laplacian`,
-  `bilaplacian`, `common_subexpression_elimination`, and `visualize_graph`
-  are now importable from the top level (`from jet import laplacian`) and an
-  explicit `__all__` pins the supported surface (`jet`, `laplacian`,
-  `bilaplacian`, `capture_graph`, `common_subexpression_elimination`,
-  `visualize_graph`). Their implementation modules are now private
-  (`jet/_laplacian.py`, `jet/_bilaplacian.py`, `jet/_simplify.py`, and a new
-  `jet/_jet.py` holding the `jet` transform), so the old submodule import
-  paths (`jet.laplacian`, `jet.bilaplacian`, `jet.simplify`) are gone. Also
-  drop the unused `verbose` argument from `common_subexpression_elimination`
+- **Backward-incompatible.** Flatten the public API: all public functions are
+  now importable from the top level (e.g. `from jet import laplacian`)
   ([PR](https://github.com/f-dangel/torch-jet/pull/172)).
 
 - Support classic torchvision CNNs in Taylor mode by adding jet rules for the
@@ -161,12 +156,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([PR](https://github.com/f-dangel/torch-jet/pull/129))
 
 ### Internal
-
-- Bump the development-status classifier from Alpha to Beta and reword the
-  README to frame the public API as stable (1.0, semantic versioning) with
-  operator coverage still growing; note in the `laplacian` / `bilaplacian`
-  docstrings that collapsed mode (the default) is the more efficient choice
-  ([PR](https://github.com/f-dangel/torch-jet/pull/172)).
 
 - Drop the redundant primal from the `_*_derivatives` helpers' return value.
   Each helper already stored the primal at `dn[0]` and also returned it as a

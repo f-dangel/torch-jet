@@ -33,10 +33,12 @@ from torch.nn import Linear, Sequential, Tanh
 from tueplots import bundles
 
 import jet
-from jet.laplacian import laplacian
-from jet.simplify import common_subexpression_elimination
-from jet.tracing import capture_graph
-from jet.utils import visualize_graph
+from jet import (
+    capture_graph,
+    common_subexpression_elimination,
+    laplacian,
+    visualize_graph,
+)
 
 HEREDIR = path.dirname(path.abspath(__name__))
 # We need to store figures here so they will be picked up in the built doc

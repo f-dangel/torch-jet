@@ -4,7 +4,7 @@ from typing import Callable
 
 from torch import Tensor, eye, zeros_like
 
-from jet import _uncollapsed_via_vmap, jet
+from jet._jet import _uncollapsed_via_vmap, jet
 from jet.utils import (
     PyTree,
     require_single_tensor_input,
@@ -65,6 +65,8 @@ def laplacian(
             (``JetInterpreter(..., collapsed=True)``) that directly propagates
             the summed second-order coefficient. If ``False``, propagates full
             2-jets over all directions via ``vmap`` and sums afterward.
+            Collapsed mode is the more efficient default: propagating the
+            summed coefficient moves smaller tensors through the graph.
 
     Returns:
         A plain Python callable ``lap_f(*args)`` that maps ``x → lap(f(x))``.
@@ -75,7 +77,7 @@ def laplacian(
         >>> from torch import manual_seed, rand, zeros
         >>> from torch.func import hessian
         >>> from torch.nn import Linear, Tanh, Sequential
-        >>> from jet.laplacian import laplacian
+        >>> from jet import laplacian
         >>> _ = manual_seed(0) # make deterministic
         >>> f = Sequential(Linear(3, 1), Tanh())
         >>> x0 = rand(3)

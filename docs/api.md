@@ -2,14 +2,14 @@
 
 ### ::: jet.jet
 
-### ::: jet.laplacian.laplacian
+### ::: jet.laplacian
 
-### ::: jet.bilaplacian.bilaplacian
+### ::: jet.bilaplacian
 
 ## Graph capture
 
 ### ::: jet.capture_graph
 
-### ::: jet.simplify.common_subexpression_elimination
+### ::: jet.common_subexpression_elimination
 
-### ::: jet.utils.visualize_graph
+### ::: jet.visualize_graph

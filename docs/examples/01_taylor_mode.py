@@ -14,9 +14,7 @@ from torch import Tensor, cos, manual_seed, ones_like, rand, sin, zeros_like
 from torch.func import hessian
 from torch.nn import Linear, Sequential, Tanh
 
-from jet import jet
-from jet.tracing import capture_graph
-from jet.utils import visualize_graph
+from jet import capture_graph, jet, visualize_graph
 
 HEREDIR = path.dirname(path.abspath(__name__))
 # We need to store figures here so they will be picked up in the built doc

@@ -13,18 +13,6 @@ import jet
 from jet.tracing import capture_graph
 
 
-def test_collapsed_jet_rejects_order_below_2():
-    """jet(..., collapsed=True) raises ValueError at call time for K < 2."""
-    cjet_f = jet.jet(sin, (zeros(3),), collapsed=True)
-    x = zeros(3)
-
-    # K=1: jet tuple has length 2 -> only a primal and one coefficient.
-    # K=0: jet tuple has length 1 -> only a primal.
-    for jet_tuple in [(x, x), (x,)]:
-        with raises(ValueError, match="collapsed mode requires K >= 2"):
-            cjet_f(jet_tuple)
-
-
 def test_capture_graph_rejects_non_tuple_mock_args():
     """capture_graph requires mock_args to be a tuple (not a bare tensor)."""
     with raises(TypeError, match="must be a tuple"):

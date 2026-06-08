@@ -31,9 +31,7 @@ from torch.nn import Linear, Sequential, Tanh
 from torch.optim import Adam
 from tueplots import bundles
 
-from jet.laplacian import laplacian
-from jet.simplify import common_subexpression_elimination
-from jet.tracing import capture_graph
+from jet import capture_graph, common_subexpression_elimination, laplacian
 
 _ = manual_seed(42)  # make deterministic
 

@@ -15,11 +15,11 @@ from torch import Tensor
 from torch.func import hessian
 from torch.testing import assert_close
 
-from jet.bilaplacian import SUPPORTED_DISTRIBUTIONS
-from jet.bilaplacian import bilaplacian as jet_bilaplacian
-from jet.laplacian import laplacian as jet_laplacian
+from jet import bilaplacian as jet_bilaplacian
+from jet import laplacian as jet_laplacian
+from jet._bilaplacian import SUPPORTED_DISTRIBUTIONS
 from jet.utils import run_seeded
-from test.test_laplacian import _check_mc_convergence
+from test.test__laplacian import _check_mc_convergence
 from test.utils import SCALAR_OUTPUT_CASES as BILAPLACIAN_CASES
 from test.utils import setup_case, tolerances_for
 

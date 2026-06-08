@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+`jet` is now in Beta: the public API is stable and more operators are
+supported, though coverage is still growing.
+
 ### Added/New
+
+- **Backward-incompatible.** Flatten the public API: all public functions are
+  now importable from the top level (e.g. `from jet import laplacian`)
+  ([PR](https://github.com/f-dangel/torch-jet/pull/172)).
 
 - Support `aten.t.default` (matrix transpose) in Taylor mode (both standard and
   collapsed modes)

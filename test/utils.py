@@ -20,7 +20,8 @@ from torch.nn import Linear, Sequential, Tanh
 from torch.testing import assert_close
 from torch.utils._pytree import tree_flatten, tree_map
 
-from jet import _is_jet_leaf, _rev_jet, jet
+from jet._jet import _rev_jet, jet
+from jet.utils import _is_jet_leaf
 
 
 def dtype_for_device(device: str) -> dtype:

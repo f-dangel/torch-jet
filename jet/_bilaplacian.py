@@ -4,7 +4,7 @@ from typing import Callable
 
 from torch import Tensor, eye, triu_indices, zeros, zeros_like
 
-from jet import _uncollapsed_via_vmap, jet
+from jet._jet import _uncollapsed_via_vmap, jet
 from jet.ttc_coefficients import compute_all_gammas
 from jet.utils import (
     PyTree,
@@ -82,6 +82,8 @@ def bilaplacian(
             (``JetInterpreter(..., collapsed=True)``) that directly propagates
             the summed fourth-order coefficient. If ``False``, propagates full
             4-jets over all directions via ``vmap`` and sums afterward.
+            Collapsed mode is the more efficient default: propagating the
+            summed coefficient moves smaller tensors through the graph.
 
     Returns:
         A plain Python callable ``bilap_f(*args)`` that maps ``x → bilap(f(x))``.
@@ -92,7 +94,7 @@ def bilaplacian(
         >>> from torch import manual_seed, rand, zeros
         >>> from torch.func import hessian
         >>> from torch.nn import Linear, Tanh, Sequential
-        >>> from jet.bilaplacian import bilaplacian
+        >>> from jet import bilaplacian
         >>> _ = manual_seed(0) # make deterministic
         >>> f = Sequential(Linear(3, 1), Tanh())
         >>> x0 = rand(3)

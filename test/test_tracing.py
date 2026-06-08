@@ -12,8 +12,8 @@ explicitly replacing ``squeeze_.dim`` after tracing, ensuring the resulting
 graph is fully functional.
 """
 
-from pytest import mark
-from torch import ops, rand
+from pytest import mark, raises
+from torch import ops, rand, sin, zeros
 from torch.func import functionalize
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.nn import Linear
@@ -44,6 +44,12 @@ def test_capture_graph_replaces_squeeze_():
     x = rand(3)
     mod, _ = capture_graph(f, (x,))
     assert not _uses_squeeze_inplace(mod)
+
+
+def test_capture_graph_rejects_non_tuple_mock_args():
+    """capture_graph requires mock_args to be a tuple (not a bare tensor)."""
+    with raises(TypeError, match="must be a tuple"):
+        capture_graph(sin, zeros(3))
 
 
 @mark.xfail(

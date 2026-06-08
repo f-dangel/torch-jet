@@ -23,10 +23,10 @@ from torch import compile as torch_compile
 from torch.func import hessian, jacrev, jvp, vmap
 from torch.nn import Linear, Sequential, Tanh
 
-from jet.bilaplacian import bilaplacian as jet_bilaplacian
+from jet import bilaplacian as jet_bilaplacian
+from jet import common_subexpression_elimination
+from jet import laplacian as jet_laplacian
 from jet.exp.utils import measure_peak_memory, measure_time, to_string
-from jet.laplacian import laplacian as jet_laplacian
-from jet.simplify import common_subexpression_elimination
 from jet.tracing import capture_graph
 from jet.utils import run_seeded, sample
 from jet.weighted_laplacian import get_weighting

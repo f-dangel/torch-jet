@@ -9,8 +9,8 @@ from torch.func import hessian
 from torch.linalg import norm
 from torch.testing import assert_close
 
-from jet.laplacian import SUPPORTED_DISTRIBUTIONS
-from jet.laplacian import laplacian as jet_laplacian
+from jet import laplacian as jet_laplacian
+from jet._laplacian import SUPPORTED_DISTRIBUTIONS
 from jet.utils import run_seeded
 from jet.weighted_laplacian import C_func_diagonal_increments, get_weighting
 from test.utils import SCALAR_OUTPUT_CASES as LAPLACIAN_CASES

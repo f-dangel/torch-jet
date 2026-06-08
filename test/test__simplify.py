@@ -5,7 +5,7 @@ from torch import Tensor, arange
 from torch.fx import Graph, Node
 from torch.testing import assert_close
 
-from jet.simplify import common_subexpression_elimination
+from jet import common_subexpression_elimination
 from jet.tracing import capture_graph
 
 
@@ -66,7 +66,7 @@ def test_common_subexpression_elimination():
     _add_target = torch.ops.aten.add.Tensor
     adds_before = count_nodes(f_traced.graph, lambda n: n.target == _add_target)
 
-    common_subexpression_elimination(f_traced.graph, verbose=True)
+    common_subexpression_elimination(f_traced.graph)
     nodes_after = len(list(f_traced.graph.nodes))
     # CSE should have removed at least some duplicate nodes
     assert nodes_after < nodes_before

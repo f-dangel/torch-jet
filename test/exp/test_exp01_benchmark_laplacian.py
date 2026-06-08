@@ -6,19 +6,19 @@ from pytest import mark
 from torch import rand, sigmoid, vmap
 from torch.testing import assert_close
 
-from jet.bilaplacian import (
+from jet._bilaplacian import (
     SUPPORTED_DISTRIBUTIONS as BILAPLACIAN_SUPPORTED_DISTRIBUTIONS,
 )
+from jet._laplacian import SUPPORTED_DISTRIBUTIONS as LAPLACIAN_SUPPORTED_DISTRIBUTIONS
 from jet.exp.exp01_benchmark_laplacian.execute import (
     SUPPORTED_STRATEGIES,
     bilaplacian_function,
     laplacian_function,
 )
-from jet.laplacian import SUPPORTED_DISTRIBUTIONS as LAPLACIAN_SUPPORTED_DISTRIBUTIONS
 from jet.utils import run_seeded
 from jet.weighted_laplacian import get_weighting
-from test.test_bilaplacian import bilaplacian
-from test.test_laplacian import (
+from test.test__bilaplacian import bilaplacian
+from test.test__laplacian import (
     WEIGHT_IDS,
     WEIGHTS,
     _check_mc_convergence,

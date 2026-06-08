@@ -1,21 +1,14 @@
-"""Tests for ``jet/__init__.py`` API surface.
-
-Primitive correctness is in ``test_primitives.py``; composition coverage is
-in ``test_composition.py``; constant-output handling is in
-``test_constants.py``. This file keeps the small set of API-rejection /
-smoke-test cases that don't fit any of those layers.
-"""
+"""Tests for jet/_jet.py (the jet() / _rev_jet transforms)."""
 
 from pytest import raises
 from torch import sin, zeros
 
-import jet
-from jet.tracing import capture_graph
+from jet import jet
 
 
 def test_collapsed_jet_rejects_order_below_2():
     """jet(..., collapsed=True) raises ValueError at call time for K < 2."""
-    cjet_f = jet.jet(sin, (zeros(3),), collapsed=True)
+    cjet_f = jet(sin, (zeros(3),), collapsed=True)
     x = zeros(3)
 
     # K=1: jet tuple has length 2 -> only a primal and one coefficient.
@@ -23,12 +16,6 @@ def test_collapsed_jet_rejects_order_below_2():
     for jet_tuple in [(x, x), (x,)]:
         with raises(ValueError, match="collapsed mode requires K >= 2"):
             cjet_f(jet_tuple)
-
-
-def test_capture_graph_rejects_non_tuple_mock_args():
-    """capture_graph requires mock_args to be a tuple (not a bare tensor)."""
-    with raises(TypeError, match="must be a tuple"):
-        capture_graph(sin, zeros(3))
 
 
 def test_jet_rejects_unsupported_tuple_dict_signature():
@@ -43,9 +30,9 @@ def test_jet_rejects_unsupported_tuple_dict_signature():
     match = r"pytorch/pytorch#185640"  # pin to the tracked upstream issue
     for collapsed in (False, True):
         with raises(NotImplementedError, match=match):
-            jet.jet(f, (t, d), collapsed=collapsed)
+            jet(f, (t, d), collapsed=collapsed)
 
     # Supported dict signatures must not raise.
-    jet.jet(lambda d: d["a"] * 2, (d,))  # single dict arg
-    jet.jet(lambda d, x: d["a"] + x, (d, t))  # dict first
-    jet.jet(lambda x, y, d: x + y + d["a"], (t, t, d))  # three args, trailing dict
+    jet(lambda d: d["a"] * 2, (d,))  # single dict arg
+    jet(lambda d, x: d["a"] + x, (d, t))  # dict first
+    jet(lambda x, y, d: x + y + d["a"], (t, t, d))  # three args, trailing dict

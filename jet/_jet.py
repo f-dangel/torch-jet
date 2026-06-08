@@ -56,22 +56,22 @@ def jet(
         ``(f_0, f_1, ..., f_K)``.
 
     Examples:
-        **Single-input**::
+        **Single-input**
 
-            >>> from torch import sin, zeros, Tensor
-            >>> from jet import jet
-            >>> jet_f = jet(sin, (zeros(1),))
-            >>> x0, x1, x2 = Tensor([0.123]), Tensor([-0.456]), Tensor([0.789])
-            >>> f0, f1, f2 = jet_f((x0, x1, x2))
+        >>> from torch import sin, zeros, Tensor
+        >>> from jet import jet
+        >>> jet_f = jet(sin, (zeros(1),))
+        >>> x0, x1, x2 = Tensor([0.123]), Tensor([-0.456]), Tensor([0.789])
+        >>> f0, f1, f2 = jet_f((x0, x1, x2))
 
-        **Multi-input**::
+        **Multi-input**
 
-            >>> from torch import cos
-            >>> f = lambda x, y: sin(x) * cos(y)
-            >>> jet_f = jet(f, (zeros(3), zeros(3)))
-            >>> x, y = Tensor([0.1, 0.2, 0.3]), Tensor([0.4, 0.5, 0.6])
-            >>> vx, vy = Tensor([1.0, 0.0, 0.0]), Tensor([0.0, 1.0, 0.0])
-            >>> f0, f1 = jet_f((x, vx), (y, vy))
+        >>> from torch import cos
+        >>> f = lambda x, y: sin(x) * cos(y)
+        >>> jet_f = jet(f, (zeros(3), zeros(3)))
+        >>> x, y = Tensor([0.1, 0.2, 0.3]), Tensor([0.4, 0.5, 0.6])
+        >>> vx, vy = Tensor([1.0, 0.0, 0.0]), Tensor([0.0, 1.0, 0.0])
+        >>> f0, f1 = jet_f((x, vx), (y, vy))
     """
     mod, _ = capture_graph(f, mock_args)
     interp = JetInterpreter(mod, collapsed=collapsed)

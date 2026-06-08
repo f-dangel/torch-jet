@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `jet/_jet.py` holding the `jet` transform), so the old submodule import
   paths (`jet.laplacian`, `jet.bilaplacian`, `jet.simplify`) are gone. Also
   drop the unused `verbose` argument from `common_subexpression_elimination`
-  ([PR](https://github.com/f-dangel/torch-jet/pull/166)).
+  ([PR](https://github.com/f-dangel/torch-jet/pull/172)).
 
 - Support classic torchvision CNNs in Taylor mode by adding jet rules for the
   ATen ops they need:
@@ -166,7 +166,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   README to frame the public API as stable (1.0, semantic versioning) with
   operator coverage still growing; note in the `laplacian` / `bilaplacian`
   docstrings that collapsed mode (the default) is the more efficient choice
-  ([PR](https://github.com/f-dangel/torch-jet/pull/166)).
+  ([PR](https://github.com/f-dangel/torch-jet/pull/172)).
 
 - Drop the redundant primal from the `_*_derivatives` helpers' return value.
   Each helper already stored the primal at `dn[0]` and also returned it as a

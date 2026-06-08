@@ -191,11 +191,7 @@ supported, though coverage is still growing.
 
 ### Internal
 
-- Add runnable doctest examples for `capture_graph`,
-  `common_subexpression_elimination`, and `visualize_graph`; document
-  `PyTree`s at the top of the API reference; and fix docstring code
-  highlighting by replacing RST `::` literal blocks with Markdown-friendly
-  `>>>` / fenced blocks
+- Improve docstrings
   ([PR](https://github.com/f-dangel/torch-jet/pull/173)).
 
 - Make `jet_add` / `jet_sub` (and collapsed) total over constant operands:

@@ -11,6 +11,22 @@ def common_subexpression_elimination(graph: Graph) -> bool:
 
     Returns:
         Whether a subexpression was replaced.
+
+    Examples:
+        >>> from torch import allclose, ones, zeros
+        >>> from jet import capture_graph, common_subexpression_elimination
+        >>> # ``x + x`` appears twice, so tracing emits two identical add nodes.
+        >>> mod, _ = capture_graph(lambda x: (x + x) + (x + x), (zeros(3),))
+        >>> sum(n.op == "call_function" for n in mod.graph.nodes)
+        3
+        >>> common_subexpression_elimination(mod.graph)  # collapses the duplicate
+        True
+        >>> sum(n.op == "call_function" for n in mod.graph.nodes)
+        2
+        >>> # CSE edits the graph in place; recompile so ``mod`` uses the new graph.
+        >>> _ = mod.recompile()
+        >>> allclose(mod(ones(3)), 4 * ones(3))
+        True
     """
     nodes = {}
 

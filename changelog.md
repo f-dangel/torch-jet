@@ -191,6 +191,9 @@ supported, though coverage is still growing.
 
 ### Internal
 
+- Improve docstrings
+  ([PR](https://github.com/f-dangel/torch-jet/pull/173)).
+
 - Make `jet_add` / `jet_sub` (and collapsed) total over constant operands:
   `add` / `sub` on two constants now return the plain result instead of
   indexing a non-jet operand, completing the `{jet, constant}` totality that

@@ -33,10 +33,12 @@ def capture_graph(
     through pytree containers, so ``mock_args`` is flattened and ``f`` is
     traced over those flat leaves. To call the captured graph with ``f``'s
     original pytree shape, use the second return value, ``in_spec``, to
-    flatten new arguments in the order the graph expects::
+    flatten new arguments in the order the graph expects:
 
-        mod, in_spec = capture_graph(f, mock_args)
-        out = mod(*in_spec.flatten_up_to(args))
+    ```python
+    mod, in_spec = capture_graph(f, mock_args)
+    out = mod(*in_spec.flatten_up_to(args))
+    ```
 
     Output structure is passed through unchanged -- whatever ``f`` returns
     (single tensor, tuple, dict, arbitrary pytree), ``make_fx``'s pytree
@@ -58,6 +60,14 @@ def capture_graph(
     Raises:
         TypeError: If ``mock_args`` is not a ``tuple``. Wrap a single
             positional argument as ``(x,)``.
+
+    Examples:
+        >>> from torch import allclose, ones, sin, zeros
+        >>> from jet import capture_graph
+        >>> mod, in_spec = capture_graph(sin, (zeros(3),))
+        >>> x = ones(3)
+        >>> allclose(mod(*in_spec.flatten_up_to((x,))), sin(x))
+        True
     """
     if not isinstance(mock_args, tuple):
         raise TypeError(

@@ -5,12 +5,7 @@ It is similar to JAX's Taylor mode ([`jax.experimental.jet`](https://docs.jax.de
 
 The repository also hosts the Python functionality+experiments and LaTeX source for our NeurIPS 2025 paper ["Collapsing Taylor Mode Automatic Differentiation"](https://openreview.net/forum?id=XgQVL1uP34), which allows to further accelerate Taylor mode for many practical differential operators.
 
-> 📌 **Stable API, growing operator coverage** 📌
->
-> As of v1.0 the public API is stable and follows [semantic versioning](https://semver.org/).
-> Operator coverage is still limited and actively growing, so a function may hit an
-> unsupported op — we recommend double-checking your results with PyTorch's autodiff.
-> Please help us improve the package by providing feedback, filing issues, and opening pull requests.
+Operator coverage is still growing, so please help us improve the package by providing feedback, filing issues, and opening pull requests.
 
 
 ## Getting Started

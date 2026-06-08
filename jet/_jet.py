@@ -1,9 +1,4 @@
-"""Taylor-mode (jet) transforms: ``jet``, ``_rev_jet``, ``_uncollapsed_via_vmap``.
-
-These live in a leaf module (rather than ``jet/__init__.py``) so that
-``jet/__init__.py`` can stay a pure re-export hub. No module imports the
-package ``__init__``, which keeps the import graph acyclic.
-"""
+"""Taylor-mode (jet) transforms: ``jet``, ``_rev_jet``, ``_uncollapsed_via_vmap``."""
 
 from math import factorial
 from typing import Callable

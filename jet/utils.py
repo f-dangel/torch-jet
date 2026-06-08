@@ -256,6 +256,19 @@ def visualize_graph(
 
     Raises:
         ValueError: If *savefile* has an unsupported extension.
+
+    Examples:
+        >>> from os.path import exists, join
+        >>> from tempfile import TemporaryDirectory
+        >>> from torch import zeros
+        >>> from jet import capture_graph, visualize_graph
+        >>> mod, _ = capture_graph(lambda x: x + x, (zeros(3),))
+        >>> with TemporaryDirectory() as tmp:
+        ...     path = join(tmp, "graph.svg")
+        ...     visualize_graph(mod, path)
+        ...     written = exists(path)
+        >>> written
+        True
     """
     cls = _CustomDrawer if use_custom else FxGraphDrawer
     drawer = cls(mod, name)

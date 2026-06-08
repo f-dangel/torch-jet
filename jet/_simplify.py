@@ -15,10 +15,14 @@ def common_subexpression_elimination(graph: Graph) -> bool:
     Examples:
         >>> from torch import zeros
         >>> from jet import capture_graph, common_subexpression_elimination
-        >>> # ``x + x`` appears twice, so tracing emits a duplicate node.
+        >>> # ``x + x`` appears twice, so tracing emits two identical add nodes.
         >>> mod, _ = capture_graph(lambda x: (x + x) + (x + x), (zeros(3),))
-        >>> common_subexpression_elimination(mod.graph)
+        >>> sum(n.op == "call_function" for n in mod.graph.nodes)
+        3
+        >>> common_subexpression_elimination(mod.graph)  # collapses the duplicate
         True
+        >>> sum(n.op == "call_function" for n in mod.graph.nodes)
+        2
     """
     nodes = {}
 

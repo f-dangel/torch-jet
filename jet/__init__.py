@@ -1,10 +1,4 @@
-"""Taylor-mode automatic differentiation (jets) in PyTorch.
-
-This module is a pure re-export hub: every public name is defined in a
-submodule and surfaced here so users can ``from jet import ...``. ``__all__``
-pins the supported public API; everything else (interpreter internals,
-validation, type aliases) stays in its submodule.
-"""
+"""Taylor-mode automatic differentiation (jets) in PyTorch."""
 
 from jet._bilaplacian import bilaplacian
 from jet._jet import jet

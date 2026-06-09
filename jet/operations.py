@@ -23,34 +23,49 @@ from jet.utils import integer_partitions, multiplicity
 
 
 class JetTuple(tuple):
-    """A tuple subclass marking Taylor-expanded values (primal + coefficients).
+    """A Taylor jet ``(primal, c_1, ..., c_K)`` carrying a ``collapsed`` flag.
 
-    Using a distinct type instead of plain ``tuple`` prevents false positives
-    from ATen ops that take tuple arguments (e.g. padding, stride).
+    ``collapsed`` is ``False`` for standard Taylor mode and ``True`` for
+    collapsed mode (where coefficients ``c_1..c_{K-1}`` carry a leading
+    direction dim ``R`` and ``c_K`` is already summed over it). Both modes share
+    this one type; ``collapsed`` distinguishes them. Using a distinct type
+    instead of plain ``tuple`` prevents false positives from ATen ops that take
+    tuple arguments (e.g. padding, stride). The collapsed-mode constructor is
+    :data:`jet.collapsed_operations._cjet` (``partial(JetTuple, collapsed=True)``).
     """
+
+    def __new__(cls, iterable=(), collapsed: bool = False) -> "JetTuple":
+        """Build a jet from ``iterable``, tagging it standard or collapsed."""
+        obj = super().__new__(cls, iterable)
+        obj.collapsed = collapsed
+        return obj
+
+    def __init__(self, iterable=(), collapsed: bool = False) -> None:
+        """Values are set in ``__new__`` (``tuple`` is immutable)."""
+        super().__init__()
 
 
 # Register with PyTorch's pytree so that vmap, make_fx, etc. can flatten/unflatten
-# JetTuple the same way they handle plain tuples.
+# JetTuple the same way they handle plain tuples; the ``collapsed`` flag rides in
+# the pytree context so it survives the roundtrip.
 register_pytree_node(
     JetTuple,
-    flatten_fn=lambda x: (list(x), None),
-    unflatten_fn=lambda values, context: JetTuple(values),
+    flatten_fn=lambda x: (list(x), x.collapsed),
+    unflatten_fn=lambda values, collapsed: JetTuple(values, collapsed=collapsed),
 )
 
 
 def _order(args: tuple[Tensor, ...], jet_type: type) -> int:
     """Infer the Taylor-expansion order ``K`` from the jet-typed positional args.
 
-    A jet (whether ``JetTuple`` or ``CollapsedJetTuple``) is exactly
-    ``(primal, c_1, ..., c_K)``, so ``K = len(jet) - 1``. Collects ``K`` from
-    every ``jet_type`` argument in a single pass and requires exactly one
-    distinct value.
+    A jet is exactly ``(primal, c_1, ..., c_K)``, so ``K = len(jet) - 1``.
+    Collects ``K`` from every ``jet_type`` argument in a single pass and
+    requires exactly one distinct value.
 
     Args:
         args: Positional arguments of a jet op.
-        jet_type: The jet tuple subclass to match (``JetTuple`` for standard
-            Taylor mode, ``CollapsedJetTuple`` for collapsed).
+        jet_type: The jet tuple subclass to match (always ``JetTuple``; the
+            ``collapsed`` flag, not the type, distinguishes the two modes).
 
     Returns:
         The Taylor-expansion order ``K``.
@@ -663,9 +678,9 @@ def _align_conv_bias(bias: Tensor | JetTuple, ndim: int) -> Tensor | JetTuple:
 
     The bias indexes the channel dim (dim 1 of an ``ndim``-D conv output);
     appending ``ndim - 2`` trailing size-1 dims lets ``add`` broadcast it over
-    the batch and spatial dims. A jet bias is reshaped coefficient-wise; the
-    type-agnostic ``Tensor`` check and ``type(bias)`` reconstruction also serve
-    the collapsed rule's ``CollapsedJetTuple`` bias.
+    the batch and spatial dims. A jet bias is reshaped coefficient-wise (the
+    ``Tensor`` check separates a constant bias) and the collapsed flag is
+    preserved, so this also serves the collapsed rule's bias.
 
     Args:
         bias: The 1-D bias; a jet or a constant ``Tensor``.
@@ -677,7 +692,9 @@ def _align_conv_bias(bias: Tensor | JetTuple, ndim: int) -> Tensor | JetTuple:
     tail = (1,) * (ndim - 2)
     if isinstance(bias, Tensor):
         return bias.reshape(*bias.shape, *tail)
-    return type(bias)(b.reshape(*b.shape, *tail) for b in bias)
+    return JetTuple(
+        (b.reshape(*b.shape, *tail) for b in bias), collapsed=bias.collapsed
+    )
 
 
 def jet_convolution(

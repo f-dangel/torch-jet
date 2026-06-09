@@ -10,15 +10,16 @@ At each nonlinear operation, the K-th output coefficient is computed as:
   out_K = LINEAR_TERM(in_K_collapsed) + NONLINEAR_TERMS(in_1..K-1).sum(0)
 """
 
+from functools import partial
 from operator import add, sub
 from typing import Callable
 
 from scipy.special import comb
 from torch import Tensor, cat, matmul, ops, zeros_like
 from torch.func import vmap
-from torch.utils._pytree import register_pytree_node
 
 from jet.operations import (
+    JetTuple,
     _align_conv_bias,
     _bn_channel_view,
     _cos_derivatives,
@@ -34,29 +35,17 @@ from jet.operations import (
     _tanh_derivatives,
 )
 
-# ---------------------------------------------------------------------------
-# CollapsedJetTuple
-# ---------------------------------------------------------------------------
+#: Collapsed-mode JetTuple constructor (``JetTuple(values, collapsed=True)``).
+_cjet = partial(JetTuple, collapsed=True)
 
 
-class CollapsedJetTuple(tuple):
-    """JetTuple where the last coefficient is collapsed (summed over directions)."""
-
-
-register_pytree_node(
-    CollapsedJetTuple,
-    flatten_fn=lambda x: (list(x), None),
-    unflatten_fn=lambda values, context: CollapsedJetTuple(values),
-)
-
-
-def _cjet_order(*args: Tensor | CollapsedJetTuple | float | int) -> int:
-    """Infer ``K`` from all ``CollapsedJetTuple`` positional args.
+def _cjet_order(*args: Tensor | JetTuple | float | int) -> int:
+    """Infer ``K`` from all collapsed ``JetTuple`` positional args.
 
     Thin wrapper around :func:`jet.operations._order` that pre-binds the jet
-    type to ``CollapsedJetTuple``.
+    type to ``JetTuple``.
     """
-    return _order(args, CollapsedJetTuple)
+    return _order(args, JetTuple)
 
 
 # ---------------------------------------------------------------------------
@@ -65,19 +54,19 @@ def _cjet_order(*args: Tensor | CollapsedJetTuple | float | int) -> int:
 
 
 def _apply_linear(
-    jet: CollapsedJetTuple, op: Callable[[Tensor], Tensor]
-) -> CollapsedJetTuple:
+    jet: JetTuple, op: Callable[[Tensor], Tensor]
+) -> JetTuple:
     """Apply a linear *op* to every entry of *jet*, vmapping batched ones."""
     K = len(jet) - 1
     results = [op(jet[0])]
     vop = vmap(op)
     for k in range(1, K + 1):
         results.append(vop(jet[k]) if k < K else op(jet[k]))
-    return CollapsedJetTuple(results)
+    return _cjet(results)
 
 
 def _apply_linear_coeffs(
-    jet: CollapsedJetTuple, op: Callable[[Tensor], Tensor]
+    jet: JetTuple, op: Callable[[Tensor], Tensor]
 ) -> tuple[Tensor, ...]:
     """Apply *op* to coefficients 1..K only, vmapping batched ones."""
     K = len(jet) - 1
@@ -86,10 +75,10 @@ def _apply_linear_coeffs(
 
 
 def _collapsed_pointwise(
-    self: CollapsedJetTuple,
-    other: CollapsedJetTuple,
+    self: JetTuple,
+    other: JetTuple,
     op: Callable[[Tensor, Tensor], Tensor],
-) -> CollapsedJetTuple:
+) -> JetTuple:
     """Apply pointwise ``op`` to two collapsed jets of equal order.
 
     Broadcasts both operands' coefficients up to the result primal's shape via
@@ -105,10 +94,10 @@ def _collapsed_pointwise(
     s_coeffs = _broadcast_coeffs(self, primal)
     o_coeffs = _broadcast_coeffs(other, primal)
     coeffs = (op(s, o) for s, o in zip(s_coeffs, o_coeffs))
-    return CollapsedJetTuple((primal, *coeffs))
+    return _cjet((primal, *coeffs))
 
 
-def _broadcast_coeffs(self: CollapsedJetTuple, primal: Tensor) -> list[Tensor]:
+def _broadcast_coeffs(self: JetTuple, primal: Tensor) -> list[Tensor]:
     """Broadcast a collapsed jet's coefficients up to ``primal``'s shape.
 
     Also used by :func:`_collapsed_pointwise` to align two jets before an
@@ -141,8 +130,8 @@ def _broadcast_coeffs(self: CollapsedJetTuple, primal: Tensor) -> list[Tensor]:
 
 
 def _collapsed_leibniz(
-    self: CollapsedJetTuple,
-    other: CollapsedJetTuple,
+    self: JetTuple,
+    other: JetTuple,
     binary_op: Callable[[Tensor, Tensor], Tensor],
 ) -> tuple[Tensor, ...]:
     """Leibniz product rule with collapsed K-th coefficient (orders 1..K).
@@ -208,9 +197,9 @@ def _collapsed_leibniz(
 
 def _apply_bilinear(
     op: Callable[[Tensor, Tensor], Tensor],
-    self: Tensor | CollapsedJetTuple,
-    other: Tensor | CollapsedJetTuple,
-) -> Tensor | CollapsedJetTuple:
+    self: Tensor | JetTuple,
+    other: Tensor | JetTuple,
+) -> Tensor | JetTuple:
     """Lift a bilinear tensor ``op`` to operands each of which may be jet or constant.
 
     Collapsed mirror of :func:`jet.operations._apply_bilinear`: both-jet uses the
@@ -229,11 +218,11 @@ def _apply_bilinear(
         The collapsed jet of ``op(self, other)``, or a plain constant when both
         operands are constants.
     """
-    self_is = isinstance(self, CollapsedJetTuple)
-    other_is = isinstance(other, CollapsedJetTuple)
+    self_is = isinstance(self, JetTuple)
+    other_is = isinstance(other, JetTuple)
     if self_is and other_is:
         primal = op(self[0], other[0])
-        return CollapsedJetTuple((primal, *_collapsed_leibniz(self, other, op)))
+        return _cjet((primal, *_collapsed_leibniz(self, other, op)))
     if self_is:
         return _apply_linear(self, lambda c: op(c, other))
     if other_is:
@@ -247,59 +236,59 @@ def _apply_bilinear(
 
 
 def _cjet_elementwise(
-    self: CollapsedJetTuple,
+    self: JetTuple,
     deriv_fn: Callable[[Tensor, int], dict[int, Tensor]],
-) -> CollapsedJetTuple:
+) -> JetTuple:
     """Generic collapsed elementwise using shared helpers."""
     K = _cjet_order(self)
     self0, vs = self[0], self[1:]
     dn = deriv_fn(self0, K)
     vs_out = _faa_di_bruno(vs, dn, collapsed=True)
-    return CollapsedJetTuple((dn[0], *vs_out))
+    return _cjet((dn[0], *vs_out))
 
 
-def cjet_sin(self: CollapsedJetTuple) -> CollapsedJetTuple:
+def cjet_sin(self: JetTuple) -> JetTuple:
     """Collapsed jet rule for ``aten.sin``."""
     return _cjet_elementwise(self, _sin_derivatives)
 
 
-def cjet_cos(self: CollapsedJetTuple) -> CollapsedJetTuple:
+def cjet_cos(self: JetTuple) -> JetTuple:
     """Collapsed jet rule for ``aten.cos``."""
     return _cjet_elementwise(self, _cos_derivatives)
 
 
-def cjet_tanh(self: CollapsedJetTuple) -> CollapsedJetTuple:
+def cjet_tanh(self: JetTuple) -> JetTuple:
     """Collapsed jet rule for ``aten.tanh``."""
     return _cjet_elementwise(self, _tanh_derivatives)
 
 
-def cjet_sigmoid(self: CollapsedJetTuple) -> CollapsedJetTuple:
+def cjet_sigmoid(self: JetTuple) -> JetTuple:
     """Collapsed jet rule for ``aten.sigmoid``."""
     return _cjet_elementwise(self, _sigmoid_derivatives)
 
 
-def cjet_relu(self: CollapsedJetTuple) -> CollapsedJetTuple:
+def cjet_relu(self: JetTuple) -> JetTuple:
     """Collapsed jet rule for ``aten.relu``."""
     return _cjet_elementwise(self, _relu_derivatives)
 
 
-def cjet_exp(self: CollapsedJetTuple) -> CollapsedJetTuple:
+def cjet_exp(self: JetTuple) -> JetTuple:
     """Collapsed jet rule for ``aten.exp``."""
     return _cjet_elementwise(self, _exp_derivatives)
 
 
-def cjet_log(self: CollapsedJetTuple) -> CollapsedJetTuple:
+def cjet_log(self: JetTuple) -> JetTuple:
     """Collapsed jet rule for ``aten.log``."""
     return _cjet_elementwise(self, _log_derivatives)
 
 
-def cjet_pow(self: CollapsedJetTuple, exponent: float | int) -> CollapsedJetTuple:
+def cjet_pow(self: JetTuple, exponent: float | int) -> JetTuple:
     """Collapsed jet rule for ``aten.pow``."""
     assert isinstance(exponent, (float, int))
     self0, vs = self[0], self[1:]
     dpow = _pow_derivatives(self0, exponent, _cjet_order(self))
     vs_out = _faa_di_bruno(vs, dpow, collapsed=True)
-    return CollapsedJetTuple((dpow[0], *vs_out))
+    return _cjet((dpow[0], *vs_out))
 
 
 # ---------------------------------------------------------------------------
@@ -308,47 +297,45 @@ def cjet_pow(self: CollapsedJetTuple, exponent: float | int) -> CollapsedJetTupl
 
 
 def cjet_add(
-    self: Tensor | CollapsedJetTuple | float | int,
-    other: Tensor | CollapsedJetTuple | float | int,
-) -> Tensor | CollapsedJetTuple | float | int:
+    self: Tensor | JetTuple | float | int,
+    other: Tensor | JetTuple | float | int,
+) -> Tensor | JetTuple | float | int:
     """Collapsed jet rule for ``aten.add``."""
-    self_is = isinstance(self, CollapsedJetTuple)
-    other_is = isinstance(other, CollapsedJetTuple)
+    self_is = isinstance(self, JetTuple)
+    other_is = isinstance(other, JetTuple)
     if self_is and other_is:
         return _collapsed_pointwise(self, other, add)
     if self_is:
         primal = self[0] + other
-        return CollapsedJetTuple((primal, *_broadcast_coeffs(self, primal)))
+        return _cjet((primal, *_broadcast_coeffs(self, primal)))
     if other_is:
         primal = other[0] + self
-        return CollapsedJetTuple((primal, *_broadcast_coeffs(other, primal)))
+        return _cjet((primal, *_broadcast_coeffs(other, primal)))
     return self + other
 
 
 def cjet_sub(
-    self: Tensor | CollapsedJetTuple | float | int,
-    other: Tensor | CollapsedJetTuple | float | int,
-) -> Tensor | CollapsedJetTuple | float | int:
+    self: Tensor | JetTuple | float | int,
+    other: Tensor | JetTuple | float | int,
+) -> Tensor | JetTuple | float | int:
     """Collapsed jet rule for ``aten.sub``."""
-    self_is = isinstance(self, CollapsedJetTuple)
-    other_is = isinstance(other, CollapsedJetTuple)
+    self_is = isinstance(self, JetTuple)
+    other_is = isinstance(other, JetTuple)
     if self_is and other_is:
         return _collapsed_pointwise(self, other, sub)
     if self_is:
         primal = self[0] - other
-        return CollapsedJetTuple((primal, *_broadcast_coeffs(self, primal)))
+        return _cjet((primal, *_broadcast_coeffs(self, primal)))
     if other_is:
         primal = self - other[0]
-        return CollapsedJetTuple(
-            (primal, *(-c for c in _broadcast_coeffs(other, primal)))
-        )
+        return _cjet((primal, *(-c for c in _broadcast_coeffs(other, primal))))
     return self - other
 
 
 def cjet_mul(
-    self: Tensor | CollapsedJetTuple,
-    other: Tensor | CollapsedJetTuple,
-) -> CollapsedJetTuple:
+    self: Tensor | JetTuple,
+    other: Tensor | JetTuple,
+) -> JetTuple:
     """Collapsed jet rule for ``aten.mul``."""
     return _apply_bilinear(lambda a, b: a * b, self, other)
 
@@ -359,17 +346,17 @@ def cjet_mul(
 
 
 def cjet_mm(
-    self: Tensor | CollapsedJetTuple, mat2: Tensor | CollapsedJetTuple
-) -> CollapsedJetTuple:
+    self: Tensor | JetTuple, mat2: Tensor | JetTuple
+) -> JetTuple:
     """Collapsed jet rule for ``aten.mm``."""
     return _apply_bilinear(matmul, self, mat2)
 
 
 def cjet_addmm(
-    self: Tensor | CollapsedJetTuple,
-    mat1: Tensor | CollapsedJetTuple,
-    mat2: Tensor | CollapsedJetTuple,
-) -> CollapsedJetTuple:
+    self: Tensor | JetTuple,
+    mat1: Tensor | JetTuple,
+    mat2: Tensor | JetTuple,
+) -> JetTuple:
     """Collapsed jet rule for ``aten.addmm`` (supports a Taylor-expanded bias).
 
     See :func:`jet.operations.jet_addmm`: composes the matrix-product rule with
@@ -379,11 +366,11 @@ def cjet_addmm(
 
 
 def cjet_convolution(
-    input: Tensor | CollapsedJetTuple,
-    weight: Tensor | CollapsedJetTuple,
-    bias: Tensor | CollapsedJetTuple | None,
+    input: Tensor | JetTuple,
+    weight: Tensor | JetTuple,
+    bias: Tensor | JetTuple | None,
     *conv_args: object,
-) -> CollapsedJetTuple:
+) -> JetTuple:
     """Collapsed jet rule for ``aten.convolution``.
 
     See :func:`jet.operations.jet_convolution`: composes the bilinear bias-free
@@ -401,7 +388,7 @@ def cjet_convolution(
     if bias is None:
         return product
     # conv preserves rank, so the output ndim is the input ndim.
-    ndim = (input[0] if isinstance(input, CollapsedJetTuple) else input).ndim
+    ndim = (input[0] if isinstance(input, JetTuple) else input).ndim
     return cjet_add(_align_conv_bias(bias, ndim), product)
 
 
@@ -410,7 +397,7 @@ def cjet_convolution(
 # ---------------------------------------------------------------------------
 
 
-def _reduce_loss(loss: CollapsedJetTuple, reduction: int) -> CollapsedJetTuple:
+def _reduce_loss(loss: JetTuple, reduction: int) -> JetTuple:
     """Apply a loss reduction coefficient-wise (collapsed mode).
 
     ``reduction`` follows ATen's enum -- ``0`` (none, identity), ``1`` (mean),
@@ -438,10 +425,10 @@ def _reduce_loss(loss: CollapsedJetTuple, reduction: int) -> CollapsedJetTuple:
 
 
 def cjet_mse_loss(
-    self: Tensor | CollapsedJetTuple,
-    target: Tensor | CollapsedJetTuple,
+    self: Tensor | JetTuple,
+    target: Tensor | JetTuple,
     reduction: int = 1,
-) -> CollapsedJetTuple:
+) -> JetTuple:
     """Collapsed jet rule for ``aten.mse_loss(self, target, reduction)``.
 
     Computes ``reduce((self - target) ** 2)`` by composing the ``sub`` and
@@ -467,23 +454,23 @@ def cjet_mse_loss(
 
 
 def cjet_max_pool2d_with_indices(
-    input: CollapsedJetTuple, *pool_args: object
-) -> tuple[CollapsedJetTuple, Tensor]:
+    input: JetTuple, *pool_args: object
+) -> tuple[JetTuple, Tensor]:
     """Collapsed jet rule for ``aten.max_pool2d_with_indices``."""
     values0, indices = ops.aten.max_pool2d_with_indices.default(input[0], *pool_args)
     coeffs = _apply_linear_coeffs(input, lambda c: _gather_at_indices(c, indices))
-    return CollapsedJetTuple((values0, *coeffs)), indices
+    return _cjet((values0, *coeffs)), indices
 
 
-def cjet_max_pool2d(input: CollapsedJetTuple, *pool_args: object) -> CollapsedJetTuple:
+def cjet_max_pool2d(input: JetTuple, *pool_args: object) -> JetTuple:
     """Collapsed jet rule for ``aten.max_pool2d`` (values only; e.g. MPS)."""
     jet, _ = cjet_max_pool2d_with_indices(input, *pool_args)
     return jet
 
 
 def cjet_cat(
-    tensors: list[Tensor | CollapsedJetTuple], dim: int = 0
-) -> CollapsedJetTuple:
+    tensors: list[Tensor | JetTuple], dim: int = 0
+) -> JetTuple:
     """Collapsed jet rule for ``aten.cat(tensors, dim)``.
 
     Concatenation is linear -- see :func:`jet.operations.jet_cat`. The batched
@@ -492,10 +479,10 @@ def cjet_cat(
     contribute ``(R, *shape)`` zeros to match the batched jet coefficients.
     """
     K = _cjet_order(*tensors)
-    R = next(t for t in tensors if isinstance(t, CollapsedJetTuple))[1].shape[0]
+    R = next(t for t in tensors if isinstance(t, JetTuple))[1].shape[0]
 
     def part(t: object, k: int, batched: bool) -> Tensor:
-        if isinstance(t, CollapsedJetTuple):
+        if isinstance(t, JetTuple):
             return t[k]
         if k == 0:
             return t
@@ -506,12 +493,12 @@ def cjet_cat(
         batched = 0 < k < K
         d = dim + 1 if (batched and dim >= 0) else dim
         out.append(cat([part(t, k, batched) for t in tensors], d))
-    return CollapsedJetTuple(tuple(out))
+    return _cjet(tuple(out))
 
 
 def cjet_log_softmax(
-    self: CollapsedJetTuple, dim: int, half_to_float: bool = False
-) -> CollapsedJetTuple:
+    self: JetTuple, dim: int, half_to_float: bool = False
+) -> JetTuple:
     """Collapsed jet rule for ``aten._log_softmax(self, dim, half_to_float)``.
 
     Args:
@@ -538,12 +525,12 @@ def cjet_log_softmax(
 
 
 def cjet_nll_loss_forward(
-    self: CollapsedJetTuple,
+    self: JetTuple,
     target: Tensor,
     weight: Tensor | None,
     reduction: int,
     ignore_index: int,
-) -> tuple[CollapsedJetTuple, Tensor]:
+) -> tuple[JetTuple, Tensor]:
     """Collapsed jet rule for ``aten.nll_loss_forward``.
 
     Same linear application as :func:`jet.operations.jet_nll_loss_forward`.
@@ -563,7 +550,7 @@ def cjet_nll_loss_forward(
         NotImplementedError: If ``target`` or ``weight`` is Taylor-expanded;
             both must be constant tensors (the target is a class-index label).
     """
-    if isinstance(target, CollapsedJetTuple) or isinstance(weight, CollapsedJetTuple):
+    if isinstance(target, JetTuple) or isinstance(weight, JetTuple):
         raise NotImplementedError(
             "cjet_nll_loss_forward does not support a Taylor-expanded target or "
             "weight; both must be constant tensors (the target is a class-index "
@@ -578,7 +565,7 @@ def cjet_nll_loss_forward(
             c, target, weight, reduction, ignore_index
         )[0],
     )
-    return CollapsedJetTuple((output, *coeffs)), total_weight
+    return _cjet((output, *coeffs)), total_weight
 
 
 # ---------------------------------------------------------------------------
@@ -587,15 +574,15 @@ def cjet_nll_loss_forward(
 
 
 def cjet_native_batch_norm(
-    input: Tensor | CollapsedJetTuple,
-    weight: Tensor | CollapsedJetTuple | None,
-    bias: Tensor | CollapsedJetTuple | None,
+    input: Tensor | JetTuple,
+    weight: Tensor | JetTuple | None,
+    bias: Tensor | JetTuple | None,
     running_mean: Tensor | None,
     running_var: Tensor | None,
     training: bool,
     momentum: float,
     eps: float,
-) -> tuple[CollapsedJetTuple, Tensor, Tensor]:
+) -> tuple[JetTuple, Tensor, Tensor]:
     """Collapsed jet rule for ``aten.native_batch_norm`` (eval mode).
 
     Mirrors :func:`jet.operations.jet_native_batch_norm` with the collapsed
@@ -621,7 +608,7 @@ def cjet_native_batch_norm(
             "statistics, which is not yet implemented."
         )
 
-    primal = input[0] if isinstance(input, CollapsedJetTuple) else input
+    primal = input[0] if isinstance(input, JetTuple) else input
     shape = _bn_channel_view(primal)
     rstd = (running_var + eps).rsqrt()
     out = cjet_sub(input, cjet_view(running_mean, shape))
@@ -695,9 +682,9 @@ def deflinear(prim: Callable) -> Callable:
     """
 
     def rule(
-        self: Tensor | CollapsedJetTuple, *args, **kwargs
-    ) -> Tensor | CollapsedJetTuple:
-        if not isinstance(self, CollapsedJetTuple):
+        self: Tensor | JetTuple, *args, **kwargs
+    ) -> Tensor | JetTuple:
+        if not isinstance(self, JetTuple):
             return prim(self, *args, **kwargs)
         return _apply_linear(self, lambda c: prim(c, *args, **kwargs))
 
@@ -716,10 +703,10 @@ def defzero(prim: Callable) -> None:
     to the coefficients too.
     """
 
-    def rule(self: CollapsedJetTuple, *args, **kwargs) -> CollapsedJetTuple:
+    def rule(self: JetTuple, *args, **kwargs) -> JetTuple:
         primal_out = prim(self[0], *args, **kwargs)
         coeffs = [primal_out.new_zeros(c.shape) for c in self[1:]]
-        return CollapsedJetTuple([primal_out, *coeffs])
+        return _cjet([primal_out, *coeffs])
 
     COLLAPSED_MAPPING[prim] = rule
 

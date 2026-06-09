@@ -607,26 +607,27 @@ def jet_mm(self: Tensor | JetTuple, mat2: Tensor | JetTuple) -> JetTuple:
     return _apply_bilinear(mm, self, mat2)
 
 
-def _addmm_impl(self, mat1, mat2, add, mm):
-    """Shared ``addmm`` composition: ``add(self, mm(mat1, mat2))``.
-
-    ``addmm(self, mat1, mat2) == self + mat1 @ mat2``, composed from the mode's
-    ``add`` (affine bias, broadcasting a lower-rank bias over the product's rows)
-    and ``mm`` (matrix product) jet rules. Any operand may be a jet or a
-    constant. The standard and collapsed wrappers differ only in those two rules.
-    """
-    return add(self, mm(mat1, mat2))
-
-
 def jet_addmm(
     self: Tensor | JetTuple, mat1: Tensor | JetTuple, mat2: Tensor | JetTuple
 ) -> JetTuple:
-    """Taylor-mode ``aten.addmm(self, mat1, mat2) == self + mat1 @ mat2``.
+    """Taylor-mode arithmetic for ``aten.addmm(self, mat1, mat2)``.
 
-    Any operand may be a jet or a constant, including the bias. See
-    :func:`_addmm_impl`.
+    ``addmm(self, mat1, mat2) == self + mat1 @ mat2``, so the rule composes the
+    matrix-product rule with the affine bias addition: ``jet_add(self,
+    _apply_bilinear(mm, mat1, mat2))``. Any operand may be Taylor-expanded, including
+    the bias; :func:`jet_add` broadcasts a lower-rank bias over the product's
+    rows. When both matrices are constant :func:`_apply_bilinear` returns a plain
+    tensor.
+
+    Args:
+        self: The bias; a jet or a constant ``Tensor``.
+        mat1: The first matrix; a jet or a constant ``Tensor``.
+        mat2: The second matrix; a jet or a constant ``Tensor``.
+
+    Returns:
+        The value and its Taylor coefficients.
     """
-    return _addmm_impl(self, mat1, mat2, jet_add, jet_mm)
+    return jet_add(self, _apply_bilinear(mm, mat1, mat2))
 
 
 def _align_conv_bias(bias: Tensor | JetTuple, ndim: int) -> Tensor | JetTuple:
@@ -733,6 +734,16 @@ def jet_max_pool2d_with_indices(
     return _jet((values0, *coeffs)), indices
 
 
+def jet_max_pool2d(input: JetTuple, *pool_args: object) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.max_pool2d`` (values only).
+
+    The fused, indices-free pooling op some backends emit (e.g. MPS). Delegates
+    to :func:`jet_max_pool2d_with_indices` and drops the indices output.
+    """
+    jet, _ = jet_max_pool2d_with_indices(input, *pool_args)
+    return jet
+
+
 # --- Concatenation ---
 
 
@@ -817,27 +828,32 @@ def jet_mse_loss(
 # --- Normalization ---
 
 
-def _log_softmax_impl(self, dim, sub, exp, sum_, log):
-    """Shared ``_log_softmax`` composition (standard *or* collapsed primitives).
+def jet_log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten._log_softmax(self, dim, half_to_float)``.
 
     Uses the shift-invariant identity
     ``log_softmax(x) = (x - m) - log(sum(exp(x - m), dim))`` with
-    ``m = max(x, dim)`` a constant taken from the primal -- the log-sum-exp
-    trick, which stabilizes the whole jet, not just the forward pass.
-    ``sub`` / ``exp`` / ``sum_`` / ``log`` are the calling mode's jet rules;
-    :func:`jet.collapsed_operations.cjet_log_softmax` feeds the collapsed ones.
+    ``m = max(x, dim)`` a constant taken from the primal. ``exp`` and ``log``
+    reuse the elementwise machinery, the sum over ``dim`` is linear, and the
+    final subtraction broadcasts. This is the log-sum-exp trick, and it
+    stabilizes the whole jet -- not just the forward pass.
+
+    Args:
+        self: The logits and their Taylor coefficients.
+        dim: The dimension along which to normalize.
+        half_to_float: Whether inputs were promoted from half precision.
+            Accepted for ATen-signature compatibility; does not affect the
+            float32/float64 paths.
+
+    Returns:
+        The value and its Taylor coefficients.
     """
-    shifted = sub(self, self[0].amax(dim, keepdim=True))
-    return sub(shifted, log(sum_(exp(shifted), dim, keepdim=True)))
-
-
-def jet_log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTuple:
-    """Taylor-mode ``aten._log_softmax(self, dim, half_to_float)``.
-
-    ``half_to_float`` is accepted for ATen-signature compatibility and does not
-    affect the float32/float64 paths.
-    """
-    return _log_softmax_impl(self, dim, jet_sub, jet_exp, jet_sum, jet_log)
+    shift = self[0].amax(dim, keepdim=True)
+    shifted = jet_sub(self, shift)
+    exp_jet = jet_exp(shifted)
+    sum_exp = jet_sum(exp_jet, dim, keepdim=True)
+    log_sum_exp = jet_log(sum_exp)
+    return jet_sub(shifted, log_sum_exp)
 
 
 # --- Loss functions ---
@@ -909,35 +925,32 @@ def _bn_channel_view(primal: Tensor) -> tuple[int, ...]:
     return (1, primal.shape[1]) + (1,) * (primal.dim() - 2)
 
 
-def _native_batch_norm_impl(
-    input,
-    weight,
-    bias,
-    running_mean,
-    running_var,
-    training,
-    momentum,
-    eps,
-    sub,
-    mul,
-    view,
-    add,
-):
-    """Shared eval-mode ``native_batch_norm`` composition (standard or collapsed).
+def jet_native_batch_norm(
+    input: Tensor | JetTuple,
+    weight: Tensor | JetTuple | None,
+    bias: Tensor | JetTuple | None,
+    running_mean: Tensor | None,
+    running_var: Tensor | None,
+    training: bool,
+    momentum: float,
+    eps: float,
+) -> tuple[JetTuple, Tensor, Tensor]:
+    """Taylor-mode arithmetic for ``aten.native_batch_norm`` (eval mode).
 
-    Eval-mode batch norm is the affine per-channel map
-    ``(input - running_mean) / sqrt(running_var + eps) * weight + bias`` with
-    frozen running statistics. Any of ``input`` / ``weight`` / ``bias`` may be a
-    jet, a constant, or (``weight`` / ``bias``) ``None``; any input rank
-    (1d/2d/3d batch norm) is supported. The ``sub`` / ``mul`` / ``view`` / ``add``
-    rules are the calling mode's; the standard and collapsed wrappers differ only
-    in those. Training mode is deferred until PyTorch fixes its fused op's
-    incorrect higher-order autograd in training
-    (pytorch/pytorch#186256), without which a training rule cannot be validated.
+    Eval-mode batch norm normalizes each channel with the frozen running
+    statistics: ``(input - running_mean) / sqrt(running_var + eps) * weight +
+    bias``. Any of ``input`` / ``weight`` / ``bias`` may be a jet, a constant, or
+    (``weight`` / ``bias``) ``None`` -- any input rank (1d/2d/3d batch norm) is
+    supported. Mirrored by
+    :func:`jet.collapsed_operations.cjet_native_batch_norm`. Training mode is
+    deferred until PyTorch fixes its fused ``native_batch_norm``'s incorrect
+    higher-order autograd in training (pytorch/pytorch#186256), without which a
+    training rule cannot be validated.
 
     Returns:
         The ATen op's ``(output, save_mean, save_invstd)`` triple. ``save_mean``
-        / ``save_invstd`` are empty (only the forward output is consumed).
+        / ``save_invstd`` are empty (only the forward output is consumed in a
+        Taylor-mode pass).
 
     Raises:
         NotImplementedError: In training mode, or in eval mode without running
@@ -959,41 +972,14 @@ def _native_batch_norm_impl(
     primal = input[0] if isinstance(input, JetTuple) else input
     shape = _bn_channel_view(primal)
     rstd = (running_var + eps).rsqrt()
-    out = sub(input, view(running_mean, shape))
-    out = mul(out, view(rstd, shape))
+    out = jet_sub(input, jet_view(running_mean, shape))
+    out = jet_mul(out, jet_view(rstd, shape))
     if weight is not None:
-        out = mul(out, view(weight, shape))
+        out = jet_mul(out, jet_view(weight, shape))
     if bias is not None:
-        out = add(out, view(bias, shape))
+        out = jet_add(out, jet_view(bias, shape))
     empty = primal.new_empty(0)
     return out, empty, empty
-
-
-def jet_native_batch_norm(
-    input: Tensor | JetTuple,
-    weight: Tensor | JetTuple | None,
-    bias: Tensor | JetTuple | None,
-    running_mean: Tensor | None,
-    running_var: Tensor | None,
-    training: bool,
-    momentum: float,
-    eps: float,
-) -> tuple[JetTuple, Tensor, Tensor]:
-    """Taylor-mode ``aten.native_batch_norm`` (eval mode). See `_native_batch_norm_impl`."""
-    return _native_batch_norm_impl(
-        input,
-        weight,
-        bias,
-        running_mean,
-        running_var,
-        training,
-        momentum,
-        eps,
-        jet_sub,
-        jet_mul,
-        jet_view,
-        jet_add,
-    )
 
 
 # --- Rule-building factories (registered in :mod:`jet._rules`) ---

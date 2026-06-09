@@ -20,16 +20,14 @@ from torch.func import vmap
 
 from jet.operations import (
     JetTuple,
-    _addmm_impl,
     _align_conv_bias,
+    _bn_channel_view,
     _elementwise,
     _exp_derivatives,
     _gather_at_indices,
     _jet_order,
     _log_derivatives,
-    _log_softmax_impl,
     _make_linear_rule,
-    _native_batch_norm_impl,
     _pow_derivatives,
 )
 
@@ -299,8 +297,12 @@ def cjet_addmm(
     mat1: Tensor | JetTuple,
     mat2: Tensor | JetTuple,
 ) -> JetTuple:
-    """Collapsed ``aten.addmm`` (supports a Taylor-expanded bias). See ``_addmm_impl``."""
-    return _addmm_impl(self, mat1, mat2, cjet_add, cjet_mm)
+    """Collapsed jet rule for ``aten.addmm`` (supports a Taylor-expanded bias).
+
+    See :func:`jet.operations.jet_addmm`: composes the matrix-product rule with
+    the affine bias addition, ``cjet_add(self, _apply_bilinear(matmul, mat1, mat2))``.
+    """
+    return cjet_add(self, _apply_bilinear(matmul, mat1, mat2))
 
 
 def cjet_convolution(
@@ -400,6 +402,12 @@ def cjet_max_pool2d_with_indices(
     return _cjet((values0, *coeffs)), indices
 
 
+def cjet_max_pool2d(input: JetTuple, *pool_args: object) -> JetTuple:
+    """Collapsed jet rule for ``aten.max_pool2d`` (values only; e.g. MPS)."""
+    jet, _ = cjet_max_pool2d_with_indices(input, *pool_args)
+    return jet
+
+
 def cjet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
     """Collapsed jet rule for ``aten.cat(tensors, dim)``.
 
@@ -427,8 +435,24 @@ def cjet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
 
 
 def cjet_log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTuple:
-    """Collapsed ``aten._log_softmax``. See :func:`jet.operations._log_softmax_impl`."""
-    return _log_softmax_impl(self, dim, cjet_sub, cjet_exp, cjet_sum, cjet_log)
+    """Collapsed jet rule for ``aten._log_softmax(self, dim, half_to_float)``.
+
+    Args:
+        self: The logits and their Taylor coefficients.
+        dim: The dimension along which to normalize.
+        half_to_float: Whether inputs were promoted from half precision.
+            Accepted for ATen-signature compatibility; does not affect the
+            float32/float64 paths.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    shift = self[0].amax(dim, keepdim=True)
+    shifted = cjet_sub(self, shift)
+    exp_jet = cjet_exp(shifted)
+    sum_exp = cjet_sum(exp_jet, dim, keepdim=True)
+    log_sum_exp = cjet_log(sum_exp)
+    return cjet_sub(shifted, log_sum_exp)
 
 
 # ---------------------------------------------------------------------------
@@ -495,21 +519,42 @@ def cjet_native_batch_norm(
     momentum: float,
     eps: float,
 ) -> tuple[JetTuple, Tensor, Tensor]:
-    """Collapsed ``aten.native_batch_norm`` (eval). See ``_native_batch_norm_impl``."""
-    return _native_batch_norm_impl(
-        input,
-        weight,
-        bias,
-        running_mean,
-        running_var,
-        training,
-        momentum,
-        eps,
-        cjet_sub,
-        cjet_mul,
-        cjet_view,
-        cjet_add,
-    )
+    """Collapsed jet rule for ``aten.native_batch_norm`` (eval mode).
+
+    Mirrors :func:`jet.operations.jet_native_batch_norm` with the collapsed
+    arithmetic helpers (sharing only the pure-tensor :func:`_bn_channel_view`):
+    normalizes each channel with the frozen running statistics,
+    ``(input - running_mean) / sqrt(running_var + eps) * weight + bias``. Any of
+    ``input`` / ``weight`` / ``bias`` may be a jet, a constant, or
+    (``weight`` / ``bias``) ``None``; any input rank is supported. Training mode
+    is deferred until PyTorch fixes its fused ``native_batch_norm``'s incorrect
+    higher-order autograd in training (pytorch/pytorch#186256); eval mode without
+    running statistics is likewise unsupported.
+    """
+    if training:
+        raise NotImplementedError(
+            "Taylor-mode native_batch_norm supports eval mode only. Training mode "
+            "is deferred until PyTorch fixes the fused op's incorrect higher-order "
+            "autograd in training (pytorch/pytorch#186256)."
+        )
+    if running_mean is None or running_var is None:
+        raise NotImplementedError(
+            "Taylor-mode native_batch_norm requires running statistics in eval "
+            "mode; missing running_mean/running_var falls back to batch "
+            "statistics, which is not yet implemented."
+        )
+
+    primal = input[0] if isinstance(input, JetTuple) else input
+    shape = _bn_channel_view(primal)
+    rstd = (running_var + eps).rsqrt()
+    out = cjet_sub(input, cjet_view(running_mean, shape))
+    out = cjet_mul(out, cjet_view(rstd, shape))
+    if weight is not None:
+        out = cjet_mul(out, cjet_view(weight, shape))
+    if bias is not None:
+        out = cjet_add(out, cjet_view(bias, shape))
+    empty = primal.new_empty(0)
+    return out, empty, empty
 
 
 # ---------------------------------------------------------------------------

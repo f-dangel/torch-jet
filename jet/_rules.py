@@ -32,11 +32,6 @@ def _defelementwise(
     return {False: rule, True: rule}
 
 
-def _drop_index_output(rule: Callable[..., tuple[JetTuple, Tensor]]) -> Rule:
-    """Wrap a rule whose op returns ``(value, indices)`` to keep only the value."""
-    return lambda *args, **kwargs: rule(*args, **kwargs)[0]
-
-
 #: Maps an ``aten`` op overload to a ``{collapsed_flag: rule}`` dict.
 RULES: dict = {
     # Elementwise unary (both modes from the shared derivative table)
@@ -62,6 +57,11 @@ RULES: dict = {
         False: standard.jet_max_pool2d_with_indices,
         True: collapsed.cjet_max_pool2d_with_indices,
     },
+    # The fused, indices-free pooling op some backends emit (e.g. MPS).
+    ops.aten.max_pool2d.default: {
+        False: standard.jet_max_pool2d,
+        True: collapsed.cjet_max_pool2d,
+    },
     ops.aten.cat.default: {False: standard.jet_cat, True: collapsed.cjet_cat},
     ops.aten.mse_loss.default: {
         False: standard.jet_mse_loss,
@@ -79,13 +79,6 @@ RULES: dict = {
         False: standard.jet_native_batch_norm,
         True: collapsed.cjet_native_batch_norm,
     },
-}
-
-# ``max_pool2d`` is ``max_pool2d_with_indices`` without the index output (some
-# backends emit the fused, indices-free op, e.g. MPS) -- derive it in both modes.
-RULES[ops.aten.max_pool2d.default] = {
-    flag: _drop_index_output(rule)
-    for flag, rule in RULES[ops.aten.max_pool2d_with_indices.default].items()
 }
 
 # Linear ops (pointwise-linear, shape-only, reductions): per-mode `_deflinear`.

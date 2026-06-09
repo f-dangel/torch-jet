@@ -5,13 +5,13 @@ on: [push, pull_request]
 
 jobs:
   tests:
-    name: "Python ${{ matrix.python-version }}"
+    name: "Python ${{ matrix.python-version }} / torch ${{ matrix.torch-version }}"
     runs-on: ubuntu-latest
-    env:
-      USING_COVERAGE: '3.12'
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.12"]
+        torch-version: ["2.10.*", ""]  # "" installs the latest torch
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
@@ -20,9 +20,14 @@ jobs:
         cache: pip
     - name: Install graphviz
       run: sudo apt-get update && sudo apt-get install -y graphviz
-    - name: Install Dependencies
+    - name: Install torch ${{ matrix.torch-version || 'latest' }}
       run: |
         python -m pip install --upgrade pip
+        if [ -n "${{ matrix.torch-version }}" ]; then
+          python -m pip install "torch==${{ matrix.torch-version }}"
+        fi
+    - name: Install Dependencies
+      run: |
         make install-test
     - name: Run test
       run: |

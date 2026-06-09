@@ -1,6 +1,6 @@
 """Implementation of AD primitives in Taylor-mode arithmetic."""
 
-from typing import Callable
+from typing import Callable, Self
 
 from scipy.special import comb, factorial, stirling2
 from torch import (
@@ -30,7 +30,7 @@ class JetTuple(tuple):
     direction dim ``R`` and ``c_K`` is already summed over it).
     """
 
-    def __new__(cls, iterable=(), collapsed: bool = False) -> "JetTuple":
+    def __new__(cls, iterable=(), collapsed: bool = False) -> Self:
         """Build a jet from ``iterable``, tagging it standard or collapsed."""
         obj = super().__new__(cls, iterable)
         obj.collapsed = collapsed

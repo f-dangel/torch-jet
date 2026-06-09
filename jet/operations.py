@@ -1,5 +1,6 @@
 """Implementation of AD primitives in Taylor-mode arithmetic."""
 
+from functools import partial
 from typing import Callable, Self
 
 from scipy.special import comb, factorial, stirling2
@@ -30,7 +31,7 @@ class JetTuple(tuple):
     direction dim ``R`` and ``c_K`` is already summed over it).
     """
 
-    def __new__(cls, iterable=(), collapsed: bool = False) -> Self:
+    def __new__(cls, iterable=(), *, collapsed: bool) -> Self:
         """Build a jet from ``iterable``, tagging it standard or collapsed."""
         obj = super().__new__(cls, iterable)
         obj.collapsed = collapsed
@@ -45,6 +46,10 @@ register_pytree_node(
     flatten_fn=lambda x: (list(x), x.collapsed),
     unflatten_fn=lambda values, collapsed: JetTuple(values, collapsed=collapsed),
 )
+
+#: Standard-mode JetTuple constructor (``JetTuple(values, collapsed=False)``);
+#: mirror of :data:`jet.collapsed_operations._cjet`.
+_jet = partial(JetTuple, collapsed=False)
 
 
 def _jet_order(*args: Tensor) -> int:
@@ -200,7 +205,7 @@ def _apply_bilinear(
     self_is_jet = isinstance(self, JetTuple)
     other_is_jet = isinstance(other, JetTuple)
     if self_is_jet and other_is_jet:
-        return JetTuple((op(self[0], other[0]), *_leibniz(self, other, op)))
+        return _jet((op(self[0], other[0]), *_leibniz(self, other, op)))
     if self_is_jet:
         return _apply_linear(self, lambda c: op(c, other))
     if other_is_jet:
@@ -487,7 +492,7 @@ def _jet_elementwise(
     self0, vs = self[0], self[1:]
     dn = deriv_fn(self0, K)
     vs_out = _faa_di_bruno(vs, dn)
-    return JetTuple((dn[0], *vs_out))
+    return _jet((dn[0], *vs_out))
 
 
 def jet_sin(self: JetTuple) -> JetTuple:
@@ -542,7 +547,7 @@ def jet_pow(self: JetTuple, exponent: float | int) -> JetTuple:
     self0, vs = self[0], self[1:]
     dpow = _pow_derivatives(self0, exponent, _jet_order(self))
     vs_out = _faa_di_bruno(vs, dpow)
-    return JetTuple((dpow[0], *vs_out))
+    return _jet((dpow[0], *vs_out))
 
 
 # --- Arithmetic ---
@@ -567,13 +572,13 @@ def jet_add(
 
     if self_is_jet and other_is_jet:
         _jet_order(self, other)  # validates K-consistency, raises on mismatch
-        return JetTuple(s + o for s, o in zip(self, other))
+        return _jet(s + o for s, o in zip(self, other))
     if self_is_jet:
         primal = self[0] + other
-        return JetTuple((primal, *_broadcast_coeffs(self, primal)))
+        return _jet((primal, *_broadcast_coeffs(self, primal)))
     if other_is_jet:
         primal = other[0] + self
-        return JetTuple((primal, *_broadcast_coeffs(other, primal)))
+        return _jet((primal, *_broadcast_coeffs(other, primal)))
     return self + other
 
 
@@ -596,13 +601,13 @@ def jet_sub(
 
     if self_is_jet and other_is_jet:
         _jet_order(self, other)  # validates K-consistency, raises on mismatch
-        return JetTuple(s - o for s, o in zip(self, other))
+        return _jet(s - o for s, o in zip(self, other))
     if self_is_jet:
         primal = self[0] - other
-        return JetTuple((primal, *_broadcast_coeffs(self, primal)))
+        return _jet((primal, *_broadcast_coeffs(self, primal)))
     if other_is_jet:
         primal = self - other[0]
-        return JetTuple((primal, *(-c for c in _broadcast_coeffs(other, primal))))
+        return _jet((primal, *(-c for c in _broadcast_coeffs(other, primal))))
     return self - other
 
 
@@ -759,7 +764,7 @@ def jet_max_pool2d_with_indices(
     """
     values0, indices = ops.aten.max_pool2d_with_indices.default(input[0], *pool_args)
     coeffs = _apply_linear_coeffs(input, lambda c: _gather_at_indices(c, indices))
-    return JetTuple((values0, *coeffs)), indices
+    return _jet((values0, *coeffs)), indices
 
 
 def jet_max_pool2d(input: JetTuple, *pool_args: object) -> JetTuple:
@@ -799,7 +804,7 @@ def jet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
         ]
         return cat(parts, dim)
 
-    return JetTuple(tuple(coeff(k) for k in range(K + 1)))
+    return _jet(tuple(coeff(k) for k in range(K + 1)))
 
 
 # --- Loss functions ---
@@ -937,7 +942,7 @@ def jet_nll_loss_forward(
             c, target, weight, reduction, ignore_index
         )[0],
     )
-    return JetTuple((output, *coeffs)), total_weight
+    return _jet((output, *coeffs)), total_weight
 
 
 # --- Batch norm ---
@@ -1086,7 +1091,7 @@ def defzero(prim: Callable) -> None:
     def rule(self: JetTuple, *args, **kwargs) -> JetTuple:
         primal_out = prim(self[0], *args, **kwargs)
         coeffs = [zeros_like(primal_out) for _ in range(len(self) - 1)]
-        return JetTuple([primal_out, *coeffs])
+        return _jet([primal_out, *coeffs])
 
     MAPPING[prim] = rule
 

@@ -39,8 +39,8 @@ from torch.nn.functional import (
 )
 
 from jet import jet
-from jet.collapsed_operations import cjet_native_batch_norm, cjet_nll_loss_forward
-from jet.operations import JetTuple, jet_native_batch_norm, jet_nll_loss_forward
+from jet.compositions import native_batch_norm
+from jet.primitives import JetTuple, cjet_nll_loss_forward, jet_nll_loss_forward
 from test.utils import (
     K_AND_MODE,
     _stateless,
@@ -764,11 +764,10 @@ def test_batch_norm_eval_without_running_stats_raises(collapsed: bool, device: s
     from ``None + eps``.
     """
     kw = device_kw(device)
-    rule = cjet_native_batch_norm if collapsed else jet_native_batch_norm
     tup = partial(JetTuple, collapsed=collapsed)
     x = tup((rand(4, 3, 5, 5, **kw), rand(4, 3, 5, 5, **kw)))
     with raises(NotImplementedError, match="running statistics"):
-        rule(x, None, None, None, None, False, 0.1, 1e-5)
+        native_batch_norm(x, None, None, None, None, False, 0.1, 1e-5)
 
 
 @mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])

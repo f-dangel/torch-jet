@@ -40,7 +40,7 @@ from torch.nn.functional import (
 
 from jet import jet
 from jet.compositions import native_batch_norm
-from jet.primitives import JetTuple, cjet_nll_loss_forward, jet_nll_loss_forward
+from jet.primitives import JetTuple, jet_nll_loss_forward
 from test.utils import (
     K_AND_MODE,
     _stateless,
@@ -778,9 +778,8 @@ def test_nll_loss_taylor_expanded_target_raises(collapsed: bool, device: str):
     Taylor-expanded target with a clear error rather than a cryptic ATen one.
     """
     kw = device_kw(device)
-    rule = cjet_nll_loss_forward if collapsed else jet_nll_loss_forward
     tup = partial(JetTuple, collapsed=collapsed)
     logits = tup((rand(8, 5, **kw), rand(8, 5, **kw)))
     target = tup((rand(8, **kw), rand(8, **kw)))  # a Taylor-expanded label
     with raises(NotImplementedError, match="Taylor-expanded target"):
-        rule(logits, target, None, 1, -100)
+        jet_nll_loss_forward(logits, target, None, 1, -100)

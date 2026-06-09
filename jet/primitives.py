@@ -2,12 +2,8 @@
 
 A *primitive* is an irreducible jet rule -- an op that is not expressed in terms
 of other rules (those live in :mod:`jet.compositions`). Each op appears here with
-both its standard and collapsed bodies co-located: the mode-agnostic ones (the
-elementwise unary family, ``pow``, the linear ops) are a single function reading
-``self.collapsed``; the genuinely mode-specific ones (``add`` / ``sub`` / ``mul``
-/ ``mm`` / ``cat`` and the ``_apply_*`` helpers) keep a ``jet_*`` and a
-``cjet_*`` body side by side. Collapsed Taylor mode propagates a single
-"collapsed jet" with mixed shapes:
+both its standard and collapsed bodies co-located. Collapsed Taylor mode
+propagates a single "collapsed jet" with mixed shapes:
 
   - Coefficient 0 (primal): shape (...)
   - Coefficients 1..K-1: shape (R, ...) -- batched over R directions
@@ -128,8 +124,15 @@ def _apply_linear_coeffs(
 
     Used by ops that handle the primal separately (e.g. the pooling and
     nll-loss rules, which compute the primal's value and indices first).
+    Standard mode applies ``op`` to every coefficient; collapsed mode vmaps the
+    batched coefficients ``c_1..c_{K-1}`` over the direction dim ``R`` and
+    applies ``op`` directly to the already-collapsed slot ``c_K``.
     """
-    return tuple(op(c) for c in self[1:])
+    if not self.collapsed:
+        return tuple(op(c) for c in self[1:])
+    K = len(self) - 1
+    vop = vmap(op)
+    return tuple(vop(self[k]) if k < K else op(self[k]) for k in range(1, K + 1))
 
 
 def _broadcast_coeffs(self: JetTuple, primal: Tensor) -> list[Tensor]:
@@ -158,18 +161,6 @@ def _capply_linear(jet: JetTuple, op: Callable[[Tensor], Tensor]) -> JetTuple:
     for k in range(1, K + 1):
         results.append(vop(jet[k]) if k < K else op(jet[k]))
     return _cjet(results)
-
-
-def _capply_linear_coeffs(
-    jet: JetTuple, op: Callable[[Tensor], Tensor]
-) -> tuple[Tensor, ...]:
-    """Collapsed counterpart of :func:`_apply_linear_coeffs` (coefficients 1..K).
-
-    Vmaps the batched coefficients over ``R``; applies ``op`` directly to ``c_K``.
-    """
-    K = len(jet) - 1
-    vop = vmap(op)
-    return tuple(vop(jet[k]) if k < K else op(jet[k]) for k in range(1, K + 1))
 
 
 def _cbroadcast_coeffs(self: JetTuple, primal: Tensor) -> list[Tensor]:
@@ -881,7 +872,8 @@ def jet_max_pool2d_with_indices(
     Returns ``(values_jet, indices)`` mirroring the ATen op's two outputs; a
     downstream ``getitem`` selects the values jet. Max pooling is piecewise
     linear: the primal picks the arg-max ``indices``, and every coefficient is
-    gathered at those same positions.
+    gathered at those same positions. Mode-agnostic -- :func:`_apply_linear_coeffs`
+    follows ``input.collapsed``.
 
     Args:
         input: The input and its Taylor coefficients.
@@ -894,7 +886,7 @@ def jet_max_pool2d_with_indices(
     """
     values0, indices = ops.aten.max_pool2d_with_indices.default(input[0], *pool_args)
     coeffs = _apply_linear_coeffs(input, lambda c: _gather_at_indices(c, indices))
-    return _jet((values0, *coeffs)), indices
+    return JetTuple((values0, *coeffs), collapsed=input.collapsed), indices
 
 
 def jet_max_pool2d(input: JetTuple, *pool_args: object) -> JetTuple:
@@ -904,21 +896,6 @@ def jet_max_pool2d(input: JetTuple, *pool_args: object) -> JetTuple:
     to :func:`jet_max_pool2d_with_indices` and drops the indices output.
     """
     jet, _ = jet_max_pool2d_with_indices(input, *pool_args)
-    return jet
-
-
-def cjet_max_pool2d_with_indices(
-    input: JetTuple, *pool_args: object
-) -> tuple[JetTuple, Tensor]:
-    """Collapsed jet rule for ``aten.max_pool2d_with_indices``."""
-    values0, indices = ops.aten.max_pool2d_with_indices.default(input[0], *pool_args)
-    coeffs = _capply_linear_coeffs(input, lambda c: _gather_at_indices(c, indices))
-    return _cjet((values0, *coeffs)), indices
-
-
-def cjet_max_pool2d(input: JetTuple, *pool_args: object) -> JetTuple:
-    """Collapsed jet rule for ``aten.max_pool2d`` (values only; e.g. MPS)."""
-    jet, _ = cjet_max_pool2d_with_indices(input, *pool_args)
     return jet
 
 
@@ -1031,41 +1008,7 @@ def jet_nll_loss_forward(
             c, target, weight, reduction, ignore_index
         )[0],
     )
-    return _jet((output, *coeffs)), total_weight
-
-
-def cjet_nll_loss_forward(
-    self: JetTuple,
-    target: Tensor,
-    weight: Tensor | None,
-    reduction: int,
-    ignore_index: int,
-) -> tuple[JetTuple, Tensor]:
-    """Collapsed jet rule for ``aten.nll_loss_forward``.
-
-    Same linear application as :func:`jet_nll_loss_forward`, but the batched
-    coefficients are vmapped over the direction dim ``R``.
-
-    Raises:
-        NotImplementedError: If ``target`` or ``weight`` is Taylor-expanded;
-            both must be constant tensors (the target is a class-index label).
-    """
-    if isinstance(target, JetTuple) or isinstance(weight, JetTuple):
-        raise NotImplementedError(
-            "cjet_nll_loss_forward does not support a Taylor-expanded target or "
-            "weight; both must be constant tensors (the target is a class-index "
-            "label)."
-        )
-    output, total_weight = ops.aten.nll_loss_forward.default(
-        self[0], target, weight, reduction, ignore_index
-    )
-    coeffs = _capply_linear_coeffs(
-        self,
-        lambda c: ops.aten.nll_loss_forward.default(
-            c, target, weight, reduction, ignore_index
-        )[0],
-    )
-    return _cjet((output, *coeffs)), total_weight
+    return JetTuple((output, *coeffs), collapsed=self.collapsed), total_weight
 
 
 # --- Batch norm ---

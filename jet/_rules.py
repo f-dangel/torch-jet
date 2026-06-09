@@ -61,20 +61,13 @@ RULES: dict = {
     ops.aten.sub.Tensor: {False: primitives.jet_sub, True: primitives.cjet_sub},
     ops.aten.mul.Tensor: {False: primitives.jet_mul, True: primitives.cjet_mul},
     ops.aten.mm.default: {False: primitives.jet_mm, True: primitives.cjet_mm},
-    ops.aten.max_pool2d_with_indices.default: {
-        False: primitives.jet_max_pool2d_with_indices,
-        True: primitives.cjet_max_pool2d_with_indices,
-    },
+    ops.aten.max_pool2d_with_indices.default: _defshared(
+        primitives.jet_max_pool2d_with_indices
+    ),
     # The fused, indices-free pooling op some backends emit (e.g. MPS).
-    ops.aten.max_pool2d.default: {
-        False: primitives.jet_max_pool2d,
-        True: primitives.cjet_max_pool2d,
-    },
+    ops.aten.max_pool2d.default: _defshared(primitives.jet_max_pool2d),
     ops.aten.cat.default: {False: primitives.jet_cat, True: primitives.cjet_cat},
-    ops.aten.nll_loss_forward.default: {
-        False: primitives.jet_nll_loss_forward,
-        True: primitives.cjet_nll_loss_forward,
-    },
+    ops.aten.nll_loss_forward.default: _defshared(primitives.jet_nll_loss_forward),
     # Composites -- one mode-agnostic body that pulls its sub-rules from this
     # registry (see :mod:`jet.compositions`).
     ops.aten.addmm.default: _defshared(compositions.addmm),

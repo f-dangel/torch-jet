@@ -13,6 +13,7 @@ from torch import (
     addmm,
     cat,
     cos,
+    equal,
     exp,
     float32,
     log,
@@ -38,7 +39,7 @@ from torch.nn.functional import (
     nll_loss,
 )
 
-from jet import jet
+from jet import jet, primitives
 from jet.compositions import native_batch_norm
 from jet.primitives import JetTuple, jet_nll_loss_forward
 from test.utils import (
@@ -789,3 +790,26 @@ def test_nll_loss_taylor_expanded_target_raises(collapsed: bool, device: str):
     target = tup((rand(8, **kw), rand(8, **kw)))  # a Taylor-expanded label
     with raises(NotImplementedError, match="Taylor-expanded target"):
         jet_nll_loss_forward(logits, target, None, 1, -100)
+
+
+@mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])
+def test_max_pool2d_matches_with_indices(collapsed: bool, device: str):
+    """The fused ``aten.max_pool2d`` rule equals the with-indices values jet.
+
+    ``jet_max_pool2d`` is the indices-free variant some backends emit (e.g.
+    MPS); CPU/CUDA lower to ``max_pool2d_with_indices``, so it is otherwise
+    untested. It must return exactly the values jet of
+    :func:`jet_max_pool2d_with_indices`, with the indices output dropped.
+    """
+    kw = device_kw(device)
+    (x,) = make_jet_args((rand(2, 3, 8, 8, **kw),), 3, collapsed=collapsed)
+    jet_in = JetTuple(x, collapsed=collapsed)
+    pool_args = (2, 2)  # kernel_size, stride
+
+    fused = primitives.jet_max_pool2d(jet_in, *pool_args)
+    expected, _ = primitives.jet_max_pool2d_with_indices(jet_in, *pool_args)
+
+    assert fused.collapsed == expected.collapsed
+    assert len(fused) == len(expected)
+    for got, want in zip(fused, expected):
+        assert equal(got, want)

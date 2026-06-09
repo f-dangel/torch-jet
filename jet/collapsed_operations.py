@@ -20,15 +20,9 @@ from torch.func import vmap
 
 from jet.operations import (
     JetTuple,
-    _align_conv_bias,
-    _bn_channel_view,
-    _elementwise,
-    _exp_derivatives,
     _gather_at_indices,
     _jet_order,
-    _log_derivatives,
     _make_linear_rule,
-    _pow_derivatives,
 )
 
 #: Collapsed-mode JetTuple constructor (``JetTuple(values, collapsed=True)``).
@@ -124,8 +118,8 @@ def _collapsed_leibniz(
     Returns only coefficients 1..K; the caller handles the order-0 primal
     explicitly (mirroring :func:`jet.operations._leibniz` — skipping k=0 here
     avoids a wasted ``binary_op(self[0], other[0])`` node in the captured
-    graph when the caller is ``cjet_addmm`` and supplies its own
-    ``addmm``-based primal).
+    graph when the caller supplies its own primal, e.g. the ``addmm``
+    composition).
 
     For orders 1..K-1: standard Leibniz.
     For order K: linear terms (using collapsed coefficients) +
@@ -216,27 +210,6 @@ def _apply_bilinear(
 
 
 # ---------------------------------------------------------------------------
-# Elementwise nonlinear (shared derivative helpers + collapsed Faà di Bruno)
-# ---------------------------------------------------------------------------
-
-
-def cjet_exp(self: JetTuple) -> JetTuple:
-    """Collapsed ``aten.exp`` (bound for reuse in ``cjet_log_softmax``)."""
-    return _elementwise(self, _exp_derivatives)
-
-
-def cjet_log(self: JetTuple) -> JetTuple:
-    """Collapsed ``aten.log`` (bound for reuse in ``cjet_log_softmax``)."""
-    return _elementwise(self, _log_derivatives)
-
-
-def cjet_pow(self: JetTuple, exponent: float | int) -> JetTuple:
-    """Collapsed jet rule for ``aten.pow``."""
-    assert isinstance(exponent, (float, int))
-    return _elementwise(self, lambda x, k: _pow_derivatives(x, exponent, k))
-
-
-# ---------------------------------------------------------------------------
 # Arithmetic (add, sub are linear; mul uses collapsed Leibniz)
 # ---------------------------------------------------------------------------
 
@@ -292,102 +265,6 @@ def cjet_mm(self: Tensor | JetTuple, mat2: Tensor | JetTuple) -> JetTuple:
     return _apply_bilinear(matmul, self, mat2)
 
 
-def cjet_addmm(
-    self: Tensor | JetTuple,
-    mat1: Tensor | JetTuple,
-    mat2: Tensor | JetTuple,
-) -> JetTuple:
-    """Collapsed jet rule for ``aten.addmm`` (supports a Taylor-expanded bias).
-
-    See :func:`jet.operations.jet_addmm`: composes the matrix-product rule with
-    the affine bias addition, ``cjet_add(self, _apply_bilinear(matmul, mat1, mat2))``.
-    """
-    return cjet_add(self, _apply_bilinear(matmul, mat1, mat2))
-
-
-def cjet_convolution(
-    input: Tensor | JetTuple,
-    weight: Tensor | JetTuple,
-    bias: Tensor | JetTuple | None,
-    *conv_args: object,
-) -> JetTuple:
-    """Collapsed jet rule for ``aten.convolution``.
-
-    See :func:`jet.operations.jet_convolution`: composes the bilinear bias-free
-    convolution with the affine bias addition, ``cjet_add(bias, conv(input,
-    weight, None))``. The 1-D bias is reshaped to broadcast over the output's
-    batch and spatial dims (channel is dim 1); the direction-dim ``R`` alignment
-    of the batched coefficients is handled by :func:`cjet_add`.
-    """
-
-    def cv(a: Tensor, b: Tensor) -> Tensor:
-        """Bias-free convolution -- the bilinear core of ``aten.convolution``."""
-        return ops.aten.convolution.default(a, b, None, *conv_args)
-
-    product = _apply_bilinear(cv, input, weight)
-    if bias is None:
-        return product
-    # conv preserves rank, so the output ndim is the input ndim.
-    ndim = (input[0] if isinstance(input, JetTuple) else input).ndim
-    return cjet_add(_align_conv_bias(bias, ndim), product)
-
-
-# ---------------------------------------------------------------------------
-# Loss functions
-# ---------------------------------------------------------------------------
-
-
-def _reduce_loss(loss: JetTuple, reduction: int) -> JetTuple:
-    """Apply a loss reduction coefficient-wise (collapsed mode).
-
-    ``reduction`` follows ATen's enum -- ``0`` (none, identity), ``1`` (mean),
-    ``2`` (sum). Reductions are linear; the collapsed ``_apply_linear`` vmaps
-    over the leading direction dim ``R`` for the batched coefficients
-    ``c_1..c_{K-1}`` and reduces the primal and collapsed slot ``c_K`` directly.
-
-    Args:
-        loss: The per-element loss and its Taylor coefficients.
-        reduction: The ATen reduction enum (``0``/``1``/``2``).
-
-    Returns:
-        The reduced loss and its Taylor coefficients.
-
-    Raises:
-        ValueError: If ``reduction`` is not ``0``, ``1``, or ``2``.
-    """
-    if reduction == 0:  # 'none'
-        return loss
-    if reduction == 1:  # 'mean'
-        return _apply_linear(loss, lambda c: c.mean())
-    if reduction == 2:  # 'sum'
-        return _apply_linear(loss, lambda c: c.sum())
-    raise ValueError(f"Unsupported reduction {reduction}; expected 0, 1, or 2.")
-
-
-def cjet_mse_loss(
-    self: Tensor | JetTuple,
-    target: Tensor | JetTuple,
-    reduction: int = 1,
-) -> JetTuple:
-    """Collapsed jet rule for ``aten.mse_loss(self, target, reduction)``.
-
-    Computes ``reduce((self - target) ** 2)`` by composing the ``sub`` and
-    ``pow`` rules. ``target`` is typically a constant tensor (a label), but a
-    Taylor-expanded ``target`` is supported too.
-
-    Args:
-        self: The prediction and its Taylor coefficients.
-        target: The target and its Taylor coefficients, or a constant tensor.
-        reduction: The ATen reduction enum -- ``0`` (none), ``1`` (mean, the
-            default), ``2`` (sum).
-
-    Returns:
-        The value and its Taylor coefficients.
-    """
-    squared_error = cjet_pow(cjet_sub(self, target), 2)
-    return _reduce_loss(squared_error, reduction)
-
-
 # ---------------------------------------------------------------------------
 # Pooling
 # ---------------------------------------------------------------------------
@@ -432,27 +309,6 @@ def cjet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
         d = dim + 1 if (batched and dim >= 0) else dim
         out.append(cat([part(t, k, batched) for t in tensors], d))
     return _cjet(tuple(out))
-
-
-def cjet_log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTuple:
-    """Collapsed jet rule for ``aten._log_softmax(self, dim, half_to_float)``.
-
-    Args:
-        self: The logits and their Taylor coefficients.
-        dim: The dimension along which to normalize.
-        half_to_float: Whether inputs were promoted from half precision.
-            Accepted for ATen-signature compatibility; does not affect the
-            float32/float64 paths.
-
-    Returns:
-        The value and its Taylor coefficients.
-    """
-    shift = self[0].amax(dim, keepdim=True)
-    shifted = cjet_sub(self, shift)
-    exp_jet = cjet_exp(shifted)
-    sum_exp = cjet_sum(exp_jet, dim, keepdim=True)
-    log_sum_exp = cjet_log(sum_exp)
-    return cjet_sub(shifted, log_sum_exp)
 
 
 # ---------------------------------------------------------------------------
@@ -505,59 +361,6 @@ def cjet_nll_loss_forward(
 
 
 # ---------------------------------------------------------------------------
-# Batch norm
-# ---------------------------------------------------------------------------
-
-
-def cjet_native_batch_norm(
-    input: Tensor | JetTuple,
-    weight: Tensor | JetTuple | None,
-    bias: Tensor | JetTuple | None,
-    running_mean: Tensor | None,
-    running_var: Tensor | None,
-    training: bool,
-    momentum: float,
-    eps: float,
-) -> tuple[JetTuple, Tensor, Tensor]:
-    """Collapsed jet rule for ``aten.native_batch_norm`` (eval mode).
-
-    Mirrors :func:`jet.operations.jet_native_batch_norm` with the collapsed
-    arithmetic helpers (sharing only the pure-tensor :func:`_bn_channel_view`):
-    normalizes each channel with the frozen running statistics,
-    ``(input - running_mean) / sqrt(running_var + eps) * weight + bias``. Any of
-    ``input`` / ``weight`` / ``bias`` may be a jet, a constant, or
-    (``weight`` / ``bias``) ``None``; any input rank is supported. Training mode
-    is deferred until PyTorch fixes its fused ``native_batch_norm``'s incorrect
-    higher-order autograd in training (pytorch/pytorch#186256); eval mode without
-    running statistics is likewise unsupported.
-    """
-    if training:
-        raise NotImplementedError(
-            "Taylor-mode native_batch_norm supports eval mode only. Training mode "
-            "is deferred until PyTorch fixes the fused op's incorrect higher-order "
-            "autograd in training (pytorch/pytorch#186256)."
-        )
-    if running_mean is None or running_var is None:
-        raise NotImplementedError(
-            "Taylor-mode native_batch_norm requires running statistics in eval "
-            "mode; missing running_mean/running_var falls back to batch "
-            "statistics, which is not yet implemented."
-        )
-
-    primal = input[0] if isinstance(input, JetTuple) else input
-    shape = _bn_channel_view(primal)
-    rstd = (running_var + eps).rsqrt()
-    out = cjet_sub(input, cjet_view(running_mean, shape))
-    out = cjet_mul(out, cjet_view(rstd, shape))
-    if weight is not None:
-        out = cjet_mul(out, cjet_view(weight, shape))
-    if bias is not None:
-        out = cjet_add(out, cjet_view(bias, shape))
-    empty = primal.new_empty(0)
-    return out, empty, empty
-
-
-# ---------------------------------------------------------------------------
 # Rule-building factories (registered in :mod:`jet._rules`)
 # ---------------------------------------------------------------------------
 #
@@ -576,9 +379,3 @@ def _deflinear(prim: Callable) -> Callable:
     the primal and the collapsed slot ``c_K``.
     """
     return _make_linear_rule(prim, _apply_linear)
-
-
-# Bound to names so composite rules can reuse them: ``cjet_sum`` in
-# ``cjet_log_softmax``; ``cjet_view`` to reshape a possibly-constant operand.
-cjet_sum = _deflinear(ops.aten.sum.dim_IntList)
-cjet_view = _deflinear(ops.aten.view.default)

@@ -9,6 +9,7 @@ from typing import Callable
 from torch import Tensor, ops
 
 from jet import collapsed_operations as collapsed
+from jet import compositions
 from jet import operations as standard
 from jet.operations import JetTuple
 
@@ -68,11 +69,6 @@ RULES: dict = {
     ops.aten.sub.Tensor: {False: standard.jet_sub, True: collapsed.cjet_sub},
     ops.aten.mul.Tensor: {False: standard.jet_mul, True: collapsed.cjet_mul},
     ops.aten.mm.default: {False: standard.jet_mm, True: collapsed.cjet_mm},
-    ops.aten.addmm.default: {False: standard.jet_addmm, True: collapsed.cjet_addmm},
-    ops.aten.convolution.default: {
-        False: standard.jet_convolution,
-        True: collapsed.cjet_convolution,
-    },
     ops.aten.max_pool2d_with_indices.default: {
         False: standard.jet_max_pool2d_with_indices,
         True: collapsed.cjet_max_pool2d_with_indices,
@@ -83,28 +79,23 @@ RULES: dict = {
         True: collapsed.cjet_max_pool2d,
     },
     ops.aten.cat.default: {False: standard.jet_cat, True: collapsed.cjet_cat},
-    ops.aten.mse_loss.default: {
-        False: standard.jet_mse_loss,
-        True: collapsed.cjet_mse_loss,
-    },
     ops.aten.nll_loss_forward.default: {
         False: standard.jet_nll_loss_forward,
         True: collapsed.cjet_nll_loss_forward,
     },
-    ops.aten._log_softmax.default: {
-        False: standard.jet_log_softmax,
-        True: collapsed.cjet_log_softmax,
-    },
-    ops.aten.native_batch_norm.default: {
-        False: standard.jet_native_batch_norm,
-        True: collapsed.cjet_native_batch_norm,
-    },
+    # Composites -- one mode-agnostic body that pulls its sub-rules from this
+    # registry (see :mod:`jet.compositions`).
+    ops.aten.addmm.default: _defshared(compositions.addmm),
+    ops.aten.convolution.default: _defshared(compositions.convolution),
+    ops.aten.mse_loss.default: _defshared(compositions.mse_loss),
+    ops.aten._log_softmax.default: _defshared(compositions.log_softmax),
+    ops.aten.native_batch_norm.default: _defshared(compositions.native_batch_norm),
 }
 
 # Linear ops (pointwise-linear, shape-only, reductions): per-mode `_deflinear`.
-# ``sum.dim_IntList`` / ``view.default`` are *also* bound to names in
-# ``operations`` / ``collapsed_operations`` (``jet_sum`` / ``jet_view`` etc.) for
-# reuse inside composite rules, but they register here like any other linear op.
+# Composite rules (:mod:`jet.compositions`) reuse several of these -- e.g.
+# ``sum.dim_IntList`` in ``log_softmax``, ``view.default`` in
+# ``native_batch_norm`` -- by pulling them straight from this registry.
 for _prim in (
     ops.aten.neg.default,
     ops.aten.div.Scalar,

@@ -56,11 +56,12 @@ RULES: dict = {
     # Power (also elementwise, but the exponent is a call-time arg, so it carries
     # its own rule rather than registering through ``_defelementwise``).
     ops.aten.pow.Tensor_Scalar: _defshared(primitives.jet_pow),
-    # Structured per-mode pairs (one hand-written body each)
-    ops.aten.add.Tensor: {False: primitives.jet_add, True: primitives.cjet_add},
-    ops.aten.sub.Tensor: {False: primitives.jet_sub, True: primitives.cjet_sub},
+    # cat stays a per-mode pair: collapsed shifts the concat dim for the batched
+    # coefficients and zero-pads constants to ``(R, *S)``.
     ops.aten.cat.default: {False: primitives.jet_cat, True: primitives.cjet_cat},
     # Mode-agnostic primitives (one body reading ``self.collapsed``)
+    ops.aten.add.Tensor: _defshared(primitives.jet_add),
+    ops.aten.sub.Tensor: _defshared(primitives.jet_sub),
     ops.aten.mul.Tensor: _defshared(primitives.jet_mul),
     ops.aten.mm.default: _defshared(primitives.jet_mm),
     ops.aten.max_pool2d_with_indices.default: _defshared(

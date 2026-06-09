@@ -165,8 +165,8 @@ def _capply_linear(jet: JetTuple, op: Callable[[Tensor], Tensor]) -> JetTuple:
 def _cbroadcast_coeffs(self: JetTuple, primal: Tensor) -> list[Tensor]:
     """Collapsed counterpart of :func:`_broadcast_coeffs`.
 
-    Also used by :func:`_collapsed_pointwise` to align two jets before an
-    elementwise ``op``. The batched coefficients (orders ``1..K-1``) carry a
+    Also used by :func:`_pointwise` to align two jets before an elementwise
+    ``op``. The batched coefficients (orders ``1..K-1``) carry a
     leading direction dim ``R``, so the broadcast is R-aware: insert size-1 dims
     after ``R``, then expand. PyTorch broadcasting would instead left-pad at the
     front, shifting ``R`` so it collides with a primal dim when ranks differ.
@@ -189,27 +189,29 @@ def _cbroadcast_coeffs(self: JetTuple, primal: Tensor) -> list[Tensor]:
     return out
 
 
-def _collapsed_pointwise(
+def _pointwise(
     self: JetTuple,
     other: JetTuple,
     op: Callable[[Tensor, Tensor], Tensor],
 ) -> JetTuple:
-    """Apply pointwise ``op`` to two collapsed jets of equal order.
+    """Apply pointwise ``op`` to two jets of equal order and mode.
 
     Broadcasts both operands' coefficients up to the result primal's shape via
-    :func:`_cbroadcast_coeffs` before ``op``, so different-rank operands align
-    over their primal dims without colliding the leading direction dim ``R``.
+    the mode's broadcast helper before ``op``, so different-rank operands align
+    over their primal dims; collapsed mode does this R-aware (see
+    :func:`_cbroadcast_coeffs`) to avoid colliding the leading direction dim.
 
     ``op`` must be elementwise (it broadcasts over leading dims); the product
-    rules use per-direction ``vmap`` instead (see :func:`_collapsed_leibniz`)
-    for ops like ``conv`` that cannot.
+    rules use the Leibniz helpers instead (see :func:`_apply_bilinear`).
     """
     _jet_order(self, other)  # validates K-consistency, raises on mismatch
+    collapsed = self.collapsed
+    broadcast = _cbroadcast_coeffs if collapsed else _broadcast_coeffs
     primal = op(self[0], other[0])
-    s_coeffs = _cbroadcast_coeffs(self, primal)
-    o_coeffs = _cbroadcast_coeffs(other, primal)
+    s_coeffs = broadcast(self, primal)
+    o_coeffs = broadcast(other, primal)
     coeffs = (op(s, o) for s, o in zip(s_coeffs, o_coeffs))
-    return _cjet((primal, *coeffs))
+    return JetTuple((primal, *coeffs), collapsed=collapsed)
 
 
 def _leibniz(
@@ -681,11 +683,50 @@ def jet_pow(self: JetTuple, exponent: float | int) -> JetTuple:
 # --- Arithmetic ---
 
 
+def _addsub(
+    self: Tensor | JetTuple | float | int,
+    other: Tensor | JetTuple | float | int,
+    op: Callable[[Tensor, Tensor], Tensor],
+    neg: Callable[[Tensor], Tensor],
+) -> Tensor | JetTuple | float | int:
+    """Shared body for the additive rules ``add`` and ``sub``.
+
+    Additive ops are linear, so a one-sided jet maps coefficient-wise (the
+    constant operand contributes only to the primal). ``neg`` flips the sign of
+    the coefficients when the jet is the *second* operand of a subtraction
+    (``self - other`` differentiates ``other`` with a minus); it is the identity
+    for ``add``. Mode-agnostic: the broadcast helper and constructor follow the
+    jet operand's ``collapsed`` flag.
+
+    Raises:
+        ValueError: If both operands are jets but disagree on ``collapsed``.
+    """
+    self_is = isinstance(self, JetTuple)
+    other_is = isinstance(other, JetTuple)
+    if self_is and other_is:
+        if self.collapsed != other.collapsed:
+            raise ValueError(
+                "additive op received JetTuple operands with mixed collapsed "
+                "flags; all jets in a run must share the same mode"
+            )
+        return _pointwise(self, other, op)
+    if self_is:
+        primal = op(self[0], other)
+        broadcast = _cbroadcast_coeffs if self.collapsed else _broadcast_coeffs
+        return JetTuple((primal, *broadcast(self, primal)), collapsed=self.collapsed)
+    if other_is:
+        primal = op(self, other[0])
+        broadcast = _cbroadcast_coeffs if other.collapsed else _broadcast_coeffs
+        coeffs = broadcast(other, primal)
+        return JetTuple((primal, *map(neg, coeffs)), collapsed=other.collapsed)
+    return op(self, other)
+
+
 def jet_add(
     self: Tensor | JetTuple | float | int,
     other: Tensor | JetTuple | float | int,
 ) -> Tensor | JetTuple | float | int:
-    """Taylor-mode arithmetic for ``aten.add(self, other)``.
+    """Taylor-mode arithmetic for ``aten.add(self, other)`` (standard or collapsed).
 
     Args:
         self: The first operand and its Taylor coefficients, or a constant.
@@ -695,44 +736,14 @@ def jet_add(
         The value and its Taylor coefficients, or a plain constant when both
         operands are constants.
     """
-    self_is_jet = isinstance(self, JetTuple)
-    other_is_jet = isinstance(other, JetTuple)
-
-    if self_is_jet and other_is_jet:
-        _jet_order(self, other)  # validates K-consistency, raises on mismatch
-        return _jet(s + o for s, o in zip(self, other))
-    if self_is_jet:
-        primal = self[0] + other
-        return _jet((primal, *_broadcast_coeffs(self, primal)))
-    if other_is_jet:
-        primal = other[0] + self
-        return _jet((primal, *_broadcast_coeffs(other, primal)))
-    return self + other
-
-
-def cjet_add(
-    self: Tensor | JetTuple | float | int,
-    other: Tensor | JetTuple | float | int,
-) -> Tensor | JetTuple | float | int:
-    """Collapsed jet rule for ``aten.add``."""
-    self_is = isinstance(self, JetTuple)
-    other_is = isinstance(other, JetTuple)
-    if self_is and other_is:
-        return _collapsed_pointwise(self, other, add)
-    if self_is:
-        primal = self[0] + other
-        return _cjet((primal, *_cbroadcast_coeffs(self, primal)))
-    if other_is:
-        primal = other[0] + self
-        return _cjet((primal, *_cbroadcast_coeffs(other, primal)))
-    return self + other
+    return _addsub(self, other, add, lambda c: c)
 
 
 def jet_sub(
     self: Tensor | JetTuple | float | int,
     other: Tensor | JetTuple | float | int,
 ) -> Tensor | JetTuple | float | int:
-    """Taylor-mode arithmetic for ``aten.sub(self, other)``.
+    """Taylor-mode arithmetic for ``aten.sub(self, other)`` (standard or collapsed).
 
     Args:
         self: The first operand and its Taylor coefficients, or a constant.
@@ -742,37 +753,7 @@ def jet_sub(
         The value and its Taylor coefficients, or a plain constant when both
         operands are constants.
     """
-    self_is_jet = isinstance(self, JetTuple)
-    other_is_jet = isinstance(other, JetTuple)
-
-    if self_is_jet and other_is_jet:
-        _jet_order(self, other)  # validates K-consistency, raises on mismatch
-        return _jet(s - o for s, o in zip(self, other))
-    if self_is_jet:
-        primal = self[0] - other
-        return _jet((primal, *_broadcast_coeffs(self, primal)))
-    if other_is_jet:
-        primal = self - other[0]
-        return _jet((primal, *(-c for c in _broadcast_coeffs(other, primal))))
-    return self - other
-
-
-def cjet_sub(
-    self: Tensor | JetTuple | float | int,
-    other: Tensor | JetTuple | float | int,
-) -> Tensor | JetTuple | float | int:
-    """Collapsed jet rule for ``aten.sub``."""
-    self_is = isinstance(self, JetTuple)
-    other_is = isinstance(other, JetTuple)
-    if self_is and other_is:
-        return _collapsed_pointwise(self, other, sub)
-    if self_is:
-        primal = self[0] - other
-        return _cjet((primal, *_cbroadcast_coeffs(self, primal)))
-    if other_is:
-        primal = self - other[0]
-        return _cjet((primal, *(-c for c in _cbroadcast_coeffs(other, primal))))
-    return self - other
+    return _addsub(self, other, sub, lambda c: -c)
 
 
 def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:

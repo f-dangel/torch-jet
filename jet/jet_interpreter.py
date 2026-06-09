@@ -124,8 +124,7 @@ class JetInterpreter(Interpreter):
         """Assert every ``JetTuple`` a rule returns matches the run's mode.
 
         A single, central guard: if a rule builds its output with the wrong
-        constructor (standard ``JetTuple`` vs. collapsed ``_cjet``), the
-        mismatched ``.collapsed`` flag is caught here -- at the dispatch site,
+        ``collapsed`` flag, the mismatch is caught here -- at the dispatch site,
         naming the op -- instead of surfacing later as an opaque shape error.
         """
         for leaf in tree_leaves(result, is_leaf=lambda x: isinstance(x, JetTuple)):

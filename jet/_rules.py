@@ -4,6 +4,7 @@
 standard rule, ``RULES[op][True]`` the collapsed one.
 """
 
+from functools import partial
 from typing import Callable
 
 from torch import Tensor, ops
@@ -24,11 +25,7 @@ def _defelementwise(
     deriv_fn: Callable[[Tensor, int], dict[int, Tensor]],
 ) -> dict[bool, Rule]:
     """Build the elementwise-unary rule from ``deriv_fn`` (e.g. ``_sin_derivatives``)."""
-
-    def rule(self: JetTuple) -> JetTuple:
-        return primitives._elementwise(self, deriv_fn)
-
-    return _defshared(rule)
+    return _defshared(partial(primitives._elementwise, deriv_fn=deriv_fn))
 
 
 def _deflinear(prim: Callable) -> dict[bool, Rule]:

@@ -23,11 +23,7 @@ def _defshared(rule: Rule) -> dict[bool, Rule]:
 def _defelementwise(
     deriv_fn: Callable[[Tensor, int], dict[int, Tensor]],
 ) -> dict[bool, Rule]:
-    """Build the elementwise-unary rule from ``deriv_fn`` (e.g. ``_sin_derivatives``).
-
-    The rule is mode-agnostic -- :func:`jet.primitives._elementwise` reads the
-    standard/collapsed mode off the jet's ``.collapsed`` flag.
-    """
+    """Build the elementwise-unary rule from ``deriv_fn`` (e.g. ``_sin_derivatives``)."""
 
     def rule(self: JetTuple) -> JetTuple:
         return primitives._elementwise(self, deriv_fn)

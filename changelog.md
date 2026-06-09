@@ -191,6 +191,10 @@ supported, though coverage is still growing.
 
 ### Internal
 
+- Pin a minimum `torch` version, declare `pydot` (needed by `visualize_graph`)
+  as a runtime dependency, and drop the unused `einops`/`numpy` core deps
+  ([PR](https://github.com/f-dangel/torch-jet/pull/178)).
+
 - De-duplicate every remaining standard/collapsed primitive rule into a single
   mode-agnostic body
   ([PR](https://github.com/f-dangel/torch-jet/pull/177)).

@@ -8,9 +8,9 @@ tensors under `make_fx`) and uses `isinstance` against the chosen jet type to
 distinguish Taylor-expanded arguments from constants.
 
 The same interpreter handles both standard and collapsed Taylor mode via the
-``collapsed`` constructor flag, which selects the dispatch table
-(``MAPPING`` vs ``COLLAPSED_MAPPING``) and wraps placeholders as
-``JetTuple(..., collapsed=...)``.
+``collapsed`` constructor flag, which wraps placeholders as
+``JetTuple(..., collapsed=...)`` and, per op, selects the standard or collapsed
+rule from the shared ``RULES`` registry (:mod:`jet._rules`).
 """
 
 from typing import Any
@@ -20,8 +20,8 @@ from torch.fx import GraphModule, Interpreter
 from torch.fx.node import Argument, Target
 from torch.utils._pytree import tree_leaves, tree_map
 
-from jet.collapsed_operations import COLLAPSED_MAPPING
-from jet.operations import MAPPING, JetTuple
+from jet._rules import RULES
+from jet.operations import JetTuple
 from jet.utils import Jet, PyTree
 
 
@@ -38,18 +38,16 @@ class JetInterpreter(Interpreter):
     Args:
         module: The traced computation graph module to interpret.
         collapsed: If ``True``, propagate collapsed ``JetTuple`` values and
-            dispatch via ``COLLAPSED_MAPPING`` (collapsed Taylor mode, where
+            dispatch to each op's collapsed rule (collapsed Taylor mode, where
             the highest-order coefficient is already summed over directions).
             If ``False`` (default), propagate standard ``JetTuple`` values and
-            dispatch via ``MAPPING`` (standard Taylor mode).
+            dispatch to each op's standard rule.
     """
 
     def __init__(self, module: GraphModule, collapsed: bool = False) -> None:
         """Initialize the JetInterpreter."""
         super().__init__(module)
         self.collapsed: bool = collapsed
-        self.mapping: dict = COLLAPSED_MAPPING if collapsed else MAPPING
-        self.label: str = "collapsed jet" if collapsed else "jet"
 
     def run(
         self,
@@ -78,7 +76,7 @@ class JetInterpreter(Interpreter):
     def call_function(
         self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Any]
     ) -> Any:
-        """Dispatch to ``self.mapping[target]`` when any arg is a jet tuple.
+        """Dispatch to ``RULES[target][self.collapsed]`` when any arg is a jet tuple.
 
         Args:
             target: The function or callable to execute.
@@ -106,12 +104,18 @@ class JetInterpreter(Interpreter):
 
         has_jet_arg = any(_jet_in(a) for a in args)
         if has_jet_arg:
-            if target not in self.mapping:
+            rule = RULES.get(target)
+            if rule is None:
                 raise NotImplementedError(
-                    f"No {self.label} rule for {target}. "
-                    "Please file an issue or add a rule."
+                    f"No jet rule for {target}. Please file an issue."
                 )
-            result = self.mapping[target](*args, **kwargs)
+            fn = rule.get(self.collapsed)
+            if fn is None:
+                raise NotImplementedError(
+                    f"{target} has a standard jet rule but no collapsed one. "
+                    "Call with collapsed=False."
+                )
+            result = fn(*args, **kwargs)
             self._check_collapsed(result, target)
             return result
         return super().call_function(target, args, kwargs)

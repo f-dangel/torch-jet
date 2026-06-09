@@ -474,59 +474,34 @@ def _log_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:
 # --- Elementwise unary ---
 
 
-def _jet_elementwise(
+def _elementwise(
     self: JetTuple,
     deriv_fn: Callable[[Tensor, int], dict[int, Tensor]],
 ) -> JetTuple:
-    """Generic elementwise jet rule using shared derivative helpers.
+    """Generic elementwise jet rule (standard *or* collapsed).
 
-    Args:
-        self: The primal and its Taylor coefficients.
-        deriv_fn: Returns the function's derivatives ``dn`` at the primal, with
-            ``dn[0]`` the primal itself, e.g. ``_sin_derivatives``.
-
-    Returns:
-        The value and its Taylor coefficients.
+    Computes the value and Taylor coefficients of an elementwise unary op from
+    its derivatives ``deriv_fn`` (``dn[0]`` is the primal) via Faà di Bruno,
+    reading the standard/collapsed mode from ``self.collapsed``.
     """
     K = _jet_order(self)
-    self0, vs = self[0], self[1:]
-    dn = deriv_fn(self0, K)
-    vs_out = _faa_di_bruno(vs, dn)
-    return _jet((dn[0], *vs_out))
+    dn = deriv_fn(self[0], K)
+    vs_out = _faa_di_bruno(self[1:], dn, collapsed=self.collapsed)
+    return JetTuple((dn[0], *vs_out), collapsed=self.collapsed)
 
 
-def jet_sin(self: JetTuple) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.sin(self)``."""
-    return _jet_elementwise(self, _sin_derivatives)
-
-
-def jet_cos(self: JetTuple) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.cos(self)``."""
-    return _jet_elementwise(self, _cos_derivatives)
-
-
-def jet_tanh(self: JetTuple) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.tanh(self)``."""
-    return _jet_elementwise(self, _tanh_derivatives)
-
-
-def jet_sigmoid(self: JetTuple) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.sigmoid(self)``."""
-    return _jet_elementwise(self, _sigmoid_derivatives)
-
-
-def jet_relu(self: JetTuple) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.relu(self)``."""
-    return _jet_elementwise(self, _relu_derivatives)
+def _jet_elementwise(self: JetTuple, deriv_fn) -> JetTuple:
+    """Standard elementwise jet rule. See :func:`_elementwise`."""
+    return _elementwise(self, deriv_fn)
 
 
 def jet_exp(self: JetTuple) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.exp(self)``."""
+    """Taylor-mode ``aten.exp(self)`` (bound for reuse in ``jet_log_softmax``)."""
     return _jet_elementwise(self, _exp_derivatives)
 
 
 def jet_log(self: JetTuple) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.log(self)``."""
+    """Taylor-mode ``aten.log(self)`` (bound for reuse in ``jet_log_softmax``)."""
     return _jet_elementwise(self, _log_derivatives)
 
 
@@ -544,10 +519,7 @@ def jet_pow(self: JetTuple, exponent: float | int) -> JetTuple:
         The value and its Taylor coefficients.
     """
     assert isinstance(exponent, (float, int))
-    self0, vs = self[0], self[1:]
-    dpow = _pow_derivatives(self0, exponent, _jet_order(self))
-    vs_out = _faa_di_bruno(vs, dpow)
-    return _jet((dpow[0], *vs_out))
+    return _elementwise(self, lambda x, k: _pow_derivatives(x, exponent, k))
 
 
 # --- Arithmetic ---
@@ -640,27 +612,26 @@ def jet_mm(self: Tensor | JetTuple, mat2: Tensor | JetTuple) -> JetTuple:
     return _apply_bilinear(mm, self, mat2)
 
 
+def _addmm_impl(self, mat1, mat2, add, mm):
+    """Shared ``addmm`` composition: ``add(self, mm(mat1, mat2))``.
+
+    ``addmm(self, mat1, mat2) == self + mat1 @ mat2``, composed from the mode's
+    ``add`` (affine bias, broadcasting a lower-rank bias over the product's rows)
+    and ``mm`` (matrix product) jet rules. Any operand may be a jet or a
+    constant. The standard and collapsed wrappers differ only in those two rules.
+    """
+    return add(self, mm(mat1, mat2))
+
+
 def jet_addmm(
     self: Tensor | JetTuple, mat1: Tensor | JetTuple, mat2: Tensor | JetTuple
 ) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.addmm(self, mat1, mat2)``.
+    """Taylor-mode ``aten.addmm(self, mat1, mat2) == self + mat1 @ mat2``.
 
-    ``addmm(self, mat1, mat2) == self + mat1 @ mat2``, so the rule composes the
-    matrix-product rule with the affine bias addition: ``jet_add(self,
-    _apply_bilinear(mm, mat1, mat2))``. Any operand may be Taylor-expanded, including
-    the bias; :func:`jet_add` broadcasts a lower-rank bias over the product's
-    rows. When both matrices are constant :func:`_apply_bilinear` returns a plain
-    tensor.
-
-    Args:
-        self: The bias; a jet or a constant ``Tensor``.
-        mat1: The first matrix; a jet or a constant ``Tensor``.
-        mat2: The second matrix; a jet or a constant ``Tensor``.
-
-    Returns:
-        The value and its Taylor coefficients.
+    Any operand may be a jet or a constant, including the bias. See
+    :func:`_addmm_impl`.
     """
-    return jet_add(self, _apply_bilinear(mm, mat1, mat2))
+    return _addmm_impl(self, mat1, mat2, jet_add, jet_mm)
 
 
 def _align_conv_bias(bias: Tensor | JetTuple, ndim: int) -> Tensor | JetTuple:
@@ -767,16 +738,6 @@ def jet_max_pool2d_with_indices(
     return _jet((values0, *coeffs)), indices
 
 
-def jet_max_pool2d(input: JetTuple, *pool_args: object) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.max_pool2d`` (values only).
-
-    The fused, indices-free pooling op some backends emit (e.g. MPS). Delegates
-    to :func:`jet_max_pool2d_with_indices` and drops the indices output.
-    """
-    jet, _ = jet_max_pool2d_with_indices(input, *pool_args)
-    return jet
-
-
 # --- Concatenation ---
 
 
@@ -861,32 +822,27 @@ def jet_mse_loss(
 # --- Normalization ---
 
 
-def jet_log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten._log_softmax(self, dim, half_to_float)``.
+def _log_softmax_impl(self, dim, sub, exp, sum_, log):
+    """Shared ``_log_softmax`` composition (standard *or* collapsed primitives).
 
     Uses the shift-invariant identity
     ``log_softmax(x) = (x - m) - log(sum(exp(x - m), dim))`` with
-    ``m = max(x, dim)`` a constant taken from the primal. ``exp`` and ``log``
-    reuse the elementwise machinery, the sum over ``dim`` is linear, and the
-    final subtraction broadcasts. This is the log-sum-exp trick, and it
-    stabilizes the whole jet -- not just the forward pass.
-
-    Args:
-        self: The logits and their Taylor coefficients.
-        dim: The dimension along which to normalize.
-        half_to_float: Whether inputs were promoted from half precision.
-            Accepted for ATen-signature compatibility; does not affect the
-            float32/float64 paths.
-
-    Returns:
-        The value and its Taylor coefficients.
+    ``m = max(x, dim)`` a constant taken from the primal -- the log-sum-exp
+    trick, which stabilizes the whole jet, not just the forward pass.
+    ``sub`` / ``exp`` / ``sum_`` / ``log`` are the calling mode's jet rules;
+    :func:`jet.collapsed_operations.cjet_log_softmax` feeds the collapsed ones.
     """
-    shift = self[0].amax(dim, keepdim=True)
-    shifted = jet_sub(self, shift)
-    exp_jet = jet_exp(shifted)
-    sum_exp = jet_sum(exp_jet, dim, keepdim=True)
-    log_sum_exp = jet_log(sum_exp)
-    return jet_sub(shifted, log_sum_exp)
+    shifted = sub(self, self[0].amax(dim, keepdim=True))
+    return sub(shifted, log(sum_(exp(shifted), dim, keepdim=True)))
+
+
+def jet_log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTuple:
+    """Taylor-mode ``aten._log_softmax(self, dim, half_to_float)``.
+
+    ``half_to_float`` is accepted for ATen-signature compatibility and does not
+    affect the float32/float64 paths.
+    """
+    return _log_softmax_impl(self, dim, jet_sub, jet_exp, jet_sum, jet_log)
 
 
 # --- Loss functions ---
@@ -958,32 +914,36 @@ def _bn_channel_view(primal: Tensor) -> tuple[int, ...]:
     return (1, primal.shape[1]) + (1,) * (primal.dim() - 2)
 
 
-def jet_native_batch_norm(
-    input: Tensor | JetTuple,
-    weight: Tensor | JetTuple | None,
-    bias: Tensor | JetTuple | None,
-    running_mean: Tensor | None,
-    running_var: Tensor | None,
-    training: bool,
-    momentum: float,
-    eps: float,
-) -> tuple[JetTuple, Tensor, Tensor]:
-    """Taylor-mode arithmetic for ``aten.native_batch_norm`` (eval mode).
+def _native_batch_norm_impl(
+    input,
+    weight,
+    bias,
+    running_mean,
+    running_var,
+    training,
+    momentum,
+    eps,
+    jet_type,
+    sub,
+    mul,
+    view,
+    add,
+):
+    """Shared eval-mode ``native_batch_norm`` composition (standard or collapsed).
 
-    Eval-mode batch norm normalizes each channel with the frozen running
-    statistics: ``(input - running_mean) / sqrt(running_var + eps) * weight +
-    bias``. Any of ``input`` / ``weight`` / ``bias`` may be a jet, a constant, or
-    (``weight`` / ``bias``) ``None`` -- any input rank (1d/2d/3d batch norm) is
-    supported. Mirrored by
-    :func:`jet.collapsed_operations.cjet_native_batch_norm`. Training mode is
-    deferred until PyTorch fixes its fused ``native_batch_norm``'s incorrect
-    higher-order autograd in training (pytorch/pytorch#186256), without which a
-    training rule cannot be validated.
+    Eval-mode batch norm is the affine per-channel map
+    ``(input - running_mean) / sqrt(running_var + eps) * weight + bias`` with
+    frozen running statistics. Any of ``input`` / ``weight`` / ``bias`` may be a
+    jet, a constant, or (``weight`` / ``bias``) ``None``; any input rank
+    (1d/2d/3d batch norm) is supported. ``jet_type`` and the ``sub`` / ``mul`` /
+    ``view`` / ``add`` rules are the calling mode's; the standard and collapsed
+    wrappers differ only in those. Training mode is deferred until PyTorch fixes
+    its fused op's incorrect higher-order autograd in training
+    (pytorch/pytorch#186256), without which a training rule cannot be validated.
 
     Returns:
         The ATen op's ``(output, save_mean, save_invstd)`` triple. ``save_mean``
-        / ``save_invstd`` are empty (only the forward output is consumed in a
-        Taylor-mode pass).
+        / ``save_invstd`` are empty (only the forward output is consumed).
 
     Raises:
         NotImplementedError: In training mode, or in eval mode without running
@@ -1002,88 +962,82 @@ def jet_native_batch_norm(
             "statistics, which is not yet implemented."
         )
 
-    primal = input[0] if isinstance(input, JetTuple) else input
+    primal = input[0] if isinstance(input, jet_type) else input
     shape = _bn_channel_view(primal)
     rstd = (running_var + eps).rsqrt()
-    out = jet_sub(input, jet_view(running_mean, shape))
-    out = jet_mul(out, jet_view(rstd, shape))
+    out = sub(input, view(running_mean, shape))
+    out = mul(out, view(rstd, shape))
     if weight is not None:
-        out = jet_mul(out, jet_view(weight, shape))
+        out = mul(out, view(weight, shape))
     if bias is not None:
-        out = jet_add(out, jet_view(bias, shape))
+        out = add(out, view(bias, shape))
     empty = primal.new_empty(0)
     return out, empty, empty
 
 
-MAPPING: dict = {
-    # Elementwise unary
-    ops.aten.sin.default: jet_sin,
-    ops.aten.cos.default: jet_cos,
-    ops.aten.tanh.default: jet_tanh,
-    ops.aten.sigmoid.default: jet_sigmoid,
-    ops.aten.relu.default: jet_relu,
-    ops.aten.exp.default: jet_exp,
-    ops.aten.log.default: jet_log,
-    # Power
-    ops.aten.pow.Tensor_Scalar: jet_pow,
-    # Arithmetic
-    ops.aten.add.Tensor: jet_add,
-    ops.aten.sub.Tensor: jet_sub,
-    ops.aten.mul.Tensor: jet_mul,
-    # Matrix decomposition
-    ops.aten.mm.default: jet_mm,
-    ops.aten.addmm.default: jet_addmm,
-    # Convolution (bilinear in input/weight; bias is the affine term)
-    ops.aten.convolution.default: jet_convolution,
-    # Pooling (piecewise linear: gather coefficients at the primal's arg-max)
-    ops.aten.max_pool2d_with_indices.default: jet_max_pool2d_with_indices,
-    ops.aten.max_pool2d.default: jet_max_pool2d,
-    # Concatenation (linear; jets nested in the operand list)
-    ops.aten.cat.default: jet_cat,
-    # Loss functions
-    ops.aten.mse_loss.default: jet_mse_loss,
-    ops.aten.nll_loss_forward.default: jet_nll_loss_forward,
-    # Normalization
-    ops.aten._log_softmax.default: jet_log_softmax,
-    # Batch norm (affine in eval; composed batch statistics in training)
-    ops.aten.native_batch_norm.default: jet_native_batch_norm,
-}
+def jet_native_batch_norm(
+    input: Tensor | JetTuple,
+    weight: Tensor | JetTuple | None,
+    bias: Tensor | JetTuple | None,
+    running_mean: Tensor | None,
+    running_var: Tensor | None,
+    training: bool,
+    momentum: float,
+    eps: float,
+) -> tuple[JetTuple, Tensor, Tensor]:
+    """Taylor-mode ``aten.native_batch_norm`` (eval mode). See `_native_batch_norm_impl`."""
+    return _native_batch_norm_impl(
+        input,
+        weight,
+        bias,
+        running_mean,
+        running_var,
+        training,
+        momentum,
+        eps,
+        JetTuple,
+        jet_sub,
+        jet_mul,
+        jet_view,
+        jet_add,
+    )
 
 
-# --- JAX-style helpers: bulk-register categories of ops ---
+# --- Rule-building factories (registered in :mod:`jet._rules`) ---
 #
-# After the dict literal above, two category helpers register the remaining
-# rules in one line per op. They mutate ``MAPPING`` so adding a new op of
-# either category is a one-line edit.
+# These build the rule for a category of op; registration into the single
+# ``RULES`` registry lives in :mod:`jet._rules`.
 
 
-def deflinear(prim: Callable) -> Callable:
-    """Register ``prim`` as a linear op: apply the primitive coefficient-wise.
+def _make_linear_rule(prim: Callable, jet_type: type, apply_linear: Callable) -> Callable:
+    """Build a linear jet rule (standard *or* collapsed).
 
-    The primitive must be ``aten``-style — it takes the tensor as its first
-    positional argument and any structural args (e.g. ``size``, ``dim``)
-    after. Forwards both ``*args`` and ``**kwargs`` straight to ``prim``.
-    Returns the registered rule so it can also be bound to a name and reused
-    inside composite rules (e.g. ``jet_sum`` in ``jet_log_softmax``, or
-    ``jet_view`` to reshape a possibly-constant operand). The rule is total over
-    constants: a non-jet argument is passed straight to ``prim``.
+    Applies ``prim`` coefficient-wise via ``apply_linear`` (the mode's linear
+    propagator) when ``self`` is a jet of type ``jet_type``; a non-jet ``self``
+    is passed straight to ``prim`` (total over constants). ``prim`` must be
+    ``aten``-style -- the tensor first, structural args (``size``, ``dim``, ...)
+    after -- and ``*args`` / ``**kwargs`` are forwarded to it.
     """
 
-    def rule(self: Tensor | JetTuple, *args, **kwargs) -> Tensor | JetTuple:
-        if not isinstance(self, JetTuple):
+    def rule(self, *args, **kwargs):
+        if not isinstance(self, jet_type):
             return prim(self, *args, **kwargs)
-        return _apply_linear(self, lambda c: prim(c, *args, **kwargs))
+        return apply_linear(self, lambda c: prim(c, *args, **kwargs))
 
-    MAPPING[prim] = rule
     return rule
 
 
-def defzero(prim: Callable) -> None:
-    """Register ``prim`` as a constant-output op (output independent of input).
+def _deflinear(prim: Callable) -> Callable:
+    """Build a standard linear jet rule. See :func:`_make_linear_rule`."""
+    return _make_linear_rule(prim, JetTuple, _apply_linear)
+
+
+def _defzero(prim: Callable) -> Callable:
+    """Build a constant-output jet rule (output independent of the input).
 
     The Taylor expansion of a constant-output op has all coefficients zero;
-    only the primal carries information. ``prim`` is applied to the primal
-    to produce the output value (which carries any ``dtype`` / ``device`` /
+    only the primal carries information. ``prim`` is applied to the primal to
+    produce the output value (which carries any ``dtype`` / ``device`` /
     ``layout`` kwargs the user passed). Coefficient slots are allocated via
     ``zeros_like(primal_out)`` so they inherit ``primal_out``'s metadata.
     """
@@ -1093,32 +1047,11 @@ def defzero(prim: Callable) -> None:
         coeffs = [zeros_like(primal_out) for _ in range(len(self) - 1)]
         return _jet([primal_out, *coeffs])
 
-    MAPPING[prim] = rule
+    return rule
 
-
-# Linear ops (pointwise-linear, shape-only, reductions): apply per coefficient.
-for _prim in (
-    ops.aten.neg.default,
-    ops.aten.div.Scalar,
-    ops.aten.t.default,
-    ops.aten._unsafe_view.default,
-    ops.aten.unsqueeze.default,
-    ops.aten.squeeze.dim,
-    ops.aten.squeeze.dims,
-    ops.aten.sum.default,
-    ops.aten._adaptive_avg_pool2d.default,
-    ops.aten.avg_pool2d.default,
-    ops.aten.mean.default,
-    ops.aten.mean.dim,
-):
-    deflinear(_prim)
 
 # Bound to names so composite rules can reuse them: ``jet_sum`` in
 # ``jet_log_softmax``; ``jet_view`` to reshape a possibly-constant operand
 # (``.reshape`` of a contiguous tensor lowers to ``aten.view``).
-jet_sum = deflinear(ops.aten.sum.dim_IntList)
-jet_view = deflinear(ops.aten.view.default)
-
-# Constant-output ops: primal carries the value, coefficients are zero.
-for _prim in (ops.aten.zeros_like.default,):
-    defzero(_prim)
+jet_sum = _deflinear(ops.aten.sum.dim_IntList)
+jet_view = _deflinear(ops.aten.view.default)

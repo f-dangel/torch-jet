@@ -91,21 +91,6 @@ def _jet_order(*args: Tensor) -> int:
     return Ks.pop()
 
 
-def _check_same_mode(self: JetTuple, other: JetTuple) -> None:
-    """Raise if two jets disagree on ``collapsed`` -- a whole run is one mode.
-
-    The mode counterpart of :func:`_jet_order`'s single-``K`` check.
-
-    Raises:
-        ValueError: If ``self.collapsed != other.collapsed``.
-    """
-    if self.collapsed != other.collapsed:
-        raise ValueError(
-            "jet operands disagree on collapsed mode; all jets in a run must "
-            "share the same mode"
-        )
-
-
 def _is_batched(k: int, K: int, collapsed: bool) -> bool:
     """Whether coefficient ``k`` carries the leading direction dim ``R``.
 
@@ -320,16 +305,12 @@ def _apply_bilinear(
     Returns:
         The jet of ``op(self, other)``, or a plain constant when both operands
         are constants.
-
-    Raises:
-        ValueError: If both operands are jets but disagree on ``collapsed``.
     """
     self_is_jet = isinstance(self, JetTuple)
     other_is_jet = isinstance(other, JetTuple)
     if not (self_is_jet or other_is_jet):
         return op(self, other)
     if self_is_jet and other_is_jet:
-        _check_same_mode(self, other)
         primal = op(self[0], other[0])
         return JetTuple((primal, *_leibniz(self, other, op)), collapsed=self.collapsed)
     if self_is_jet:
@@ -648,14 +629,10 @@ def _addsub(
     (``self - other`` differentiates ``other`` with a minus); it is the identity
     for ``add``. Mode-agnostic: the broadcast helper and constructor follow the
     jet operand's ``collapsed`` flag.
-
-    Raises:
-        ValueError: If both operands are jets but disagree on ``collapsed``.
     """
     self_is = isinstance(self, JetTuple)
     other_is = isinstance(other, JetTuple)
     if self_is and other_is:
-        _check_same_mode(self, other)
         return _pointwise(self, other, op)
     if self_is:
         primal = op(self[0], other)

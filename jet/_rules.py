@@ -60,6 +60,10 @@ RULES: dict = {
     ops.aten.add.Tensor: _defshared(primitives.jet_add),
     ops.aten.sub.Tensor: _defshared(primitives.jet_sub),
     ops.aten.mul.Tensor: _defshared(primitives.jet_mul),
+    # Division by a constant divisor (linear in the numerator); current torch
+    # lowers all scalar division (``x / 2.0``) to this overload. A jet divisor
+    # (nonlinear division) raises in ``jet_div``.
+    ops.aten.div.Tensor: _defshared(primitives.jet_div),
     ops.aten.mm.default: _defshared(primitives.jet_mm),
     ops.aten.cat.default: _defshared(primitives.jet_cat),
     ops.aten.max_pool2d_with_indices.default: _defshared(

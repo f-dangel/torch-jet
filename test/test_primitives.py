@@ -41,7 +41,7 @@ from torch.testing import assert_close
 
 from jet import jet, primitives
 from jet.compositions import native_batch_norm
-from jet.primitives import JetTuple, jet_nll_loss_forward
+from jet.primitives import JetTuple, jet_div, jet_nll_loss_forward
 from test.utils import (
     K_AND_MODE,
     _stateless,
@@ -73,6 +73,14 @@ def _consts(device: str) -> dict[str, Any]:
 def _sub_cj(device):
     SUB = _consts(device)["SUB"]
     return lambda x: SUB - x
+
+
+def _div_tensor_const(device):
+    # Divide a jet by a frozen (broadcasting) constant tensor divisor; lowers to
+    # ``aten.div.Tensor`` like ``x / scalar`` does.
+    manual_seed(3)
+    c = rand(4, **device_kw(device)) + 0.5  # off zero -> well-conditioned divisor
+    return lambda x: x / c
 
 
 #: Bias-shape variants for a jet bias: full ``(3, 5)`` and the row-broadcast
@@ -659,6 +667,19 @@ PRIMITIVE_CASES = [
         "f": _stateless(lambda x: ops.aten.div.Scalar(x, 2.0)),
         "args_fn": lambda: (rand(3, 4),),
     },
+    # ``div.Tensor``: division by a constant divisor is linear in the numerator
+    # (each coefficient maps ``c -> c / other``). ``x / 2.0`` lowers here, as
+    # does ``x / tensor`` against a frozen tensor divisor.
+    {
+        "id": "div_tensor",
+        "f": _stateless(lambda x: x / 2.0),
+        "args_fn": lambda: (rand(3, 4),),
+    },
+    {
+        "id": "div_tensor_const",
+        "f": _div_tensor_const,
+        "args_fn": lambda: (rand(3, 4),),
+    },
     # ---- Shape-only ops --------------------------------------------------
     # ``t`` (matrix transpose) is emitted by ``Linear`` (``addmm(b, x, W.t())``);
     # it changes the coefficients' shape, so collapsed mode must vmap over R.
@@ -776,6 +797,21 @@ def test_batch_norm_eval_without_running_stats_raises(collapsed: bool, device: s
     x = tup((rand(4, 3, 5, 5, **kw), rand(4, 3, 5, 5, **kw)))
     with raises(NotImplementedError, match="running statistics"):
         native_batch_norm(x, None, None, None, None, False, 0.1, 1e-5)
+
+
+@mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])
+def test_div_taylor_expanded_divisor_raises(collapsed: bool, device: str):
+    """Division by a Taylor-expanded divisor (nonlinear division) is rejected.
+
+    Only division by a constant divisor is linear and supported; a jet divisor
+    must raise a clear error rather than silently mis-differentiating.
+    """
+    kw = device_kw(device)
+    tup = partial(JetTuple, collapsed=collapsed)
+    numerator = tup((rand(3, 4, **kw), rand(3, 4, **kw)))
+    divisor = tup((rand(3, 4, **kw) + 0.5, rand(3, 4, **kw)))  # a jet divisor
+    with raises(NotImplementedError, match="Taylor-expanded divisor"):
+        jet_div(numerator, divisor)
 
 
 @mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])

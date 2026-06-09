@@ -191,6 +191,10 @@ supported, though coverage is still growing.
 
 ### Internal
 
+- De-duplicate every remaining standard/collapsed primitive rule into a single
+  mode-agnostic body
+  ([PR](https://github.com/f-dangel/torch-jet/pull/177)).
+
 - De-duplicate the composite op rules and reorganize the jet rules by role into
   `primitives` and `compositions`
   ([PR](https://github.com/f-dangel/torch-jet/pull/176)).

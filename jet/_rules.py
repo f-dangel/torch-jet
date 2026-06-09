@@ -30,8 +30,8 @@ def _defelementwise(
 
 
 def _deflinear(prim: Callable) -> dict[bool, Rule]:
-    """Build the ``{standard, collapsed}`` rules for a linear op."""
-    return {False: primitives._deflinear(prim), True: primitives._cdeflinear(prim)}
+    """Build the (mode-agnostic) rule for a linear op."""
+    return _defshared(primitives._deflinear(prim))
 
 
 def _defzero(prim: Callable) -> dict[bool, Rule]:
@@ -56,25 +56,18 @@ RULES: dict = {
     # Power (also elementwise, but the exponent is a call-time arg, so it carries
     # its own rule rather than registering through ``_defelementwise``).
     ops.aten.pow.Tensor_Scalar: _defshared(primitives.jet_pow),
-    # Structured (one hand-written rule body per mode)
-    ops.aten.add.Tensor: {False: primitives.jet_add, True: primitives.cjet_add},
-    ops.aten.sub.Tensor: {False: primitives.jet_sub, True: primitives.cjet_sub},
-    ops.aten.mul.Tensor: {False: primitives.jet_mul, True: primitives.cjet_mul},
-    ops.aten.mm.default: {False: primitives.jet_mm, True: primitives.cjet_mm},
-    ops.aten.max_pool2d_with_indices.default: {
-        False: primitives.jet_max_pool2d_with_indices,
-        True: primitives.cjet_max_pool2d_with_indices,
-    },
+    # Mode-agnostic primitives (one body reading ``self.collapsed``)
+    ops.aten.add.Tensor: _defshared(primitives.jet_add),
+    ops.aten.sub.Tensor: _defshared(primitives.jet_sub),
+    ops.aten.mul.Tensor: _defshared(primitives.jet_mul),
+    ops.aten.mm.default: _defshared(primitives.jet_mm),
+    ops.aten.cat.default: _defshared(primitives.jet_cat),
+    ops.aten.max_pool2d_with_indices.default: _defshared(
+        primitives.jet_max_pool2d_with_indices
+    ),
     # The fused, indices-free pooling op some backends emit (e.g. MPS).
-    ops.aten.max_pool2d.default: {
-        False: primitives.jet_max_pool2d,
-        True: primitives.cjet_max_pool2d,
-    },
-    ops.aten.cat.default: {False: primitives.jet_cat, True: primitives.cjet_cat},
-    ops.aten.nll_loss_forward.default: {
-        False: primitives.jet_nll_loss_forward,
-        True: primitives.cjet_nll_loss_forward,
-    },
+    ops.aten.max_pool2d.default: _defshared(primitives.jet_max_pool2d),
+    ops.aten.nll_loss_forward.default: _defshared(primitives.jet_nll_loss_forward),
     # Composites -- one mode-agnostic body that pulls its sub-rules from this
     # registry (see :mod:`jet.compositions`).
     ops.aten.addmm.default: _defshared(compositions.addmm),
@@ -84,7 +77,8 @@ RULES: dict = {
     ops.aten.native_batch_norm.default: _defshared(compositions.native_batch_norm),
 }
 
-# Linear ops (pointwise-linear, shape-only, reductions): per-mode `_deflinear`.
+# Linear ops (pointwise-linear, shape-only, reductions): one mode-agnostic
+# `_deflinear` rule each (its `_apply_linear` follows the jet's collapsed flag).
 # Composite rules (:mod:`jet.compositions`) reuse several of these -- e.g.
 # ``sum.dim_IntList`` in ``log_softmax``, ``view.default`` in
 # ``native_batch_norm`` -- by pulling them straight from this registry.

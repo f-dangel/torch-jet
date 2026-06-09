@@ -4,6 +4,7 @@ Each row in ``PRIMITIVE_CASES`` exercises one dispatch branch of a primitive
 registered with :class:`JetInterpreter`.
 """
 
+from functools import partial
 from itertools import product
 from typing import Any, Callable
 
@@ -39,7 +40,6 @@ from torch.nn.functional import (
 
 from jet import jet
 from jet.collapsed_operations import (
-    CollapsedJetTuple,
     cjet_native_batch_norm,
     cjet_nll_loss_forward,
 )
@@ -768,7 +768,7 @@ def test_batch_norm_eval_without_running_stats_raises(collapsed: bool, device: s
     """
     kw = device_kw(device)
     rule = cjet_native_batch_norm if collapsed else jet_native_batch_norm
-    tup = CollapsedJetTuple if collapsed else JetTuple
+    tup = partial(JetTuple, collapsed=collapsed)
     x = tup((rand(4, 3, 5, 5, **kw), rand(4, 3, 5, 5, **kw)))
     with raises(NotImplementedError, match="running statistics"):
         rule(x, None, None, None, None, False, 0.1, 1e-5)
@@ -783,8 +783,34 @@ def test_nll_loss_taylor_expanded_target_raises(collapsed: bool, device: str):
     """
     kw = device_kw(device)
     rule = cjet_nll_loss_forward if collapsed else jet_nll_loss_forward
-    tup = CollapsedJetTuple if collapsed else JetTuple
+    tup = partial(JetTuple, collapsed=collapsed)
     logits = tup((rand(8, 5, **kw), rand(8, 5, **kw)))
     target = tup((rand(8, **kw), rand(8, **kw)))  # a Taylor-expanded label
     with raises(NotImplementedError, match="Taylor-expanded target"):
         rule(logits, target, None, 1, -100)
+
+
+def test_collapsed_rules_tag_result_collapsed():
+    """Collapsed rules build their ``JetTuple`` with ``collapsed=True``."""
+    from torch import zeros
+
+    from jet.collapsed_operations import _cjet, cjet_add, cjet_mul, cjet_sin
+
+    # K=2 collapsed jet: c_1 batched ``(R, *S)``, c_2 collapsed ``S``.
+    x = _cjet((zeros(3), zeros(5, 3), zeros(3)))
+    assert x.collapsed
+    assert cjet_sin(x).collapsed  # elementwise
+    assert cjet_add(x, x).collapsed  # pointwise (additive)
+    assert cjet_mul(x, x).collapsed  # bilinear (collapsed Leibniz)
+
+
+def test_standard_rules_leave_result_uncollapsed():
+    """Standard rules build their ``JetTuple`` with ``collapsed=False``."""
+    from torch import zeros
+
+    from jet.operations import jet_add, jet_sin
+
+    x = JetTuple((zeros(3), zeros(3), zeros(3)))
+    assert not x.collapsed
+    assert not jet_sin(x).collapsed
+    assert not jet_add(x, x).collapsed

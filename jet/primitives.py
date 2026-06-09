@@ -91,6 +91,33 @@ def _jet_order(*args: Tensor) -> int:
     return Ks.pop()
 
 
+def _check_same_mode(self: JetTuple, other: JetTuple) -> None:
+    """Raise if two jets disagree on ``collapsed`` -- a whole run is one mode.
+
+    The mode counterpart of :func:`_jet_order`'s single-``K`` check.
+
+    Raises:
+        ValueError: If ``self.collapsed != other.collapsed``.
+    """
+    if self.collapsed != other.collapsed:
+        raise ValueError(
+            "jet operands disagree on collapsed mode; all jets in a run must "
+            "share the same mode"
+        )
+
+
+def _is_batched(k: int, K: int, collapsed: bool) -> bool:
+    """Whether coefficient ``k`` carries the leading direction dim ``R``.
+
+    Only collapsed mode's coefficients ``c_1..c_{K-1}`` are batched over ``R``;
+    the primal (``k == 0``) and the collapsed ``K``-th slot are not, and standard
+    mode has no batched coefficients at all. This single predicate is what every
+    rule gates its R-specific machinery (vmap, dim-shift, R-aware broadcast,
+    R-sum) on, so standard mode degenerates to the plain coefficient-wise path.
+    """
+    return collapsed and 0 < k < K
+
+
 def _apply_linear(self: JetTuple, op: Callable[[Tensor], Tensor]) -> JetTuple:
     """Apply a linear ``op`` coefficient-wise to every entry of ``self``.
 
@@ -107,14 +134,9 @@ def _apply_linear(self: JetTuple, op: Callable[[Tensor], Tensor]) -> JetTuple:
     Returns:
         The value and its Taylor coefficients, with ``op`` applied to each.
     """
-    if not self.collapsed:
-        return JetTuple((op(c) for c in self), collapsed=False)
-    K = len(self) - 1
-    vop = vmap(op)
-    results = [op(self[0])]
-    for k in range(1, K + 1):
-        results.append(vop(self[k]) if k < K else op(self[k]))
-    return JetTuple(results, collapsed=True)
+    return JetTuple(
+        (op(self[0]), *_apply_linear_coeffs(self, op)), collapsed=self.collapsed
+    )
 
 
 def _apply_linear_coeffs(
@@ -128,11 +150,12 @@ def _apply_linear_coeffs(
     batched coefficients ``c_1..c_{K-1}`` over the direction dim ``R`` and
     applies ``op`` directly to the already-collapsed slot ``c_K``.
     """
-    if not self.collapsed:
-        return tuple(op(c) for c in self[1:])
     K = len(self) - 1
     vop = vmap(op)
-    return tuple(vop(self[k]) if k < K else op(self[k]) for k in range(1, K + 1))
+    return tuple(
+        vop(self[k]) if _is_batched(k, K, self.collapsed) else op(self[k])
+        for k in range(1, K + 1)
+    )
 
 
 def _broadcast_coeffs(self: JetTuple, primal: Tensor) -> list[Tensor]:
@@ -154,7 +177,7 @@ def _broadcast_coeffs(self: JetTuple, primal: Tensor) -> list[Tensor]:
     out = []
     for k in range(1, K + 1):
         c = self[k]
-        if self.collapsed and k < K:  # batched (R, *S) -> (R, *primal.shape)
+        if _is_batched(k, K, self.collapsed):  # batched (R, *S) -> (R, *primal.shape)
             target = (c.shape[0], *primal.shape)
             if c.shape != target:
                 pad = primal.ndim - (c.ndim - 1)
@@ -233,10 +256,6 @@ def _leibniz(
     K = len(self) - 1
     collapsed = self.collapsed
 
-    def batched(j: int) -> bool:
-        """Whether coefficient ``j`` carries the leading direction dim ``R``."""
-        return collapsed and 0 < j < K
-
     def product(j: int, k: int) -> Tensor:
         """``binary_op(self[j], other[k - j])``, vmapped over ``R`` if batched.
 
@@ -246,7 +265,8 @@ def _leibniz(
         terms) it is a plain call.
         """
         a, b = self[j], other[k - j]
-        a_batched, b_batched = batched(j), batched(k - j)
+        a_batched = _is_batched(j, K, collapsed)
+        b_batched = _is_batched(k - j, K, collapsed)
         if not (a_batched or b_batched):
             return binary_op(a, b)
         in_dims = (0 if a_batched else None, 0 if b_batched else None)
@@ -259,7 +279,7 @@ def _leibniz(
             term_j = comb(k, j, exact=True) * product(j, k)
             # The collapsed K-th coefficient carries no R, so reduce its batched
             # (R-carrying) terms over the direction dim; standard never enters.
-            if collapsed and k == K and batched(j):
+            if k == K and _is_batched(j, K, collapsed):
                 term_j = term_j.sum(0)
             term = term_j if term is None else term + term_j
         coeffs += (term,)
@@ -306,12 +326,8 @@ def _apply_bilinear(
     other_is_jet = isinstance(other, JetTuple)
     if not (self_is_jet or other_is_jet):
         return op(self, other)
-    if self_is_jet and other_is_jet and self.collapsed != other.collapsed:
-        raise ValueError(
-            "bilinear op received JetTuple operands with mixed collapsed flags; "
-            "all jets in a run must share the same mode"
-        )
     if self_is_jet and other_is_jet:
+        _check_same_mode(self, other)
         primal = op(self[0], other[0])
         return JetTuple(
             (primal, *_leibniz(self, other, op)), collapsed=self.collapsed
@@ -639,11 +655,7 @@ def _addsub(
     self_is = isinstance(self, JetTuple)
     other_is = isinstance(other, JetTuple)
     if self_is and other_is:
-        if self.collapsed != other.collapsed:
-            raise ValueError(
-                "additive op received JetTuple operands with mixed collapsed "
-                "flags; all jets in a run must share the same mode"
-            )
+        _check_same_mode(self, other)
         return _pointwise(self, other, op)
     if self_is:
         primal = op(self[0], other)
@@ -838,7 +850,7 @@ def jet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
 
     out = []
     for k in range(K + 1):
-        batched = collapsed and 0 < k < K
+        batched = _is_batched(k, K, collapsed)
         d = dim + 1 if (batched and dim >= 0) else dim
         out.append(cat([part(t, k, batched) for t in tensors], d))
     return JetTuple(tuple(out), collapsed=collapsed)

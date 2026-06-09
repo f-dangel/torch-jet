@@ -1,39 +1,38 @@
 """Single registry mapping each ATen op to its standard / collapsed jet rules.
 
 ``RULES[op]`` is a ``{collapsed_flag: rule}`` dict: ``RULES[op][False]`` is the
-standard rule, ``RULES[op][True]`` the collapsed one. The ``True`` key may be
-absent (an op supported in standard mode only).
-:class:`jet.jet_interpreter.JetInterpreter` indexes ``RULES[target][collapsed]``
-per call.
-
-Adding an op is a one-site edit in ``RULES`` below: elementwise unary ops are a
-single ``_defelementwise`` entry (both modes from the shared derivative table);
-linear and constant-output ops use the per-mode ``_deflinear`` / ``_defzero``
-builders; everything else lists its two hand-written rule bodies (``jet_*`` from
-:mod:`jet.operations`, ``cjet_*`` from :mod:`jet.collapsed_operations`).
+standard rule, ``RULES[op][True]`` the collapsed one.
 """
 
 from typing import Callable
 
-from torch import ops
+from torch import Tensor, ops
 
 from jet import collapsed_operations as collapsed
 from jet import operations as standard
+from jet.operations import JetTuple
+
+#: A jet rule: maps a ``JetTuple`` (and any structural args) to its image.
+Rule = Callable[..., JetTuple]
 
 
-def _defelementwise(deriv_fn: Callable) -> dict:
+def _defelementwise(
+    deriv_fn: Callable[[Tensor, int], dict[int, Tensor]],
+) -> dict[bool, Rule]:
     """Build the ``{standard, collapsed}`` rules for an elementwise unary op.
 
-    Both modes reuse ``deriv_fn`` (e.g. ``_sin_derivatives``); the standard and
-    collapsed combinators differ only in how they propagate the coefficients.
+    The rule is mode-agnostic -- :func:`jet.operations._elementwise` reads the
+    standard/collapsed mode off the jet's ``.collapsed`` flag -- so both keys
+    share one callable that reuses ``deriv_fn`` (e.g. ``_sin_derivatives``).
     """
-    return {
-        False: lambda self: standard._jet_elementwise(self, deriv_fn),
-        True: lambda self: collapsed._cjet_elementwise(self, deriv_fn),
-    }
+
+    def rule(self: JetTuple) -> JetTuple:
+        return standard._elementwise(self, deriv_fn)
+
+    return {False: rule, True: rule}
 
 
-def _drop_index_output(rule: Callable) -> Callable:
+def _drop_index_output(rule: Callable[..., tuple[JetTuple, Tensor]]) -> Rule:
     """Wrap a rule whose op returns ``(value, indices)`` to keep only the value."""
     return lambda *args, **kwargs: rule(*args, **kwargs)[0]
 

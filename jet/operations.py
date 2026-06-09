@@ -490,19 +490,14 @@ def _elementwise(
     return JetTuple((dn[0], *vs_out), collapsed=self.collapsed)
 
 
-def _jet_elementwise(self: JetTuple, deriv_fn) -> JetTuple:
-    """Standard elementwise jet rule. See :func:`_elementwise`."""
-    return _elementwise(self, deriv_fn)
-
-
 def jet_exp(self: JetTuple) -> JetTuple:
     """Taylor-mode ``aten.exp(self)`` (bound for reuse in ``jet_log_softmax``)."""
-    return _jet_elementwise(self, _exp_derivatives)
+    return _elementwise(self, _exp_derivatives)
 
 
 def jet_log(self: JetTuple) -> JetTuple:
     """Taylor-mode ``aten.log(self)`` (bound for reuse in ``jet_log_softmax``)."""
-    return _jet_elementwise(self, _log_derivatives)
+    return _elementwise(self, _log_derivatives)
 
 
 # --- Power ---
@@ -923,7 +918,6 @@ def _native_batch_norm_impl(
     training,
     momentum,
     eps,
-    jet_type,
     sub,
     mul,
     view,
@@ -935,10 +929,10 @@ def _native_batch_norm_impl(
     ``(input - running_mean) / sqrt(running_var + eps) * weight + bias`` with
     frozen running statistics. Any of ``input`` / ``weight`` / ``bias`` may be a
     jet, a constant, or (``weight`` / ``bias``) ``None``; any input rank
-    (1d/2d/3d batch norm) is supported. ``jet_type`` and the ``sub`` / ``mul`` /
-    ``view`` / ``add`` rules are the calling mode's; the standard and collapsed
-    wrappers differ only in those. Training mode is deferred until PyTorch fixes
-    its fused op's incorrect higher-order autograd in training
+    (1d/2d/3d batch norm) is supported. The ``sub`` / ``mul`` / ``view`` / ``add``
+    rules are the calling mode's; the standard and collapsed wrappers differ only
+    in those. Training mode is deferred until PyTorch fixes its fused op's
+    incorrect higher-order autograd in training
     (pytorch/pytorch#186256), without which a training rule cannot be validated.
 
     Returns:
@@ -962,7 +956,7 @@ def _native_batch_norm_impl(
             "statistics, which is not yet implemented."
         )
 
-    primal = input[0] if isinstance(input, jet_type) else input
+    primal = input[0] if isinstance(input, JetTuple) else input
     shape = _bn_channel_view(primal)
     rstd = (running_var + eps).rsqrt()
     out = sub(input, view(running_mean, shape))
@@ -995,7 +989,6 @@ def jet_native_batch_norm(
         training,
         momentum,
         eps,
-        JetTuple,
         jet_sub,
         jet_mul,
         jet_view,
@@ -1009,18 +1002,18 @@ def jet_native_batch_norm(
 # ``RULES`` registry lives in :mod:`jet._rules`.
 
 
-def _make_linear_rule(prim: Callable, jet_type: type, apply_linear: Callable) -> Callable:
+def _make_linear_rule(prim: Callable, apply_linear: Callable) -> Callable:
     """Build a linear jet rule (standard *or* collapsed).
 
     Applies ``prim`` coefficient-wise via ``apply_linear`` (the mode's linear
-    propagator) when ``self`` is a jet of type ``jet_type``; a non-jet ``self``
-    is passed straight to ``prim`` (total over constants). ``prim`` must be
-    ``aten``-style -- the tensor first, structural args (``size``, ``dim``, ...)
-    after -- and ``*args`` / ``**kwargs`` are forwarded to it.
+    propagator) when ``self`` is a ``JetTuple``; a non-jet ``self`` is passed
+    straight to ``prim`` (total over constants). ``prim`` must be ``aten``-style
+    -- the tensor first, structural args (``size``, ``dim``, ...) after -- and
+    ``*args`` / ``**kwargs`` are forwarded to it.
     """
 
     def rule(self, *args, **kwargs):
-        if not isinstance(self, jet_type):
+        if not isinstance(self, JetTuple):
             return prim(self, *args, **kwargs)
         return apply_linear(self, lambda c: prim(c, *args, **kwargs))
 
@@ -1029,7 +1022,7 @@ def _make_linear_rule(prim: Callable, jet_type: type, apply_linear: Callable) ->
 
 def _deflinear(prim: Callable) -> Callable:
     """Build a standard linear jet rule. See :func:`_make_linear_rule`."""
-    return _make_linear_rule(prim, JetTuple, _apply_linear)
+    return _make_linear_rule(prim, _apply_linear)
 
 
 def _defzero(prim: Callable) -> Callable:

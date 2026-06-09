@@ -222,19 +222,14 @@ def _apply_bilinear(
 # ---------------------------------------------------------------------------
 
 
-def _cjet_elementwise(self: JetTuple, deriv_fn) -> JetTuple:
-    """Collapsed elementwise jet rule. See :func:`jet.operations._elementwise`."""
-    return _elementwise(self, deriv_fn)
-
-
 def cjet_exp(self: JetTuple) -> JetTuple:
     """Collapsed ``aten.exp`` (bound for reuse in ``cjet_log_softmax``)."""
-    return _cjet_elementwise(self, _exp_derivatives)
+    return _elementwise(self, _exp_derivatives)
 
 
 def cjet_log(self: JetTuple) -> JetTuple:
     """Collapsed ``aten.log`` (bound for reuse in ``cjet_log_softmax``)."""
-    return _cjet_elementwise(self, _log_derivatives)
+    return _elementwise(self, _log_derivatives)
 
 
 def cjet_pow(self: JetTuple, exponent: float | int) -> JetTuple:
@@ -510,7 +505,6 @@ def cjet_native_batch_norm(
         training,
         momentum,
         eps,
-        JetTuple,
         cjet_sub,
         cjet_mul,
         cjet_view,
@@ -536,7 +530,7 @@ def _deflinear(prim: Callable) -> Callable:
     for batched coefficients ``c_1..c_{K-1}`` and applies ``prim`` directly to
     the primal and the collapsed slot ``c_K``.
     """
-    return _make_linear_rule(prim, JetTuple, _apply_linear)
+    return _make_linear_rule(prim, _apply_linear)
 
 
 def _defzero(prim: Callable) -> Callable:

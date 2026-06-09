@@ -785,29 +785,3 @@ def test_nll_loss_taylor_expanded_target_raises(collapsed: bool, device: str):
     target = tup((rand(8, **kw), rand(8, **kw)))  # a Taylor-expanded label
     with raises(NotImplementedError, match="Taylor-expanded target"):
         rule(logits, target, None, 1, -100)
-
-
-def test_collapsed_rules_tag_result_collapsed():
-    """Collapsed rules build their ``JetTuple`` with ``collapsed=True``."""
-    from torch import zeros
-
-    from jet.collapsed_operations import _cjet, cjet_add, cjet_mul, cjet_sin
-
-    # K=2 collapsed jet: c_1 batched ``(R, *S)``, c_2 collapsed ``S``.
-    x = _cjet((zeros(3), zeros(5, 3), zeros(3)))
-    assert x.collapsed
-    assert cjet_sin(x).collapsed  # elementwise
-    assert cjet_add(x, x).collapsed  # pointwise (additive)
-    assert cjet_mul(x, x).collapsed  # bilinear (collapsed Leibniz)
-
-
-def test_standard_rules_leave_result_uncollapsed():
-    """Standard rules build their ``JetTuple`` with ``collapsed=False``."""
-    from torch import zeros
-
-    from jet.operations import jet_add, jet_sin
-
-    x = JetTuple((zeros(3), zeros(3), zeros(3)))
-    assert not x.collapsed
-    assert not jet_sin(x).collapsed
-    assert not jet_add(x, x).collapsed

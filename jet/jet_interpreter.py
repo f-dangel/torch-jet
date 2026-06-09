@@ -18,7 +18,7 @@ from typing import Any
 from torch import Tensor, zeros_like
 from torch.fx import GraphModule, Interpreter
 from torch.fx.node import Argument, Target
-from torch.utils._pytree import tree_map
+from torch.utils._pytree import tree_leaves, tree_map
 
 from jet.collapsed_operations import COLLAPSED_MAPPING
 from jet.operations import MAPPING, JetTuple
@@ -111,8 +111,26 @@ class JetInterpreter(Interpreter):
                     f"No {self.label} rule for {target}. "
                     "Please file an issue or add a rule."
                 )
-            return self.mapping[target](*args, **kwargs)
+            result = self.mapping[target](*args, **kwargs)
+            self._check_collapsed(result, target)
+            return result
         return super().call_function(target, args, kwargs)
+
+    def _check_collapsed(self, result: Any, target: Target) -> None:
+        """Assert every ``JetTuple`` a rule returns matches the run's mode.
+
+        A single, central guard: if a rule builds its output with the wrong
+        constructor (standard ``JetTuple`` vs. collapsed ``_cjet``), the
+        mismatched ``.collapsed`` flag is caught here -- at the dispatch site,
+        naming the op -- instead of surfacing later as an opaque shape error.
+        """
+        for leaf in tree_leaves(result, is_leaf=lambda x: isinstance(x, JetTuple)):
+            if isinstance(leaf, JetTuple) and leaf.collapsed != self.collapsed:
+                raise RuntimeError(
+                    f"the jet rule for {target} returned a JetTuple with "
+                    f"collapsed={leaf.collapsed}, but the interpreter is running "
+                    f"in collapsed={self.collapsed} mode"
+                )
 
     def _normalize(
         self,

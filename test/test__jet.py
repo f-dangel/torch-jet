@@ -1,9 +1,36 @@
 """Tests for jet/_jet.py (the jet() / _rev_jet transforms)."""
 
-from pytest import raises
-from torch import sin, zeros
+from pytest import mark, raises
+from torch import manual_seed, rand, sin, zeros
+from torch.testing import assert_close
 
 from jet import jet
+from jet._jet import _uncollapsed_via_vmap
+from test.utils import make_jet_args, rev_collapsed_jet
+
+
+@mark.parametrize("K", [2, 3])
+def test_uncollapsed_via_vmap_nonzero_c_K(K: int) -> None:
+    """_uncollapsed_via_vmap matches the collapsed oracle for random non-zero c_K.
+
+    The order-K coefficient must enter a single vmap direction (zeros into the
+    rest), as in rev_collapsed_jet. Feeding it into every direction (the old
+    bug) overcounts it R-fold; this is masked only when c_K == 0.
+    """
+    manual_seed(0)
+    x = rand(4)
+
+    def f(t):
+        return (t**3).sin()
+
+    mock_args = (x,)
+    jet_args = make_jet_args(mock_args, K, collapsed=True, R=3)
+    # Sanity-check the regression premise: c_K is non-zero for every leaf.
+    assert jet_args[0][K].abs().max() > 0
+
+    actual = _uncollapsed_via_vmap(f, mock_args, None)(*jet_args)
+    expected = rev_collapsed_jet(f)(*jet_args)
+    assert_close(actual, expected)
 
 
 def test_collapsed_jet_rejects_order_below_2():

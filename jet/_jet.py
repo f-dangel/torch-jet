@@ -3,7 +3,7 @@
 from math import factorial
 from typing import Callable
 
-from torch import Tensor, tensor, zeros_like
+from torch import Tensor, stack, tensor, zeros_like
 from torch.autograd import grad
 from torch.func import vmap
 from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
@@ -202,31 +202,32 @@ def _uncollapsed_via_vmap(
     _, in_spec = tree_flatten(mock_args)
 
     def cjet_f(*args: PyTree[Jet]) -> PyTree[Jet]:
-        leaves, K, _ = validate_input_jet(mock_args, args, collapsed=True)
-        num_leaves = len(leaves)
+        leaves, K, R = validate_input_jet(mock_args, args, collapsed=True)
         primals = [leaf[0] for leaf in leaves]
-        collapsed = [leaf[K] for leaf in leaves]
-        # Batched coefficients (orders 1..K-1) carry the leading direction dim R.
-        batched_flat = [leaf[order] for leaf in leaves for order in range(1, K)]
 
-        def single_direction(*flat_batched: Tensor) -> PyTree[Jet]:
-            # Rebuild per-leaf jets from this direction's batched coefficients,
-            # reusing the shared (un-batched) collapsed order-K coefficient.
-            per_leaf_jets = [
-                (
-                    primals[i],
-                    *flat_batched[i * (K - 1) : (i + 1) * (K - 1)],
-                    collapsed[i],
-                )
-                for i in range(num_leaves)
-            ]
+        # The order-K output is linear in c_K, so feed the full (un-batched)
+        # order-K coefficient into a single vmap direction (zeros into the rest)
+        # and let the per-direction sum below recover one c_K contribution;
+        # sharing the full c_K across every direction would overcount it R-fold,
+        # diverging from the collapsed semantics for non-zero c_K.
+        def batch_cK(cK: Tensor) -> Tensor:
+            zeros = zeros_like(cK)
+            return stack([cK, *(zeros for _ in range(R - 1))])
+
+        # Per-leaf batched coefficients of orders 1..K, each carrying dim R:
+        # orders 1..K-1 come batched from the inputs, order K is built above.
+        batched = [[*leaf[1:K], batch_cK(leaf[K])] for leaf in leaves]
+
+        def single_direction(batched: list[list[Tensor]]) -> PyTree[Jet]:
+            # Rebuild per-leaf standard jets from this direction's coefficients.
+            per_leaf_jets = [(p, *coeffs) for p, coeffs in zip(primals, batched)]
             return jet_f(*tree_unflatten(per_leaf_jets, in_spec))
 
         vmapped = vmap(
             single_direction,
             randomness="error" if randomization is None else "different",
         )
-        result = vmapped(*batched_flat)
+        result = vmapped(batched)
 
         # De-batch order 0 (identical across directions) and collapse order K.
         def _collapse_leaf(leaf: Jet) -> Jet:

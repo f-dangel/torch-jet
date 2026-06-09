@@ -191,6 +191,9 @@ supported, though coverage is still growing.
 
 ### Internal
 
+- Unify the two internal jet tuple types into a single `JetTuple`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/175)).
+
 - Improve docstrings
   ([PR](https://github.com/f-dangel/torch-jet/pull/173)).
 

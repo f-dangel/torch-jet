@@ -41,10 +41,14 @@ supported, though coverage is still growing.
     ([PR](https://github.com/f-dangel/torch-jet/pull/151)).
   - `aten.cat.default` (dispatch now also detects jets nested in `list` args)
     ([PR](https://github.com/f-dangel/torch-jet/pull/154)).
-  - `aten.native_batch_norm.default` in eval mode (affine per channel);
-    training mode is deferred until PyTorch fixes its fused op's incorrect
-    higher-order autograd in training ([pytorch/pytorch#186256](https://github.com/pytorch/pytorch/issues/186256))
-    ([PR](https://github.com/f-dangel/torch-jet/pull/157)).
+  - `aten.native_batch_norm.default`:
+    - eval mode (affine per channel from the running statistics)
+      ([PR](https://github.com/f-dangel/torch-jet/pull/157)).
+    - training mode (normalization from input-dependent batch statistics). The
+      rule is validated against the fused op's own autograd only up to 2nd order,
+      since PyTorch's fused `native_batch_norm` has incorrect higher-order
+      autograd in training ([pytorch/pytorch#186256](https://github.com/pytorch/pytorch/issues/186256))
+      ([PR](https://github.com/f-dangel/torch-jet/pull/169)).
 
 - Support loss functions in Taylor mode by adding jet rules for the ATen ops
   they need:

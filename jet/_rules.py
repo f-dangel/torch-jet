@@ -45,11 +45,9 @@ def _defzero(prim: Callable) -> dict[bool, Rule]:
     """Build the constant-output rule for a ``prim``.
 
     The rule is mode-agnostic -- :func:`jet.operations._defzero` zeros each
-    coefficient to its input slot's shape and follows ``self.collapsed`` -- so
-    both keys share one callable.
+    coefficient to its input slot's shape and follows ``self.collapsed``.
     """
-    rule = standard._defzero(prim)
-    return {False: rule, True: rule}
+    return _defshared(standard._defzero(prim))
 
 
 #: Maps an ``aten`` op overload to a ``{collapsed_flag: rule}`` dict.

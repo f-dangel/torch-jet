@@ -12,12 +12,12 @@ from typing import Callable
 
 from torch import ops
 
-from jet.collapsed_operations import _apply_bilinear as _capply_bilinear
-from jet.operations import (
+from jet.primitives import (
     JetTuple,
     _align_conv_bias,
     _apply_bilinear,
     _bn_channel_view,
+    _capply_bilinear,
 )
 
 #: Per-mode bilinear lifter for a bias-free convolution. Unlike ``add`` / ``mm``,

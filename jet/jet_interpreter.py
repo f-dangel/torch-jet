@@ -21,7 +21,7 @@ from torch.fx.node import Argument, Target
 from torch.utils._pytree import tree_leaves, tree_map
 
 from jet._rules import RULES
-from jet.operations import JetTuple
+from jet.primitives import JetTuple
 from jet.utils import Jet, PyTree
 
 

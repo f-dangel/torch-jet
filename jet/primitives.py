@@ -1,6 +1,24 @@
-"""Implementation of AD primitives in Taylor-mode arithmetic."""
+"""Implementation of AD primitives in Taylor-mode arithmetic.
+
+A *primitive* is an irreducible jet rule -- an op that is not expressed in terms
+of other rules (those live in :mod:`jet.compositions`). Each op appears here with
+both its standard and collapsed bodies co-located: the mode-agnostic ones (the
+elementwise unary family, ``pow``, the linear ops) are a single function reading
+``self.collapsed``; the genuinely mode-specific ones (``add`` / ``sub`` / ``mul``
+/ ``mm`` / ``cat`` and the ``_apply_*`` helpers) keep a ``jet_*`` and a
+``cjet_*`` body side by side. Collapsed Taylor mode propagates a single
+"collapsed jet" with mixed shapes:
+
+  - Coefficient 0 (primal): shape (...)
+  - Coefficients 1..K-1: shape (R, ...) -- batched over R directions
+  - Coefficient K: shape (...) -- already collapsed (summed over directions)
+
+At each nonlinear collapsed op, the K-th output coefficient is computed as
+``out_K = LINEAR_TERM(in_K_collapsed) + NONLINEAR_TERMS(in_1..K-1).sum(0)``.
+"""
 
 from functools import partial
+from operator import add, sub
 from typing import Callable, Self
 
 from scipy.special import comb, factorial, stirling2
@@ -10,6 +28,7 @@ from torch import (
     cos,
     exp,
     log,
+    matmul,
     mm,
     ops,
     relu,
@@ -18,6 +37,7 @@ from torch import (
     tanh,
     zeros_like,
 )
+from torch.func import vmap
 from torch.utils._pytree import register_pytree_node
 
 from jet.utils import integer_partitions, multiplicity
@@ -47,9 +67,11 @@ register_pytree_node(
     unflatten_fn=lambda values, collapsed: JetTuple(values, collapsed=collapsed),
 )
 
-#: Standard-mode JetTuple constructor (``JetTuple(values, collapsed=False)``);
-#: mirror of :data:`jet.collapsed_operations._cjet`.
+#: Standard-mode JetTuple constructor (``JetTuple(values, collapsed=False)``).
 _jet = partial(JetTuple, collapsed=False)
+
+#: Collapsed-mode JetTuple constructor (``JetTuple(values, collapsed=True)``).
+_cjet = partial(JetTuple, collapsed=True)
 
 
 def _jet_order(*args: Tensor) -> int:
@@ -85,9 +107,9 @@ def _apply_linear(self: JetTuple, op: Callable[[Tensor], Tensor]) -> JetTuple:
     """Apply a linear ``op`` coefficient-wise to every entry of ``self``.
 
     Linear ops commute with the Taylor expansion, so the result's coefficients
-    are just ``op`` applied to each input coefficient. Mirrors the analogous
-    helper in :mod:`jet.collapsed_operations` (which additionally vmaps over
-    the batched direction dim ``R``).
+    are just ``op`` applied to each input coefficient. Mirrored by
+    :func:`_capply_linear` (which additionally vmaps over the batched direction
+    dim ``R``).
 
     Args:
         self: The primal and its Taylor coefficients.
@@ -123,6 +145,83 @@ def _broadcast_coeffs(self: JetTuple, primal: Tensor) -> list[Tensor]:
     ]
 
 
+def _capply_linear(jet: JetTuple, op: Callable[[Tensor], Tensor]) -> JetTuple:
+    """Collapsed counterpart of :func:`_apply_linear`.
+
+    Applies a linear ``op`` to every entry, vmapping the batched coefficients
+    ``c_1..c_{K-1}`` over the direction dim ``R`` and applying ``op`` directly to
+    the primal and the collapsed slot ``c_K``.
+    """
+    K = len(jet) - 1
+    results = [op(jet[0])]
+    vop = vmap(op)
+    for k in range(1, K + 1):
+        results.append(vop(jet[k]) if k < K else op(jet[k]))
+    return _cjet(results)
+
+
+def _capply_linear_coeffs(
+    jet: JetTuple, op: Callable[[Tensor], Tensor]
+) -> tuple[Tensor, ...]:
+    """Collapsed counterpart of :func:`_apply_linear_coeffs` (coefficients 1..K).
+
+    Vmaps the batched coefficients over ``R``; applies ``op`` directly to ``c_K``.
+    """
+    K = len(jet) - 1
+    vop = vmap(op)
+    return tuple(vop(jet[k]) if k < K else op(jet[k]) for k in range(1, K + 1))
+
+
+def _cbroadcast_coeffs(self: JetTuple, primal: Tensor) -> list[Tensor]:
+    """Collapsed counterpart of :func:`_broadcast_coeffs`.
+
+    Also used by :func:`_collapsed_pointwise` to align two jets before an
+    elementwise ``op``. The batched coefficients (orders ``1..K-1``) carry a
+    leading direction dim ``R``, so the broadcast is R-aware: insert size-1 dims
+    after ``R``, then expand. PyTorch broadcasting would instead left-pad at the
+    front, shifting ``R`` so it collides with a primal dim when ranks differ.
+    The collapsed ``K``-th coefficient and the primal carry no ``R`` and
+    broadcast normally. No-op when already shaped.
+    """
+    K = len(self) - 1
+    out = []
+    for k in range(1, K + 1):
+        c = self[k]
+        if k < K:  # batched (R, *S) -> (R, *primal.shape)
+            target = (c.shape[0], *primal.shape)
+            if c.shape != target:
+                pad = primal.ndim - (c.ndim - 1)
+                reshaped = c.reshape(c.shape[0], *([1] * pad), *c.shape[1:])
+                c = reshaped.broadcast_to(target)
+        elif c.shape != primal.shape:  # collapsed K-th (no R)
+            c = c.broadcast_to(primal.shape)
+        out.append(c)
+    return out
+
+
+def _collapsed_pointwise(
+    self: JetTuple,
+    other: JetTuple,
+    op: Callable[[Tensor, Tensor], Tensor],
+) -> JetTuple:
+    """Apply pointwise ``op`` to two collapsed jets of equal order.
+
+    Broadcasts both operands' coefficients up to the result primal's shape via
+    :func:`_cbroadcast_coeffs` before ``op``, so different-rank operands align
+    over their primal dims without colliding the leading direction dim ``R``.
+
+    ``op`` must be elementwise (it broadcasts over leading dims); the product
+    rules use per-direction ``vmap`` instead (see :func:`_collapsed_leibniz`)
+    for ops like ``conv`` that cannot.
+    """
+    _jet_order(self, other)  # validates K-consistency, raises on mismatch
+    primal = op(self[0], other[0])
+    s_coeffs = _cbroadcast_coeffs(self, primal)
+    o_coeffs = _cbroadcast_coeffs(other, primal)
+    coeffs = (op(s, o) for s, o in zip(s_coeffs, o_coeffs))
+    return _cjet((primal, *coeffs))
+
+
 def _leibniz(
     self: JetTuple,
     other: JetTuple,
@@ -140,8 +239,8 @@ def _leibniz(
     captured FX graph.
 
     Both operands must share the same Taylor-expansion order ``K``; ``K`` is
-    inferred as ``len(self) - 1`` and the lengths are checked. Mirrors
-    :func:`jet.collapsed_operations._collapsed_leibniz`.
+    inferred as ``len(self) - 1`` and the lengths are checked. Mirrored by
+    :func:`_collapsed_leibniz`.
 
     Args:
         self: The first operand jet.
@@ -191,8 +290,8 @@ def _apply_bilinear(
       the composed rule total.
 
     Only valid for **bilinear** (product-like) ops; ``add`` / ``sub`` follow the
-    additive rule (coefficient-wise sum), not Leibniz. Mirrors
-    :func:`jet.collapsed_operations._apply_bilinear`.
+    additive rule (coefficient-wise sum), not Leibniz. Mirrored by
+    :func:`_capply_bilinear`.
 
     Args:
         op: A bilinear function of two coefficient tensors.
@@ -211,6 +310,97 @@ def _apply_bilinear(
         return _apply_linear(self, lambda c: op(c, other))
     if other_is_jet:
         return _apply_linear(other, lambda c: op(self, c))
+    return op(self, other)
+
+
+def _collapsed_leibniz(
+    self: JetTuple,
+    other: JetTuple,
+    binary_op: Callable[[Tensor, Tensor], Tensor],
+) -> tuple[Tensor, ...]:
+    """Leibniz product rule with collapsed K-th coefficient (orders 1..K).
+
+    Collapsed counterpart of :func:`_leibniz`. Returns only coefficients 1..K;
+    the caller handles the order-0 primal explicitly (skipping k=0 here avoids a
+    wasted ``binary_op(self[0], other[0])`` node in the captured graph when the
+    caller supplies its own primal, e.g. the ``addmm`` composition).
+
+    For orders 1..K-1: standard Leibniz.
+    For order K: linear terms (using collapsed coefficients) +
+                 nonlinear terms (using batched coefficients, summed over R).
+    ``K`` is inferred as ``len(self) - 1``; lengths are checked.
+
+    Raises:
+        ValueError: If ``self`` and ``other`` have different lengths.
+    """
+    if len(self) != len(other):
+        raise ValueError(
+            f"_collapsed_leibniz: operands must share the same derivative "
+            f"order; got lengths {len(self)} and {len(other)}"
+        )
+    K = len(self) - 1
+
+    def apply(a, b, a_batched, b_batched):
+        # ``binary_op`` here is a general bilinear op (elementwise ``mul``,
+        # ``matmul``, or ``conv``), not necessarily one that broadcasts over a
+        # leading batch dim -- ``conv`` in particular cannot -- so the direction
+        # dim ``R`` is mapped explicitly with ``vmap`` (per direction), which
+        # also keeps ``R`` aligned when the operands' primal ranks differ. At
+        # least one operand is always batched here (the two coefficient indices
+        # sum to ``k >= 1``), so ``in_dims`` is never all-``None``.
+        in_dims = (0 if a_batched else None, 0 if b_batched else None)
+        return vmap(binary_op, in_dims=in_dims)(a, b)
+
+    coeffs = ()
+    for k in range(1, K + 1):
+        if k < K:
+            term = None
+            for j in range(k + 1):
+                term_j = comb(k, j, exact=True) * apply(
+                    self[j], other[k - j], j >= 1, (k - j) >= 1
+                )
+                term = term_j if term is None else term + term_j
+            coeffs += (term,)
+        else:
+            linear = binary_op(self[0], other[K]) + binary_op(self[K], other[0])
+            if K >= 2:
+                nonlinear = None
+                for j in range(1, K):
+                    # Sum out the direction dim R per term so the accumulator (and
+                    # downstream traced-graph tensors) stay small.
+                    term_j = comb(K, j, exact=True) * apply(
+                        self[j], other[K - j], True, True
+                    ).sum(0)
+                    nonlinear = term_j if nonlinear is None else nonlinear + term_j
+                coeffs += (linear + nonlinear,)
+            else:
+                coeffs += (linear,)
+    return coeffs
+
+
+def _capply_bilinear(
+    op: Callable[[Tensor, Tensor], Tensor],
+    self: Tensor | JetTuple,
+    other: Tensor | JetTuple,
+) -> Tensor | JetTuple:
+    """Collapsed counterpart of :func:`_apply_bilinear`.
+
+    Both-jet uses the collapsed Leibniz rule (:func:`_collapsed_leibniz`, which
+    sums the nonlinear terms over the direction dim ``R``); one-sided maps
+    coefficient-wise via :func:`_capply_linear` (vmapping the batched
+    coefficients); neither falls back to a plain ``op`` on two constants. Only
+    valid for **bilinear** (product-like) ops -- ``add`` / ``sub`` use the
+    additive rule.
+    """
+    self_is = isinstance(self, JetTuple)
+    other_is = isinstance(other, JetTuple)
+    if self_is and other_is:
+        primal = op(self[0], other[0])
+        return _cjet((primal, *_collapsed_leibniz(self, other, op)))
+    if self_is:
+        return _capply_linear(self, lambda c: op(c, other))
+    if other_is:
+        return _capply_linear(other, lambda c: op(self, c))
     return op(self, other)
 
 
@@ -540,6 +730,24 @@ def jet_add(
     return self + other
 
 
+def cjet_add(
+    self: Tensor | JetTuple | float | int,
+    other: Tensor | JetTuple | float | int,
+) -> Tensor | JetTuple | float | int:
+    """Collapsed jet rule for ``aten.add``."""
+    self_is = isinstance(self, JetTuple)
+    other_is = isinstance(other, JetTuple)
+    if self_is and other_is:
+        return _collapsed_pointwise(self, other, add)
+    if self_is:
+        primal = self[0] + other
+        return _cjet((primal, *_cbroadcast_coeffs(self, primal)))
+    if other_is:
+        primal = other[0] + self
+        return _cjet((primal, *_cbroadcast_coeffs(other, primal)))
+    return self + other
+
+
 def jet_sub(
     self: Tensor | JetTuple | float | int,
     other: Tensor | JetTuple | float | int,
@@ -569,6 +777,24 @@ def jet_sub(
     return self - other
 
 
+def cjet_sub(
+    self: Tensor | JetTuple | float | int,
+    other: Tensor | JetTuple | float | int,
+) -> Tensor | JetTuple | float | int:
+    """Collapsed jet rule for ``aten.sub``."""
+    self_is = isinstance(self, JetTuple)
+    other_is = isinstance(other, JetTuple)
+    if self_is and other_is:
+        return _collapsed_pointwise(self, other, sub)
+    if self_is:
+        primal = self[0] - other
+        return _cjet((primal, *_cbroadcast_coeffs(self, primal)))
+    if other_is:
+        primal = self - other[0]
+        return _cjet((primal, *(-c for c in _cbroadcast_coeffs(other, primal))))
+    return self - other
+
+
 def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.mul(self, other)``.
 
@@ -580,6 +806,11 @@ def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
         The value and its Taylor coefficients.
     """
     return _apply_bilinear(lambda a, b: a * b, self, other)
+
+
+def cjet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
+    """Collapsed jet rule for ``aten.mul``."""
+    return _capply_bilinear(lambda a, b: a * b, self, other)
 
 
 # --- Linear decomposition ---
@@ -596,6 +827,11 @@ def jet_mm(self: Tensor | JetTuple, mat2: Tensor | JetTuple) -> JetTuple:
         The value and its Taylor coefficients.
     """
     return _apply_bilinear(mm, self, mat2)
+
+
+def cjet_mm(self: Tensor | JetTuple, mat2: Tensor | JetTuple) -> JetTuple:
+    """Collapsed jet rule for ``aten.mm``."""
+    return _capply_bilinear(matmul, self, mat2)
 
 
 def _align_conv_bias(bias: Tensor | JetTuple, ndim: int) -> Tensor | JetTuple:
@@ -671,6 +907,21 @@ def jet_max_pool2d(input: JetTuple, *pool_args: object) -> JetTuple:
     return jet
 
 
+def cjet_max_pool2d_with_indices(
+    input: JetTuple, *pool_args: object
+) -> tuple[JetTuple, Tensor]:
+    """Collapsed jet rule for ``aten.max_pool2d_with_indices``."""
+    values0, indices = ops.aten.max_pool2d_with_indices.default(input[0], *pool_args)
+    coeffs = _capply_linear_coeffs(input, lambda c: _gather_at_indices(c, indices))
+    return _cjet((values0, *coeffs)), indices
+
+
+def cjet_max_pool2d(input: JetTuple, *pool_args: object) -> JetTuple:
+    """Collapsed jet rule for ``aten.max_pool2d`` (values only; e.g. MPS)."""
+    jet, _ = cjet_max_pool2d_with_indices(input, *pool_args)
+    return jet
+
+
 # --- Concatenation ---
 
 
@@ -699,6 +950,32 @@ def jet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
         return cat(parts, dim)
 
     return _jet(tuple(coeff(k) for k in range(K + 1)))
+
+
+def cjet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
+    """Collapsed jet rule for ``aten.cat(tensors, dim)``.
+
+    Concatenation is linear -- see :func:`jet_cat`. The batched coefficients
+    (orders ``1..K-1``) carry a leading direction dim ``R``, so a non-negative
+    concat ``dim`` shifts by one there, and constant operands contribute
+    ``(R, *shape)`` zeros to match the batched jet coefficients.
+    """
+    K = _jet_order(*tensors)
+    R = next(t for t in tensors if isinstance(t, JetTuple))[1].shape[0]
+
+    def part(t: object, k: int, batched: bool) -> Tensor:
+        if isinstance(t, JetTuple):
+            return t[k]
+        if k == 0:
+            return t
+        return t.new_zeros(R, *t.shape) if batched else zeros_like(t)
+
+    out = []
+    for k in range(K + 1):
+        batched = 0 < k < K
+        d = dim + 1 if (batched and dim >= 0) else dim
+        out.append(cat([part(t, k, batched) for t in tensors], d))
+    return _cjet(tuple(out))
 
 
 # --- Loss functions ---
@@ -757,6 +1034,40 @@ def jet_nll_loss_forward(
     return _jet((output, *coeffs)), total_weight
 
 
+def cjet_nll_loss_forward(
+    self: JetTuple,
+    target: Tensor,
+    weight: Tensor | None,
+    reduction: int,
+    ignore_index: int,
+) -> tuple[JetTuple, Tensor]:
+    """Collapsed jet rule for ``aten.nll_loss_forward``.
+
+    Same linear application as :func:`jet_nll_loss_forward`, but the batched
+    coefficients are vmapped over the direction dim ``R``.
+
+    Raises:
+        NotImplementedError: If ``target`` or ``weight`` is Taylor-expanded;
+            both must be constant tensors (the target is a class-index label).
+    """
+    if isinstance(target, JetTuple) or isinstance(weight, JetTuple):
+        raise NotImplementedError(
+            "cjet_nll_loss_forward does not support a Taylor-expanded target or "
+            "weight; both must be constant tensors (the target is a class-index "
+            "label)."
+        )
+    output, total_weight = ops.aten.nll_loss_forward.default(
+        self[0], target, weight, reduction, ignore_index
+    )
+    coeffs = _capply_linear_coeffs(
+        self,
+        lambda c: ops.aten.nll_loss_forward.default(
+            c, target, weight, reduction, ignore_index
+        )[0],
+    )
+    return _cjet((output, *coeffs)), total_weight
+
+
 # --- Batch norm ---
 
 
@@ -797,6 +1108,16 @@ def _make_linear_rule(prim: Callable, apply_linear: Callable) -> Callable:
 def _deflinear(prim: Callable) -> Callable:
     """Build a standard linear jet rule. See :func:`_make_linear_rule`."""
     return _make_linear_rule(prim, _apply_linear)
+
+
+def _cdeflinear(prim: Callable) -> Callable:
+    """Build a collapsed linear jet rule. See :func:`_make_linear_rule`.
+
+    Uses :func:`_capply_linear`, which vmaps over the leading ``R`` dim for
+    batched coefficients ``c_1..c_{K-1}`` and applies ``prim`` directly to the
+    primal and the collapsed slot ``c_K``.
+    """
+    return _make_linear_rule(prim, _capply_linear)
 
 
 def _defzero(prim: Callable) -> Callable:

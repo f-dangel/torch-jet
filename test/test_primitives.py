@@ -39,10 +39,7 @@ from torch.nn.functional import (
 )
 
 from jet import jet
-from jet.collapsed_operations import (
-    cjet_native_batch_norm,
-    cjet_nll_loss_forward,
-)
+from jet.collapsed_operations import cjet_native_batch_norm, cjet_nll_loss_forward
 from jet.operations import JetTuple, jet_native_batch_norm, jet_nll_loss_forward
 from test.utils import (
     K_AND_MODE,

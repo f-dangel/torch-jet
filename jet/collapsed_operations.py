@@ -321,10 +321,7 @@ def cjet_sub(
     return self - other
 
 
-def cjet_mul(
-    self: Tensor | JetTuple,
-    other: Tensor | JetTuple,
-) -> JetTuple:
+def cjet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
     """Collapsed jet rule for ``aten.mul``."""
     return _apply_bilinear(lambda a, b: a * b, self, other)
 

@@ -12,6 +12,7 @@ from typing import Callable
 
 from torch import ops
 
+import jet._rules
 from jet.primitives import (
     JetTuple,
     _align_conv_bias,
@@ -27,29 +28,36 @@ _APPLY_BILINEAR = {False: _apply_bilinear, True: _capply_bilinear}
 
 
 def _collapsed_of(*args: object) -> bool:
-    """Return the ``collapsed`` flag of the first ``JetTuple`` among ``args``.
+    """Return the shared ``collapsed`` flag of the ``JetTuple`` args.
 
     The interpreter only dispatches to a rule when at least one argument is a
-    jet, so a ``JetTuple`` is always present.
+    jet, so a ``JetTuple`` is always present. All jet arguments must agree on
+    the mode -- a whole run is either standard or collapsed -- so a mix is a
+    bug (mirrors :func:`jet.primitives._jet_order`'s single-``K`` check).
 
     Raises:
         TypeError: If no argument is a ``JetTuple`` (should be unreachable).
+        ValueError: If two ``JetTuple`` args disagree on ``collapsed``.
     """
-    for arg in args:
-        if isinstance(arg, JetTuple):
-            return arg.collapsed
-    raise TypeError("composition rule called without a JetTuple argument")
+    flags = {arg.collapsed for arg in args if isinstance(arg, JetTuple)}
+    if not flags:
+        raise TypeError("composition rule called without a JetTuple argument")
+    if len(flags) > 1:
+        raise ValueError(
+            "composition rule received JetTuple arguments with mixed collapsed "
+            "flags; all jets in a run must share the same mode"
+        )
+    return flags.pop()
 
 
 def _rule(op: Callable, collapsed: bool) -> Callable:
     """Fetch ``op``'s rule for ``collapsed`` mode from the shared registry.
 
-    Imported lazily: :mod:`jet._rules` imports this module to assemble
-    ``RULES``, so a module-level import would be circular.
+    ``jet._rules`` imports this module to assemble ``RULES``, so the registry
+    is reached through the module (``jet._rules.RULES``) and read at call time;
+    binding the ``RULES`` name at import time would be circular.
     """
-    from jet._rules import RULES
-
-    return RULES[op][collapsed]
+    return jet._rules.RULES[op][collapsed]
 
 
 def addmm(self: object, mat1: object, mat2: object) -> JetTuple:

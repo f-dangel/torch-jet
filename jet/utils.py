@@ -21,7 +21,7 @@ Jet = tuple[Tensor, ...]
 #: - ``PyTree[Jet]`` — public jet-form: arguments to and return value of the
 #:   callable returned by :func:`jet.jet` and :func:`jet._rev_jet`, where each
 #:   tensor leaf is replaced by a jet ``(primal, c_1, ..., c_K)``.
-#: - ``PyTree[JetTuple | CollapsedJetTuple | Tensor]`` — interpreter-internal
+#: - ``PyTree[JetTuple | Tensor]`` — interpreter-internal
 #:   form, returned by ``JetInterpreter.run``.
 type PyTree[Leaf] = (
     Leaf | tuple[PyTree[Leaf], ...] | list[PyTree[Leaf]] | dict[str, PyTree[Leaf]]

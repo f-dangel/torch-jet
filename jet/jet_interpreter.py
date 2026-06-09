@@ -9,8 +9,8 @@ distinguish Taylor-expanded arguments from constants.
 
 The same interpreter handles both standard and collapsed Taylor mode via the
 ``collapsed`` constructor flag, which selects the dispatch table
-(``MAPPING`` vs ``COLLAPSED_MAPPING``) and the placeholder wrapper
-(``JetTuple`` vs ``CollapsedJetTuple``).
+(``MAPPING`` vs ``COLLAPSED_MAPPING``) and wraps placeholders as
+``JetTuple(..., collapsed=...)``.
 """
 
 from typing import Any
@@ -18,13 +18,11 @@ from typing import Any
 from torch import Tensor, zeros_like
 from torch.fx import GraphModule, Interpreter
 from torch.fx.node import Argument, Target
-from torch.utils._pytree import tree_map
+from torch.utils._pytree import tree_leaves, tree_map
 
-from jet.collapsed_operations import COLLAPSED_MAPPING, CollapsedJetTuple
+from jet.collapsed_operations import COLLAPSED_MAPPING
 from jet.operations import MAPPING, JetTuple
 from jet.utils import Jet, PyTree
-
-_JetTypes = (JetTuple, CollapsedJetTuple)
 
 
 class JetInterpreter(Interpreter):
@@ -39,18 +37,17 @@ class JetInterpreter(Interpreter):
 
     Args:
         module: The traced computation graph module to interpret.
-        collapsed: If ``True``, propagate ``CollapsedJetTuple`` values and
+        collapsed: If ``True``, propagate collapsed ``JetTuple`` values and
             dispatch via ``COLLAPSED_MAPPING`` (collapsed Taylor mode, where
             the highest-order coefficient is already summed over directions).
-            If ``False`` (default), propagate ``JetTuple`` values and dispatch
-            via ``MAPPING`` (standard Taylor mode).
+            If ``False`` (default), propagate standard ``JetTuple`` values and
+            dispatch via ``MAPPING`` (standard Taylor mode).
     """
 
     def __init__(self, module: GraphModule, collapsed: bool = False) -> None:
         """Initialize the JetInterpreter."""
         super().__init__(module)
         self.collapsed: bool = collapsed
-        self.jet_type: type = CollapsedJetTuple if collapsed else JetTuple
         self.mapping: dict = COLLAPSED_MAPPING if collapsed else MAPPING
         self.label: str = "collapsed jet" if collapsed else "jet"
 
@@ -74,9 +71,9 @@ class JetInterpreter(Interpreter):
     def placeholder(
         self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Any]
     ) -> Any:
-        """Wrap each placeholder value in ``self.jet_type``."""
+        """Wrap each placeholder value in a ``JetTuple``."""
         value = super().placeholder(target, args, kwargs)
-        return self.jet_type(value)
+        return JetTuple(value, collapsed=self.collapsed)
 
     def call_function(
         self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Any]
@@ -101,10 +98,10 @@ class JetInterpreter(Interpreter):
         # return a ``tuple`` whose element 0 is a jet, and the following
         # ``getitem`` must fall through to the default op, not dispatch here.
         def _jet_in(a: Argument) -> bool:
-            if isinstance(a, self.jet_type):
+            if isinstance(a, JetTuple):
                 return True
             if isinstance(a, list):
-                return any(isinstance(e, self.jet_type) for e in a)
+                return any(isinstance(e, JetTuple) for e in a)
             return False
 
         has_jet_arg = any(_jet_in(a) for a in args)
@@ -114,18 +111,36 @@ class JetInterpreter(Interpreter):
                     f"No {self.label} rule for {target}. "
                     "Please file an issue or add a rule."
                 )
-            return self.mapping[target](*args, **kwargs)
+            result = self.mapping[target](*args, **kwargs)
+            self._check_collapsed(result, target)
+            return result
         return super().call_function(target, args, kwargs)
+
+    def _check_collapsed(self, result: Any, target: Target) -> None:
+        """Assert every ``JetTuple`` a rule returns matches the run's mode.
+
+        A single, central guard: if a rule builds its output with the wrong
+        constructor (standard ``JetTuple`` vs. collapsed ``_cjet``), the
+        mismatched ``.collapsed`` flag is caught here -- at the dispatch site,
+        naming the op -- instead of surfacing later as an opaque shape error.
+        """
+        for leaf in tree_leaves(result, is_leaf=lambda x: isinstance(x, JetTuple)):
+            if isinstance(leaf, JetTuple) and leaf.collapsed != self.collapsed:
+                raise RuntimeError(
+                    f"the jet rule for {target} returned a JetTuple with "
+                    f"collapsed={leaf.collapsed}, but the interpreter is running "
+                    f"in collapsed={self.collapsed} mode"
+                )
 
     def _normalize(
         self,
-        result: PyTree[JetTuple | CollapsedJetTuple | Tensor],
+        result: PyTree[JetTuple | Tensor],
         derivative_order: int,
         collapsed_directions: int | None,
     ) -> PyTree[Jet]:
         """Convert the pytree-of-jets into a pytree of plain tuples.
 
-        Each ``self.jet_type`` leaf becomes a plain ``(f_0, ..., f_K)`` tuple.
+        Each ``JetTuple`` leaf becomes a plain ``(f_0, ..., f_K)`` tuple.
         Constant tensor leaves (outputs that do not depend on the inputs) are
         expanded to zero-coefficient jets matching the mode's shape contract:
         standard returns ``K`` zeros of the primal's shape; collapsed returns
@@ -133,7 +148,7 @@ class JetInterpreter(Interpreter):
         """
 
         def _normalize_leaf(node: Any) -> Jet:
-            if isinstance(node, _JetTypes):
+            if isinstance(node, JetTuple):
                 return tuple(node)
             return (
                 node,
@@ -143,7 +158,7 @@ class JetInterpreter(Interpreter):
         return tree_map(
             _normalize_leaf,
             result,
-            is_leaf=lambda x: isinstance(x, (*_JetTypes, Tensor)),
+            is_leaf=lambda x: isinstance(x, (JetTuple, Tensor)),
         )
 
     def _zero_coeffs(

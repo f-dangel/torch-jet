@@ -4,6 +4,7 @@ Each row in ``PRIMITIVE_CASES`` exercises one dispatch branch of a primitive
 registered with :class:`JetInterpreter`.
 """
 
+from functools import partial
 from itertools import product
 from typing import Any, Callable
 
@@ -38,11 +39,7 @@ from torch.nn.functional import (
 )
 
 from jet import jet
-from jet.collapsed_operations import (
-    CollapsedJetTuple,
-    cjet_native_batch_norm,
-    cjet_nll_loss_forward,
-)
+from jet.collapsed_operations import cjet_native_batch_norm, cjet_nll_loss_forward
 from jet.operations import JetTuple, jet_native_batch_norm, jet_nll_loss_forward
 from test.utils import (
     K_AND_MODE,
@@ -768,7 +765,7 @@ def test_batch_norm_eval_without_running_stats_raises(collapsed: bool, device: s
     """
     kw = device_kw(device)
     rule = cjet_native_batch_norm if collapsed else jet_native_batch_norm
-    tup = CollapsedJetTuple if collapsed else JetTuple
+    tup = partial(JetTuple, collapsed=collapsed)
     x = tup((rand(4, 3, 5, 5, **kw), rand(4, 3, 5, 5, **kw)))
     with raises(NotImplementedError, match="running statistics"):
         rule(x, None, None, None, None, False, 0.1, 1e-5)
@@ -783,7 +780,7 @@ def test_nll_loss_taylor_expanded_target_raises(collapsed: bool, device: str):
     """
     kw = device_kw(device)
     rule = cjet_nll_loss_forward if collapsed else jet_nll_loss_forward
-    tup = CollapsedJetTuple if collapsed else JetTuple
+    tup = partial(JetTuple, collapsed=collapsed)
     logits = tup((rand(8, 5, **kw), rand(8, 5, **kw)))
     target = tup((rand(8, **kw), rand(8, **kw)))  # a Taylor-expanded label
     with raises(NotImplementedError, match="Taylor-expanded target"):

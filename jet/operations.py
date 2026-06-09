@@ -1,6 +1,7 @@
 """Implementation of AD primitives in Taylor-mode arithmetic."""
 
-from typing import Callable
+from functools import partial
+from typing import Callable, Self
 
 from scipy.special import comb, factorial, stirling2
 from torch import (
@@ -23,57 +24,61 @@ from jet.utils import integer_partitions, multiplicity
 
 
 class JetTuple(tuple):
-    """A tuple subclass marking Taylor-expanded values (primal + coefficients).
+    """A Taylor jet ``(primal, c_1, ..., c_K)`` carrying a ``collapsed`` flag.
 
-    Using a distinct type instead of plain ``tuple`` prevents false positives
-    from ATen ops that take tuple arguments (e.g. padding, stride).
+    ``collapsed`` is ``False`` for standard Taylor mode and ``True`` for
+    collapsed mode (where coefficients ``c_1..c_{K-1}`` carry a leading
+    direction dim ``R`` and ``c_K`` is already summed over it).
     """
+
+    def __new__(cls, iterable=(), *, collapsed: bool) -> Self:
+        """Build a jet from ``iterable``, tagging it standard or collapsed."""
+        obj = super().__new__(cls, iterable)
+        obj.collapsed = collapsed
+        return obj
 
 
 # Register with PyTorch's pytree so that vmap, make_fx, etc. can flatten/unflatten
-# JetTuple the same way they handle plain tuples.
+# JetTuple the same way they handle plain tuples; the ``collapsed`` flag rides in
+# the pytree context so it survives the roundtrip.
 register_pytree_node(
     JetTuple,
-    flatten_fn=lambda x: (list(x), None),
-    unflatten_fn=lambda values, context: JetTuple(values),
+    flatten_fn=lambda x: (list(x), x.collapsed),
+    unflatten_fn=lambda values, collapsed: JetTuple(values, collapsed=collapsed),
 )
 
+#: Standard-mode JetTuple constructor (``JetTuple(values, collapsed=False)``);
+#: mirror of :data:`jet.collapsed_operations._cjet`.
+_jet = partial(JetTuple, collapsed=False)
 
-def _order(args: tuple[Tensor, ...], jet_type: type) -> int:
-    """Infer the Taylor-expansion order ``K`` from the jet-typed positional args.
 
-    A jet (whether ``JetTuple`` or ``CollapsedJetTuple``) is exactly
-    ``(primal, c_1, ..., c_K)``, so ``K = len(jet) - 1``. Collects ``K`` from
-    every ``jet_type`` argument in a single pass and requires exactly one
-    distinct value.
+def _jet_order(*args: Tensor) -> int:
+    """Infer the Taylor-expansion order ``K`` from the ``JetTuple`` positional args.
+
+    A jet is exactly ``(primal, c_1, ..., c_K)``, so ``K = len(jet) - 1``.
+    Collects ``K`` from every ``JetTuple`` argument in a single pass and
+    requires exactly one distinct value.
 
     Args:
         args: Positional arguments of a jet op.
-        jet_type: The jet tuple subclass to match (``JetTuple`` for standard
-            Taylor mode, ``CollapsedJetTuple`` for collapsed).
 
     Returns:
         The Taylor-expansion order ``K``.
 
     Raises:
-        TypeError: If no positional argument is an instance of ``jet_type``.
-        ValueError: If two or more ``jet_type`` arguments have different lengths
+        TypeError: If no positional argument is a ``JetTuple``.
+        ValueError: If two or more ``JetTuple`` args have different lengths
             (inconsistent Taylor-expansion orders).
     """
-    Ks = {len(arg) - 1 for arg in args if isinstance(arg, jet_type)}
+    Ks = {len(arg) - 1 for arg in args if isinstance(arg, JetTuple)}
     if not Ks:
-        raise TypeError(f"_order: no {jet_type.__name__} in positional arguments")
+        raise TypeError("_jet_order: no JetTuple in positional arguments")
     if len(Ks) > 1:
         raise ValueError(
-            f"all {jet_type.__name__} arguments must share the same derivative "
-            f"order; got {sorted(Ks)}"
+            f"all JetTuple arguments must share the same derivative order; "
+            f"got {sorted(Ks)}"
         )
     return Ks.pop()
-
-
-def _jet_order(*args: Tensor) -> int:
-    """Infer ``K`` from all ``JetTuple`` positional args. See :func:`_order`."""
-    return _order(args, JetTuple)
 
 
 def _apply_linear(self: JetTuple, op: Callable[[Tensor], Tensor]) -> JetTuple:
@@ -91,7 +96,7 @@ def _apply_linear(self: JetTuple, op: Callable[[Tensor], Tensor]) -> JetTuple:
     Returns:
         The value and its Taylor coefficients, with ``op`` applied to each.
     """
-    return JetTuple(op(c) for c in self)
+    return JetTuple((op(c) for c in self), collapsed=self.collapsed)
 
 
 def _apply_linear_coeffs(
@@ -200,7 +205,7 @@ def _apply_bilinear(
     self_is_jet = isinstance(self, JetTuple)
     other_is_jet = isinstance(other, JetTuple)
     if self_is_jet and other_is_jet:
-        return JetTuple((op(self[0], other[0]), *_leibniz(self, other, op)))
+        return _jet((op(self[0], other[0]), *_leibniz(self, other, op)))
     if self_is_jet:
         return _apply_linear(self, lambda c: op(c, other))
     if other_is_jet:
@@ -487,7 +492,7 @@ def _jet_elementwise(
     self0, vs = self[0], self[1:]
     dn = deriv_fn(self0, K)
     vs_out = _faa_di_bruno(vs, dn)
-    return JetTuple((dn[0], *vs_out))
+    return _jet((dn[0], *vs_out))
 
 
 def jet_sin(self: JetTuple) -> JetTuple:
@@ -542,7 +547,7 @@ def jet_pow(self: JetTuple, exponent: float | int) -> JetTuple:
     self0, vs = self[0], self[1:]
     dpow = _pow_derivatives(self0, exponent, _jet_order(self))
     vs_out = _faa_di_bruno(vs, dpow)
-    return JetTuple((dpow[0], *vs_out))
+    return _jet((dpow[0], *vs_out))
 
 
 # --- Arithmetic ---
@@ -567,13 +572,13 @@ def jet_add(
 
     if self_is_jet and other_is_jet:
         _jet_order(self, other)  # validates K-consistency, raises on mismatch
-        return JetTuple(s + o for s, o in zip(self, other))
+        return _jet(s + o for s, o in zip(self, other))
     if self_is_jet:
         primal = self[0] + other
-        return JetTuple((primal, *_broadcast_coeffs(self, primal)))
+        return _jet((primal, *_broadcast_coeffs(self, primal)))
     if other_is_jet:
         primal = other[0] + self
-        return JetTuple((primal, *_broadcast_coeffs(other, primal)))
+        return _jet((primal, *_broadcast_coeffs(other, primal)))
     return self + other
 
 
@@ -596,13 +601,13 @@ def jet_sub(
 
     if self_is_jet and other_is_jet:
         _jet_order(self, other)  # validates K-consistency, raises on mismatch
-        return JetTuple(s - o for s, o in zip(self, other))
+        return _jet(s - o for s, o in zip(self, other))
     if self_is_jet:
         primal = self[0] - other
-        return JetTuple((primal, *_broadcast_coeffs(self, primal)))
+        return _jet((primal, *_broadcast_coeffs(self, primal)))
     if other_is_jet:
         primal = self - other[0]
-        return JetTuple((primal, *(-c for c in _broadcast_coeffs(other, primal))))
+        return _jet((primal, *(-c for c in _broadcast_coeffs(other, primal))))
     return self - other
 
 
@@ -663,9 +668,8 @@ def _align_conv_bias(bias: Tensor | JetTuple, ndim: int) -> Tensor | JetTuple:
 
     The bias indexes the channel dim (dim 1 of an ``ndim``-D conv output);
     appending ``ndim - 2`` trailing size-1 dims lets ``add`` broadcast it over
-    the batch and spatial dims. A jet bias is reshaped coefficient-wise; the
-    type-agnostic ``Tensor`` check and ``type(bias)`` reconstruction also serve
-    the collapsed rule's ``CollapsedJetTuple`` bias.
+    the batch and spatial dims. A jet bias is reshaped coefficient-wise (the
+    ``Tensor`` check separates a constant bias).
 
     Args:
         bias: The 1-D bias; a jet or a constant ``Tensor``.
@@ -677,7 +681,7 @@ def _align_conv_bias(bias: Tensor | JetTuple, ndim: int) -> Tensor | JetTuple:
     tail = (1,) * (ndim - 2)
     if isinstance(bias, Tensor):
         return bias.reshape(*bias.shape, *tail)
-    return type(bias)(b.reshape(*b.shape, *tail) for b in bias)
+    return _apply_linear(bias, lambda b: b.reshape(*b.shape, *tail))
 
 
 def jet_convolution(
@@ -760,7 +764,7 @@ def jet_max_pool2d_with_indices(
     """
     values0, indices = ops.aten.max_pool2d_with_indices.default(input[0], *pool_args)
     coeffs = _apply_linear_coeffs(input, lambda c: _gather_at_indices(c, indices))
-    return JetTuple((values0, *coeffs)), indices
+    return _jet((values0, *coeffs)), indices
 
 
 def jet_max_pool2d(input: JetTuple, *pool_args: object) -> JetTuple:
@@ -800,7 +804,7 @@ def jet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
         ]
         return cat(parts, dim)
 
-    return JetTuple(tuple(coeff(k) for k in range(K + 1)))
+    return _jet(tuple(coeff(k) for k in range(K + 1)))
 
 
 # --- Loss functions ---
@@ -938,7 +942,7 @@ def jet_nll_loss_forward(
             c, target, weight, reduction, ignore_index
         )[0],
     )
-    return JetTuple((output, *coeffs)), total_weight
+    return _jet((output, *coeffs)), total_weight
 
 
 # --- Batch norm ---
@@ -1087,7 +1091,7 @@ def defzero(prim: Callable) -> None:
     def rule(self: JetTuple, *args, **kwargs) -> JetTuple:
         primal_out = prim(self[0], *args, **kwargs)
         coeffs = [zeros_like(primal_out) for _ in range(len(self) - 1)]
-        return JetTuple([primal_out, *coeffs])
+        return _jet([primal_out, *coeffs])
 
     MAPPING[prim] = rule
 

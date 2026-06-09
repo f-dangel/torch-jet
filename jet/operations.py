@@ -1014,17 +1014,20 @@ def _deflinear(prim: Callable) -> Callable:
 def _defzero(prim: Callable) -> Callable:
     """Build a constant-output jet rule (output independent of the input).
 
-    The Taylor expansion of a constant-output op has all coefficients zero;
-    only the primal carries information. ``prim`` is applied to the primal to
-    produce the output value (which carries any ``dtype`` / ``device`` /
-    ``layout`` kwargs the user passed). Coefficient slots are allocated via
-    ``zeros_like(primal_out)`` so they inherit ``primal_out``'s metadata.
+    Mode-agnostic (standard *or* collapsed): the Taylor expansion of a
+    constant-output op has all coefficients zero, so only the primal carries
+    information. ``prim`` is applied to the primal to produce the output value
+    (which carries any ``dtype`` / ``device`` / ``layout`` kwargs the user
+    passed). Each zero coefficient matches its input slot's shape -- which
+    respects the collapsed per-slot contract (``(R, *S)`` for ``c_1..c_{K-1}``,
+    ``S`` for ``c_K``) and reduces to the primal's shape in standard mode -- and
+    inherits ``primal_out``'s metadata. The output mode follows ``self.collapsed``.
     """
 
     def rule(self: JetTuple, *args, **kwargs) -> JetTuple:
         primal_out = prim(self[0], *args, **kwargs)
-        coeffs = [zeros_like(primal_out) for _ in range(len(self) - 1)]
-        return _jet([primal_out, *coeffs])
+        coeffs = [primal_out.new_zeros(c.shape) for c in self[1:]]
+        return JetTuple([primal_out, *coeffs], collapsed=self.collapsed)
 
     return rule
 

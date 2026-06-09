@@ -561,10 +561,10 @@ def cjet_native_batch_norm(
 # Rule-building factories (registered in :mod:`jet._rules`)
 # ---------------------------------------------------------------------------
 #
-# Mirror :func:`jet.operations._deflinear` / :func:`jet.operations._defzero`,
-# but use the collapsed ``_apply_linear`` (which vmaps over the leading
-# direction dim for batched coefficients) and respect the collapsed per-slot
-# shape contract for the zero rule. Registration into ``RULES`` lives in
+# Mirror :func:`jet.operations._deflinear`, but use the collapsed
+# ``_apply_linear`` (which vmaps over the leading direction dim for batched
+# coefficients). The constant-output rule is mode-agnostic, so it lives only in
+# :func:`jet.operations._defzero`. Registration into ``RULES`` lives in
 # :mod:`jet._rules`.
 
 
@@ -576,25 +576,6 @@ def _deflinear(prim: Callable) -> Callable:
     the primal and the collapsed slot ``c_K``.
     """
     return _make_linear_rule(prim, _apply_linear)
-
-
-def _defzero(prim: Callable) -> Callable:
-    """Build a constant-output jet rule (collapsed mode).
-
-    ``prim`` is applied to the primal; coefficients are filled with zero
-    tensors that take their shape from each input coefficient slot (to
-    preserve the per-slot shape contract — ``(R, *S)`` for ``c_1..c_{K-1}``,
-    ``S`` for ``c_K``) and their dtype / device / layout from ``primal_out``
-    so any ``dtype=`` / ``device=`` etc. kwargs passed to ``prim`` propagate
-    to the coefficients too.
-    """
-
-    def rule(self: JetTuple, *args, **kwargs) -> JetTuple:
-        primal_out = prim(self[0], *args, **kwargs)
-        coeffs = [primal_out.new_zeros(c.shape) for c in self[1:]]
-        return _cjet([primal_out, *coeffs])
-
-    return rule
 
 
 # Bound to names so composite rules can reuse them: ``cjet_sum`` in

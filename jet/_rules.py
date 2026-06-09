@@ -43,8 +43,14 @@ def _deflinear(prim: Callable) -> dict[bool, Rule]:
 
 
 def _defzero(prim: Callable) -> dict[bool, Rule]:
-    """Build the ``{standard, collapsed}`` rules for a constant-output op."""
-    return {False: standard._defzero(prim), True: collapsed._defzero(prim)}
+    """Build the constant-output rule for a ``prim``.
+
+    The rule is mode-agnostic -- :func:`jet.operations._defzero` zeros each
+    coefficient to its input slot's shape and follows ``self.collapsed`` -- so
+    both keys share one callable.
+    """
+    rule = standard._defzero(prim)
+    return {False: rule, True: rule}
 
 
 #: Maps an ``aten`` op overload to a ``{collapsed_flag: rule}`` dict.

@@ -16,20 +16,24 @@ from jet.operations import JetTuple
 Rule = Callable[..., JetTuple]
 
 
+def _defshared(rule: Rule) -> dict[bool, Rule]:
+    """Register one mode-agnostic ``rule`` (it reads ``self.collapsed``) under both keys."""
+    return {False: rule, True: rule}
+
+
 def _defelementwise(
     deriv_fn: Callable[[Tensor, int], dict[int, Tensor]],
 ) -> dict[bool, Rule]:
-    """Build the ``{standard, collapsed}`` rules for an elementwise unary op.
+    """Build the elementwise-unary rule from ``deriv_fn`` (e.g. ``_sin_derivatives``).
 
     The rule is mode-agnostic -- :func:`jet.operations._elementwise` reads the
-    standard/collapsed mode off the jet's ``.collapsed`` flag -- so both keys
-    share one callable that reuses ``deriv_fn`` (e.g. ``_sin_derivatives``).
+    standard/collapsed mode off the jet's ``.collapsed`` flag.
     """
 
     def rule(self: JetTuple) -> JetTuple:
         return standard._elementwise(self, deriv_fn)
 
-    return {False: rule, True: rule}
+    return _defshared(rule)
 
 
 def _deflinear(prim: Callable) -> dict[bool, Rule]:
@@ -58,8 +62,10 @@ RULES: dict = {
     ops.aten.relu.default: _defelementwise(standard._relu_derivatives),
     ops.aten.exp.default: _defelementwise(standard._exp_derivatives),
     ops.aten.log.default: _defelementwise(standard._log_derivatives),
+    # Power (also elementwise, but the exponent is a call-time arg, so it carries
+    # its own rule rather than registering through ``_defelementwise``).
+    ops.aten.pow.Tensor_Scalar: _defshared(standard.jet_pow),
     # Structured (one hand-written rule body per mode)
-    ops.aten.pow.Tensor_Scalar: {False: standard.jet_pow, True: collapsed.cjet_pow},
     ops.aten.add.Tensor: {False: standard.jet_add, True: collapsed.cjet_add},
     ops.aten.sub.Tensor: {False: standard.jet_sub, True: collapsed.cjet_sub},
     ops.aten.mul.Tensor: {False: standard.jet_mul, True: collapsed.cjet_mul},

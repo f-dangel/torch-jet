@@ -195,6 +195,10 @@ supported, though coverage is still growing.
 
 ### Internal
 
+- Drop an unreachable interpreter dispatch branch and add a direct unit test
+  for the fused `aten.max_pool2d` rule
+  ([PR](https://github.com/f-dangel/torch-jet/pull/180)).
+
 - Pin a minimum `torch` version, declare `pydot` (needed by `visualize_graph`)
   as a runtime dependency, and drop the unused `einops`/`numpy` core deps
   ([PR](https://github.com/f-dangel/torch-jet/pull/178)).

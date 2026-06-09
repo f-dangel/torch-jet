@@ -32,6 +32,21 @@ def _defelementwise(
     return {False: rule, True: rule}
 
 
+def _deflinear(prim: Callable) -> dict[bool, Rule]:
+    """Build the ``{standard, collapsed}`` rules for a linear op.
+
+    Unlike the elementwise rule, the two modes stay distinct callables: the
+    collapsed builder vmaps ``prim`` over the leading direction dim ``R`` for
+    the batched coefficients, the standard one does not.
+    """
+    return {False: standard._deflinear(prim), True: collapsed._deflinear(prim)}
+
+
+def _defzero(prim: Callable) -> dict[bool, Rule]:
+    """Build the ``{standard, collapsed}`` rules for a constant-output op."""
+    return {False: standard._defzero(prim), True: collapsed._defzero(prim)}
+
+
 #: Maps an ``aten`` op overload to a ``{collapsed_flag: rule}`` dict.
 RULES: dict = {
     # Elementwise unary (both modes from the shared derivative table)
@@ -101,13 +116,7 @@ for _prim in (
     ops.aten.mean.default,
     ops.aten.mean.dim,
 ):
-    RULES[_prim] = {
-        False: standard._deflinear(_prim),
-        True: collapsed._deflinear(_prim),
-    }
+    RULES[_prim] = _deflinear(_prim)
 
-# Constant-output ops: per-mode `_defzero`.
-RULES[ops.aten.zeros_like.default] = {
-    False: standard._defzero(ops.aten.zeros_like.default),
-    True: collapsed._defzero(ops.aten.zeros_like.default),
-}
+# Constant-output ops: primal carries the value, coefficients are zero.
+RULES[ops.aten.zeros_like.default] = _defzero(ops.aten.zeros_like.default)

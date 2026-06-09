@@ -102,9 +102,10 @@ def _apply_linear(self: JetTuple, op: Callable[[Tensor], Tensor]) -> JetTuple:
     """Apply a linear ``op`` coefficient-wise to every entry of ``self``.
 
     Linear ops commute with the Taylor expansion, so the result's coefficients
-    are just ``op`` applied to each input coefficient. Mirrored by
-    :func:`_capply_linear` (which additionally vmaps over the batched direction
-    dim ``R``).
+    are just ``op`` applied to each input coefficient. Standard mode applies
+    ``op`` to every entry; collapsed mode vmaps the batched coefficients
+    ``c_1..c_{K-1}`` over the direction dim ``R`` and applies ``op`` directly to
+    the primal and the already-collapsed slot ``c_K``.
 
     Args:
         self: The primal and its Taylor coefficients.
@@ -113,7 +114,14 @@ def _apply_linear(self: JetTuple, op: Callable[[Tensor], Tensor]) -> JetTuple:
     Returns:
         The value and its Taylor coefficients, with ``op`` applied to each.
     """
-    return JetTuple((op(c) for c in self), collapsed=self.collapsed)
+    if not self.collapsed:
+        return JetTuple((op(c) for c in self), collapsed=False)
+    K = len(self) - 1
+    vop = vmap(op)
+    results = [op(self[0])]
+    for k in range(1, K + 1):
+        results.append(vop(self[k]) if k < K else op(self[k]))
+    return JetTuple(results, collapsed=True)
 
 
 def _apply_linear_coeffs(
@@ -145,21 +153,6 @@ def _broadcast_coeffs(self: JetTuple, primal: Tensor) -> list[Tensor]:
     return [
         c if c.shape == primal.shape else c.broadcast_to(primal.shape) for c in self[1:]
     ]
-
-
-def _capply_linear(jet: JetTuple, op: Callable[[Tensor], Tensor]) -> JetTuple:
-    """Collapsed counterpart of :func:`_apply_linear`.
-
-    Applies a linear ``op`` to every entry, vmapping the batched coefficients
-    ``c_1..c_{K-1}`` over the direction dim ``R`` and applying ``op`` directly to
-    the primal and the collapsed slot ``c_K``.
-    """
-    K = len(jet) - 1
-    results = [op(jet[0])]
-    vop = vmap(op)
-    for k in range(1, K + 1):
-        results.append(vop(jet[k]) if k < K else op(jet[k]))
-    return _cjet(results)
 
 
 def _cbroadcast_coeffs(self: JetTuple, primal: Tensor) -> list[Tensor]:
@@ -281,13 +274,12 @@ def _apply_bilinear(
       The binary jet ops assume at least one jet operand, so this fallback keeps
       the composed rule total.
 
-    Mode-agnostic: the standard and collapsed branches differ only in the Leibniz
-    rule (:func:`_leibniz` vs :func:`_collapsed_leibniz`, which sums the nonlinear
-    terms over the direction dim ``R``) and the coefficient-wise propagator
-    (:func:`_apply_linear` vs :func:`_capply_linear`); both are selected off the
-    jet operand's ``collapsed`` flag. Only valid for **bilinear** (product-like)
-    ops; ``add`` / ``sub`` follow the additive rule (coefficient-wise sum), not
-    Leibniz.
+    Mode-agnostic: the both-jet branch selects the Leibniz rule off the operand's
+    ``collapsed`` flag (:func:`_leibniz` vs :func:`_collapsed_leibniz`, which sums
+    the nonlinear terms over the direction dim ``R``); the one-sided branch uses
+    the mode-aware :func:`_apply_linear`. Only valid for **bilinear**
+    (product-like) ops; ``add`` / ``sub`` follow the additive rule
+    (coefficient-wise sum), not Leibniz.
 
     Args:
         op: A bilinear function of two coefficient tensors.
@@ -312,13 +304,12 @@ def _apply_bilinear(
         )
     collapsed = self.collapsed if self_is_jet else other.collapsed
     leibniz = _collapsed_leibniz if collapsed else _leibniz
-    apply_linear = _capply_linear if collapsed else _apply_linear
     if self_is_jet and other_is_jet:
         primal = op(self[0], other[0])
         return JetTuple((primal, *leibniz(self, other, op)), collapsed=collapsed)
     if self_is_jet:
-        return apply_linear(self, lambda c: op(c, other))
-    return apply_linear(other, lambda c: op(self, c))
+        return _apply_linear(self, lambda c: op(c, other))
+    return _apply_linear(other, lambda c: op(self, c))
 
 
 def _collapsed_leibniz(
@@ -998,37 +989,22 @@ def _bn_channel_view(primal: Tensor) -> tuple[int, ...]:
 # ``RULES`` registry lives in :mod:`jet._rules`.
 
 
-def _make_linear_rule(prim: Callable, apply_linear: Callable) -> Callable:
-    """Build a linear jet rule (standard *or* collapsed).
+def _deflinear(prim: Callable) -> Callable:
+    """Build a linear jet rule (standard or collapsed).
 
-    Applies ``prim`` coefficient-wise via ``apply_linear`` (the mode's linear
-    propagator) when ``self`` is a ``JetTuple``; a non-jet ``self`` is passed
-    straight to ``prim`` (total over constants). ``prim`` must be ``aten``-style
-    -- the tensor first, structural args (``size``, ``dim``, ...) after -- and
+    Applies ``prim`` coefficient-wise via the mode-aware :func:`_apply_linear`
+    when ``self`` is a ``JetTuple``; a non-jet ``self`` is passed straight to
+    ``prim`` (total over constants). ``prim`` must be ``aten``-style -- the
+    tensor first, structural args (``size``, ``dim``, ...) after -- and
     ``*args`` / ``**kwargs`` are forwarded to it.
     """
 
     def rule(self, *args, **kwargs):
         if not isinstance(self, JetTuple):
             return prim(self, *args, **kwargs)
-        return apply_linear(self, lambda c: prim(c, *args, **kwargs))
+        return _apply_linear(self, lambda c: prim(c, *args, **kwargs))
 
     return rule
-
-
-def _deflinear(prim: Callable) -> Callable:
-    """Build a standard linear jet rule. See :func:`_make_linear_rule`."""
-    return _make_linear_rule(prim, _apply_linear)
-
-
-def _cdeflinear(prim: Callable) -> Callable:
-    """Build a collapsed linear jet rule. See :func:`_make_linear_rule`.
-
-    Uses :func:`_capply_linear`, which vmaps over the leading ``R`` dim for
-    batched coefficients ``c_1..c_{K-1}`` and applies ``prim`` directly to the
-    primal and the collapsed slot ``c_K``.
-    """
-    return _make_linear_rule(prim, _capply_linear)
 
 
 def _defzero(prim: Callable) -> Callable:

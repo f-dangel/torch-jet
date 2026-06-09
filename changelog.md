@@ -192,7 +192,7 @@ supported, though coverage is still growing.
 ### Internal
 
 - De-duplicate the mode-specific primitive rules (`add`, `sub`, `mul`, `mm`,
-  `max_pool2d`, `nll_loss`) into single mode-agnostic bodies
+  `max_pool2d`, `nll_loss`, and the linear ops) into single mode-agnostic bodies
   ([PR](https://github.com/f-dangel/torch-jet/pull/177)).
 
 - De-duplicate the composite op rules and reorganize the jet rules by role into

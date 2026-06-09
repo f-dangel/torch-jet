@@ -30,8 +30,8 @@ def _defelementwise(
 
 
 def _deflinear(prim: Callable) -> dict[bool, Rule]:
-    """Build the ``{standard, collapsed}`` rules for a linear op."""
-    return {False: primitives._deflinear(prim), True: primitives._cdeflinear(prim)}
+    """Build the (mode-agnostic) rule for a linear op."""
+    return _defshared(primitives._deflinear(prim))
 
 
 def _defzero(prim: Callable) -> dict[bool, Rule]:
@@ -79,7 +79,8 @@ RULES: dict = {
     ops.aten.native_batch_norm.default: _defshared(compositions.native_batch_norm),
 }
 
-# Linear ops (pointwise-linear, shape-only, reductions): per-mode `_deflinear`.
+# Linear ops (pointwise-linear, shape-only, reductions): one mode-agnostic
+# `_deflinear` rule each (its `_apply_linear` follows the jet's collapsed flag).
 # Composite rules (:mod:`jet.compositions`) reuse several of these -- e.g.
 # ``sum.dim_IntList`` in ``log_softmax``, ``view.default`` in
 # ``native_batch_norm`` -- by pulling them straight from this registry.

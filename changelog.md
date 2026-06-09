@@ -191,6 +191,10 @@ supported, though coverage is still growing.
 
 ### Internal
 
+- Replace the two op-dispatch tables with a single `RULES` registry and
+  de-duplicate rules shared across standard and collapsed modes
+  ([PR](https://github.com/f-dangel/torch-jet/pull/174)).
+
 - Unify the two internal jet tuple types into a single `JetTuple`
   ([PR](https://github.com/f-dangel/torch-jet/pull/175)).
 

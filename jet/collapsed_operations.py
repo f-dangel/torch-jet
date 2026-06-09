@@ -22,17 +22,13 @@ from jet.operations import (
     JetTuple,
     _align_conv_bias,
     _bn_channel_view,
-    _cos_derivatives,
+    _elementwise,
     _exp_derivatives,
-    _faa_di_bruno,
     _gather_at_indices,
     _jet_order,
     _log_derivatives,
+    _make_linear_rule,
     _pow_derivatives,
-    _relu_derivatives,
-    _sigmoid_derivatives,
-    _sin_derivatives,
-    _tanh_derivatives,
 )
 
 #: Collapsed-mode JetTuple constructor (``JetTuple(values, collapsed=True)``).
@@ -224,60 +220,20 @@ def _apply_bilinear(
 # ---------------------------------------------------------------------------
 
 
-def _cjet_elementwise(
-    self: JetTuple,
-    deriv_fn: Callable[[Tensor, int], dict[int, Tensor]],
-) -> JetTuple:
-    """Generic collapsed elementwise using shared helpers."""
-    K = _jet_order(self)
-    self0, vs = self[0], self[1:]
-    dn = deriv_fn(self0, K)
-    vs_out = _faa_di_bruno(vs, dn, collapsed=True)
-    return _cjet((dn[0], *vs_out))
-
-
-def cjet_sin(self: JetTuple) -> JetTuple:
-    """Collapsed jet rule for ``aten.sin``."""
-    return _cjet_elementwise(self, _sin_derivatives)
-
-
-def cjet_cos(self: JetTuple) -> JetTuple:
-    """Collapsed jet rule for ``aten.cos``."""
-    return _cjet_elementwise(self, _cos_derivatives)
-
-
-def cjet_tanh(self: JetTuple) -> JetTuple:
-    """Collapsed jet rule for ``aten.tanh``."""
-    return _cjet_elementwise(self, _tanh_derivatives)
-
-
-def cjet_sigmoid(self: JetTuple) -> JetTuple:
-    """Collapsed jet rule for ``aten.sigmoid``."""
-    return _cjet_elementwise(self, _sigmoid_derivatives)
-
-
-def cjet_relu(self: JetTuple) -> JetTuple:
-    """Collapsed jet rule for ``aten.relu``."""
-    return _cjet_elementwise(self, _relu_derivatives)
-
-
 def cjet_exp(self: JetTuple) -> JetTuple:
-    """Collapsed jet rule for ``aten.exp``."""
-    return _cjet_elementwise(self, _exp_derivatives)
+    """Collapsed ``aten.exp`` (bound for reuse in ``cjet_log_softmax``)."""
+    return _elementwise(self, _exp_derivatives)
 
 
 def cjet_log(self: JetTuple) -> JetTuple:
-    """Collapsed jet rule for ``aten.log``."""
-    return _cjet_elementwise(self, _log_derivatives)
+    """Collapsed ``aten.log`` (bound for reuse in ``cjet_log_softmax``)."""
+    return _elementwise(self, _log_derivatives)
 
 
 def cjet_pow(self: JetTuple, exponent: float | int) -> JetTuple:
     """Collapsed jet rule for ``aten.pow``."""
     assert isinstance(exponent, (float, int))
-    self0, vs = self[0], self[1:]
-    dpow = _pow_derivatives(self0, exponent, _jet_order(self))
-    vs_out = _faa_di_bruno(vs, dpow, collapsed=True)
-    return _cjet((dpow[0], *vs_out))
+    return _elementwise(self, lambda x, k: _pow_derivatives(x, exponent, k))
 
 
 # ---------------------------------------------------------------------------
@@ -433,7 +389,7 @@ def cjet_mse_loss(
 
 
 # ---------------------------------------------------------------------------
-# COLLAPSED_MAPPING
+# Pooling
 # ---------------------------------------------------------------------------
 
 
@@ -602,115 +558,27 @@ def cjet_native_batch_norm(
 
 
 # ---------------------------------------------------------------------------
-# COLLAPSED_MAPPING
+# Rule-building factories (registered in :mod:`jet._rules`)
 # ---------------------------------------------------------------------------
-
-
-COLLAPSED_MAPPING: dict = {
-    # Elementwise nonlinear
-    ops.aten.sin.default: cjet_sin,
-    ops.aten.cos.default: cjet_cos,
-    ops.aten.tanh.default: cjet_tanh,
-    ops.aten.sigmoid.default: cjet_sigmoid,
-    ops.aten.relu.default: cjet_relu,
-    ops.aten.exp.default: cjet_exp,
-    ops.aten.log.default: cjet_log,
-    # Power
-    ops.aten.pow.Tensor_Scalar: cjet_pow,
-    # Arithmetic
-    ops.aten.add.Tensor: cjet_add,
-    ops.aten.sub.Tensor: cjet_sub,
-    ops.aten.mul.Tensor: cjet_mul,
-    # Matrix ops
-    ops.aten.mm.default: cjet_mm,
-    ops.aten.addmm.default: cjet_addmm,
-    # Convolution (bilinear in input/weight; bias is the affine term)
-    ops.aten.convolution.default: cjet_convolution,
-    # Pooling (piecewise linear: gather coefficients at the primal's arg-max)
-    ops.aten.max_pool2d_with_indices.default: cjet_max_pool2d_with_indices,
-    ops.aten.max_pool2d.default: cjet_max_pool2d,
-    # Concatenation (linear; jets nested in the operand list)
-    ops.aten.cat.default: cjet_cat,
-    # Loss functions
-    ops.aten.mse_loss.default: cjet_mse_loss,
-    ops.aten.nll_loss_forward.default: cjet_nll_loss_forward,
-    # Normalization
-    ops.aten._log_softmax.default: cjet_log_softmax,
-    # Batch norm (affine in eval; composed batch statistics in training)
-    ops.aten.native_batch_norm.default: cjet_native_batch_norm,
-}
-
-
-# --- JAX-style helpers: bulk-register categories of ops ---
 #
-# Mirrors :func:`jet.operations.deflinear` / :func:`jet.operations.defzero`,
-# but uses the collapsed ``_apply_linear`` (which vmaps over the leading
-# direction dim for batched coefficients) and respects the collapsed
-# per-slot shape contract for ``defzero``.
+# Mirror :func:`jet.operations._deflinear`, but use the collapsed
+# ``_apply_linear`` (which vmaps over the leading direction dim for batched
+# coefficients). The constant-output rule is mode-agnostic, so it lives only in
+# :func:`jet.operations._defzero`. Registration into ``RULES`` lives in
+# :mod:`jet._rules`.
 
 
-def deflinear(prim: Callable) -> Callable:
-    """Register ``prim`` as a linear op (collapsed mode).
+def _deflinear(prim: Callable) -> Callable:
+    """Build a collapsed linear jet rule. See :func:`jet.operations._make_linear_rule`.
 
-    Collapsed ``_apply_linear`` vmaps over the leading ``R`` dim for batched
-    coefficients ``c_1..c_{K-1}`` and applies ``prim`` directly to the primal
-    and the collapsed slot ``c_K``. Returns the registered rule so it can also
-    be bound to a name and reused inside composite rules (e.g. ``cjet_sum`` in
-    ``cjet_log_softmax``, or ``cjet_view`` to reshape a possibly-constant
-    operand). The rule is total over constants: a non-jet argument is passed
-    straight to ``prim``.
+    Uses the collapsed ``_apply_linear``, which vmaps over the leading ``R`` dim
+    for batched coefficients ``c_1..c_{K-1}`` and applies ``prim`` directly to
+    the primal and the collapsed slot ``c_K``.
     """
+    return _make_linear_rule(prim, _apply_linear)
 
-    def rule(self: Tensor | JetTuple, *args, **kwargs) -> Tensor | JetTuple:
-        if not isinstance(self, JetTuple):
-            return prim(self, *args, **kwargs)
-        return _apply_linear(self, lambda c: prim(c, *args, **kwargs))
-
-    COLLAPSED_MAPPING[prim] = rule
-    return rule
-
-
-def defzero(prim: Callable) -> None:
-    """Register ``prim`` as a constant-output op (collapsed mode).
-
-    ``prim`` is applied to the primal; coefficients are filled with zero
-    tensors that take their shape from each input coefficient slot (to
-    preserve the per-slot shape contract — ``(R, *S)`` for ``c_1..c_{K-1}``,
-    ``S`` for ``c_K``) and their dtype / device / layout from ``primal_out``
-    so any ``dtype=`` / ``device=`` etc. kwargs passed to ``prim`` propagate
-    to the coefficients too.
-    """
-
-    def rule(self: JetTuple, *args, **kwargs) -> JetTuple:
-        primal_out = prim(self[0], *args, **kwargs)
-        coeffs = [primal_out.new_zeros(c.shape) for c in self[1:]]
-        return _cjet([primal_out, *coeffs])
-
-    COLLAPSED_MAPPING[prim] = rule
-
-
-# Linear ops (pointwise-linear, shape-only, reductions).
-for _prim in (
-    ops.aten.neg.default,
-    ops.aten.div.Scalar,
-    ops.aten.t.default,
-    ops.aten._unsafe_view.default,
-    ops.aten.unsqueeze.default,
-    ops.aten.squeeze.dim,
-    ops.aten.squeeze.dims,
-    ops.aten.sum.default,
-    ops.aten._adaptive_avg_pool2d.default,
-    ops.aten.avg_pool2d.default,
-    ops.aten.mean.default,
-    ops.aten.mean.dim,
-):
-    deflinear(_prim)
 
 # Bound to names so composite rules can reuse them: ``cjet_sum`` in
 # ``cjet_log_softmax``; ``cjet_view`` to reshape a possibly-constant operand.
-cjet_sum = deflinear(ops.aten.sum.dim_IntList)
-cjet_view = deflinear(ops.aten.view.default)
-
-# Constant-output ops.
-for _prim in (ops.aten.zeros_like.default,):
-    defzero(_prim)
+cjet_sum = _deflinear(ops.aten.sum.dim_IntList)
+cjet_view = _deflinear(ops.aten.view.default)

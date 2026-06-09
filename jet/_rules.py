@@ -33,12 +33,7 @@ def _defelementwise(
 
 
 def _deflinear(prim: Callable) -> dict[bool, Rule]:
-    """Build the ``{standard, collapsed}`` rules for a linear op.
-
-    Unlike the elementwise rule, the two modes stay distinct callables: the
-    collapsed builder vmaps ``prim`` over the leading direction dim ``R`` for
-    the batched coefficients, the standard one does not.
-    """
+    """Build the ``{standard, collapsed}`` rules for a linear op."""
     return {False: standard._deflinear(prim), True: collapsed._deflinear(prim)}
 
 

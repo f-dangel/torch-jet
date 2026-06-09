@@ -25,7 +25,8 @@ def _defelementwise(
     deriv_fn: Callable[[Tensor, int], dict[int, Tensor]],
 ) -> dict[bool, Rule]:
     """Build the elementwise-unary rule from ``deriv_fn`` (e.g. ``_sin_derivatives``)."""
-    return _defshared(partial(primitives._elementwise, deriv_fn=deriv_fn))
+    rule = partial(primitives._elementwise, deriv_fn=deriv_fn)
+    return _defshared(rule)
 
 
 def _deflinear(prim: Callable) -> dict[bool, Rule]:

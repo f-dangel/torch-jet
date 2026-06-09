@@ -27,11 +27,7 @@ class JetTuple(tuple):
 
     ``collapsed`` is ``False`` for standard Taylor mode and ``True`` for
     collapsed mode (where coefficients ``c_1..c_{K-1}`` carry a leading
-    direction dim ``R`` and ``c_K`` is already summed over it). Both modes share
-    this one type; ``collapsed`` distinguishes them. Using a distinct type
-    instead of plain ``tuple`` prevents false positives from ATen ops that take
-    tuple arguments (e.g. padding, stride). The collapsed-mode constructor is
-    :data:`jet.collapsed_operations._cjet` (``partial(JetTuple, collapsed=True)``).
+    direction dim ``R`` and ``c_K`` is already summed over it).
     """
 
     def __new__(cls, iterable=(), collapsed: bool = False) -> "JetTuple":

@@ -26,8 +26,8 @@ from jet.operations import (
     _exp_derivatives,
     _faa_di_bruno,
     _gather_at_indices,
+    _jet_order,
     _log_derivatives,
-    _order,
     _pow_derivatives,
     _relu_derivatives,
     _sigmoid_derivatives,
@@ -39,23 +39,12 @@ from jet.operations import (
 _cjet = partial(JetTuple, collapsed=True)
 
 
-def _cjet_order(*args: Tensor | JetTuple | float | int) -> int:
-    """Infer ``K`` from all collapsed ``JetTuple`` positional args.
-
-    Thin wrapper around :func:`jet.operations._order` that pre-binds the jet
-    type to ``JetTuple``.
-    """
-    return _order(args, JetTuple)
-
-
 # ---------------------------------------------------------------------------
 # Helpers: apply a linear op with vmap for batched coefficients
 # ---------------------------------------------------------------------------
 
 
-def _apply_linear(
-    jet: JetTuple, op: Callable[[Tensor], Tensor]
-) -> JetTuple:
+def _apply_linear(jet: JetTuple, op: Callable[[Tensor], Tensor]) -> JetTuple:
     """Apply a linear *op* to every entry of *jet*, vmapping batched ones."""
     K = len(jet) - 1
     results = [op(jet[0])]
@@ -89,7 +78,7 @@ def _collapsed_pointwise(
     rules use per-direction ``vmap`` instead (see :func:`_collapsed_leibniz`)
     for ops like ``conv`` that cannot.
     """
-    _cjet_order(self, other)  # validates K-consistency, raises on mismatch
+    _jet_order(self, other)  # validates K-consistency, raises on mismatch
     primal = op(self[0], other[0])
     s_coeffs = _broadcast_coeffs(self, primal)
     o_coeffs = _broadcast_coeffs(other, primal)
@@ -240,7 +229,7 @@ def _cjet_elementwise(
     deriv_fn: Callable[[Tensor, int], dict[int, Tensor]],
 ) -> JetTuple:
     """Generic collapsed elementwise using shared helpers."""
-    K = _cjet_order(self)
+    K = _jet_order(self)
     self0, vs = self[0], self[1:]
     dn = deriv_fn(self0, K)
     vs_out = _faa_di_bruno(vs, dn, collapsed=True)
@@ -286,7 +275,7 @@ def cjet_pow(self: JetTuple, exponent: float | int) -> JetTuple:
     """Collapsed jet rule for ``aten.pow``."""
     assert isinstance(exponent, (float, int))
     self0, vs = self[0], self[1:]
-    dpow = _pow_derivatives(self0, exponent, _cjet_order(self))
+    dpow = _pow_derivatives(self0, exponent, _jet_order(self))
     vs_out = _faa_di_bruno(vs, dpow, collapsed=True)
     return _cjet((dpow[0], *vs_out))
 
@@ -345,9 +334,7 @@ def cjet_mul(
 # ---------------------------------------------------------------------------
 
 
-def cjet_mm(
-    self: Tensor | JetTuple, mat2: Tensor | JetTuple
-) -> JetTuple:
+def cjet_mm(self: Tensor | JetTuple, mat2: Tensor | JetTuple) -> JetTuple:
     """Collapsed jet rule for ``aten.mm``."""
     return _apply_bilinear(matmul, self, mat2)
 
@@ -468,9 +455,7 @@ def cjet_max_pool2d(input: JetTuple, *pool_args: object) -> JetTuple:
     return jet
 
 
-def cjet_cat(
-    tensors: list[Tensor | JetTuple], dim: int = 0
-) -> JetTuple:
+def cjet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
     """Collapsed jet rule for ``aten.cat(tensors, dim)``.
 
     Concatenation is linear -- see :func:`jet.operations.jet_cat`. The batched
@@ -478,7 +463,7 @@ def cjet_cat(
     non-negative concat ``dim`` shifts by one there, and constant operands
     contribute ``(R, *shape)`` zeros to match the batched jet coefficients.
     """
-    K = _cjet_order(*tensors)
+    K = _jet_order(*tensors)
     R = next(t for t in tensors if isinstance(t, JetTuple))[1].shape[0]
 
     def part(t: object, k: int, batched: bool) -> Tensor:
@@ -496,9 +481,7 @@ def cjet_cat(
     return _cjet(tuple(out))
 
 
-def cjet_log_softmax(
-    self: JetTuple, dim: int, half_to_float: bool = False
-) -> JetTuple:
+def cjet_log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTuple:
     """Collapsed jet rule for ``aten._log_softmax(self, dim, half_to_float)``.
 
     Args:
@@ -681,9 +664,7 @@ def deflinear(prim: Callable) -> Callable:
     straight to ``prim``.
     """
 
-    def rule(
-        self: Tensor | JetTuple, *args, **kwargs
-    ) -> Tensor | JetTuple:
+    def rule(self: Tensor | JetTuple, *args, **kwargs) -> Tensor | JetTuple:
         if not isinstance(self, JetTuple):
             return prim(self, *args, **kwargs)
         return _apply_linear(self, lambda c: prim(c, *args, **kwargs))

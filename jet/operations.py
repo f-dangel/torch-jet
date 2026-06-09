@@ -40,10 +40,6 @@ class JetTuple(tuple):
         obj.collapsed = collapsed
         return obj
 
-    def __init__(self, iterable=(), collapsed: bool = False) -> None:
-        """Values are set in ``__new__`` (``tuple`` is immutable)."""
-        super().__init__()
-
 
 # Register with PyTorch's pytree so that vmap, make_fx, etc. can flatten/unflatten
 # JetTuple the same way they handle plain tuples; the ``collapsed`` flag rides in
@@ -55,40 +51,33 @@ register_pytree_node(
 )
 
 
-def _order(args: tuple[Tensor, ...], jet_type: type) -> int:
-    """Infer the Taylor-expansion order ``K`` from the jet-typed positional args.
+def _jet_order(*args: Tensor) -> int:
+    """Infer the Taylor-expansion order ``K`` from the ``JetTuple`` positional args.
 
     A jet is exactly ``(primal, c_1, ..., c_K)``, so ``K = len(jet) - 1``.
-    Collects ``K`` from every ``jet_type`` argument in a single pass and
+    Collects ``K`` from every ``JetTuple`` argument in a single pass and
     requires exactly one distinct value.
 
     Args:
         args: Positional arguments of a jet op.
-        jet_type: The jet tuple subclass to match (always ``JetTuple``; the
-            ``collapsed`` flag, not the type, distinguishes the two modes).
 
     Returns:
         The Taylor-expansion order ``K``.
 
     Raises:
-        TypeError: If no positional argument is an instance of ``jet_type``.
-        ValueError: If two or more ``jet_type`` arguments have different lengths
+        TypeError: If no positional argument is a ``JetTuple``.
+        ValueError: If two or more ``JetTuple`` args have different lengths
             (inconsistent Taylor-expansion orders).
     """
-    Ks = {len(arg) - 1 for arg in args if isinstance(arg, jet_type)}
+    Ks = {len(arg) - 1 for arg in args if isinstance(arg, JetTuple)}
     if not Ks:
-        raise TypeError(f"_order: no {jet_type.__name__} in positional arguments")
+        raise TypeError("_jet_order: no JetTuple in positional arguments")
     if len(Ks) > 1:
         raise ValueError(
-            f"all {jet_type.__name__} arguments must share the same derivative "
-            f"order; got {sorted(Ks)}"
+            f"all JetTuple arguments must share the same derivative order; "
+            f"got {sorted(Ks)}"
         )
     return Ks.pop()
-
-
-def _jet_order(*args: Tensor) -> int:
-    """Infer ``K`` from all ``JetTuple`` positional args. See :func:`_order`."""
-    return _order(args, JetTuple)
 
 
 def _apply_linear(self: JetTuple, op: Callable[[Tensor], Tensor]) -> JetTuple:
@@ -106,7 +95,7 @@ def _apply_linear(self: JetTuple, op: Callable[[Tensor], Tensor]) -> JetTuple:
     Returns:
         The value and its Taylor coefficients, with ``op`` applied to each.
     """
-    return JetTuple(op(c) for c in self)
+    return JetTuple((op(c) for c in self), collapsed=self.collapsed)
 
 
 def _apply_linear_coeffs(
@@ -692,9 +681,7 @@ def _align_conv_bias(bias: Tensor | JetTuple, ndim: int) -> Tensor | JetTuple:
     tail = (1,) * (ndim - 2)
     if isinstance(bias, Tensor):
         return bias.reshape(*bias.shape, *tail)
-    return JetTuple(
-        (b.reshape(*b.shape, *tail) for b in bias), collapsed=bias.collapsed
-    )
+    return _apply_linear(bias, lambda b: b.reshape(*b.shape, *tail))
 
 
 def jet_convolution(

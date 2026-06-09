@@ -160,6 +160,10 @@ supported, though coverage is still growing.
 
 ### Fixed/Removed
 
+- Fix the `collapsed=False` uncollapse path so it agrees with the collapsed
+  semantics for a non-zero highest-order coefficient `c_K`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/184)).
+
 - Fix a crash when raising a jet to an integer-valued `float` exponent (e.g.
   `x ** 2.0`), which previously surfaced an opaque scipy `ValueError`
   ([PR](https://github.com/f-dangel/torch-jet/pull/179)).

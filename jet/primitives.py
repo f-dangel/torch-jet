@@ -25,7 +25,6 @@ from torch import (
     exp,
     log,
     matmul,
-    mm,
     ops,
     relu,
     sigmoid,
@@ -280,9 +279,13 @@ def _apply_bilinear(
       The binary jet ops assume at least one jet operand, so this fallback keeps
       the composed rule total.
 
-    Only valid for **bilinear** (product-like) ops; ``add`` / ``sub`` follow the
-    additive rule (coefficient-wise sum), not Leibniz. Mirrored by
-    :func:`_capply_bilinear`.
+    Mode-agnostic: the standard and collapsed branches differ only in the Leibniz
+    rule (:func:`_leibniz` vs :func:`_collapsed_leibniz`, which sums the nonlinear
+    terms over the direction dim ``R``) and the coefficient-wise propagator
+    (:func:`_apply_linear` vs :func:`_capply_linear`); both are selected off the
+    jet operand's ``collapsed`` flag. Only valid for **bilinear** (product-like)
+    ops; ``add`` / ``sub`` follow the additive rule (coefficient-wise sum), not
+    Leibniz.
 
     Args:
         op: A bilinear function of two coefficient tensors.
@@ -292,16 +295,28 @@ def _apply_bilinear(
     Returns:
         The jet of ``op(self, other)``, or a plain constant when both operands
         are constants.
+
+    Raises:
+        ValueError: If both operands are jets but disagree on ``collapsed``.
     """
     self_is_jet = isinstance(self, JetTuple)
     other_is_jet = isinstance(other, JetTuple)
+    if not (self_is_jet or other_is_jet):
+        return op(self, other)
+    if self_is_jet and other_is_jet and self.collapsed != other.collapsed:
+        raise ValueError(
+            "bilinear op received JetTuple operands with mixed collapsed flags; "
+            "all jets in a run must share the same mode"
+        )
+    collapsed = self.collapsed if self_is_jet else other.collapsed
+    leibniz = _collapsed_leibniz if collapsed else _leibniz
+    apply_linear = _capply_linear if collapsed else _apply_linear
     if self_is_jet and other_is_jet:
-        return _jet((op(self[0], other[0]), *_leibniz(self, other, op)))
+        primal = op(self[0], other[0])
+        return JetTuple((primal, *leibniz(self, other, op)), collapsed=collapsed)
     if self_is_jet:
-        return _apply_linear(self, lambda c: op(c, other))
-    if other_is_jet:
-        return _apply_linear(other, lambda c: op(self, c))
-    return op(self, other)
+        return apply_linear(self, lambda c: op(c, other))
+    return apply_linear(other, lambda c: op(self, c))
 
 
 def _collapsed_leibniz(
@@ -367,32 +382,6 @@ def _collapsed_leibniz(
             else:
                 coeffs += (linear,)
     return coeffs
-
-
-def _capply_bilinear(
-    op: Callable[[Tensor, Tensor], Tensor],
-    self: Tensor | JetTuple,
-    other: Tensor | JetTuple,
-) -> Tensor | JetTuple:
-    """Collapsed counterpart of :func:`_apply_bilinear`.
-
-    Both-jet uses the collapsed Leibniz rule (:func:`_collapsed_leibniz`, which
-    sums the nonlinear terms over the direction dim ``R``); one-sided maps
-    coefficient-wise via :func:`_capply_linear` (vmapping the batched
-    coefficients); neither falls back to a plain ``op`` on two constants. Only
-    valid for **bilinear** (product-like) ops -- ``add`` / ``sub`` use the
-    additive rule.
-    """
-    self_is = isinstance(self, JetTuple)
-    other_is = isinstance(other, JetTuple)
-    if self_is and other_is:
-        primal = op(self[0], other[0])
-        return _cjet((primal, *_collapsed_leibniz(self, other, op)))
-    if self_is:
-        return _capply_linear(self, lambda c: op(c, other))
-    if other_is:
-        return _capply_linear(other, lambda c: op(self, c))
-    return op(self, other)
 
 
 def _partition_term(
@@ -789,6 +778,9 @@ def cjet_sub(
 def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.mul(self, other)``.
 
+    Mode-agnostic -- :func:`_apply_bilinear` follows the operands' ``collapsed``
+    flag.
+
     Args:
         self: The first operand and its Taylor coefficients.
         other: The second operand and its Taylor coefficients.
@@ -799,16 +791,16 @@ def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
     return _apply_bilinear(lambda a, b: a * b, self, other)
 
 
-def cjet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
-    """Collapsed jet rule for ``aten.mul``."""
-    return _capply_bilinear(lambda a, b: a * b, self, other)
-
-
 # --- Linear decomposition ---
 
 
 def jet_mm(self: Tensor | JetTuple, mat2: Tensor | JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.mm(self, mat2)``.
+
+    Mode-agnostic. Uses ``matmul`` rather than ``mm`` as the bilinear op: it
+    agrees with ``mm`` on the 2-D coefficients standard mode passes, and is the
+    form collapsed mode needs (its ``_collapsed_leibniz`` vmaps over the
+    direction dim ``R``).
 
     Args:
         self: The first matrix and its Taylor coefficients.
@@ -817,12 +809,7 @@ def jet_mm(self: Tensor | JetTuple, mat2: Tensor | JetTuple) -> JetTuple:
     Returns:
         The value and its Taylor coefficients.
     """
-    return _apply_bilinear(mm, self, mat2)
-
-
-def cjet_mm(self: Tensor | JetTuple, mat2: Tensor | JetTuple) -> JetTuple:
-    """Collapsed jet rule for ``aten.mm``."""
-    return _capply_bilinear(matmul, self, mat2)
+    return _apply_bilinear(matmul, self, mat2)
 
 
 def _align_conv_bias(bias: Tensor | JetTuple, ndim: int) -> Tensor | JetTuple:

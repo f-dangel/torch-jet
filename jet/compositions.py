@@ -18,13 +18,7 @@ from jet.primitives import (
     _align_conv_bias,
     _apply_bilinear,
     _bn_channel_view,
-    _capply_bilinear,
 )
-
-#: Per-mode bilinear lifter for a bias-free convolution. Unlike ``add`` / ``mm``,
-#: the bias-free convolution core is not a registered ATen op, so its standard /
-#: collapsed Leibniz rule cannot be pulled from ``RULES`` and is selected here.
-_APPLY_BILINEAR = {False: _apply_bilinear, True: _capply_bilinear}
 
 
 def _collapsed_of(*args: object) -> bool:
@@ -106,14 +100,13 @@ def convolution(
         The value and its Taylor coefficients.
     """
     collapsed = _collapsed_of(input, weight, bias)
-    apply_bilinear = _APPLY_BILINEAR[collapsed]
     add = _rule(ops.aten.add.Tensor, collapsed)
 
     def cv(a: object, b: object) -> object:
         """Bias-free convolution -- the bilinear core of ``aten.convolution``."""
         return ops.aten.convolution.default(a, b, None, *conv_args)
 
-    product = apply_bilinear(cv, input, weight)
+    product = _apply_bilinear(cv, input, weight)
     if bias is None:
         return product
     # Reshape the 1-D bias to broadcast over the output's batch and spatial dims

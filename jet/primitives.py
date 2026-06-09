@@ -181,7 +181,9 @@ def _broadcast_coeffs(self: JetTuple, primal: Tensor) -> list[Tensor]:
             target = (c.shape[0], *primal.shape)
             if c.shape != target:
                 pad = primal.ndim - (c.ndim - 1)
-                c = c.reshape(c.shape[0], *([1] * pad), *c.shape[1:]).broadcast_to(target)
+                c = c.reshape(c.shape[0], *([1] * pad), *c.shape[1:]).broadcast_to(
+                    target
+                )
         elif c.shape != primal.shape:  # no R: standard, or the collapsed K-th
             c = c.broadcast_to(primal.shape)
         out.append(c)
@@ -329,9 +331,7 @@ def _apply_bilinear(
     if self_is_jet and other_is_jet:
         _check_same_mode(self, other)
         primal = op(self[0], other[0])
-        return JetTuple(
-            (primal, *_leibniz(self, other, op)), collapsed=self.collapsed
-        )
+        return JetTuple((primal, *_leibniz(self, other, op)), collapsed=self.collapsed)
     if self_is_jet:
         return _apply_linear(self, lambda c: op(c, other))
     return _apply_linear(other, lambda c: op(self, c))

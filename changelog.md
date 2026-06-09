@@ -191,6 +191,9 @@ supported, though coverage is still growing.
 
 ### Internal
 
+- De-duplicate the composite op rules into a single mode-agnostic body each
+  ([PR](https://github.com/f-dangel/torch-jet/pull/176)).
+
 - Replace the two op-dispatch tables with a single `RULES` registry and
   de-duplicate rules shared across standard and collapsed modes
   ([PR](https://github.com/f-dangel/torch-jet/pull/174)).

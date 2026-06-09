@@ -664,8 +664,7 @@ def _align_conv_bias(bias: Tensor | JetTuple, ndim: int) -> Tensor | JetTuple:
     The bias indexes the channel dim (dim 1 of an ``ndim``-D conv output);
     appending ``ndim - 2`` trailing size-1 dims lets ``add`` broadcast it over
     the batch and spatial dims. A jet bias is reshaped coefficient-wise (the
-    ``Tensor`` check separates a constant bias) and the collapsed flag is
-    preserved, so this also serves the collapsed rule's bias.
+    ``Tensor`` check separates a constant bias).
 
     Args:
         bias: The 1-D bias; a jet or a constant ``Tensor``.

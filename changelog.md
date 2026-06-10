@@ -86,7 +86,10 @@ supported, though coverage is still growing.
   transforms ([PR #123](https://github.com/f-dangel/torch-jet/pull/123)), and
   the `use_collapsing` flag was renamed to `collapsed` (bundled with merging
   the two jet interpreters into one;
-  [PR #132](https://github.com/f-dangel/torch-jet/pull/132)).
+  [PR #132](https://github.com/f-dangel/torch-jet/pull/132)). The two
+  signatures were later reordered so `collapsed` precedes `randomization` (and
+  `weighting`) for positional consistency
+  ([PR #183](https://github.com/f-dangel/torch-jet/pull/183)).
 
 - Add jet rules for `aten.zeros_like.default`, `aten._unsafe_view.default`,
   and `aten.squeeze.dims`. Op dispatch now forwards kwargs to the
@@ -150,13 +153,6 @@ supported, though coverage is still growing.
   tuple and returns a `GraphModule` `jet_f(primals, series)` that returns
   `(primals_out, series_out)`
   ([PR](https://github.com/f-dangel/torch-jet/pull/126))
-
-### Changed
-
-- **Backward-incompatible.** Reorder the `laplacian`/`bilaplacian` signatures so
-  `collapsed` precedes `randomization` (and `weighting`), making the two
-  transforms positionally consistent; affects callers passing these options
-  positionally ([PR](https://github.com/f-dangel/torch-jet/pull/183)).
 
 ### Fixed/Removed
 

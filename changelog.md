@@ -195,6 +195,10 @@ supported, though coverage is still growing.
 
 ### Internal
 
+- Replace the coupled `collapsed`/`K` test parametrization with two independent
+  pytest fixtures
+  ([PR](https://github.com/f-dangel/torch-jet/pull/186)).
+
 - Drop an unreachable interpreter dispatch branch and add a direct unit test
   for the fused `aten.max_pool2d` rule
   ([PR](https://github.com/f-dangel/torch-jet/pull/180)).

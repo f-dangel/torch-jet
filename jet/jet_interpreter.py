@@ -109,13 +109,7 @@ class JetInterpreter(Interpreter):
                 raise NotImplementedError(
                     f"No jet rule for {target}. Please file an issue."
                 )
-            fn = rule.get(self.collapsed)
-            if fn is None:
-                raise NotImplementedError(
-                    f"{target} has a standard jet rule but no collapsed one. "
-                    "Call with collapsed=False."
-                )
-            result = fn(*args, **kwargs)
+            result = rule[self.collapsed](*args, **kwargs)
             self._check_collapsed(result, target)
             return result
         return super().call_function(target, args, kwargs)

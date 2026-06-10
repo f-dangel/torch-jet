@@ -44,7 +44,6 @@ from jet import jet, primitives
 from jet.compositions import native_batch_norm
 from jet.primitives import JetTuple, jet_nll_loss_forward
 from test.utils import (
-    K_AND_MODE,
     _stateless,
     assert_jet_matches_oracle,
     class_index_loss,
@@ -811,14 +810,12 @@ PRIMITIVE_CASES = [
 ]
 
 
-@mark.parametrize("K, collapsed", K_AND_MODE)
 @mark.parametrize("config", PRIMITIVE_CASES, ids=lambda c: c["id"])
 def test_primitive(config: dict[str, Any], K: int, collapsed: bool, device: str):
     """``jet(primitive)`` matches its mode-specific oracle."""
     assert_jet_matches_oracle(config, K, collapsed, device)
 
 
-@mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])
 def test_batch_norm_training_raises(collapsed: bool, device: str):
     """Training-mode batch norm is unsupported and must raise clearly.
 
@@ -841,7 +838,6 @@ def test_batch_norm_training_raises(collapsed: bool, device: str):
         jet(f, (x,), collapsed=collapsed)(*jet_args)
 
 
-@mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])
 def test_batch_norm_eval_without_running_stats_raises(collapsed: bool, device: str):
     """Eval-mode batch norm without running statistics must raise clearly.
 
@@ -857,7 +853,6 @@ def test_batch_norm_eval_without_running_stats_raises(collapsed: bool, device: s
         native_batch_norm(x, None, None, None, None, False, 0.1, 1e-5)
 
 
-@mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])
 def test_nll_loss_taylor_expanded_target_raises(collapsed: bool, device: str):
     """A Taylor-expanded nll_loss target (label) is rejected (must be constant).
 
@@ -872,7 +867,6 @@ def test_nll_loss_taylor_expanded_target_raises(collapsed: bool, device: str):
         jet_nll_loss_forward(logits, target, None, 1, -100)
 
 
-@mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])
 def test_max_pool2d_matches_with_indices(collapsed: bool, device: str):
     """The fused ``aten.max_pool2d`` rule equals the with-indices values jet.
 

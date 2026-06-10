@@ -211,6 +211,10 @@ supported, though coverage is still growing.
 
 ### Internal
 
+- Replace the coupled `collapsed`/`K` test parametrization with two independent
+  pytest fixtures
+  ([PR](https://github.com/f-dangel/torch-jet/pull/186)).
+
 - Raise the minimum supported `torch` to 2.10 (older versions lower
   eval-mode batch norm to an unsupported op overload), test against a
   torch-version matrix (`2.10.*` and latest), and enforce a coverage floor in CI

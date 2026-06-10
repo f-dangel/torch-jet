@@ -48,7 +48,6 @@ def bilaplacian(f: Callable[[Tensor], Tensor], x: Tensor) -> Tensor:
     return einsum(d4f(x), equation)
 
 
-@mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
 @mark.parametrize("config", BILAPLACIAN_CASES, ids=lambda c: c["id"])
 def test_bilaplacian(config: dict[str, Any], collapsed: bool, device: str):
     """Compare Bi-Laplacian implementations.
@@ -69,7 +68,6 @@ def test_bilaplacian(config: dict[str, Any], collapsed: bool, device: str):
     assert_close(bilap_func, bilap_jet, **tolerances_for(device))
 
 
-@mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
 @mark.parametrize("config", BILAPLACIAN_CASES, ids=lambda c: c["id"])
 def test_bilaplacian_matches_nested_laplacian(
     config: dict[str, Any], collapsed: bool, device: str
@@ -83,7 +81,6 @@ def test_bilaplacian_matches_nested_laplacian(
     assert_close(lap_of_lap(x), expected, **tolerances_for(device))
 
 
-@mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
 @mark.parametrize(
     "distribution", SUPPORTED_DISTRIBUTIONS, ids=lambda d: f"distribution={d}"
 )

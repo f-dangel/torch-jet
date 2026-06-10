@@ -12,7 +12,6 @@ from torch.nn import Linear, ReLU, Sequential
 from torch.nn.functional import cross_entropy
 
 from test.utils import (
-    K_AND_MODE,
     _stateless,
     assert_jet_matches_oracle,
     class_index_loss,
@@ -103,7 +102,6 @@ COMPOSITION_CASES = [
 ]
 
 
-@mark.parametrize("K, collapsed", K_AND_MODE)
 @mark.parametrize("config", COMPOSITION_CASES, ids=lambda c: c["id"])
 def test_composition(config: dict[str, Any], K: int, collapsed: bool, device: str):
     """``jet(composition)`` matches its mode-specific oracle."""

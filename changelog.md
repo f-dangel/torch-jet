@@ -218,9 +218,6 @@ supported, though coverage is still growing.
   failure gate
   ([PR](https://github.com/f-dangel/torch-jet/pull/189)).
 
-- Add a free macOS (Apple Silicon) runner to the CI test matrix
-  ([PR](https://github.com/f-dangel/torch-jet/pull/189)).
-
 - Replace the coupled `collapsed`/`K` test parametrization with two independent
   pytest fixtures
   ([PR](https://github.com/f-dangel/torch-jet/pull/186)).

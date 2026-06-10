@@ -195,6 +195,10 @@ supported, though coverage is still growing.
 
 ### Internal
 
+- Add a CI-verified README quickstart and a live supported-operators list to
+  the introductory tutorial
+  ([PR](https://github.com/f-dangel/torch-jet/pull/181)).
+
 - Drop an unreachable interpreter dispatch branch and add a direct unit test
   for the fused `aten.max_pool2d` rule
   ([PR](https://github.com/f-dangel/torch-jet/pull/180)).

@@ -80,6 +80,11 @@ doc = [
 
 [tool.setuptools_scm]
 
+[tool.coverage.run]
+# The experiments under jet/exp are not part of the shipped library; excluding
+# them keeps the coverage figure focused on the public package.
+omit = ["jet/exp/*"]
+
 
 [tool.setuptools]
 packages = ["jet"]

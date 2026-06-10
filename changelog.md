@@ -16,6 +16,10 @@ future PyTorch releases may still require raising the minimum supported version.
 
 ### Added/New
 
+- **Backward-incompatible.** `visualize_graph`'s `pydot` requirement is now an
+  optional extra; install it with `pip install jet-for-pytorch[viz]`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/188)).
+
 - Support `torch.stack` (`aten.stack.default`) in Taylor mode (both standard and
   collapsed modes)
   ([PR](https://github.com/f-dangel/torch-jet/pull/187)).
@@ -214,6 +218,10 @@ future PyTorch releases may still require raising the minimum supported version.
   ([PR](https://github.com/f-dangel/torch-jet/pull/129))
 
 ### Internal
+
+- Cap the supported `torch` range at `<3` to guard against an untested
+  major-version ATen change
+  ([PR](https://github.com/f-dangel/torch-jet/pull/188)).
 
 - Replace the coupled `collapsed`/`K` test parametrization with two independent
   pytest fixtures

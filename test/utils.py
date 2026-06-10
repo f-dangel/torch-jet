@@ -66,8 +66,17 @@ def class_index_loss(
 
 
 def tolerances_for(device: str) -> dict[str, float]:
-    """Relaxed ``assert_close`` tolerances for float32 devices."""
-    return {"rtol": 5e-4, "atol": 5e-6} if dtype_for_device(device) == float32 else {}
+    """Relaxed ``assert_close`` tolerances for float32 devices.
+
+    The MPS backend accumulates with noticeably lower precision than CPU/CUDA on
+    accumulation-heavy, high-order cases (e.g. a K=5 cross-entropy), so it gets
+    extra slack on top of the generic float32 relaxation.
+    """
+    if dtype_for_device(device) != float32:
+        return {}
+    if device == "mps":
+        return {"rtol": 1e-2, "atol": 1e-4}
+    return {"rtol": 5e-4, "atol": 5e-6}
 
 
 def mlp(device: str) -> Sequential:

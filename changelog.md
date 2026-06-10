@@ -12,6 +12,9 @@ supported, though coverage is still growing.
 
 ### Added/New
 
+- Ship a `py.typed` marker so type checkers use the bundled type annotations
+  ([PR](https://github.com/f-dangel/torch-jet/pull/189)).
+
 - Support `torch.stack` (`aten.stack.default`) in Taylor mode (both standard and
   collapsed modes)
   ([PR](https://github.com/f-dangel/torch-jet/pull/187)).
@@ -214,6 +217,14 @@ supported, though coverage is still growing.
 - Document the `weighting` argument of `laplacian` with a runnable
   weighted-Laplacian example
   ([PR](https://github.com/f-dangel/torch-jet/pull/191)).
+
+- Exclude the experiments (`jet/exp`) from coverage and drop the coverage
+  failure gate
+  ([PR](https://github.com/f-dangel/torch-jet/pull/189)).
+
+- Publish to PyPI via Trusted Publishing (OIDC) and validate the build with
+  `twine check` plus an install/import smoke test before upload
+  ([PR](https://github.com/f-dangel/torch-jet/pull/190)).
 
 - Replace the coupled `collapsed`/`K` test parametrization with two independent
   pytest fixtures

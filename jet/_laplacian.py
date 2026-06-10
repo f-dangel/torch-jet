@@ -59,14 +59,23 @@ def laplacian(
             be computed using Monte-Carlo sampling. The first element is the
             distribution type (e.g., 'normal', 'rademacher'), and the second is the
             number of samples to use.
-        weighting: A tuple specifying how the second-order derivatives should be
-            weighted. This is described by a coefficient tensor C(x) of shape
-            `[*D, *D]`. The first entry is a function (x, V) -> V @ S(x).T that
-            applies the symmetric factorization S(x) of the weights
-            C(x) = S(x) @ S(x).T at the input x to the matrix V. S(x) has shape
-            `[*D, rank_C]` while V is `[K, rank_C]` with arbitrary `K`. The second
-            entry specifies `rank_C`. If `None`, then the weightings correspond to
-            the identity matrix (i.e. computing the standard Laplacian).
+        weighting: How to weight the second-order derivatives, given as a tuple
+            ``(apply_S, rank_C)``. The weights form a coefficient matrix
+            $\mathbf{C}(\mathbf{x}) \in \mathbb{R}^{D \times D}$ ($D = $
+            ``x.numel()``) entering the Laplacian as the weighted Hessian
+            contraction $\sum_{i,j} [\mathbf{C}(\mathbf{x})]_{ij}\,
+            \partial^2 f(\mathbf{x}) / \partial x_i \partial x_j$, supplied
+            through a symmetric factorization $\mathbf{C} = \mathbf{S}
+            \mathbf{S}^\top$ with $\mathbf{S}(\mathbf{x}) \in
+            \mathbb{R}^{D \times r}$:
+
+            - ``apply_S``: a callable ``(x, V) -> V @ S(x).T`` applying
+              $\mathbf{S}(\mathbf{x})^\top$ to ``V`` of shape ``(K, rank_C)``
+              (arbitrary ``K``), returning shape ``(K, *x.shape)``.
+            - ``rank_C``: the factorization rank $r$.
+
+            If ``None`` (default), $\mathbf{C}$ is the identity and the standard
+            (unweighted) Laplacian is computed.
 
     Returns:
         A plain Python callable ``lap_f(*args)`` that maps ``x → lap(f(x))``.

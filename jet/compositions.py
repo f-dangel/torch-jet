@@ -82,10 +82,9 @@ def div(self: object, other: object) -> JetTuple:
 
     ``a / b == a * b**(-1)``, so the rule composes the reciprocal (``pow`` with
     exponent ``-1``) with the product rule. Any operand may be Taylor-expanded,
-    including the divisor: a jet divisor goes through the ``pow`` rule (the same
-    reciprocal series ``log`` already relies on), a constant divisor is
-    reciprocated directly. Because ``mul`` broadcasts a lower-rank operand,
-    division broadcasts too.
+    including the divisor: the ``pow`` rule reciprocates ``other`` whether it is
+    a jet (the same reciprocal series ``log`` already relies on) or a constant.
+    Because ``mul`` broadcasts a lower-rank operand, division broadcasts too.
 
     Args:
         self: The numerator; a jet or a constant ``Tensor``.
@@ -96,11 +95,8 @@ def div(self: object, other: object) -> JetTuple:
     """
     collapsed = _collapsed_of(self, other)
     mul = _rule(ops.aten.mul.Tensor, collapsed)
-    if isinstance(other, JetTuple):
-        inv = _rule(ops.aten.pow.Tensor_Scalar, collapsed)(other, -1)
-    else:
-        inv = other**-1
-    return mul(self, inv)
+    reciprocal = _rule(ops.aten.pow.Tensor_Scalar, collapsed)
+    return mul(self, reciprocal(other, -1))
 
 
 def convolution(

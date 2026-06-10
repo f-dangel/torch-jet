@@ -84,6 +84,10 @@ doc = [
 [tool.setuptools]
 packages = ["jet"]
 
+[tool.setuptools.package-data]
+# Ship the PEP 561 marker so type checkers use the bundled annotations.
+jet = ["py.typed"]
+
 [tool.ruff]
 line-length = 88
 exclude = ["site"]

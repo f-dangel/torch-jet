@@ -10,13 +10,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 `jet` is now in Beta: the public API is stable and more operators are
 supported, though coverage is still growing.
 
-### Changed
-
-- **Backward-incompatible.** Reorder the `laplacian`/`bilaplacian` signatures so
-  `collapsed` precedes `randomization` (and `weighting`), making the two
-  transforms positionally consistent; affects callers passing these options
-  positionally ([PR](https://github.com/f-dangel/torch-jet/pull/183)).
-
 ### Added/New
 
 - Support division in Taylor mode (`aten.div.Tensor`), including a
@@ -157,6 +150,13 @@ supported, though coverage is still growing.
   tuple and returns a `GraphModule` `jet_f(primals, series)` that returns
   `(primals_out, series_out)`
   ([PR](https://github.com/f-dangel/torch-jet/pull/126))
+
+### Changed
+
+- **Backward-incompatible.** Reorder the `laplacian`/`bilaplacian` signatures so
+  `collapsed` precedes `randomization` (and `weighting`), making the two
+  transforms positionally consistent; affects callers passing these options
+  positionally ([PR](https://github.com/f-dangel/torch-jet/pull/183)).
 
 ### Fixed/Removed
 

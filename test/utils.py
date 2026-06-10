@@ -140,6 +140,8 @@ def make_jet_args(
     manual_seed(42)
 
     def make_leaf(t: Tensor) -> tuple[Tensor, ...]:
+        if K == 0:
+            return (t,)
         if not collapsed:
             return (t, *(rand_like(t) for _ in range(K)))
         batched = [
@@ -216,7 +218,7 @@ def assert_jet_matches_oracle(
     """
     f, mock_args = setup_case(config, device)
     if collapsed and K < 2:
-        with raises(ValueError, match="collapsed mode requires K >= 2"):
+        with raises(ValueError, match=f"collapsed mode requires K >= 2, got K={K}"):
             jet(f, mock_args, collapsed=collapsed)(
                 *make_jet_args(mock_args, K, collapsed=collapsed)
             )

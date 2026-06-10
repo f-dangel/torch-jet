@@ -2,9 +2,12 @@
 
 The README ships a runnable ``python`` code block whose final ``assert``
 verifies the computed third-order derivative against a hand-written value.
-This test extracts that block and ``exec``s it, so a broken README reddens CI.
+This test extracts that block and runs it as a standalone script in a fresh
+subprocess, so a broken README reddens CI.
 """
 
+import subprocess
+import sys
 from pathlib import Path
 
 #: Repository root (two levels up from this file: ``test/`` then repo root).
@@ -37,7 +40,20 @@ def extract_quickstart() -> str:
     return section.split("```python", 1)[1].split("```", 1)[0]
 
 
-def test_readme_quickstart_runs():
-    """The README quickstart executes top-to-bottom and its assert holds."""
-    code = extract_quickstart()
-    exec(compile(code, "README.md::quickstart", "exec"), {})
+def test_readme_quickstart_runs(tmp_path):
+    """The README quickstart runs top-to-bottom as a script and its assert holds.
+
+    Running it in a fresh subprocess (rather than ``exec``-ing into this
+    process) isolates the test runner from the snippet and mirrors how a user
+    actually runs the example: copy it into a file and execute it.
+    """
+    script = tmp_path / "quickstart.py"
+    script.write_text(extract_quickstart())
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr

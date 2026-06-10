@@ -16,10 +16,6 @@ future PyTorch releases may still require raising the minimum supported version.
 
 ### Added/New
 
-- **Backward-incompatible.** `visualize_graph`'s `pydot` requirement is now an
-  optional extra; install it with `pip install jet-for-pytorch[viz]`
-  ([PR](https://github.com/f-dangel/torch-jet/pull/188)).
-
 - Support `torch.stack` (`aten.stack.default`) in Taylor mode (both standard and
   collapsed modes)
   ([PR](https://github.com/f-dangel/torch-jet/pull/187)).
@@ -243,6 +239,9 @@ future PyTorch releases may still require raising the minimum supported version.
 - Pin a minimum `torch` version, declare `pydot` (needed by `visualize_graph`)
   as a runtime dependency, and drop the unused `einops`/`numpy` core deps
   ([PR](https://github.com/f-dangel/torch-jet/pull/178)).
+  - **Backward-incompatible.** Move `pydot` out of the core dependencies into
+    an optional `[viz]` extra; install it with `pip install jet-for-pytorch[viz]`
+    ([PR](https://github.com/f-dangel/torch-jet/pull/188)).
 
 - De-duplicate every remaining standard/collapsed primitive rule into a single
   mode-agnostic body

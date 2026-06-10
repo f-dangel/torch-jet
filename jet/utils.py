@@ -273,13 +273,15 @@ def visualize_graph(
         True
     """
     try:
-        import pydot  # noqa: F401
-    except ImportError as e:
+        import pydot
+    except ImportError:
+        pydot = None
+    if pydot is None:
         raise ImportError(
             "visualize_graph requires the optional 'viz' dependency. Install it "
             "with: pip install jet-for-pytorch[viz] (and the graphviz system "
             "package)."
-        ) from e
+        )
 
     cls = _CustomDrawer if use_custom else FxGraphDrawer
     drawer = cls(mod, name)

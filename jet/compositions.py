@@ -77,6 +77,52 @@ def addmm(self: object, mat1: object, mat2: object) -> JetTuple:
     return add(self, mm(mat1, mat2))
 
 
+def div(self: object, other: object) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.div.Tensor(self, other)``.
+
+    ``a / b == a * b**(-1)``, so the rule composes the reciprocal (``pow`` with
+    exponent ``-1``) with the product rule. Any operand may be Taylor-expanded,
+    including the divisor: the ``pow`` rule reciprocates ``other`` whether it is
+    a jet (the same reciprocal series ``log`` already relies on) or a constant.
+    Because ``mul`` broadcasts a lower-rank operand, division broadcasts too.
+
+    Args:
+        self: The numerator; a jet or a constant ``Tensor``.
+        other: The divisor; a jet, a constant ``Tensor``, or a Python scalar.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    collapsed = _collapsed_of(self, other)
+    mul = _rule(ops.aten.mul.Tensor, collapsed)
+    reciprocal = _rule(ops.aten.pow.Tensor_Scalar, collapsed)
+    return mul(self, reciprocal(other, -1))
+
+
+def stack(tensors: list[object], dim: int = 0) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.stack(tensors, dim)``.
+
+    ``stack(tensors, dim) == cat([unsqueeze(t, dim) for t in tensors], dim)``, so
+    the rule inserts a fresh axis at ``dim`` in each operand (via the linear
+    ``unsqueeze`` rule) and concatenates along it (via the ``cat`` rule). Any
+    operand may be Taylor-expanded: ``unsqueeze`` passes a constant tensor
+    through and lifts each coefficient of a jet, and ``cat`` already handles a
+    mixed list of jets and constants plus the collapsed-mode direction-dim shift.
+
+    Args:
+        tensors: The operands to stack; each a jet or a constant ``Tensor``, all
+            of equal shape.
+        dim: The axis at which to insert the new dimension.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    collapsed = _collapsed_of(*tensors)
+    cat = _rule(ops.aten.cat.default, collapsed)
+    unsqueeze = _rule(ops.aten.unsqueeze.default, collapsed)
+    return cat([unsqueeze(t, dim) for t in tensors], dim)
+
+
 def convolution(
     input: object, weight: object, bias: object, *conv_args: object
 ) -> JetTuple:

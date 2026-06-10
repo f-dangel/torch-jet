@@ -363,6 +363,22 @@ assert out["sub"][1].allclose(ones_like(inputs["x"])), "out['sub'][1] != 1"
 
 # %%
 #
+### Supported Operations
+#
+# Taylor mode works by overloading the ATen operators that PyTorch lowers a
+# function to. The set of operators we have a jet rule for lives in the registry
+# ``jet._rules.RULES`` (a dict keyed by ATen op overloads). Any function that
+# traces down to these operators is supported. The list below is generated
+# live from the registry, so it always reflects the current coverage:
+
+from jet._rules import RULES  # noqa: E402
+
+print("Supported ATen operators:")
+for op in sorted(str(key) for key in RULES):
+    print(f"  - {op}")
+
+# %%
+#
 ### Conclusion
 #
 # If your goal was to learn how to use the `jet` function, you can stop reading at this point.

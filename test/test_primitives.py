@@ -23,6 +23,7 @@ from torch import (
     relu,
     sigmoid,
     sin,
+    stack,
     tanh,
     tensor,
     zeros_like,
@@ -72,6 +73,22 @@ def _consts(device: str) -> dict[str, Any]:
 def _sub_cj(device):
     SUB = _consts(device)["SUB"]
     return lambda x: SUB - x
+
+
+def _div_tensor_const(device):
+    # Divide a jet by a frozen (broadcasting) constant tensor divisor; lowers to
+    # ``aten.div.Tensor`` like ``x / scalar`` does.
+    manual_seed(3)
+    c = rand(4, **device_kw(device)) + 0.5  # off zero -> well-conditioned divisor
+    return lambda x: x / c
+
+
+def _const_over_jet(device):
+    # Frozen constant numerator over a jet divisor (kept off zero via ``+ 2``);
+    # exercises the reciprocal-of-a-jet path with a non-jet numerator.
+    manual_seed(3)
+    c = rand(3, 4, **device_kw(device)) + 0.5
+    return lambda x: c / (x + 2.0)
 
 
 #: Bias-shape variants for a jet bias: full ``(3, 5)`` and the row-broadcast
@@ -254,6 +271,14 @@ def _cat_jet_const(device):
     manual_seed(0)
     const = rand(1, 2, 6, 6, **device_kw(device))
     return lambda x: cat([x, const], dim=1)
+
+
+def _stack_jet_const(device):
+    # Stack a jet with a constant tensor of equal shape (new leading axis). Seed
+    # first so the captured constant is deterministic (mirrors ``_cat_jet_const``).
+    manual_seed(0)
+    const = rand(2, 3, 4, **device_kw(device))
+    return lambda x: stack([x, const], dim=0)
 
 
 def _bn_pick(args, inp: str, weight: str, bias: str, x_const, w_const, b_const):
@@ -590,6 +615,26 @@ PRIMITIVE_CASES = [
         "f": _cat_jet_const,
         "args_fn": lambda: (rand(1, 4, 6, 6),),
     },
+    # ---- Stack (cat of unsqueeze; jets nested in the operand list) --------
+    # ``stack`` inserts a new axis at ``dim`` and concatenates along it. Cover
+    # the default ``dim=0`` and a positive ``dim`` (both exercise the
+    # collapsed-mode direction-dim shift through ``unsqueeze`` and ``cat``), plus
+    # a negative ``dim`` (which skips the shift, counting from the end past the
+    # leading direction dim of the batched coefficients).
+    *[
+        {
+            "id": f"stack_JJ_dim{dim}",
+            "f": _stateless(lambda x, y, dim=dim: stack([x, y], dim=dim)),
+            "args_fn": lambda: (rand(2, 3, 4), rand(2, 3, 4)),
+        }
+        for dim in (0, 1, -1)
+    ],
+    # A mixed list: one operand is a frozen constant, the other Taylor-expanded.
+    {
+        "id": "stack_jet_const",
+        "f": _stack_jet_const,
+        "args_fn": lambda: (rand(2, 3, 4),),
+    },
     # ---- Normalization ---------------------------------------------------
     # ``log_softmax`` couples elements along ``dim`` via logsumexp; the rule
     # composes elementwise exp/log with a linear sum and a broadcast sub.
@@ -656,6 +701,40 @@ PRIMITIVE_CASES = [
     {
         "id": "div_scalar",
         "f": _stateless(lambda x: ops.aten.div.Scalar(x, 2.0)),
+        "args_fn": lambda: (rand(3, 4),),
+    },
+    # ``div.Tensor``: division by a constant divisor is linear in the numerator
+    # (each coefficient maps ``c -> c / other``). ``x / 2.0`` lowers here, as
+    # does ``x / tensor`` against a frozen tensor divisor.
+    {
+        "id": "div_tensor",
+        "f": _stateless(lambda x: x / 2.0),
+        "args_fn": lambda: (rand(3, 4),),
+    },
+    {
+        "id": "div_tensor_const",
+        "f": _div_tensor_const,
+        "args_fn": lambda: (rand(3, 4),),
+    },
+    # ``div.Tensor`` with a Taylor-expanded divisor: ``a / b == a * b**(-1)``,
+    # so the composite reciprocates ``b`` via ``pow`` and multiplies. Covers a
+    # jet divisor (``div_JJ``), broadcasting of a lower-rank jet divisor through
+    # ``mul`` (``div_JJ_bcast``), and a constant numerator over a jet divisor
+    # (``div_const_J``). Divisors are kept off zero so the reciprocal is
+    # well-conditioned.
+    {
+        "id": "div_JJ",
+        "f": _stateless(lambda a, b: a / b),
+        "args_fn": lambda: (rand(3, 4), rand(3, 4) + 1.0),
+    },
+    {
+        "id": "div_JJ_bcast",
+        "f": _stateless(lambda a, b: a / b),
+        "args_fn": lambda: (rand(3, 4), rand(4) + 1.0),
+    },
+    {
+        "id": "div_const_J",
+        "f": _const_over_jet,
         "args_fn": lambda: (rand(3, 4),),
     },
     # ---- Shape-only ops --------------------------------------------------

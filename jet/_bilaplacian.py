@@ -45,8 +45,8 @@ def _set_up_taylor_coefficients(x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
 def bilaplacian(
     f: Callable[[Tensor], Tensor],
     mock_args: tuple[PyTree[Tensor], ...],
-    randomization: tuple[str, int] | None = None,
     collapsed: bool = True,
+    randomization: tuple[str, int] | None = None,
 ) -> Callable[[*tuple[PyTree[Tensor], ...]], Tensor]:
     r"""Transform f into a function that computes the Bi-Laplacian.
 
@@ -72,11 +72,6 @@ def bilaplacian(
             tuple matching ``f``'s positional arguments. Only shapes and dtypes
             matter, not the values. Currently must be a one-tuple of a single
             tensor.
-        randomization: Optional tuple containing the distribution type and number
-            of samples for randomized Bi-Laplacian. If provided, the Bi-Laplacian
-            will be computed using Monte-Carlo sampling. The first element is the
-            distribution type (must be 'normal'), and the second is the number of
-            samples to use. Default is `None`.
         collapsed: Whether to use collapsed Taylor mode. If ``True``
             (default), uses the collapsed dispatch path
             (``JetInterpreter(..., collapsed=True)``) that directly propagates
@@ -84,6 +79,11 @@ def bilaplacian(
             4-jets over all directions via ``vmap`` and sums afterward.
             Collapsed mode is the more efficient default: propagating the
             summed coefficient moves smaller tensors through the graph.
+        randomization: Optional tuple containing the distribution type and number
+            of samples for randomized Bi-Laplacian. If provided, the Bi-Laplacian
+            will be computed using Monte-Carlo sampling. The first element is the
+            distribution type (must be 'normal'), and the second is the number of
+            samples to use. Default is `None`.
 
     Returns:
         A plain Python callable ``bilap_f(*args)`` that maps ``x → bilap(f(x))``.

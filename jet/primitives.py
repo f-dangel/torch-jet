@@ -580,15 +580,21 @@ def _log_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:
 
 
 def _elementwise(
-    self: JetTuple,
+    self: Tensor | JetTuple,
     deriv_fn: Callable[[Tensor, int], dict[int, Tensor]],
-) -> JetTuple:
+) -> Tensor | JetTuple:
     """Generic elementwise jet rule (standard *or* collapsed).
 
     Computes the value and Taylor coefficients of an elementwise unary op from
     its derivatives ``deriv_fn`` (``dn[0]`` is the primal) via Faà di Bruno,
-    reading the standard/collapsed mode from ``self.collapsed``.
+    reading the standard/collapsed mode from ``self.collapsed``. A constant
+    (non-jet) ``self`` is passed straight through as the plain op value
+    ``deriv_fn(self, 0)[0]`` -- the unary analog of the all-constant fallback in
+    :func:`_apply_bilinear`, so a composition (e.g. ``div``) may call a unary
+    rule on a constant operand.
     """
+    if not isinstance(self, JetTuple):
+        return deriv_fn(self, 0)[0]
     K = _jet_order(self)
     dn = deriv_fn(self[0], K)
     vs_out = _faa_di_bruno(self[1:], dn, collapsed=self.collapsed)

@@ -52,7 +52,7 @@ install-test:
 .PHONY: test
 
 test:
-	@pytest -vx --cov=jet test
+	@pytest -vx --cov=jet --cov-fail-under=55 test
 
 .PHONY: doctest
 

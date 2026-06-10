@@ -19,9 +19,9 @@ SUPPORTED_DISTRIBUTIONS = ["normal", "rademacher"]
 def laplacian(
     f: Callable[[Tensor], Tensor],
     mock_args: tuple[PyTree[Tensor], ...],
+    collapsed: bool = True,
     randomization: tuple[str, int] | None = None,
     weighting: tuple[Callable[[Tensor, Tensor], Tensor], int] | None = None,
-    collapsed: bool = True,
 ) -> Callable[[*tuple[PyTree[Tensor], ...]], Tensor]:
     r"""Transform f into a function that computes lap(f(x)).
 
@@ -47,6 +47,13 @@ def laplacian(
             tuple matching ``f``'s positional arguments. Does not need to be the
             actual input; only shapes and dtypes matter. Currently must be a
             one-tuple of a single tensor.
+        collapsed: Whether to use collapsed Taylor mode. If ``True``
+            (default), uses the collapsed dispatch path
+            (``JetInterpreter(..., collapsed=True)``) that directly propagates
+            the summed second-order coefficient. If ``False``, propagates full
+            2-jets over all directions via ``vmap`` and sums afterward.
+            Collapsed mode is the more efficient default: propagating the
+            summed coefficient moves smaller tensors through the graph.
         randomization: Optional tuple containing the distribution type and number
             of samples for randomized Laplacian. If provided, the Laplacian will
             be computed using Monte-Carlo sampling. The first element is the
@@ -60,13 +67,6 @@ def laplacian(
             `[*D, rank_C]` while V is `[K, rank_C]` with arbitrary `K`. The second
             entry specifies `rank_C`. If `None`, then the weightings correspond to
             the identity matrix (i.e. computing the standard Laplacian).
-        collapsed: Whether to use collapsed Taylor mode. If ``True``
-            (default), uses the collapsed dispatch path
-            (``JetInterpreter(..., collapsed=True)``) that directly propagates
-            the summed second-order coefficient. If ``False``, propagates full
-            2-jets over all directions via ``vmap`` and sums afterward.
-            Collapsed mode is the more efficient default: propagating the
-            summed coefficient moves smaller tensors through the graph.
 
     Returns:
         A plain Python callable ``lap_f(*args)`` that maps ``x → lap(f(x))``.

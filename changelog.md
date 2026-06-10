@@ -12,6 +12,15 @@ supported, though coverage is still growing.
 
 ### Added/New
 
+- Support `torch.stack` (`aten.stack.default`) in Taylor mode (both standard and
+  collapsed modes)
+  ([PR](https://github.com/f-dangel/torch-jet/pull/187)).
+
+- Support division in Taylor mode (`aten.div.Tensor`), including a
+  Taylor-expanded divisor (e.g. `a / b`), so `x / 2.0` and similar expressions
+  work
+  ([PR](https://github.com/f-dangel/torch-jet/pull/182)).
+
 - **Backward-incompatible.** Flatten the public API: all public functions are
   now importable from the top level (e.g. `from jet import laplacian`)
   ([PR](https://github.com/f-dangel/torch-jet/pull/172)).
@@ -81,7 +90,10 @@ supported, though coverage is still growing.
   transforms ([PR #123](https://github.com/f-dangel/torch-jet/pull/123)), and
   the `use_collapsing` flag was renamed to `collapsed` (bundled with merging
   the two jet interpreters into one;
-  [PR #132](https://github.com/f-dangel/torch-jet/pull/132)).
+  [PR #132](https://github.com/f-dangel/torch-jet/pull/132)). The two
+  signatures were later reordered so `collapsed` precedes `randomization` (and
+  `weighting`) for positional consistency
+  ([PR #183](https://github.com/f-dangel/torch-jet/pull/183)).
 
 - Add jet rules for `aten.zeros_like.default`, `aten._unsafe_view.default`,
   and `aten.squeeze.dims`. Op dispatch now forwards kwargs to the
@@ -148,6 +160,10 @@ supported, though coverage is still growing.
 
 ### Fixed/Removed
 
+- Fix the `collapsed=False` uncollapse path so it agrees with the collapsed
+  semantics for a non-zero highest-order coefficient `c_K`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/184)).
+
 - Fix a crash when raising a jet to an integer-valued `float` exponent (e.g.
   `x ** 2.0`), which previously surfaced an opaque scipy `ValueError`
   ([PR](https://github.com/f-dangel/torch-jet/pull/179)).
@@ -198,6 +214,15 @@ supported, though coverage is still growing.
 - Replace the coupled `collapsed`/`K` test parametrization with two independent
   pytest fixtures
   ([PR](https://github.com/f-dangel/torch-jet/pull/186)).
+
+- Raise the minimum supported `torch` to 2.10 (older versions lower
+  eval-mode batch norm to an unsupported op overload), test against a
+  torch-version matrix (`2.10.*` and latest), and enforce a coverage floor in CI
+  ([PR](https://github.com/f-dangel/torch-jet/pull/185)).
+
+- Add a CI-verified README quickstart and a live supported-operators list to
+  the introductory tutorial
+  ([PR](https://github.com/f-dangel/torch-jet/pull/181)).
 
 - Drop an unreachable interpreter dispatch branch and add a direct unit test
   for the fused `aten.max_pool2d` rule

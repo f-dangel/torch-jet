@@ -98,7 +98,6 @@ def get_coefficients(x: Tensor, weights: str | None | tuple[str, float]) -> Tens
     raise ValueError(f"Unsupported {weights=}.")
 
 
-@mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize("config", LAPLACIAN_CASES, ids=lambda c: c["id"])
 def test_Laplacian(
@@ -129,7 +128,6 @@ def test_Laplacian(
     assert_close(lap_rev, lap_fn, **tolerances_for(device))
 
 
-@mark.parametrize("collapsed", [True, False], ids=["collapsed", "standard"])
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize(
     "distribution", SUPPORTED_DISTRIBUTIONS, ids=lambda d: f"distribution={d}"

@@ -7,14 +7,12 @@ collapsed-mode batched zeros (``(R, *S)``) for ``c_1..c_{K-1}`` and an
 unbatched zero (``S``) at the collapsed slot ``c_K``.
 """
 
-from pytest import mark
 from torch import Tensor, sin, zeros
 
 from jet import jet
 from test.utils import device_kw, make_jet_args
 
 
-@mark.parametrize("collapsed", [False, True], ids=["standard", "collapsed"])
 def test_constant_output_shape(collapsed: bool, device: str):
     """Constant output leaves match the mode-specific shape contract.
 

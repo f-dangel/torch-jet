@@ -17,3 +17,15 @@ if mps.is_available():
 def device(request: FixtureRequest) -> str:
     """Run the requesting test once per available device (see ``DEVICES``)."""
     return request.param
+
+
+@fixture(params=[False, True], ids=["standard", "collapsed"])
+def collapsed(request: FixtureRequest) -> bool:
+    """Run the requesting test in standard and collapsed Taylor mode."""
+    return request.param
+
+
+@fixture(params=[0, 1, 2, 5], ids=lambda k: f"K{k}")
+def K(request: FixtureRequest) -> int:
+    """Run the requesting test once per Taylor order in ``{0, 1, 2, 5}``."""
+    return request.param

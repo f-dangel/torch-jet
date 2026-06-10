@@ -2,7 +2,7 @@
 
 from typing import Any, Callable
 
-from pytest import param
+from pytest import raises
 from torch import (
     Tensor,
     dtype,
@@ -68,18 +68,6 @@ def class_index_loss(
 def tolerances_for(device: str) -> dict[str, float]:
     """Relaxed ``assert_close`` tolerances for float32 devices."""
     return {"rtol": 5e-4, "atol": 5e-6} if dtype_for_device(device) == float32 else {}
-
-
-#: Valid ``(K, collapsed)`` pairs for the standard-vs-collapsed mode sweep.
-#: ``K=0`` (primal-only) and ``K=1`` (Jacobian-vector product) are
-#: standard-mode boundaries that exercise the no-recursion branches of the
-#: jet rules; ``K=2`` is the collapsed-mode floor; ``K=5`` is a representative
-#: high order. Intermediate orders exercise the same code paths and don't
-#: earn their own coverage at the primitive / composition layer.
-K_AND_MODE = [
-    *(param(K, False, id=f"K={K}-standard") for K in (0, 1, 2, 5)),
-    *(param(K, True, id=f"K={K}-collapsed") for K in (2, 5)),
-]
 
 
 def mlp(device: str) -> Sequential:
@@ -222,8 +210,17 @@ def assert_jet_matches_oracle(
     The oracle is :func:`jet._rev_jet` (standard) or :func:`rev_collapsed_jet`
     (collapsed). Both are built on nested reverse-mode AD and are independent
     of the FX-trace + interpreter machinery under test.
+
+    Collapsed mode requires ``K >= 2``; for the invalid ``collapsed and K < 2``
+    cells, assert the jet call raises the documented guard and return early.
     """
     f, mock_args = setup_case(config, device)
+    if collapsed and K < 2:
+        with raises(ValueError, match="collapsed mode requires K >= 2"):
+            jet(f, mock_args, collapsed=collapsed)(
+                *make_jet_args(mock_args, K, collapsed=collapsed)
+            )
+        return
     jet_args = make_jet_args(mock_args, K, collapsed=collapsed)
     oracle = rev_collapsed_jet(f) if collapsed else _rev_jet(f)
     actual = jet(f, mock_args, collapsed=collapsed)(*jet_args)

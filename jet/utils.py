@@ -255,6 +255,8 @@ def visualize_graph(
             for other operations. Defaults to ``False``.
 
     Raises:
+        ImportError: If the optional ``viz`` dependency (``pydot``) is not
+            installed.
         ValueError: If *savefile* has an unsupported extension.
 
     Examples:
@@ -270,6 +272,15 @@ def visualize_graph(
         >>> written
         True
     """
+    try:
+        import pydot  # noqa: F401
+    except ImportError as e:
+        raise ImportError(
+            "visualize_graph requires the optional 'viz' dependency. Install it "
+            "with: pip install jet-for-pytorch[viz] (and the graphviz system "
+            "package)."
+        ) from e
+
     cls = _CustomDrawer if use_custom else FxGraphDrawer
     drawer = cls(mod, name)
     dot_graph = drawer.get_dot_graph()
@@ -286,5 +297,7 @@ def visualize_graph(
         supported = ", ".join(sorted(creators))
         raise ValueError(f"Unsupported file format {suffix!r}. Use one of: {supported}")
 
+    # Render before opening the file so a failure leaves no empty artifact.
+    data = creator()
     with open(savefile, "wb") as f:
-        f.write(creator())
+        f.write(data)

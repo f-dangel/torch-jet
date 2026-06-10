@@ -75,6 +75,22 @@ def _sub_cj(device):
     return lambda x: SUB - x
 
 
+def _div_tensor_const(device):
+    # Divide a jet by a frozen (broadcasting) constant tensor divisor; lowers to
+    # ``aten.div.Tensor`` like ``x / scalar`` does.
+    manual_seed(3)
+    c = rand(4, **device_kw(device)) + 0.5  # off zero -> well-conditioned divisor
+    return lambda x: x / c
+
+
+def _const_over_jet(device):
+    # Frozen constant numerator over a jet divisor (kept off zero via ``+ 2``);
+    # exercises the reciprocal-of-a-jet path with a non-jet numerator.
+    manual_seed(3)
+    c = rand(3, 4, **device_kw(device)) + 0.5
+    return lambda x: c / (x + 2.0)
+
+
 #: Bias-shape variants for a jet bias: full ``(3, 5)`` and the row-broadcast
 #: 1D ``(5,)`` that must broadcast over the product's rows in every coefficient.
 _BIAS_SHAPES = {"full": (3, 5), "bcast": (5,)}
@@ -657,6 +673,40 @@ PRIMITIVE_CASES = [
     {
         "id": "div_scalar",
         "f": _stateless(lambda x: ops.aten.div.Scalar(x, 2.0)),
+        "args_fn": lambda: (rand(3, 4),),
+    },
+    # ``div.Tensor``: division by a constant divisor is linear in the numerator
+    # (each coefficient maps ``c -> c / other``). ``x / 2.0`` lowers here, as
+    # does ``x / tensor`` against a frozen tensor divisor.
+    {
+        "id": "div_tensor",
+        "f": _stateless(lambda x: x / 2.0),
+        "args_fn": lambda: (rand(3, 4),),
+    },
+    {
+        "id": "div_tensor_const",
+        "f": _div_tensor_const,
+        "args_fn": lambda: (rand(3, 4),),
+    },
+    # ``div.Tensor`` with a Taylor-expanded divisor: ``a / b == a * b**(-1)``,
+    # so the composite reciprocates ``b`` via ``pow`` and multiplies. Covers a
+    # jet divisor (``div_JJ``), broadcasting of a lower-rank jet divisor through
+    # ``mul`` (``div_JJ_bcast``), and a constant numerator over a jet divisor
+    # (``div_const_J``). Divisors are kept off zero so the reciprocal is
+    # well-conditioned.
+    {
+        "id": "div_JJ",
+        "f": _stateless(lambda a, b: a / b),
+        "args_fn": lambda: (rand(3, 4), rand(3, 4) + 1.0),
+    },
+    {
+        "id": "div_JJ_bcast",
+        "f": _stateless(lambda a, b: a / b),
+        "args_fn": lambda: (rand(3, 4), rand(4) + 1.0),
+    },
+    {
+        "id": "div_const_J",
+        "f": _const_over_jet,
         "args_fn": lambda: (rand(3, 4),),
     },
     # ---- Shape-only ops --------------------------------------------------

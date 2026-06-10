@@ -70,6 +70,10 @@ RULES: dict = {
     ops.aten.nll_loss_forward.default: _defshared(primitives.jet_nll_loss_forward),
     # Composites -- one mode-agnostic body that pulls its sub-rules from this
     # registry (see :mod:`jet.compositions`).
+    # ``a / b == a * b**(-1)``; current torch lowers all scalar division
+    # (``x / 2.0``) to this overload. The composite also handles a
+    # Taylor-expanded divisor (reciprocal via the ``pow`` rule).
+    ops.aten.div.Tensor: _defshared(compositions.div),
     ops.aten.addmm.default: _defshared(compositions.addmm),
     ops.aten.convolution.default: _defshared(compositions.convolution),
     ops.aten.mse_loss.default: _defshared(compositions.mse_loss),

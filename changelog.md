@@ -211,6 +211,10 @@ supported, though coverage is still growing.
 
 ### Internal
 
+- Document the `weighting` argument of `laplacian` with a runnable
+  weighted-Laplacian example
+  ([PR](https://github.com/f-dangel/torch-jet/pull/191)).
+
 - Replace the coupled `collapsed`/`K` test parametrization with two independent
   pytest fixtures
   ([PR](https://github.com/f-dangel/torch-jet/pull/186)).

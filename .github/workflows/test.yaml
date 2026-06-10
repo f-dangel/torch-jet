@@ -5,21 +5,32 @@ on: [push, pull_request]
 
 jobs:
   tests:
-    name: "Python ${{ matrix.python-version }} / torch ${{ matrix.torch-version }}"
-    runs-on: ubuntu-latest
+    name: "${{ matrix.os }} / Python ${{ matrix.python-version }} / torch ${{ matrix.torch-version }}"
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         python-version: ["3.12"]
         torch-version: ["2.10.*", ""]  # "" installs the latest torch
+        # Add a free macOS (Apple Silicon) runner to exercise the macOS/MPS
+        # path, e.g. the fused aten.max_pool2d the MPS backend emits.
+        include:
+          - os: macos-latest
+            python-version: "3.12"
+            torch-version: ""
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
         python-version: "${{ matrix.python-version }}"
         cache: pip
-    - name: Install graphviz
+    - name: Install graphviz (Linux)
+      if: runner.os == 'Linux'
       run: sudo apt-get update && sudo apt-get install -y graphviz
+    - name: Install graphviz (macOS)
+      if: runner.os == 'macOS'
+      run: brew install graphviz
     - name: Install torch ${{ matrix.torch-version || 'latest' }}
       run: |
         python -m pip install --upgrade pip
@@ -29,6 +40,9 @@ jobs:
     - name: Install Dependencies
       run: |
         make install-test
+    - name: Report available torch devices
+      run: |
+        python -c "import torch; print('cuda available:', torch.cuda.is_available()); print('mps available:', torch.backends.mps.is_available())"
     - name: Run test
       run: |
         make test

@@ -12,6 +12,9 @@ supported, though coverage is still growing.
 
 ### Added/New
 
+- Ship a `py.typed` marker so type checkers use the bundled type annotations
+  ([PR](https://github.com/f-dangel/torch-jet/pull/189)).
+
 - Support `torch.stack` (`aten.stack.default`) in Taylor mode (both standard and
   collapsed modes)
   ([PR](https://github.com/f-dangel/torch-jet/pull/187)).
@@ -210,6 +213,13 @@ supported, though coverage is still growing.
   ([PR](https://github.com/f-dangel/torch-jet/pull/129))
 
 ### Internal
+
+- Exclude the experiments (`jet/exp`) from coverage and drop the coverage
+  failure gate
+  ([PR](https://github.com/f-dangel/torch-jet/pull/189)).
+
+- Add a free macOS (Apple Silicon) runner to the CI test matrix
+  ([PR](https://github.com/f-dangel/torch-jet/pull/189)).
 
 - Replace the coupled `collapsed`/`K` test parametrization with two independent
   pytest fixtures

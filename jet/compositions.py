@@ -99,6 +99,30 @@ def div(self: object, other: object) -> JetTuple:
     return mul(self, reciprocal(other, -1))
 
 
+def stack(tensors: list[object], dim: int = 0) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.stack(tensors, dim)``.
+
+    ``stack(tensors, dim) == cat([unsqueeze(t, dim) for t in tensors], dim)``, so
+    the rule inserts a fresh axis at ``dim`` in each operand (via the linear
+    ``unsqueeze`` rule) and concatenates along it (via the ``cat`` rule). Any
+    operand may be Taylor-expanded: ``unsqueeze`` passes a constant tensor
+    through and lifts each coefficient of a jet, and ``cat`` already handles a
+    mixed list of jets and constants plus the collapsed-mode direction-dim shift.
+
+    Args:
+        tensors: The operands to stack; each a jet or a constant ``Tensor``, all
+            of equal shape.
+        dim: The axis at which to insert the new dimension.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    collapsed = _collapsed_of(*tensors)
+    cat = _rule(ops.aten.cat.default, collapsed)
+    unsqueeze = _rule(ops.aten.unsqueeze.default, collapsed)
+    return cat([unsqueeze(t, dim) for t in tensors], dim)
+
+
 def convolution(
     input: object, weight: object, bias: object, *conv_args: object
 ) -> JetTuple:

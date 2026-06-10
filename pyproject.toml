@@ -31,7 +31,7 @@ classifiers = [
 dynamic = ["version"]
 # Dependencies of the project:
 dependencies = [
-    "torch>=2.4",
+    "torch>=2.10",
     "pydot",
     "scipy",
 ]
@@ -57,6 +57,7 @@ exp = [
 test = [
     "coveralls",
     "einops",
+    "pydot",
     "pytest",
     "pytest-cov",
 ]

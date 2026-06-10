@@ -211,6 +211,11 @@ supported, though coverage is still growing.
 
 ### Internal
 
+- Raise the minimum supported `torch` to 2.10 (older versions lower
+  eval-mode batch norm to an unsupported op overload), test against a
+  torch-version matrix (`2.10.*` and latest), and enforce a coverage floor in CI
+  ([PR](https://github.com/f-dangel/torch-jet/pull/185)).
+
 - Add a CI-verified README quickstart and a live supported-operators list to
   the introductory tutorial
   ([PR](https://github.com/f-dangel/torch-jet/pull/181)).

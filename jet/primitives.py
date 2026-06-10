@@ -560,7 +560,7 @@ def _pow_derivatives(
         if exponent - k < 0 and int(exponent) == exponent and exponent >= 0:
             d[k] = None
         elif exponent == k:
-            d[k] = factorial(exponent, exact=True)
+            d[k] = factorial(int(exponent), exact=True)
         else:
             scale = 1
             for i in range(1, k + 1):

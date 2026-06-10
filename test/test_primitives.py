@@ -351,6 +351,12 @@ _UNARY_POINTWISE = {
 _UNARY_SHAPES = {"1d": (4,), "2d": (3, 4)}
 _POW_EXPONENTS = {
     "pow_float": 2.5,
+    # An integer-valued ``float`` exponent (``2.0``) hits the
+    # ``exponent == k`` branch of ``_pow_derivatives`` at ``K >= 2``, where the
+    # k-th derivative is ``factorial(exponent)``. ``scipy``'s ``factorial(...,
+    # exact=True)`` rejects a ``float`` argument, so the exponent must be coerced
+    # to ``int`` first; this case regresses that coercion.
+    "pow_float_int": 2.0,
     "pow_int_0": 0,
     "pow_int_5": 5,
     "pow_int_10": 10,

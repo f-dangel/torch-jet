@@ -148,6 +148,10 @@ supported, though coverage is still growing.
 
 ### Fixed/Removed
 
+- Fix a crash when raising a jet to an integer-valued `float` exponent (e.g.
+  `x ** 2.0`), which previously surfaced an opaque scipy `ValueError`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/179)).
+
 - Correctly handle broadcasting in `add` / `sub` between operands of different
   rank (similar to #141). In collapsed mode, two Taylor-expanded operands of
   different primal rank collided the direction dim `R` (e.g. `x + y` with shapes

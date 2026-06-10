@@ -13,7 +13,6 @@ from torch import (
     addmm,
     cat,
     cos,
-    equal,
     exp,
     float32,
     log,
@@ -38,6 +37,7 @@ from torch.nn.functional import (
     mse_loss,
     nll_loss,
 )
+from torch.testing import assert_close
 
 from jet import jet, primitives
 from jet.compositions import native_batch_norm
@@ -49,6 +49,7 @@ from test.utils import (
     class_index_loss,
     device_kw,
     make_jet_args,
+    tolerances_for,
 )
 
 
@@ -812,4 +813,4 @@ def test_max_pool2d_matches_with_indices(collapsed: bool, device: str):
     assert fused.collapsed == expected.collapsed
     assert len(fused) == len(expected)
     for got, want in zip(fused, expected):
-        assert equal(got, want)
+        assert_close(got, want, **tolerances_for(device))

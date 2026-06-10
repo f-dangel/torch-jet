@@ -88,6 +88,20 @@ def laplacian(
         >>> lap_pt = hessian(f)(x0).squeeze(0).trace().unsqueeze(0)
         >>> assert lap.shape == lap_pt.shape
         >>> assert lap_pt.allclose(lap)
+
+        **Weighted Laplacian.** Pass ``weighting=(S_fn, rank_C)`` where ``S_fn``
+        applies the factor ``S(x)`` of the weight matrix ``C(x) = S(x) @ S(x).T``
+        to a matrix ``V`` via ``S_fn(x, V) = V @ S(x).T``. The transform then
+        returns the weighted Hessian contraction ``sum_{i,j} C_ij d^2f/dx_i dx_j``;
+        for a diagonal ``C = diag(w)`` this is ``sum_d w_d d^2f/dx_d^2``:
+
+        >>> from torch import tensor
+        >>> w = tensor([1.0, 2.0, 3.0])  # per-coordinate weights
+        >>> def S_fn(x, V):  # C(x) = S @ S.T = diag(w), so S = diag(sqrt(w))
+        ...     return (V @ w.sqrt().diag().T).reshape(V.shape[0], *x.shape)
+        >>> lap_w = laplacian(f, (zeros(3),), weighting=(S_fn, 3))(x0)
+        >>> H = hessian(f)(x0).squeeze(0)  # Hessian of f at x0
+        >>> assert lap_w.squeeze().allclose((w * H.diagonal()).sum())
     """
     mock_x = require_single_tensor_input(mock_args, "laplacian")
     in_shape = mock_x.shape

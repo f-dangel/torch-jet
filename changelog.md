@@ -218,6 +218,10 @@ supported, though coverage is still growing.
   failure gate
   ([PR](https://github.com/f-dangel/torch-jet/pull/189)).
 
+- Publish to PyPI via Trusted Publishing (OIDC) and validate the build with
+  `twine check` plus an install/import smoke test before upload
+  ([PR](https://github.com/f-dangel/torch-jet/pull/190)).
+
 - Replace the coupled `collapsed`/`K` test parametrization with two independent
   pytest fixtures
   ([PR](https://github.com/f-dangel/torch-jet/pull/186)).

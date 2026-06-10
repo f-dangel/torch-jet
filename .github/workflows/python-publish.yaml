@@ -1,5 +1,10 @@
-# This workflows will upload a Python Package using Twine when a release is created
-# For more information see: https://help.github.com/en/actions/language-and-framework-guides/using-python-with-github-actions#publishing-to-package-registries
+# Publishes the package to PyPI when a GitHub Release is created.
+#
+# Uses PyPI Trusted Publishing (OIDC): no long-lived API token is stored. The
+# project must register this repository + workflow as a trusted publisher at
+# https://pypi.org/manage/project/jet-for-pytorch/settings/publishing/ with:
+#   owner = f-dangel, repo = torch-jet,
+#   workflow = python-publish.yaml, environment = pypi
 
 name: Upload Python Package
 
@@ -8,23 +13,43 @@ on:
     types: [created]
 
 jobs:
-  deploy:
+  build:
+    name: Build and check distributions
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
+        with:
+          fetch-depth: 0  # setuptools_scm needs the tags to derive the version
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
           cache: pip
-      - name: Install dependencies
+      - name: Build sdist and wheel
         run: |
-          python -m pip install --upgrade pip twine build
-      - name: Build and publish
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: |
+          python -m pip install --upgrade pip build twine
           python -m build
-          twine upload dist/*
+      - name: Check distribution metadata
+        run: twine check dist/*
+      - name: Smoke-test the built wheel
+        run: |
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install dist/*.whl
+          /tmp/smoke/bin/python -c "import jet; print('imported jet', jet.__all__)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # required for Trusted Publishing (OIDC)
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

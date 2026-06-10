@@ -696,41 +696,6 @@ def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
     return _apply_bilinear(lambda a, b: a * b, self, other)
 
 
-def jet_div(
-    self: Tensor | JetTuple, other: Tensor | JetTuple | float | int
-) -> Tensor | JetTuple:
-    """Taylor-mode arithmetic for ``aten.div.Tensor(self, other)``.
-
-    Division by a *constant* divisor ``other`` is linear in the numerator
-    ``self``: each Taylor coefficient maps ``c -> c / other``, so the rule maps
-    coefficient-wise via the mode-aware :func:`_apply_linear` (following
-    ``self.collapsed``). A non-jet ``self`` is passed straight through (total
-    over constants, as the composite rules rely on).
-
-    True nonlinear division -- a Taylor-expanded ``other`` -- is unsupported and
-    raises a clear error.
-
-    Args:
-        self: The numerator and its Taylor coefficients, or a constant.
-        other: The (constant) divisor; a ``Tensor`` or Python scalar.
-
-    Returns:
-        The value and its Taylor coefficients.
-
-    Raises:
-        NotImplementedError: If ``other`` is a ``JetTuple`` (division by a
-            Taylor-expanded divisor is nonlinear and unsupported).
-    """
-    if isinstance(other, JetTuple):
-        raise NotImplementedError(
-            "jet_div only supports division by a constant divisor; a "
-            "Taylor-expanded divisor (nonlinear division) is unsupported."
-        )
-    if not isinstance(self, JetTuple):
-        return self / other
-    return _apply_linear(self, lambda c: c / other)
-
-
 # --- Linear decomposition ---
 
 

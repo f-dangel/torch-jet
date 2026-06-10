@@ -12,8 +12,9 @@ supported, though coverage is still growing.
 
 ### Added/New
 
-- Support division by a constant in Taylor mode (`aten.div.Tensor`), so `x / 2.0`
-  and similar expressions work
+- Support division in Taylor mode (`aten.div.Tensor`), including a
+  Taylor-expanded divisor (e.g. `a / b`), so `x / 2.0` and similar expressions
+  work
   ([PR](https://github.com/f-dangel/torch-jet/pull/182)).
 
 - **Backward-incompatible.** Flatten the public API: all public functions are

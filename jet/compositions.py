@@ -77,6 +77,32 @@ def addmm(self: object, mat1: object, mat2: object) -> JetTuple:
     return add(self, mm(mat1, mat2))
 
 
+def div(self: object, other: object) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.div.Tensor(self, other)``.
+
+    ``a / b == a * b**(-1)``, so the rule composes the reciprocal (``pow`` with
+    exponent ``-1``) with the product rule. Any operand may be Taylor-expanded,
+    including the divisor: a jet divisor goes through the ``pow`` rule (the same
+    reciprocal series ``log`` already relies on), a constant divisor is
+    reciprocated directly. Because ``mul`` broadcasts a lower-rank operand,
+    division broadcasts too.
+
+    Args:
+        self: The numerator; a jet or a constant ``Tensor``.
+        other: The divisor; a jet, a constant ``Tensor``, or a Python scalar.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    collapsed = _collapsed_of(self, other)
+    mul = _rule(ops.aten.mul.Tensor, collapsed)
+    if isinstance(other, JetTuple):
+        inv = _rule(ops.aten.pow.Tensor_Scalar, collapsed)(other, -1)
+    else:
+        inv = other**-1
+    return mul(self, inv)
+
+
 def convolution(
     input: object, weight: object, bias: object, *conv_args: object
 ) -> JetTuple:

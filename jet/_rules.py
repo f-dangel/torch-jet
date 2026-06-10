@@ -75,6 +75,9 @@ RULES: dict = {
     # Taylor-expanded divisor (reciprocal via the ``pow`` rule).
     ops.aten.div.Tensor: _defshared(compositions.div),
     ops.aten.addmm.default: _defshared(compositions.addmm),
+    # ``stack(tensors, dim) == cat([unsqueeze(t, dim) for t in tensors], dim)``;
+    # decomposed into the registered ``unsqueeze`` and ``cat`` rules.
+    ops.aten.stack.default: _defshared(compositions.stack),
     ops.aten.convolution.default: _defshared(compositions.convolution),
     ops.aten.mse_loss.default: _defshared(compositions.mse_loss),
     ops.aten._log_softmax.default: _defshared(compositions.log_softmax),

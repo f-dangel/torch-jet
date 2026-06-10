@@ -23,6 +23,7 @@ from torch import (
     relu,
     sigmoid,
     sin,
+    stack,
     tanh,
     tensor,
     zeros_like,
@@ -271,6 +272,14 @@ def _cat_jet_const(device):
     manual_seed(0)
     const = rand(1, 2, 6, 6, **device_kw(device))
     return lambda x: cat([x, const], dim=1)
+
+
+def _stack_jet_const(device):
+    # Stack a jet with a constant tensor of equal shape (new leading axis). Seed
+    # first so the captured constant is deterministic (mirrors ``_cat_jet_const``).
+    manual_seed(0)
+    const = rand(2, 3, 4, **device_kw(device))
+    return lambda x: stack([x, const], dim=0)
 
 
 def _bn_pick(args, inp: str, weight: str, bias: str, x_const, w_const, b_const):
@@ -606,6 +615,26 @@ PRIMITIVE_CASES = [
         "id": "cat_jet_const",
         "f": _cat_jet_const,
         "args_fn": lambda: (rand(1, 4, 6, 6),),
+    },
+    # ---- Stack (cat of unsqueeze; jets nested in the operand list) --------
+    # ``stack`` inserts a new axis at ``dim`` and concatenates along it. Cover
+    # the default ``dim=0`` and a positive ``dim`` (both exercise the
+    # collapsed-mode direction-dim shift through ``unsqueeze`` and ``cat``), plus
+    # a negative ``dim`` (which skips the shift, counting from the end past the
+    # leading direction dim of the batched coefficients).
+    *[
+        {
+            "id": f"stack_JJ_dim{dim}",
+            "f": _stateless(lambda x, y, dim=dim: stack([x, y], dim=dim)),
+            "args_fn": lambda: (rand(2, 3, 4), rand(2, 3, 4)),
+        }
+        for dim in (0, 1, -1)
+    ],
+    # A mixed list: one operand is a frozen constant, the other Taylor-expanded.
+    {
+        "id": "stack_jet_const",
+        "f": _stack_jet_const,
+        "args_fn": lambda: (rand(2, 3, 4),),
     },
     # ---- Normalization ---------------------------------------------------
     # ``log_softmax`` couples elements along ``dim`` via logsumexp; the rule

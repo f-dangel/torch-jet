@@ -61,7 +61,7 @@ def laplacian(
             number of samples to use.
         weighting: How to weight the second-order derivatives, given as a tuple
             ``(apply_S, rank_C)``. The weights form a coefficient matrix
-            $\mathbf{C}(\mathbf{x}) \in \mathbb{R}^{D \times D}$ ($D = $
+            $\mathbf{C}(\mathbf{x}) \in \mathbb{R}^{D \times D}$ ($D$ =
             ``x.numel()``) entering the Laplacian as the weighted Hessian
             contraction $\sum_{i,j} [\mathbf{C}(\mathbf{x})]_{ij}\,
             \partial^2 f(\mathbf{x}) / \partial x_i \partial x_j$, supplied

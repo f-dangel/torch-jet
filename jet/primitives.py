@@ -255,17 +255,8 @@ def _leibniz(
 
     Returns:
         The Taylor coefficients of orders 1..K (a tuple of length ``K``).
-
-    Raises:
-        ValueError: If ``self`` and ``other`` have different lengths.
     """
-    if len(self) != len(other):
-        raise ValueError(
-            f"_leibniz: operands must share the same derivative order; "
-            f"got lengths {len(self)} and {len(other)}"
-        )
-    _jet_order(self, other)
-    K = len(self) - 1
+    K = _jet_order(self, other)
     collapsed = self.collapsed
     scaled = self.scaled
 

@@ -1,6 +1,5 @@
 """Taylor-mode (jet) transforms: ``jet``, ``_rev_jet``, ``_uncollapsed_via_vmap``."""
 
-from enum import Enum
 from math import factorial
 from typing import Callable
 
@@ -15,28 +14,20 @@ from jet.utils import Jet, PyTree, _is_jet_leaf
 from jet.validation import validate_input_jet
 
 
-class _RescalingMode(Enum):
-    """Direction in which to convert jet coefficients at the API boundary."""
-
-    SCALE = "scale"
-    UNDO_SCALE = "undo_scale"
-
-
-def _rescale_jet_leaf(leaf: Jet, *, mode: _RescalingMode) -> Jet:
+def _rescale_jet_leaf(leaf: Jet, *, scale: bool) -> Jet:
     """Scale jet coefficients by ``k!`` at the public/API boundary.
 
-    ``mode=scale`` converts input coefficients ``x_k`` into the
-    internally used polynomial coefficients ``x_k / k!``. ``mode=undo_scale``
-    converts back to the public convention to obtain the output derivative.
+    ``scale=True`` converts input coefficients ``x_k`` into the internally used
+    polynomial coefficients ``x_k / k!``. ``scale=False`` converts back to the
+    public convention to obtain the output derivative.
     """
-    scaled = [leaf[0]]
-    for k, coeff in enumerate(leaf[1:], start=1):
-        factor = factorial(k)
-        if mode is _RescalingMode.SCALE:
-            scaled.append(coeff / factor)
-        else:
-            scaled.append(coeff * factor)
-    return tuple(scaled)
+    return (
+        leaf[0],
+        *(
+            coeff / factorial(k) if scale else coeff * factorial(k)
+            for k, coeff in enumerate(leaf[1:], start=1)
+        ),
+    )
 
 
 def jet(
@@ -114,19 +105,18 @@ def jet(
     def transformed(*args: PyTree[Jet]) -> PyTree[Jet]:
         leaves, K, R = validate_input_jet(mock_args, args, collapsed=collapsed)
         internal_leaves = (
-            [_rescale_jet_leaf(leaf, mode=_RescalingMode.SCALE) for leaf in leaves]
+            [_rescale_jet_leaf(leaf, scale=True) for leaf in leaves]
             if scale_coeffs
             else leaves
         )
         result = interp.run(K, R, *internal_leaves)
         if not scale_coeffs:
             return result
-        else:
-            return tree_map(
-                lambda leaf: _rescale_jet_leaf(leaf, mode=_RescalingMode.UNDO_SCALE),
-                result,
-                is_leaf=_is_jet_leaf,
-            )
+        return tree_map(
+            lambda leaf: _rescale_jet_leaf(leaf, scale=False),
+            result,
+            is_leaf=_is_jet_leaf,
+        )
 
     return transformed
 

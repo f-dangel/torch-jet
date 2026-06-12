@@ -245,6 +245,9 @@ def visualize_graph(
 ):
     """Visualize the compute graph of a module.
 
+    Requires the optional ``viz`` dependency (``pydot``); install it with
+    ``pip install jet-for-pytorch[viz]`` (plus the ``graphviz`` system package).
+
     Supported formats: ``.png``, ``.pdf``, ``.svg`` (inferred from *savefile*).
 
     Args:
@@ -255,8 +258,6 @@ def visualize_graph(
             for other operations. Defaults to ``False``.
 
     Raises:
-        ImportError: If the optional ``viz`` dependency (``pydot``) is not
-            installed.
         ValueError: If *savefile* has an unsupported extension.
 
     Examples:
@@ -272,17 +273,6 @@ def visualize_graph(
         >>> written
         True
     """
-    try:
-        import pydot
-    except ImportError:
-        pydot = None
-    if pydot is None:
-        raise ImportError(
-            "visualize_graph requires the optional 'viz' dependency. Install it "
-            "with: pip install jet-for-pytorch[viz] (and the graphviz system "
-            "package)."
-        )
-
     cls = _CustomDrawer if use_custom else FxGraphDrawer
     drawer = cls(mod, name)
     dot_graph = drawer.get_dot_graph()

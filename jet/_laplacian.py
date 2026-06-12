@@ -59,14 +59,23 @@ def laplacian(
             be computed using Monte-Carlo sampling. The first element is the
             distribution type (e.g., 'normal', 'rademacher'), and the second is the
             number of samples to use.
-        weighting: A tuple specifying how the second-order derivatives should be
-            weighted. This is described by a coefficient tensor C(x) of shape
-            `[*D, *D]`. The first entry is a function (x, V) -> V @ S(x).T that
-            applies the symmetric factorization S(x) of the weights
-            C(x) = S(x) @ S(x).T at the input x to the matrix V. S(x) has shape
-            `[*D, rank_C]` while V is `[K, rank_C]` with arbitrary `K`. The second
-            entry specifies `rank_C`. If `None`, then the weightings correspond to
-            the identity matrix (i.e. computing the standard Laplacian).
+        weighting: How to weight the second-order derivatives, given as a tuple
+            ``(apply_S, rank_C)``. The weights form a coefficient matrix
+            $\mathbf{C}(\mathbf{x}) \in \mathbb{R}^{D \times D}$ ($D$ =
+            ``x.numel()``) entering the Laplacian as the weighted Hessian
+            contraction $\sum_{i,j} [\mathbf{C}(\mathbf{x})]_{ij}\,
+            \partial^2 f(\mathbf{x}) / \partial x_i \partial x_j$, supplied
+            through a symmetric factorization $\mathbf{C} = \mathbf{S}
+            \mathbf{S}^\top$ with $\mathbf{S}(\mathbf{x}) \in
+            \mathbb{R}^{D \times r}$:
+
+            - ``apply_S``: a callable ``(x, V) -> V @ S(x).T`` applying
+              $\mathbf{S}(\mathbf{x})^\top$ to ``V`` of shape ``(K, rank_C)``
+              (arbitrary ``K``), returning shape ``(K, *x.shape)``.
+            - ``rank_C``: the factorization rank $r$.
+
+            If ``None`` (default), $\mathbf{C}$ is the identity and the standard
+            (unweighted) Laplacian is computed.
 
     Returns:
         A plain Python callable ``lap_f(*args)`` that maps ``x → lap(f(x))``.
@@ -88,6 +97,20 @@ def laplacian(
         >>> lap_pt = hessian(f)(x0).squeeze(0).trace().unsqueeze(0)
         >>> assert lap.shape == lap_pt.shape
         >>> assert lap_pt.allclose(lap)
+
+        **Weighted Laplacian.** Pass ``weighting=(S_fn, rank_C)`` where ``S_fn``
+        applies the factor ``S(x)`` of the weight matrix ``C(x) = S(x) @ S(x).T``
+        to a matrix ``V`` via ``S_fn(x, V) = V @ S(x).T``. The transform then
+        returns the weighted Hessian contraction ``sum_{i,j} C_ij d^2f/dx_i dx_j``;
+        for a diagonal ``C = diag(w)`` this is ``sum_d w_d d^2f/dx_d^2``:
+
+        >>> from torch import tensor
+        >>> w = tensor([1.0, 2.0, 3.0])  # per-coordinate weights
+        >>> def S_fn(x, V):  # C(x) = S @ S.T = diag(w), so S = diag(sqrt(w))
+        ...     return (V @ w.sqrt().diag().T).reshape(V.shape[0], *x.shape)
+        >>> lap_w = laplacian(f, (zeros(3),), weighting=(S_fn, 3))(x0)
+        >>> H = hessian(f)(x0).squeeze(0)  # Hessian of f at x0
+        >>> assert lap_w.squeeze().allclose((w * H.diagonal()).sum())
     """
     mock_x = require_single_tensor_input(mock_args, "laplacian")
     in_shape = mock_x.shape

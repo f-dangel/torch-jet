@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-06-10
+## [1.0.0] - 2026-06-12
 
 First stable release: the public API (`jet`, `laplacian`, `bilaplacian`) is now
 covered by [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Note that
@@ -15,6 +15,9 @@ covered by [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Note that
 future PyTorch releases may still require raising the minimum supported version.
 
 ### Added/New
+
+- Ship a `py.typed` marker so type checkers use the bundled type annotations
+  ([PR](https://github.com/f-dangel/torch-jet/pull/189)).
 
 - Support `torch.stack` (`aten.stack.default`) in Taylor mode (both standard and
   collapsed modes)
@@ -218,6 +221,18 @@ future PyTorch releases may still require raising the minimum supported version.
 - Cap the supported `torch` range at `<3` to guard against an untested
   major-version ATen change
   ([PR](https://github.com/f-dangel/torch-jet/pull/188)).
+
+- Document the `weighting` argument of `laplacian` with a runnable
+  weighted-Laplacian example
+  ([PR](https://github.com/f-dangel/torch-jet/pull/191)).
+
+- Exclude the experiments (`jet/exp`) from coverage and drop the coverage
+  failure gate
+  ([PR](https://github.com/f-dangel/torch-jet/pull/189)).
+
+- Publish to PyPI via Trusted Publishing (OIDC) and validate the build with
+  `twine check` plus an install/import smoke test before upload
+  ([PR](https://github.com/f-dangel/torch-jet/pull/190)).
 
 - Replace the coupled `collapsed`/`K` test parametrization with two independent
   pytest fixtures

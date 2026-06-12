@@ -1,5 +1,5 @@
 site_name: Taylor Mode Automatic Differentiation in PyTorch
-site_url: https://readthedocs.org/projects/torch-jet/
+site_url: https://torch-jet.readthedocs.io/
 repo_url: https://github.com/f-dangel/torch-jet/
 repo_name: f-dangel/torch-jet
 site_author: Felix Dangel, Tim Siebert, Andrea Walther, Marius Zeinhofer
@@ -53,5 +53,4 @@ plugins:
     - search
 extra_javascript:
     - javascripts/mathjax.js # LaTeX math
-    - https://polyfill.io/v3/polyfill.min.js?features=es6 # LaTeX math
     - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js # LaTeX math

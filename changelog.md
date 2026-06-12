@@ -214,6 +214,10 @@ supported, though coverage is still growing.
 
 ### Internal
 
+- Document the `weighting` argument of `laplacian` with a runnable
+  weighted-Laplacian example
+  ([PR](https://github.com/f-dangel/torch-jet/pull/191)).
+
 - Exclude the experiments (`jet/exp`) from coverage and drop the coverage
   failure gate
   ([PR](https://github.com/f-dangel/torch-jet/pull/189)).

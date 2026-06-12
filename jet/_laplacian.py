@@ -22,6 +22,7 @@ def laplacian(
     collapsed: bool = True,
     randomization: tuple[str, int] | None = None,
     weighting: tuple[Callable[[Tensor, Tensor], Tensor], int] | None = None,
+    scale_coeffs: bool = False,
 ) -> Callable[[*tuple[PyTree[Tensor], ...]], Tensor]:
     r"""Transform f into a function that computes lap(f(x)).
 
@@ -76,6 +77,9 @@ def laplacian(
 
             If ``None`` (default), $\mathbf{C}$ is the identity and the standard
             (unweighted) Laplacian is computed.
+        scale_coeffs: Whether to internally propagate the scaled polynomial
+            coefficients ``x_tilde_k = x_k / k!`` instead of the default
+            derivative-coefficient basis while preserving the public outputs.
 
     Returns:
         A plain Python callable ``lap_f(*args)`` that maps ``x → lap(f(x))``.
@@ -128,9 +132,11 @@ def laplacian(
     )
 
     cjet_f = (
-        jet(f, mock_args, collapsed=True)
+        jet(f, mock_args, collapsed=True, scale_coeffs=scale_coeffs)
         if collapsed
-        else _uncollapsed_via_vmap(f, mock_args, randomization)
+        else _uncollapsed_via_vmap(
+            f, mock_args, randomization, scale_coeffs=scale_coeffs
+        )
     )
 
     def lap_f(*args: PyTree[Tensor]) -> Tensor:

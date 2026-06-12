@@ -49,12 +49,15 @@ def bilaplacian(f: Callable[[Tensor], Tensor], x: Tensor) -> Tensor:
 
 
 @mark.parametrize("config", BILAPLACIAN_CASES, ids=lambda c: c["id"])
-def test_bilaplacian(config: dict[str, Any], collapsed: bool, device: str):
+def test_bilaplacian(
+    config: dict[str, Any], collapsed: bool, scale_coeffs: bool, device: str
+):
     """Compare Bi-Laplacian implementations.
 
     Args:
         config: Configuration dictionary of the test case.
         collapsed: Whether to use collapsed Taylor mode.
+        scale_coeffs: Whether to use the internally scaled coefficient basis.
         device: Device to run the test on.
     """
     f, (x,) = setup_case(config, device)
@@ -63,21 +66,26 @@ def test_bilaplacian(config: dict[str, Any], collapsed: bool, device: str):
     bilap_func = bilaplacian(f, x)
 
     # using jets
-    bilap_fn = jet_bilaplacian(f, (x,), collapsed=collapsed)
+    bilap_fn = jet_bilaplacian(f, (x,), collapsed=collapsed, scale_coeffs=scale_coeffs)
     bilap_jet = bilap_fn(x)
     assert_close(bilap_func, bilap_jet, **tolerances_for(device))
 
 
 @mark.parametrize("config", BILAPLACIAN_CASES, ids=lambda c: c["id"])
 def test_bilaplacian_matches_nested_laplacian(
-    config: dict[str, Any], collapsed: bool, device: str
+    config: dict[str, Any], collapsed: bool, scale_coeffs: bool, device: str
 ):
     """``Δ(Δf)(x) == Δ²f(x)`` -- nesting laplacian twice yields the bilaplacian."""
     f, (x,) = setup_case(config, device)
     lap_of_lap = jet_laplacian(
-        jet_laplacian(f, (x,), collapsed=collapsed), (x,), collapsed=collapsed
+        jet_laplacian(f, (x,), collapsed=collapsed, scale_coeffs=scale_coeffs),
+        (x,),
+        collapsed=collapsed,
+        scale_coeffs=scale_coeffs,
     )
-    expected = jet_bilaplacian(f, (x,), collapsed=collapsed)(x)
+    expected = jet_bilaplacian(f, (x,), collapsed=collapsed, scale_coeffs=scale_coeffs)(
+        x
+    )
     assert_close(lap_of_lap(x), expected, **tolerances_for(device))
 
 
@@ -89,6 +97,7 @@ def test_Bilaplacian_randomization(
     config: dict[str, Any],
     distribution: str,
     collapsed: bool,
+    scale_coeffs: bool,
     device: str,
     max_num_chunks: int = 500,
     chunk_size: int = 256,
@@ -100,6 +109,7 @@ def test_Bilaplacian_randomization(
         config: Configuration dictionary of the test case.
         distribution: The distribution from which to draw random vectors.
         collapsed: Whether to use collapsed Taylor mode.
+        scale_coeffs: Whether to use the internally scaled coefficient basis.
         device: Device to run the test on.
         max_num_chunks: Maximum number of chunks to accumulate. Default: `500`.
         chunk_size: Number of samples per chunk. Default: `256`.
@@ -114,7 +124,11 @@ def test_Bilaplacian_randomization(
 
     # check convergence of MC estimator
     bilap_fn = jet_bilaplacian(
-        f, (x,), randomization=randomization, collapsed=collapsed
+        f,
+        (x,),
+        randomization=randomization,
+        collapsed=collapsed,
+        scale_coeffs=scale_coeffs,
     )
 
     converged = _check_mc_convergence(

@@ -25,6 +25,12 @@ def collapsed(request: FixtureRequest) -> bool:
     return request.param
 
 
+@fixture(params=[False, True], ids=["unscaled", "scaled"])
+def scale_coeffs(request: FixtureRequest) -> bool:
+    """Run the requesting test with the default and scaled coefficient bases."""
+    return request.param
+
+
 @fixture(params=[0, 1, 2, 5], ids=lambda k: f"K{k}")
 def K(request: FixtureRequest) -> int:
     """Run the requesting test once per Taylor order in ``{0, 1, 2, 5}``."""

@@ -1,0 +1,43 @@
+In this work we defined the entities of the propagation scheme to be 
+\begin{equation*}
+\vf_k \coloneqq \frac{\mathrm{d}^k}{\mathrm{d}t^k} \vf(\vx(t)) |_{t=0},
+\end{equation*}
+which results in the jet and Faà di Bruno scaled by the factor $\nicefrac{1}{k!}$.
+If the factor is part of the coefficient we get the following
+\begin{equation*}
+\Tilde{\vf}_k \coloneqq \frac{1}{k!} \frac{\mathrm{d}^k}{\mathrm{d}t^k} \vf(\vx(t)) |_{t=0}.
+\end{equation*}
+Analogously, the input jet's coefficients carry the same factor, $\Tilde{\vx}_s \coloneqq \nicefrac{1}{s!}\, \vx_s$ with $\vx_s \coloneqq \frac{\mathrm{d}^s}{\mathrm{d}t^s} \vx(t) |_{t=0}$, \ie the input jet $\Tilde{\vx}$ is scaled as well.
+The jet is then given as
+\begin{align*}
+  \Tilde{J}^K \vf : \sR \to \sR^C\,,
+  \quad (\Tilde{J}^K \vf)(t) := \sum_{k=0}^K\Tilde{\vf}_k t^k. 
+\end{align*}
+and the Faà di Bruno formula (\cref{eq:faa-di-bruno}) changes to
+\begin{align}
+  \label{eq:faa-di-bruno-scaled}
+  % \textstyle % Comment out this line if we have enough space
+  \Tilde{\vf}_k
+  =
+  \sum_{\sigma \in \partitioning(k)}
+  \Tilde{\nu}(\sigma)
+  \left<
+  \partial^{|\sigma|} \vf,
+  \tensorprod{s \in \sigma} \Tilde{\vx}_s
+  \right>
+  \quad
+  \text{with}
+  \quad
+  \Tilde{\nu}(\sigma)
+  =
+  \frac{1}{
+    \left(
+      \prod_{s \in \sigma
+      }
+      n_s!
+    \right)
+  }\,.
+\end{align}
+The prefactor $\nicefrac{1}{k!}$ was cancelled out with $k!$ from the nominator of
+$\nu(\sigma)$ and the factor $\nicefrac{1}{\prod_{s \in \sigma} s!}$ is comsumed by the different $\tilde{\vx}_s$.
+In this notation, we have to rescale the propagation's output to obtain the derivative $\vf_k = k! \Tilde{\vf}_k$.

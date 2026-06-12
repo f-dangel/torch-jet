@@ -38,17 +38,21 @@ from jet.utils import integer_partitions, multiplicity
 
 
 class JetTuple(tuple):
-    """A Taylor jet ``(primal, c_1, ..., c_K)`` carrying a ``collapsed`` flag.
+    """A Taylor jet ``(primal, c_1, ..., c_K)`` carrying execution-mode flags.
 
     ``collapsed`` is ``False`` for standard Taylor mode and ``True`` for
     collapsed mode (where coefficients ``c_1..c_{K-1}`` carry a leading
-    direction dim ``R`` and ``c_K`` is already summed over it).
+    direction dim ``R`` and ``c_K`` is already summed over it). ``scaled`` is
+    ``False`` for the library's default derivative-coefficient basis
+    ``x(t) = sum_k t^k / k! * x_k`` and ``True`` for the internally scaled
+    polynomial-coefficient basis ``x(t) = sum_k t^k * x_tilde_k``.
     """
 
-    def __new__(cls, iterable=(), *, collapsed: bool) -> Self:
-        """Build a jet from ``iterable``, tagging it standard or collapsed."""
+    def __new__(cls, iterable=(), *, collapsed: bool, scaled: bool = False) -> Self:
+        """Build a jet from ``iterable``, tagging both Taylor-mode variants."""
         obj = super().__new__(cls, iterable)
         obj.collapsed = collapsed
+        obj.scaled = scaled
         return obj
 
 
@@ -57,8 +61,10 @@ class JetTuple(tuple):
 # the pytree context so it survives the roundtrip.
 register_pytree_node(
     JetTuple,
-    flatten_fn=lambda x: (list(x), x.collapsed),
-    unflatten_fn=lambda values, collapsed: JetTuple(values, collapsed=collapsed),
+    flatten_fn=lambda x: (list(x), (x.collapsed, x.scaled)),
+    unflatten_fn=lambda values, mode: JetTuple(
+        values, collapsed=mode[0], scaled=mode[1]
+    ),
 )
 
 
@@ -67,7 +73,9 @@ def _jet_order(*args: Tensor) -> int:
 
     A jet is exactly ``(primal, c_1, ..., c_K)``, so ``K = len(jet) - 1``.
     Collects ``K`` from every ``JetTuple`` argument in a single pass and
-    requires exactly one distinct value.
+    requires exactly one distinct value. Since a run is also globally either
+    standard/collapsed and unscaled/scaled, the helper validates those flags
+    match across all ``JetTuple`` operands too.
 
     Args:
         args: Positional arguments of a jet op.
@@ -78,15 +86,29 @@ def _jet_order(*args: Tensor) -> int:
     Raises:
         TypeError: If no positional argument is a ``JetTuple``.
         ValueError: If two or more ``JetTuple`` args have different lengths
-            (inconsistent Taylor-expansion orders).
+            (inconsistent Taylor-expansion orders), or disagree on
+            ``collapsed`` / ``scaled``.
     """
-    Ks = {len(arg) - 1 for arg in args if isinstance(arg, JetTuple)}
+    jets = [arg for arg in args if isinstance(arg, JetTuple)]
+    Ks = {len(arg) - 1 for arg in jets}
     if not Ks:
         raise TypeError("_jet_order: no JetTuple in positional arguments")
     if len(Ks) > 1:
         raise ValueError(
             f"all JetTuple arguments must share the same derivative order; "
             f"got {sorted(Ks)}"
+        )
+    collapsed = {arg.collapsed for arg in jets}
+    if len(collapsed) > 1:
+        raise ValueError(
+            "all JetTuple arguments must share the same collapsed flag; "
+            f"got {sorted(collapsed)}"
+        )
+    scaled = {arg.scaled for arg in jets}
+    if len(scaled) > 1:
+        raise ValueError(
+            "all JetTuple arguments must share the same scaled flag; "
+            f"got {sorted(scaled)}"
         )
     return Ks.pop()
 
@@ -120,7 +142,9 @@ def _apply_linear(self: JetTuple, op: Callable[[Tensor], Tensor]) -> JetTuple:
         The value and its Taylor coefficients, with ``op`` applied to each.
     """
     return JetTuple(
-        (op(self[0]), *_apply_linear_coeffs(self, op)), collapsed=self.collapsed
+        (op(self[0]), *_apply_linear_coeffs(self, op)),
+        collapsed=self.collapsed,
+        scaled=self.scaled,
     )
 
 
@@ -194,7 +218,7 @@ def _pointwise(
     s_coeffs = _broadcast_coeffs(self, primal)
     o_coeffs = _broadcast_coeffs(other, primal)
     coeffs = (op(s, o) for s, o in zip(s_coeffs, o_coeffs))
-    return JetTuple((primal, *coeffs), collapsed=self.collapsed)
+    return JetTuple((primal, *coeffs), collapsed=self.collapsed, scaled=self.scaled)
 
 
 def _leibniz(
@@ -231,17 +255,10 @@ def _leibniz(
 
     Returns:
         The Taylor coefficients of orders 1..K (a tuple of length ``K``).
-
-    Raises:
-        ValueError: If ``self`` and ``other`` have different lengths.
     """
-    if len(self) != len(other):
-        raise ValueError(
-            f"_leibniz: operands must share the same derivative order; "
-            f"got lengths {len(self)} and {len(other)}"
-        )
-    K = len(self) - 1
+    K = _jet_order(self, other)
     collapsed = self.collapsed
+    scaled = self.scaled
 
     def product(j: int, k: int) -> Tensor:
         """``binary_op(self[j], other[k - j])``, vmapped over ``R`` if batched.
@@ -263,7 +280,7 @@ def _leibniz(
     for k in range(1, K + 1):
         term = None
         for j in range(k + 1):
-            term_j = comb(k, j, exact=True) * product(j, k)
+            term_j = product(j, k) if scaled else comb(k, j, exact=True) * product(j, k)
             # The collapsed K-th coefficient carries no R, so reduce its batched
             # (R-carrying) terms over the direction dim; standard never enters.
             if k == K and _is_batched(j, K, collapsed):
@@ -312,14 +329,33 @@ def _apply_bilinear(
         return op(self, other)
     if self_is_jet and other_is_jet:
         primal = op(self[0], other[0])
-        return JetTuple((primal, *_leibniz(self, other, op)), collapsed=self.collapsed)
+        return JetTuple(
+            (primal, *_leibniz(self, other, op)),
+            collapsed=self.collapsed,
+            scaled=self.scaled,
+        )
     if self_is_jet:
         return _apply_linear(self, lambda c: op(c, other))
     return _apply_linear(other, lambda c: op(self, c))
 
 
+def _partition_weight(sigma: tuple[int, ...], scaled: bool) -> float:
+    """Return the partition coefficient for the active jet basis."""
+    if not scaled:
+        return multiplicity(sigma)
+    counts = {i: sigma.count(i) for i in sigma}
+    weight = 1.0
+    for count in counts.values():
+        weight /= factorial(count, exact=True)
+    return weight
+
+
 def _partition_term(
-    vs: tuple[Tensor, ...], sigma: tuple[int, ...], dn: dict[int, Tensor]
+    vs: tuple[Tensor, ...],
+    sigma: tuple[int, ...],
+    dn: dict[int, Tensor],
+    *,
+    scaled: bool,
 ) -> Tensor | None:
     r"""Compute one term of the Faà di Bruno sum for a given partition.
 
@@ -340,6 +376,8 @@ def _partition_term(
             sizes (e.g. ``(2, 1, 1)`` for order 4 split into three blocks).
         dn: A dictionary mapping a degree to the outer function's derivative of
             that degree.
+        scaled: Whether to use the internally scaled polynomial-coefficient
+            basis, which changes the partition prefactor.
 
     Returns:
         The partition's contribution to the Faà di Bruno sum, or ``None`` when
@@ -356,11 +394,13 @@ def _partition_term(
     for v in vs_contract[1:]:
         term = term * v
     term = term * dn[len(sigma)]
-    nu = multiplicity(sigma)
+    nu = _partition_weight(sigma, scaled)
     return nu * term if nu != 1.0 else term
 
 
-def _collapsed_highest_order(vs: tuple[Tensor, ...], dn: dict[int, Tensor]) -> Tensor:
+def _collapsed_highest_order(
+    vs: tuple[Tensor, ...], dn: dict[int, Tensor], *, scaled: bool
+) -> Tensor:
     """Compute the collapsed (summed) highest-order Faà di Bruno coefficient.
 
     Separates the linear contribution (which multiplies the collapsed input)
@@ -370,6 +410,8 @@ def _collapsed_highest_order(vs: tuple[Tensor, ...], dn: dict[int, Tensor]) -> T
     Args:
         vs: The incoming Taylor coefficients (length ``K``).
         dn: A dictionary mapping the degree to the function's derivative.
+        scaled: Whether to use the internally scaled polynomial-coefficient
+            basis, which changes the nonlinear partition weights.
 
     Returns:
         The collapsed highest-order coefficient.
@@ -380,7 +422,7 @@ def _collapsed_highest_order(vs: tuple[Tensor, ...], dn: dict[int, Tensor]) -> T
     for sigma in integer_partitions(K):
         if sigma == (K,):
             continue
-        term = _partition_term(vs, sigma, dn)
+        term = _partition_term(vs, sigma, dn, scaled=scaled)
         if term is not None:
             # Sum out the direction dim R per term so the accumulator (and the
             # tensors flowing through the traced graph) stay small.
@@ -399,6 +441,7 @@ def _faa_di_bruno(
     vs: tuple[Tensor, ...],
     dn: dict[int, Tensor],
     collapsed: bool = False,
+    scaled: bool = False,
 ) -> list[Tensor]:
     """Apply Faà di Bruno's formula for elementwise functions.
 
@@ -411,6 +454,8 @@ def _faa_di_bruno(
             computed by separating the linear contribution (which multiplies
             the collapsed input) from the nonlinear contributions (which are
             summed over *R*).
+        scaled: Whether to use the internally scaled polynomial-coefficient
+            basis instead of the default derivative-coefficient basis.
 
     Returns:
         The outgoing Taylor coefficients.
@@ -420,11 +465,11 @@ def _faa_di_bruno(
     for k in range(K):
         order = k + 1
         if order == K and collapsed:
-            vs_out.append(_collapsed_highest_order(vs, dn))
+            vs_out.append(_collapsed_highest_order(vs, dn, scaled=scaled))
         else:
             result = None
             for sigma in integer_partitions(order):
-                term = _partition_term(vs, sigma, dn)
+                term = _partition_term(vs, sigma, dn, scaled=scaled)
                 if term is not None:
                     result = term if result is None else result + term
             # ``result is None`` means every Faà di Bruno term vanished
@@ -597,8 +642,8 @@ def _elementwise(
         return deriv_fn(self, 0)[0]
     K = _jet_order(self)
     dn = deriv_fn(self[0], K)
-    vs_out = _faa_di_bruno(self[1:], dn, collapsed=self.collapsed)
-    return JetTuple((dn[0], *vs_out), collapsed=self.collapsed)
+    vs_out = _faa_di_bruno(self[1:], dn, collapsed=self.collapsed, scaled=self.scaled)
+    return JetTuple((dn[0], *vs_out), collapsed=self.collapsed, scaled=self.scaled)
 
 
 # --- Power ---
@@ -643,12 +688,18 @@ def _addsub(
     if self_is:
         primal = op(self[0], other)
         return JetTuple(
-            (primal, *_broadcast_coeffs(self, primal)), collapsed=self.collapsed
+            (primal, *_broadcast_coeffs(self, primal)),
+            collapsed=self.collapsed,
+            scaled=self.scaled,
         )
     if other_is:
         primal = op(self, other[0])
         coeffs = _broadcast_coeffs(other, primal)
-        return JetTuple((primal, *map(neg, coeffs)), collapsed=other.collapsed)
+        return JetTuple(
+            (primal, *map(neg, coeffs)),
+            collapsed=other.collapsed,
+            scaled=other.scaled,
+        )
     return op(self, other)
 
 
@@ -784,7 +835,10 @@ def jet_max_pool2d_with_indices(
     """
     values0, indices = ops.aten.max_pool2d_with_indices.default(input[0], *pool_args)
     coeffs = _apply_linear_coeffs(input, lambda c: _gather_at_indices(c, indices))
-    return JetTuple((values0, *coeffs), collapsed=input.collapsed), indices
+    return (
+        JetTuple((values0, *coeffs), collapsed=input.collapsed, scaled=input.scaled),
+        indices,
+    )
 
 
 def jet_max_pool2d(input: JetTuple, *pool_args: object) -> JetTuple:
@@ -836,7 +890,7 @@ def jet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
         batched = _is_batched(k, K, collapsed)
         d = dim + 1 if (batched and dim >= 0) else dim
         out.append(cat([part(t, k, batched) for t in tensors], d))
-    return JetTuple(tuple(out), collapsed=collapsed)
+    return JetTuple(tuple(out), collapsed=collapsed, scaled=first.scaled)
 
 
 # --- Loss functions ---
@@ -892,7 +946,10 @@ def jet_nll_loss_forward(
             c, target, weight, reduction, ignore_index
         )[0],
     )
-    return JetTuple((output, *coeffs), collapsed=self.collapsed), total_weight
+    return (
+        JetTuple((output, *coeffs), collapsed=self.collapsed, scaled=self.scaled),
+        total_weight,
+    )
 
 
 # --- Batch norm ---
@@ -948,6 +1005,8 @@ def _defzero(prim: Callable) -> Callable:
     def rule(self: JetTuple, *args, **kwargs) -> JetTuple:
         primal_out = prim(self[0], *args, **kwargs)
         coeffs = [primal_out.new_zeros(c.shape) for c in self[1:]]
-        return JetTuple([primal_out, *coeffs], collapsed=self.collapsed)
+        return JetTuple(
+            [primal_out, *coeffs], collapsed=self.collapsed, scaled=self.scaled
+        )
 
     return rule

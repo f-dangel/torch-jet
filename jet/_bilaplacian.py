@@ -47,6 +47,7 @@ def bilaplacian(
     mock_args: tuple[PyTree[Tensor], ...],
     collapsed: bool = True,
     randomization: tuple[str, int] | None = None,
+    scale_coeffs: bool = False,
 ) -> Callable[[*tuple[PyTree[Tensor], ...]], Tensor]:
     r"""Transform f into a function that computes the Bi-Laplacian.
 
@@ -84,6 +85,9 @@ def bilaplacian(
             will be computed using Monte-Carlo sampling. The first element is the
             distribution type (must be 'normal'), and the second is the number of
             samples to use. Default is `None`.
+        scale_coeffs: Whether to internally propagate the scaled polynomial
+            coefficients ``x_tilde_k = x_k / k!`` instead of the default
+            derivative-coefficient basis while preserving the public outputs.
 
     Returns:
         A plain Python callable ``bilap_f(*args)`` that maps ``x → bilap(f(x))``.
@@ -114,9 +118,11 @@ def bilaplacian(
     validate_randomization(randomization, SUPPORTED_DISTRIBUTIONS)
 
     cjet_f = (
-        jet(f, mock_args, collapsed=True)
+        jet(f, mock_args, collapsed=True, scale_coeffs=scale_coeffs)
         if collapsed
-        else _uncollapsed_via_vmap(f, mock_args, randomization)
+        else _uncollapsed_via_vmap(
+            f, mock_args, randomization, scale_coeffs=scale_coeffs
+        )
     )
 
     def _eval_4jet(x: Tensor, X1: Tensor) -> Tensor:

@@ -14,10 +14,27 @@ from jet.utils import Jet, PyTree, _is_jet_leaf
 from jet.validation import validate_input_jet
 
 
+def _rescale_jet_leaf(leaf: Jet, *, scale: bool) -> Jet:
+    """Scale jet coefficients by ``k!`` at the public/API boundary.
+
+    ``scale=True`` converts input coefficients ``x_k`` into the internally used
+    polynomial coefficients ``x_k / k!``. ``scale=False`` converts back to the
+    public convention to obtain the output derivative.
+    """
+    return (
+        leaf[0],
+        *(
+            coeff / factorial(k) if scale else coeff * factorial(k)
+            for k, coeff in enumerate(leaf[1:], start=1)
+        ),
+    )
+
+
 def jet(
     f: Callable[[*tuple[PyTree[Tensor], ...]], PyTree[Tensor]],
     mock_args: tuple[PyTree[Tensor], ...],
     collapsed: bool = False,
+    scale_coeffs: bool = False,
 ) -> Callable[[*tuple[PyTree[Jet], ...]], PyTree[Jet]]:
     """Overload a function with its Taylor-mode equivalent.
 
@@ -37,6 +54,12 @@ def jet(
       coefficient enters linearly, so it can be summed eagerly to propagate
       smaller tensors through the graph. Requires ``K >= 2`` and ``R`` may
       vary per call.
+    - **scaled coefficients** (``scale_coeffs=True``): keep the same public
+      input/output convention, but internally rescale order-``k`` coefficients
+      by ``1 / k!`` and evaluate the rules in the polynomial-coefficient basis
+      ``x(t) = sum_k t^k * x_tilde_k``. This removes the factorial/binomial
+      factors from the per-op propagation rules and is useful to probe
+      numerical stability.
 
     Args:
         f: Function to overload. May accept and return pytrees of tensors.
@@ -45,6 +68,9 @@ def jet(
             arguments of ``f``. Only shapes and dtypes matter, not the values.
         collapsed: Select between the two propagation regimes above. Default:
             ``False`` (standard mode).
+        scale_coeffs: Whether to internally propagate the scaled polynomial
+            coefficients ``x_tilde_k = x_k / k!`` while keeping the public
+            API in terms of the usual derivative coefficients ``x_k``.
 
     Returns:
         A callable ``jet_f(*args)`` taking one positional argument per
@@ -74,11 +100,23 @@ def jet(
         >>> f0, f1 = jet_f((x, vx), (y, vy))
     """
     mod, _ = capture_graph(f, mock_args)
-    interp = JetInterpreter(mod, collapsed=collapsed)
+    interp = JetInterpreter(mod, collapsed=collapsed, scale_coeffs=scale_coeffs)
 
     def transformed(*args: PyTree[Jet]) -> PyTree[Jet]:
         leaves, K, R = validate_input_jet(mock_args, args, collapsed=collapsed)
-        return interp.run(K, R, *leaves)
+        internal_leaves = (
+            [_rescale_jet_leaf(leaf, scale=True) for leaf in leaves]
+            if scale_coeffs
+            else leaves
+        )
+        result = interp.run(K, R, *internal_leaves)
+        if not scale_coeffs:
+            return result
+        return tree_map(
+            lambda leaf: _rescale_jet_leaf(leaf, scale=False),
+            result,
+            is_leaf=_is_jet_leaf,
+        )
 
     return transformed
 
@@ -181,6 +219,7 @@ def _uncollapsed_via_vmap(
     f: Callable[[*tuple[PyTree[Tensor], ...]], PyTree[Tensor]],
     mock_args: tuple[PyTree[Tensor], ...],
     randomization: tuple[str, int] | None,
+    scale_coeffs: bool = False,
 ) -> Callable[[*tuple[PyTree[Jet], ...]], PyTree[Jet]]:
     """Build a collapsed-jet-compatible function from standard ``jet`` + ``vmap``.
 
@@ -195,7 +234,7 @@ def _uncollapsed_via_vmap(
     Used as a reference implementation against which the in-interpreter
     collapsed path (``jet(..., collapsed=True)``) is compared in tests.
     """
-    jet_f = jet(f, mock_args)
+    jet_f = jet(f, mock_args, scale_coeffs=scale_coeffs)
     # ``in_spec`` is structural (no leaf values), so compute it once from
     # ``mock_args`` and reuse it for every cjet_f call to rebuild per-direction
     # args inside vmap. The validator confirms ``args`` matches this structure.

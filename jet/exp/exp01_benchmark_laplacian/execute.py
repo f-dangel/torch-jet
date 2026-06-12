@@ -210,6 +210,7 @@ def laplacian_function(
     strategy: str,
     randomization: tuple[str, int] | None = None,
     weighting: tuple[Callable[[Tensor, Tensor], Tensor], int] | None = None,
+    scale_coeffs: bool = False,
 ) -> Callable[[], Tensor]:
     """Construct a function to compute the Laplacian using different strategies.
 
@@ -237,6 +238,8 @@ def laplacian_function(
             `[*D, rank_C]` while V is `[K, rank_C]` with arbitrary `K`. The second
             entry specifies `rank_C`. If `None`, then the weightings correspond to
             the identity matrix (i.e. computing the standard Laplacian).
+        scale_coeffs: Whether to internally propagate the scaled polynomial
+            coefficients in the jet-based strategies.
 
     Returns:
         A function that computes the Laplacian of the function f at the input tensor X.
@@ -264,6 +267,7 @@ def laplacian_function(
             randomization=randomization,
             weighting=weighting,
             collapsed=collapsed,
+            scale_coeffs=scale_coeffs,
         )
         laplacian, _ = capture_graph(laplacian, (dummy_x,))
         common_subexpression_elimination(laplacian.graph)
@@ -325,6 +329,7 @@ def bilaplacian_function(
     X: Tensor,
     strategy: str,
     randomization: tuple[str, int] | None = None,
+    scale_coeffs: bool = False,
 ) -> Callable[[], Tensor]:
     """Construct a function to compute the Bi-Laplacian using different strategies.
 
@@ -345,6 +350,8 @@ def bilaplacian_function(
             number of samples for randomized Bi-Laplacian. The first element is the
             distribution type (e.g., 'normal'), and the second is the number of samples
             to use.
+        scale_coeffs: Whether to internally propagate the scaled polynomial
+            coefficients in the jet-based strategies.
 
     Returns:
         A function that computes the Bi-Laplacian of the function f at the input
@@ -371,6 +378,7 @@ def bilaplacian_function(
             (dummy_x,),
             randomization=randomization,
             collapsed=collapsed,
+            scale_coeffs=scale_coeffs,
         )
         bilap_fn, _ = capture_graph(bilap_fn, (dummy_x,))
         common_subexpression_elimination(bilap_fn.graph)

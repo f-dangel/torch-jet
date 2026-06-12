@@ -811,12 +811,18 @@ PRIMITIVE_CASES = [
 
 
 @mark.parametrize("config", PRIMITIVE_CASES, ids=lambda c: c["id"])
-def test_primitive(config: dict[str, Any], K: int, collapsed: bool, device: str):
+def test_primitive(
+    config: dict[str, Any],
+    K: int,
+    collapsed: bool,
+    scale_coeffs: bool,
+    device: str,
+):
     """``jet(primitive)`` matches its mode-specific oracle."""
-    assert_jet_matches_oracle(config, K, collapsed, device)
+    assert_jet_matches_oracle(config, K, collapsed, device, scale_coeffs=scale_coeffs)
 
 
-def test_batch_norm_training_raises(collapsed: bool, device: str):
+def test_batch_norm_training_raises(collapsed: bool, scale_coeffs: bool, device: str):
     """Training-mode batch norm is unsupported and must raise clearly.
 
     Only eval mode is implemented. Training is deferred until PyTorch fixes its
@@ -835,10 +841,12 @@ def test_batch_norm_training_raises(collapsed: bool, device: str):
 
     jet_args = make_jet_args((x,), 2, collapsed=collapsed)
     with raises(NotImplementedError, match="eval mode only"):
-        jet(f, (x,), collapsed=collapsed)(*jet_args)
+        jet(f, (x,), collapsed=collapsed, scale_coeffs=scale_coeffs)(*jet_args)
 
 
-def test_batch_norm_eval_without_running_stats_raises(collapsed: bool, device: str):
+def test_batch_norm_eval_without_running_stats_raises(
+    collapsed: bool, scale_coeffs: bool, device: str
+):
     """Eval-mode batch norm without running statistics must raise clearly.
 
     With ``running_mean``/``running_var`` set to ``None``, ATen falls back to
@@ -847,27 +855,31 @@ def test_batch_norm_eval_without_running_stats_raises(collapsed: bool, device: s
     from ``None + eps``.
     """
     kw = device_kw(device)
-    tup = partial(JetTuple, collapsed=collapsed)
+    tup = partial(JetTuple, collapsed=collapsed, scaled=scale_coeffs)
     x = tup((rand(4, 3, 5, 5, **kw), rand(4, 3, 5, 5, **kw)))
     with raises(NotImplementedError, match="running statistics"):
         native_batch_norm(x, None, None, None, None, False, 0.1, 1e-5)
 
 
-def test_nll_loss_taylor_expanded_target_raises(collapsed: bool, device: str):
+def test_nll_loss_taylor_expanded_target_raises(
+    collapsed: bool, scale_coeffs: bool, device: str
+):
     """A Taylor-expanded nll_loss target (label) is rejected (must be constant).
 
     Labels are class indices, not differentiable; the rule must reject a
     Taylor-expanded target with a clear error rather than a cryptic ATen one.
     """
     kw = device_kw(device)
-    tup = partial(JetTuple, collapsed=collapsed)
+    tup = partial(JetTuple, collapsed=collapsed, scaled=scale_coeffs)
     logits = tup((rand(8, 5, **kw), rand(8, 5, **kw)))
     target = tup((rand(8, **kw), rand(8, **kw)))  # a Taylor-expanded label
     with raises(NotImplementedError, match="Taylor-expanded target"):
         jet_nll_loss_forward(logits, target, None, 1, -100)
 
 
-def test_max_pool2d_matches_with_indices(collapsed: bool, device: str):
+def test_max_pool2d_matches_with_indices(
+    collapsed: bool, scale_coeffs: bool, device: str
+):
     """The fused ``aten.max_pool2d`` rule equals the with-indices values jet.
 
     ``jet_max_pool2d`` is the indices-free variant some backends emit (e.g.
@@ -877,13 +889,14 @@ def test_max_pool2d_matches_with_indices(collapsed: bool, device: str):
     """
     kw = device_kw(device)
     (x,) = make_jet_args((rand(2, 3, 8, 8, **kw),), 3, collapsed=collapsed)
-    jet_in = JetTuple(x, collapsed=collapsed)
+    jet_in = JetTuple(x, collapsed=collapsed, scaled=scale_coeffs)
     pool_args = (2, 2)  # kernel_size, stride
 
     fused = primitives.jet_max_pool2d(jet_in, *pool_args)
     expected, _ = primitives.jet_max_pool2d_with_indices(jet_in, *pool_args)
 
     assert fused.collapsed == expected.collapsed
+    assert fused.scaled == expected.scaled
     assert len(fused) == len(expected)
     for got, want in zip(fused, expected):
         assert_close(got, want, **tolerances_for(device))

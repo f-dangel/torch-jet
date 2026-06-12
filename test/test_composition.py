@@ -103,6 +103,12 @@ COMPOSITION_CASES = [
 
 
 @mark.parametrize("config", COMPOSITION_CASES, ids=lambda c: c["id"])
-def test_composition(config: dict[str, Any], K: int, collapsed: bool, device: str):
+def test_composition(
+    config: dict[str, Any],
+    K: int,
+    collapsed: bool,
+    scale_coeffs: bool,
+    device: str,
+):
     """``jet(composition)`` matches its mode-specific oracle."""
-    assert_jet_matches_oracle(config, K, collapsed, device)
+    assert_jet_matches_oracle(config, K, collapsed, device, scale_coeffs=scale_coeffs)

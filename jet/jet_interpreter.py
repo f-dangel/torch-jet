@@ -7,10 +7,11 @@ approach of a `Transformer`, the interpreter propagates real values (or proxy
 tensors under `make_fx`) and uses `isinstance` against the chosen jet type to
 distinguish Taylor-expanded arguments from constants.
 
-The same interpreter handles both standard and collapsed Taylor mode via the
-``collapsed`` constructor flag, which wraps placeholders as
-``JetTuple(..., collapsed=...)`` and, per op, selects the standard or collapsed
-rule from the shared ``RULES`` registry (:mod:`jet._rules`).
+The same interpreter handles both standard and collapsed Taylor mode, as well
+as the default or internally scaled coefficient basis, via constructor flags.
+It wraps placeholders as ``JetTuple(..., collapsed=..., scaled=...)`` and, per
+op, selects the standard or collapsed rule from the shared ``RULES`` registry
+(:mod:`jet._rules`).
 """
 
 from typing import Any
@@ -42,12 +43,22 @@ class JetInterpreter(Interpreter):
             the highest-order coefficient is already summed over directions).
             If ``False`` (default), propagate standard ``JetTuple`` values and
             dispatch to each op's standard rule.
+        scale_coeffs: If ``True``, interpret the coefficients inside each
+            ``JetTuple`` in the scaled polynomial basis
+            ``x(t) = sum_k t^k * x_tilde_k`` rather than the default
+            derivative-coefficient basis ``x(t) = sum_k t^k / k! * x_k``.
     """
 
-    def __init__(self, module: GraphModule, collapsed: bool = False) -> None:
+    def __init__(
+        self,
+        module: GraphModule,
+        collapsed: bool = False,
+        scale_coeffs: bool = False,
+    ) -> None:
         """Initialize the JetInterpreter."""
         super().__init__(module)
         self.collapsed: bool = collapsed
+        self.scale_coeffs: bool = scale_coeffs
 
     def run(
         self,
@@ -71,7 +82,7 @@ class JetInterpreter(Interpreter):
     ) -> Any:
         """Wrap each placeholder value in a ``JetTuple``."""
         value = super().placeholder(target, args, kwargs)
-        return JetTuple(value, collapsed=self.collapsed)
+        return JetTuple(value, collapsed=self.collapsed, scaled=self.scale_coeffs)
 
     def call_function(
         self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Any]
@@ -110,16 +121,17 @@ class JetInterpreter(Interpreter):
                     f"No jet rule for {target}. Please file an issue."
                 )
             result = rule[self.collapsed](*args, **kwargs)
-            self._check_collapsed(result, target)
+            self._check_mode(result, target)
             return result
         return super().call_function(target, args, kwargs)
 
-    def _check_collapsed(self, result: Any, target: Target) -> None:
+    def _check_mode(self, result: Any, target: Target) -> None:
         """Assert every ``JetTuple`` a rule returns matches the run's mode.
 
         A single, central guard: if a rule builds its output with the wrong
-        ``collapsed`` flag, the mismatch is caught here -- at the dispatch site,
-        naming the op -- instead of surfacing later as an opaque shape error.
+        ``collapsed`` or ``scaled`` flag, the mismatch is caught here -- at the
+        dispatch site, naming the op -- instead of surfacing later as an opaque
+        shape or scaling error.
         """
         for leaf in tree_leaves(result, is_leaf=lambda x: isinstance(x, JetTuple)):
             if isinstance(leaf, JetTuple) and leaf.collapsed != self.collapsed:
@@ -127,6 +139,12 @@ class JetInterpreter(Interpreter):
                     f"the jet rule for {target} returned a JetTuple with "
                     f"collapsed={leaf.collapsed}, but the interpreter is running "
                     f"in collapsed={self.collapsed} mode"
+                )
+            if isinstance(leaf, JetTuple) and leaf.scaled != self.scale_coeffs:
+                raise RuntimeError(
+                    f"the jet rule for {target} returned a JetTuple with "
+                    f"scaled={leaf.scaled}, but the interpreter is running "
+                    f"in scaled={self.scale_coeffs} mode"
                 )
 
     def _normalize(

@@ -21,27 +21,36 @@ from jet.primitives import (
 )
 
 
-def _collapsed_of(*args: object) -> bool:
-    """Return the shared ``collapsed`` flag of the ``JetTuple`` args.
+def _mode_of(*args: object) -> tuple[bool, bool]:
+    """Return the shared ``(collapsed, scaled)`` flags of the ``JetTuple`` args.
 
     The interpreter only dispatches to a rule when at least one argument is a
     jet, so a ``JetTuple`` is always present. All jet arguments must agree on
-    the mode -- a whole run is either standard or collapsed -- so a mix is a
-    bug (mirrors :func:`jet.primitives._jet_order`'s single-``K`` check).
+    the mode -- a whole run is either standard or collapsed, and either the
+    default or the internally scaled coefficient basis -- so a mix is a bug
+    (mirrors :func:`jet.primitives._jet_order`'s single-``K`` check).
 
     Raises:
         TypeError: If no argument is a ``JetTuple`` (should be unreachable).
-        ValueError: If two ``JetTuple`` args disagree on ``collapsed``.
+        ValueError: If two ``JetTuple`` args disagree on ``collapsed`` or
+            ``scaled``.
     """
-    flags = {arg.collapsed for arg in args if isinstance(arg, JetTuple)}
-    if not flags:
+    jets = [arg for arg in args if isinstance(arg, JetTuple)]
+    if not jets:
         raise TypeError("composition rule called without a JetTuple argument")
-    if len(flags) > 1:
+    collapsed = {arg.collapsed for arg in jets}
+    scaled = {arg.scaled for arg in jets}
+    if len(collapsed) > 1:
         raise ValueError(
             "composition rule received JetTuple arguments with mixed collapsed "
             "flags; all jets in a run must share the same mode"
         )
-    return flags.pop()
+    if len(scaled) > 1:
+        raise ValueError(
+            "composition rule received JetTuple arguments with mixed scaled "
+            "flags; all jets in a run must share the same coefficient basis"
+        )
+    return collapsed.pop(), scaled.pop()
 
 
 def _rule(op: Callable, collapsed: bool) -> Callable:
@@ -71,7 +80,7 @@ def addmm(self: object, mat1: object, mat2: object) -> JetTuple:
     Returns:
         The value and its Taylor coefficients.
     """
-    collapsed = _collapsed_of(self, mat1, mat2)
+    collapsed, _ = _mode_of(self, mat1, mat2)
     add = _rule(ops.aten.add.Tensor, collapsed)
     mm = _rule(ops.aten.mm.default, collapsed)
     return add(self, mm(mat1, mat2))
@@ -93,7 +102,7 @@ def div(self: object, other: object) -> JetTuple:
     Returns:
         The value and its Taylor coefficients.
     """
-    collapsed = _collapsed_of(self, other)
+    collapsed, _ = _mode_of(self, other)
     mul = _rule(ops.aten.mul.Tensor, collapsed)
     reciprocal = _rule(ops.aten.pow.Tensor_Scalar, collapsed)
     return mul(self, reciprocal(other, -1))
@@ -117,7 +126,7 @@ def stack(tensors: list[object], dim: int = 0) -> JetTuple:
     Returns:
         The value and its Taylor coefficients.
     """
-    collapsed = _collapsed_of(*tensors)
+    collapsed, _ = _mode_of(*tensors)
     cat = _rule(ops.aten.cat.default, collapsed)
     unsqueeze = _rule(ops.aten.unsqueeze.default, collapsed)
     return cat([unsqueeze(t, dim) for t in tensors], dim)
@@ -145,7 +154,7 @@ def convolution(
     Returns:
         The value and its Taylor coefficients.
     """
-    collapsed = _collapsed_of(input, weight, bias)
+    collapsed, _ = _mode_of(input, weight, bias)
     add = _rule(ops.aten.add.Tensor, collapsed)
 
     def cv(a: object, b: object) -> object:
@@ -204,7 +213,7 @@ def mse_loss(self: object, target: object, reduction: int = 1) -> JetTuple:
     Returns:
         The value and its Taylor coefficients.
     """
-    collapsed = _collapsed_of(self, target)
+    collapsed, _ = _mode_of(self, target)
     sub = _rule(ops.aten.sub.Tensor, collapsed)
     pow = _rule(ops.aten.pow.Tensor_Scalar, collapsed)
     squared_error = pow(sub(self, target), 2)
@@ -231,7 +240,7 @@ def log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTup
     Returns:
         The value and its Taylor coefficients.
     """
-    collapsed = _collapsed_of(self)
+    collapsed, _ = _mode_of(self)
     sub = _rule(ops.aten.sub.Tensor, collapsed)
     exp = _rule(ops.aten.exp.default, collapsed)
     log = _rule(ops.aten.log.default, collapsed)
@@ -286,7 +295,7 @@ def native_batch_norm(
             "statistics, which is not yet implemented."
         )
 
-    collapsed = _collapsed_of(input, weight, bias)
+    collapsed, _ = _mode_of(input, weight, bias)
     sub = _rule(ops.aten.sub.Tensor, collapsed)
     mul = _rule(ops.aten.mul.Tensor, collapsed)
     add = _rule(ops.aten.add.Tensor, collapsed)

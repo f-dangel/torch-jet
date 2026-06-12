@@ -13,7 +13,7 @@ from jet import jet
 from test.utils import device_kw, make_jet_args
 
 
-def test_constant_output_shape(collapsed: bool, device: str):
+def test_constant_output_shape(collapsed: bool, scale_coeffs: bool, device: str):
     """Constant output leaves match the mode-specific shape contract.
 
     - Standard mode: each coefficient ``c_1..c_K`` is shape ``S``.
@@ -27,7 +27,9 @@ def test_constant_output_shape(collapsed: bool, device: str):
         return sin(x), zeros(*out_shape, **kw)
 
     args = make_jet_args(mock_args, K, collapsed=collapsed, R=R)
-    _, (const, *const_coeffs) = jet(f, mock_args, collapsed=collapsed)(*args)
+    _, (const, *const_coeffs) = jet(
+        f, mock_args, collapsed=collapsed, scale_coeffs=scale_coeffs
+    )(*args)
 
     expected = (
         [(R, *out_shape)] * (K - 1) + [out_shape] if collapsed else [out_shape] * K

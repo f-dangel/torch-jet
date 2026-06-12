@@ -205,7 +205,11 @@ def rev_collapsed_jet(f: Callable[..., Any]) -> Callable[..., Any]:
 
 
 def assert_jet_matches_oracle(
-    config: dict[str, Any], K: int, collapsed: bool, device: str = "cpu"
+    config: dict[str, Any],
+    K: int,
+    collapsed: bool,
+    device: str = "cpu",
+    scale_coeffs: bool = False,
 ) -> None:
     """Assert ``jet(f, mock_args, collapsed)`` matches its mode-specific oracle.
 
@@ -219,12 +223,14 @@ def assert_jet_matches_oracle(
     f, mock_args = setup_case(config, device)
     if collapsed and K < 2:
         with raises(ValueError, match=f"collapsed mode requires K >= 2, got K={K}"):
-            jet(f, mock_args, collapsed=collapsed)(
+            jet(f, mock_args, collapsed=collapsed, scale_coeffs=scale_coeffs)(
                 *make_jet_args(mock_args, K, collapsed=collapsed)
             )
         return
     jet_args = make_jet_args(mock_args, K, collapsed=collapsed)
     oracle = rev_collapsed_jet(f) if collapsed else _rev_jet(f)
-    actual = jet(f, mock_args, collapsed=collapsed)(*jet_args)
+    actual = jet(f, mock_args, collapsed=collapsed, scale_coeffs=scale_coeffs)(
+        *jet_args
+    )
     expected = oracle(*jet_args)
     assert_close(actual, expected, **tolerances_for(device))

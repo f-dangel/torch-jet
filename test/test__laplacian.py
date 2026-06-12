@@ -104,6 +104,7 @@ def test_Laplacian(
     config: dict[str, Any],
     weights: str | None | tuple[str, float],
     collapsed: bool,
+    scale_coeffs: bool,
     device: str,
 ):
     """Compare Laplacian implementations.
@@ -114,6 +115,7 @@ def test_Laplacian(
             unweighted. If `diagonal_increments`, a synthetic coefficient tensor is
             used that has diagonal elements that are increments of 1 starting from 1.
         collapsed: Whether to use collapsed Taylor mode.
+        scale_coeffs: Whether to use the internally scaled coefficient basis.
         device: Device to run the test on.
     """
     f, (x,) = setup_case(config, device)
@@ -124,7 +126,13 @@ def test_Laplacian(
 
     # Using a manually-vmapped jet
     weighting = get_weighting(x, weights)
-    lap_fn = jet_laplacian(f, (x,), weighting=weighting, collapsed=collapsed)(x)
+    lap_fn = jet_laplacian(
+        f,
+        (x,),
+        weighting=weighting,
+        collapsed=collapsed,
+        scale_coeffs=scale_coeffs,
+    )(x)
     assert_close(lap_rev, lap_fn, **tolerances_for(device))
 
 
@@ -138,6 +146,7 @@ def test_Laplacian_randomization(
     distribution: str,
     weights: str | None,
     collapsed: bool,
+    scale_coeffs: bool,
     device: str,
     max_num_chunks: int = 100,
     chunk_size: int = 256,
@@ -152,6 +161,7 @@ def test_Laplacian_randomization(
             unweighted. If `diagonal_increments`, a synthetic coefficient tensor is
             used that has diagonal elements that are increments of 1 starting from 1.
         collapsed: Whether to use collapsed Taylor mode.
+        scale_coeffs: Whether to use the internally scaled coefficient basis.
         device: Device to run the test on.
         max_num_chunks: Maximum number of chunks to accumulate. Default: `100`.
         chunk_size: Number of samples per chunk. Default: `256`.
@@ -168,7 +178,12 @@ def test_Laplacian_randomization(
     weighting = get_weighting(x, weights, randomization=randomization)
 
     lap_fn = jet_laplacian(
-        f, (x,), randomization=randomization, weighting=weighting, collapsed=collapsed
+        f,
+        (x,),
+        randomization=randomization,
+        weighting=weighting,
+        collapsed=collapsed,
+        scale_coeffs=scale_coeffs,
     )
 
     converged = _check_mc_convergence(

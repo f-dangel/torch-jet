@@ -245,6 +245,9 @@ def visualize_graph(
 ):
     """Visualize the compute graph of a module.
 
+    Requires the optional ``viz`` dependency (``pydot``); install it with
+    ``pip install jet-for-pytorch[viz]`` (plus the ``graphviz`` system package).
+
     Supported formats: ``.png``, ``.pdf``, ``.svg`` (inferred from *savefile*).
 
     Args:
@@ -286,5 +289,7 @@ def visualize_graph(
         supported = ", ".join(sorted(creators))
         raise ValueError(f"Unsupported file format {suffix!r}. Use one of: {supported}")
 
+    # Render before opening the file so a failure leaves no empty artifact.
+    data = creator()
     with open(savefile, "wb") as f:
-        f.write(creator())
+        f.write(data)

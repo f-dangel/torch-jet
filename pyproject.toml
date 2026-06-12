@@ -31,8 +31,7 @@ classifiers = [
 dynamic = ["version"]
 # Dependencies of the project:
 dependencies = [
-    "torch>=2.10",
-    "pydot",
+    "torch>=2.10,<3",
     "scipy",
 ]
 
@@ -40,6 +39,10 @@ dependencies = [
 requires-python = ">=3.12"
 
 [project.optional-dependencies]
+# Dependencies needed to visualize traced graphs via `visualize_graph`
+viz = [
+    "pydot",
+]
 # Dependencies needed to run the experiments (semicolon/line-separated)
 exp = [
     "einops",

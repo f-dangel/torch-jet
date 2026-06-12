@@ -16,6 +16,10 @@ from torch.nn import Linear, Sequential, Tanh
 
 from jet import capture_graph, jet, visualize_graph
 
+# Use the Taylor-mode concept diagram (shown below) as the gallery thumbnail.
+# Path is relative to the mkdocs ``docs_dir``.
+# mkdocs_gallery_thumbnail_path = 'examples/01_taylor_mode.png'
+
 HEREDIR = path.dirname(path.abspath(__name__))
 # We need to store figures here so they will be picked up in the built doc
 GALLERYDIR = path.join(path.dirname(HEREDIR), "generated", "gallery")

@@ -7,8 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-`jet` is now in Beta: the public API is stable and more operators are
-supported, though coverage is still growing.
+## [1.0.0] - 2026-06-12
+
+First stable release: the public API (`jet`, `laplacian`, `bilaplacian`) is now
+covered by [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Note that
+`jet` builds on PyTorch's tracing internals (`make_fx`, FX, ATen overloads), so
+future PyTorch releases may still require raising the minimum supported version.
 
 ### Added/New
 
@@ -214,6 +218,14 @@ supported, though coverage is still growing.
 
 ### Internal
 
+- Cap the supported `torch` range at `<3` to guard against an untested
+  major-version ATen change
+  ([PR](https://github.com/f-dangel/torch-jet/pull/188)).
+
+- Document the `weighting` argument of `laplacian` with a runnable
+  weighted-Laplacian example
+  ([PR](https://github.com/f-dangel/torch-jet/pull/191)).
+
 - Exclude the experiments (`jet/exp`) from coverage and drop the coverage
   failure gate
   ([PR](https://github.com/f-dangel/torch-jet/pull/189)).
@@ -242,6 +254,9 @@ supported, though coverage is still growing.
 - Pin a minimum `torch` version, declare `pydot` (needed by `visualize_graph`)
   as a runtime dependency, and drop the unused `einops`/`numpy` core deps
   ([PR](https://github.com/f-dangel/torch-jet/pull/178)).
+  - **Backward-incompatible.** Move `pydot` out of the core dependencies into
+    an optional `[viz]` extra; install it with `pip install jet-for-pytorch[viz]`
+    ([PR](https://github.com/f-dangel/torch-jet/pull/188)).
 
 - De-duplicate every remaining standard/collapsed primitive rule into a single
   mode-agnostic body
@@ -347,5 +362,6 @@ supported, though coverage is still growing.
 Today, we are releasing a cleaned up version of the library used in the experiments for our NeurIPS 2025 paper.
 The repository also hosts the LaTeX source for the paper and poster.
 
-[Unreleased]: https://github.com/f-dangel/torch-jet/compare/0.0.1...HEAD
+[Unreleased]: https://github.com/f-dangel/torch-jet/compare/1.0.0...HEAD
+[1.0.0]: https://github.com/f-dangel/torch-jet/compare/0.0.1...1.0.0
 [0.0.1]: https://github.com/f-dangel/torch-jet/releases/tag/0.0.1

@@ -7,6 +7,8 @@ The repository also hosts the Python functionality+experiments and LaTeX source 
 
 Operator coverage is still growing, so please help us improve the package by providing feedback, filing issues, and opening pull requests.
 
+![Taylor mode propagates the jet of an input curve through a function to obtain the jet of the output curve](https://raw.githubusercontent.com/f-dangel/torch-jet/master/docs/examples/01_taylor_mode.png)
+
 
 ## Getting Started
 

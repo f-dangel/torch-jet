@@ -13,7 +13,6 @@ jobs:
         python-version: ["3.12"]
         torch-version: ["2.10.*", ""]  # "" installs the latest torch
         # torchvision pins torch exactly, so pin it with the matching release
-        # on the pinned-torch leg (the latest-torch leg gets the latest)
         include:
           - torch-version: "2.10.*"
             torchvision-version: "0.25.*"

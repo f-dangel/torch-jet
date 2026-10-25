@@ -61,7 +61,7 @@ TORCHVISION_CASES = [
     {
         "id": name,
         "f": _projected(ctor),
-        "args_fn": lambda res=res: (randn(1, 3, res, res),),
+        "args_fn": lambda res=res: (randn(2, 3, res, res),),
         "oracle_fails_on": oracle_fails_on,
     }
     for name, (ctor, res, oracle_fails_on) in MODELS.items()

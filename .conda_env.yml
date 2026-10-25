@@ -7,4 +7,3 @@ dependencies:
   - pip=25.0
   - pip:
     - -e ."[lint,test,exp]"
-    - torchvision  # for the tests; pins torch exactly, so not a package extra

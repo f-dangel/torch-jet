@@ -11,9 +11,6 @@ help:
 	@echo "        Install all development tools"
 	@echo "install-test"
 	@echo "        Install only the testing tools (included in install-dev)"
-	@echo "install-torchvision"
-	@echo "        Install torchvision for the tests (included in install-test);"
-	@echo "        set TORCHVISION_VERSION to match a pinned torch"
 	@echo "test"
 	@echo "        Run pytest on test and report coverage"
 	@echo "install-lint"
@@ -46,20 +43,11 @@ uninstall:
 install-dev:
 	@pip install -e ."[test,lint,exp,doc]"
 	@pip install -e . -r docs/gh_requirements.txt
-	@make install-torchvision
 
 .PHONY: install-test
 
 install-test:
 	@pip install -e ."[test,exp]"
-	@make install-torchvision
-
-.PHONY: install-torchvision
-
-# torchvision pins torch exactly, so it is installed for the tests only, not as
-# a package extra. Pass e.g. TORCHVISION_VERSION="0.25.*" to match torch 2.10.*.
-install-torchvision:
-	@pip install "torchvision$(if $(TORCHVISION_VERSION),==$(TORCHVISION_VERSION))"
 
 .PHONY: test
 

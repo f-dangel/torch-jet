@@ -16,13 +16,10 @@ If you don't use `conda`, set up your preferred environment and run
 
 ```bash
 pip install -e ."[lint,test,exp,doc]"
-make install-torchvision
 ```
 to install the package in editable mode, along with all required development dependencies
 (the quotes are for OS compatibility, see
 [here](https://github.com/mu-editor/mu/issues/852#issuecomment-498759372)).
-The second line installs `torchvision` for the tests; it pins `torch` exactly, so it is
-not a package extra (pass `TORCHVISION_VERSION="0.25.*"` to match `torch` 2.10.*).
 
 ## Continuous integration
 

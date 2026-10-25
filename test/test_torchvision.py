@@ -1,9 +1,8 @@
 """End-to-end Taylor-mode tests on torchvision CNNs (eval mode).
 
-torchvision pins torch exactly, so it is not a package extra: ``make
-install-test`` installs it separately (``make install-torchvision``, versioned
-via ``TORCHVISION_VERSION``). A missing torchvision fails this module rather
-than skipping it, so a broken install step cannot pass silently.
+torchvision pins torch exactly, so it is a ``test`` extra, not a dependency.
+A missing torchvision fails this module rather than skipping it, so a broken
+install cannot pass silently.
 """
 
 from typing import Any, Callable

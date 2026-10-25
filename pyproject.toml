@@ -63,6 +63,7 @@ test = [
     "pydot",
     "pytest",
     "pytest-cov",
+    "torchvision",  # pins torch exactly, hence a test extra and not a dependency
 ]
 # Dependencies needed for linting (semicolon/line-separated)
 lint = [

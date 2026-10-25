@@ -43,7 +43,7 @@ from torch.nn.functional import (
 from torch.testing import assert_close
 
 from jet import jet, primitives
-from jet.compositions import cudnn_batch_norm, native_batch_norm
+from jet.compositions import native_batch_norm
 from jet.primitives import JetTuple, jet_nll_loss_forward
 from test.utils import (
     _stateless,
@@ -902,26 +902,34 @@ def test_batch_norm_eval_without_running_stats_raises(collapsed: bool, device: s
 
 
 def test_cudnn_batch_norm_matches_native(collapsed: bool, device: str):
-    """The cuDNN batch-norm rule is the native one plus an empty fourth output.
+    """``jet`` of the cuDNN batch-norm overload equals ``jet`` of the native one.
 
     CUDA lowers eval-mode batch norm to ``aten.cudnn_batch_norm``, so the
-    ``batch_norm_*`` cases above exercise this rule end to end on a GPU; CI has
-    none, hence this device-independent check of the rule itself.
+    ``batch_norm_*`` cases above exercise its rule end to end on a GPU. CI has
+    none, and the op has no CPU kernel for the oracle, hence this check against
+    the native rule: ``jet`` traces with fake tensors, so it runs anywhere.
     """
     manual_seed(0)
     kw = device_kw(device)
-    tup = partial(JetTuple, collapsed=collapsed)
-    x = tup((rand(4, 3, 5, 5, **kw), rand(4, 3, 5, 5, **kw)))
-    w, b, rm, rv = (rand(3, **kw) for _ in range(4))
-    native = native_batch_norm(x, w, b, rm, rv, False, 0.1, 1e-5)
-    cudnn = cudnn_batch_norm(x, w, b, rm, rv, False, 0.1, 1e-5)
-    assert_close(list(cudnn[0]), list(native[0]))
+    x = rand(4, 3, 5, 5, **kw)
+    stats = (*(rand(3, **kw) for _ in range(4)), False, 0.1, 1e-5)
+
+    def f_cudnn(x):
+        return ops.aten.cudnn_batch_norm.default(x, *stats)
+
+    def f_native(x):
+        return ops.aten.native_batch_norm.default(x, *stats)
+
+    jet_args = make_jet_args((x,), 3, collapsed=collapsed)
+    cudnn = jet(f_cudnn, (x,), collapsed=collapsed)(*jet_args)
+    native = jet(f_native, (x,), collapsed=collapsed)(*jet_args)
+    assert_close(cudnn[0], native[0])
     # The extra outputs are empty, with the dtypes of the ATen op (meta kernel)
     meta = ops.aten.cudnn_batch_norm.default(
-        *(t.to("meta") for t in (x[0], w, b, rm, rv)), False, 0.1, 1e-5
+        *(t.to("meta") for t in (x, *stats[:4])), *stats[4:]
     )
-    assert [t.dtype for t in cudnn[1:]] == [t.dtype for t in meta[1:]]
-    assert all(t.numel() == 0 for t in cudnn[1:])
+    assert [c[0].dtype for c in cudnn[1:]] == [m.dtype for m in meta[1:]]
+    assert all(c[0].numel() == 0 for c in cudnn[1:])
 
 
 def test_nll_loss_taylor_expanded_target_raises(collapsed: bool, device: str):

@@ -770,8 +770,7 @@ PRIMITIVE_CASES = [
         "args_fn": lambda: (rand(1, 1, 4),),
     },
     # ``transpose.int`` / ``permute`` are the general axis swaps (``t`` covers
-    # only 2d); both change the coefficients' shape, so collapsed mode vmaps
-    # over R. ``expand`` broadcasts to a larger (view) shape; ``clone`` is what
+    # only 2d). ``expand`` broadcasts to a larger (view) shape. ``clone`` is what
     # ``.contiguous()`` lowers to after a non-contiguous view (torchvision's
     # ``channel_shuffle``) and carries a ``memory_format`` kwarg.
     {

@@ -303,3 +303,36 @@ def native_batch_norm(
         out = add(out, view(bias, shape))
     empty = primal.new_empty(0)
     return out, empty, empty
+
+
+def cudnn_batch_norm(
+    input: object,
+    weight: object,
+    bias: object,
+    running_mean: object,
+    running_var: object,
+    training: bool,
+    exponential_average_factor: float,
+    epsilon: float,
+) -> tuple:
+    """Taylor-mode arithmetic for ``aten.cudnn_batch_norm`` (eval mode).
+
+    On CUDA, eval-mode batch norm lowers to this cuDNN overload. It computes
+    the same map as :func:`native_batch_norm` (which does the work), with a
+    required ``weight`` and a fourth, cuDNN-internal ``reserve`` output.
+
+    Returns:
+        The ATen op's ``(output, save_mean, save_var, reserve)`` quadruple; the
+        last three are empty (only the forward output is consumed).
+    """
+    out, empty, _ = native_batch_norm(
+        input,
+        weight,
+        bias,
+        running_mean,
+        running_var,
+        training,
+        exponential_average_factor,
+        epsilon,
+    )
+    return out, empty, empty, empty

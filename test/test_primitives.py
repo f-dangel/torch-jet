@@ -43,7 +43,7 @@ from torch.nn.functional import (
 from torch.testing import assert_close
 
 from jet import jet, primitives
-from jet.compositions import native_batch_norm
+from jet.compositions import cudnn_batch_norm, native_batch_norm
 from jet.primitives import JetTuple, jet_nll_loss_forward
 from test.utils import (
     _stateless,
@@ -899,6 +899,25 @@ def test_batch_norm_eval_without_running_stats_raises(collapsed: bool, device: s
     x = tup((rand(4, 3, 5, 5, **kw), rand(4, 3, 5, 5, **kw)))
     with raises(NotImplementedError, match="running statistics"):
         native_batch_norm(x, None, None, None, None, False, 0.1, 1e-5)
+
+
+def test_cudnn_batch_norm_matches_native(collapsed: bool, device: str):
+    """The cuDNN batch-norm rule is the native one plus an empty fourth output.
+
+    CUDA lowers eval-mode batch norm to ``aten.cudnn_batch_norm``, so the
+    ``batch_norm_*`` cases above exercise this rule end to end on a GPU; CI has
+    none, hence this device-independent check of the rule itself.
+    """
+    manual_seed(0)
+    kw = device_kw(device)
+    tup = partial(JetTuple, collapsed=collapsed)
+    x = tup((rand(4, 3, 5, 5, **kw), rand(4, 3, 5, 5, **kw)))
+    w, b, rm, rv = (rand(3, **kw) for _ in range(4))
+    native = native_batch_norm(x, w, b, rm, rv, False, 0.1, 1e-5)
+    cudnn = cudnn_batch_norm(x, w, b, rm, rv, False, 0.1, 1e-5)
+    assert len(cudnn) == 4
+    assert_close(list(cudnn[0]), list(native[0]))
+    assert all(t.numel() == 0 for t in cudnn[1:])
 
 
 def test_nll_loss_taylor_expanded_target_raises(collapsed: bool, device: str):

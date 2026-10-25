@@ -5,11 +5,11 @@ Not primitive coverage -- see ``test_primitives.py`` for that.
 """
 
 from functools import partial
-from typing import Any
+from typing import Any, Callable
 
 from pytest import mark
 from torch import Tensor, cos, manual_seed, rand, randn, sin, tanh
-from torch.nn import Linear, Module, ReLU, ReLU6, Sequential
+from torch.nn import Hardsigmoid, Linear, Module, ReLU, ReLU6, Sequential
 from torch.nn.functional import cross_entropy
 
 from test.utils import (
@@ -41,6 +41,14 @@ def _inplace_mlp(device: str, activation: type[Module]) -> Sequential:
     )
 
 
+def _mobilenet_mlp(device: str) -> Callable[[Tensor], Tensor]:
+    """In-place-ReLU6 MLP gated by a ``Hardsigmoid`` -- MobileNetV3's pattern."""
+    net = _inplace_mlp(device, ReLU6)
+    manual_seed(1)
+    gate = Sequential(Linear(5, 1, **device_kw(device)), Hardsigmoid())
+    return lambda x: net(x) * gate(x)
+
+
 def _channel_shuffle(x: Tensor, groups: int = 2) -> Tensor:
     """Channel shuffle as in torchvision's ShuffleNet: view, transpose, contiguous, view."""
     N, C, H, W = x.shape
@@ -66,6 +74,7 @@ COMPOSITION_CASES = [
         "f": partial(_inplace_mlp, activation=ReLU6),
         "args_fn": lambda: (3 * randn(5),),
     },
+    {"id": "mobilenet_mlp", "f": _mobilenet_mlp, "args_fn": lambda: (3 * randn(5),)},
     {
         "id": "deep_pytree",
         "f": _stateless(_deep_pytree_f),

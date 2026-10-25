@@ -17,7 +17,7 @@ from torch import (
     zeros_like,
 )
 from torch.nn import Linear, Sequential, Tanh
-from torch.nn.functional import max_pool2d
+from torch.nn.functional import hardsigmoid, max_pool2d, relu6
 from torch.overrides import TorchFunctionMode
 from torch.testing import assert_close
 from torch.utils._pytree import tree_flatten, tree_map
@@ -59,6 +59,9 @@ class DifferentiableSubstitutes(TorchFunctionMode):
         max_pool2d: lambda *args, **kwargs: max_pool2d(
             *args, **{**kwargs, "return_indices": True}
         )[0],
+        # ``hardsigmoid_backward`` has no derivative on any device; its
+        # definition ``relu6(x + 3) / 6`` is twice differentiable.
+        hardsigmoid: lambda x, inplace=False: relu6(x + 3) / 6,
     }
 
     def __torch_function__(self, func, types, args=(), kwargs=None):

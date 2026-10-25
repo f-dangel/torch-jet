@@ -85,6 +85,9 @@ RULES: dict = {
     ops.aten.mse_loss.default: _defshared(compositions.mse_loss),
     ops.aten._log_softmax.default: _defshared(compositions.log_softmax),
     ops.aten.native_batch_norm.default: _defshared(compositions.native_batch_norm),
+    # CUDA lowers eval-mode batch norm to the cuDNN overload (same map, one
+    # extra output).
+    ops.aten.cudnn_batch_norm.default: _defshared(compositions.cudnn_batch_norm),
 }
 
 # Linear ops (pointwise-linear, shape-only, reductions): one mode-agnostic

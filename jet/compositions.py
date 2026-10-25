@@ -10,7 +10,7 @@ algebraic identity (e.g. ``addmm == add(self, mm(mat1, mat2))``).
 
 from typing import Callable
 
-from torch import ops
+from torch import ops, uint8
 
 import jet._rules
 from jet.primitives import (
@@ -323,7 +323,8 @@ def cudnn_batch_norm(
 
     Returns:
         The ATen op's ``(output, save_mean, save_var, reserve)`` quadruple; the
-        last three are empty (only the forward output is consumed).
+        last three are empty (only the forward output is consumed), with the
+        byte-typed ``reserve`` of the ATen op.
     """
     out, empty, _ = native_batch_norm(
         input,
@@ -335,4 +336,4 @@ def cudnn_batch_norm(
         exponential_average_factor,
         epsilon,
     )
-    return out, empty, empty, empty
+    return out, empty, empty, empty.new_empty(0, dtype=uint8)

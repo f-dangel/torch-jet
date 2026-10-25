@@ -915,8 +915,12 @@ def test_cudnn_batch_norm_matches_native(collapsed: bool, device: str):
     w, b, rm, rv = (rand(3, **kw) for _ in range(4))
     native = native_batch_norm(x, w, b, rm, rv, False, 0.1, 1e-5)
     cudnn = cudnn_batch_norm(x, w, b, rm, rv, False, 0.1, 1e-5)
-    assert len(cudnn) == 4
     assert_close(list(cudnn[0]), list(native[0]))
+    # The extra outputs are empty, with the dtypes of the ATen op (meta kernel)
+    meta = ops.aten.cudnn_batch_norm.default(
+        *(t.to("meta") for t in (x[0], w, b, rm, rv)), False, 0.1, 1e-5
+    )
+    assert [t.dtype for t in cudnn[1:]] == [t.dtype for t in meta[1:]]
     assert all(t.numel() == 0 for t in cudnn[1:])
 
 

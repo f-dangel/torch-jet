@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Run the test oracle under a substitution mode that swaps ops PyTorch cannot
+  differentiate twice (first: MPS `max_pool2d`) for equivalent ones, so every
+  torchvision model is checked against the oracle on every device
+  ([PR](https://github.com/f-dangel/torch-jet/pull/199)).
+
 - Add end-to-end Taylor-mode tests on nine torchvision CNNs (AlexNet, VGG11-BN,
   ResNet18, SqueezeNet, DenseNet121, GoogLeNet, RegNet, MNASNet, MobileNetV2)
   against the nested reverse-mode oracle on every device

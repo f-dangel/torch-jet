@@ -1,8 +1,9 @@
 """End-to-end Taylor-mode tests on torchvision CNNs (eval mode).
 
-torchvision pins torch exactly, so it is not a package extra: CI installs it in
-a separate step. A missing torchvision fails this module rather than skipping
-it, so a broken install step cannot pass silently.
+torchvision pins torch exactly, so it is not a package extra: ``make
+install-test`` installs it separately (``make install-torchvision``, versioned
+via ``TORCHVISION_VERSION``). A missing torchvision fails this module rather
+than skipping it, so a broken install step cannot pass silently.
 """
 
 from typing import Any, Callable
@@ -43,13 +44,14 @@ def _projected(ctor: Callable) -> Callable[[str], Callable]:
 
     The scalar output keeps the nested reverse-mode oracle cheap (it
     differentiates each output element separately) while every logit still
-    contributes.
+    contributes. The parameters are frozen: only the input is differentiated,
+    so autograd need not record graphs for them.
     """
 
     def builder(device: str) -> Callable:
         manual_seed(0)
         kw = device_kw(device)
-        model = ctor().eval().to(**kw)
+        model = ctor().eval().requires_grad_(False).to(**kw)
         w = randn(1, 1000, **kw)
         return lambda x: (model(x) * w).sum()
 

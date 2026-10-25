@@ -33,16 +33,9 @@ jobs:
         if [ -n "${{ matrix.torch-version }}" ]; then
           python -m pip install "torch==${{ matrix.torch-version }}"
         fi
-    - name: Install Dependencies
+    - name: Install dependencies (torchvision ${{ matrix.torchvision-version || 'latest' }})
       run: |
-        make install-test
-    - name: Install torchvision ${{ matrix.torchvision-version || 'latest' }} (test-only)
-      run: |
-        if [ -n "${{ matrix.torchvision-version }}" ]; then
-          python -m pip install "torchvision==${{ matrix.torchvision-version }}"
-        else
-          python -m pip install torchvision
-        fi
+        make install-test TORCHVISION_VERSION="${{ matrix.torchvision-version }}"
     - name: Run test
       run: |
         make test

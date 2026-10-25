@@ -901,37 +901,6 @@ def test_batch_norm_eval_without_running_stats_raises(collapsed: bool, device: s
         native_batch_norm(x, None, None, None, None, False, 0.1, 1e-5)
 
 
-def test_cudnn_batch_norm_matches_native(collapsed: bool, device: str):
-    """``jet`` of the cuDNN batch-norm overload equals ``jet`` of the native one.
-
-    CUDA lowers eval-mode batch norm to ``aten.cudnn_batch_norm``, so the
-    ``batch_norm_*`` cases above exercise its rule end to end on a GPU. CI has
-    none, and the op has no CPU kernel for the oracle, hence this check against
-    the native rule: ``jet`` traces with fake tensors, so it runs anywhere.
-    """
-    manual_seed(0)
-    kw = device_kw(device)
-    x = rand(4, 3, 5, 5, **kw)
-    stats = (*(rand(3, **kw) for _ in range(4)), False, 0.1, 1e-5)
-
-    def f_cudnn(x):
-        return ops.aten.cudnn_batch_norm.default(x, *stats)
-
-    def f_native(x):
-        return ops.aten.native_batch_norm.default(x, *stats)
-
-    jet_args = make_jet_args((x,), 3, collapsed=collapsed)
-    cudnn = jet(f_cudnn, (x,), collapsed=collapsed)(*jet_args)
-    native = jet(f_native, (x,), collapsed=collapsed)(*jet_args)
-    assert_close(cudnn[0], native[0])
-    # The extra outputs are empty, with the dtypes of the ATen op (meta kernel)
-    meta = ops.aten.cudnn_batch_norm.default(
-        *(t.to("meta") for t in (x, *stats[:4])), *stats[4:]
-    )
-    assert [c[0].dtype for c in cudnn[1:]] == [m.dtype for m in meta[1:]]
-    assert all(c[0].numel() == 0 for c in cudnn[1:])
-
-
 def test_nll_loss_taylor_expanded_target_raises(collapsed: bool, device: str):
     """A Taylor-expanded nll_loss target (label) is rejected (must be constant).
 

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added/New
+
+- Support the linear view ops `aten.transpose.int`, `aten.permute.default`,
+  `aten.expand.default`, and `aten.clone.default` in Taylor mode (both standard
+  and collapsed modes), which makes torchvision's `channel_shuffle` traceable
+  ([PR](https://github.com/f-dangel/torch-jet/pull/194)).
+
 ## [1.0.0] - 2026-06-12
 
 First stable release: the public API (`jet`, `laplacian`, `bilaplacian`) is now

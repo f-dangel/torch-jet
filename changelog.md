@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Add end-to-end Taylor-mode tests on nine torchvision CNNs (AlexNet, VGG11-BN,
+  ResNet18, SqueezeNet, DenseNet121, GoogLeNet, RegNet, MNASNet, MobileNetV2)
+  against the nested reverse-mode oracle on every device
+  ([PR](https://github.com/f-dangel/torch-jet/pull/197)).
+
 - Support `aten.cudnn_batch_norm.default`, the overload eval-mode batch norm
   lowers to on CUDA, so batch-norm models run in Taylor mode on GPUs
   ([PR](https://github.com/f-dangel/torch-jet/pull/198)).

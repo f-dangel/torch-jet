@@ -1,20 +1,17 @@
-"""End-to-end Taylor-mode tests on torchvision CNNs (eval mode, CPU, float64).
+"""End-to-end Taylor-mode tests on torchvision CNNs (eval mode, CPU).
 
 torchvision pins torch exactly, so it is not a package extra: CI installs it in
 a separate step. A missing torchvision fails this module rather than skipping
 it, so a broken install step cannot pass silently.
 """
 
-from math import factorial
-from typing import Callable
+from typing import Any, Callable
 
 from pytest import mark
-from torch import Tensor, float64, manual_seed, randn, zeros_like
-from torch.func import jvp
-from torch.testing import assert_close
+from torch import manual_seed, randn
 from torchvision import models
 
-from jet import jet
+from test.utils import assert_jet_matches_oracle, device_kw
 
 #: Models that trace end to end, with the input resolution they need.
 MODELS: dict[str, tuple[Callable, int]] = {
@@ -30,27 +27,35 @@ MODELS: dict[str, tuple[Callable, int]] = {
 }
 
 
-def _directional_derivatives(f: Callable, x: Tensor, v: Tensor, K: int) -> list[Tensor]:
-    """Compute ``d^k/dt^k f(x + t v)`` at ``t = 0`` for ``k = 0..K`` by nested ``jvp``.
+def _projected(ctor: Callable) -> Callable[[str], Callable]:
+    """Build ``x -> sum(model(x) * w)`` with a fixed random ``w`` on ``device``.
 
-    Forward-over-forward is far cheaper on a CNN than the nested reverse-mode
-    oracle of the other tests (seconds vs. minutes per order).
+    The scalar output keeps the nested reverse-mode oracle cheap (it
+    differentiates each output element separately) while every logit still
+    contributes.
     """
-    ds, g = [f(x)], f
-    for _ in range(K):
-        g = lambda y, g=g: jvp(g, (y,), (v,))[1]  # noqa: E731
-        ds.append(g(x))
-    return ds
+
+    def builder(device: str) -> Callable:
+        manual_seed(0)
+        kw = device_kw(device)
+        model = ctor().eval().to(**kw)
+        w = randn(1, 1000, **kw)
+        return lambda x: (model(x) * w).sum()
+
+    return builder
 
 
-@mark.parametrize("K", [2, 3], ids=lambda k: f"K{k}")
-@mark.parametrize("name", MODELS)
-def test_torchvision_model(name: str, K: int):
-    """``jet`` of a torchvision CNN matches its nested-``jvp`` directional derivatives."""
-    manual_seed(0)
-    ctor, res = MODELS[name]
-    model = ctor().eval().to(float64)
-    x, v = randn(1, 3, res, res, dtype=float64), randn(1, 3, res, res, dtype=float64)
-    coeffs = jet(model, (x,))((x, v, *[zeros_like(x)] * (K - 1)))
-    for k, d in enumerate(_directional_derivatives(model, x, v, K)):
-        assert_close(coeffs[k] * factorial(k), d)
+TORCHVISION_CASES = [
+    {
+        "id": name,
+        "f": _projected(ctor),
+        "args_fn": lambda res=res: (randn(1, 3, res, res),),
+    }
+    for name, (ctor, res) in MODELS.items()
+]
+
+
+@mark.parametrize("config", TORCHVISION_CASES, ids=lambda c: c["id"])
+def test_torchvision_model(config: dict[str, Any], K: int, collapsed: bool):
+    """``jet`` of a torchvision CNN matches the nested reverse-mode oracle."""
+    assert_jet_matches_oracle(config, K, collapsed, device="cpu")

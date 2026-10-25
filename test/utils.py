@@ -17,6 +17,8 @@ from torch import (
     zeros_like,
 )
 from torch.nn import Linear, Sequential, Tanh
+from torch.nn.functional import max_pool2d
+from torch.overrides import TorchFunctionMode
 from torch.testing import assert_close
 from torch.utils._pytree import tree_flatten, tree_map
 
@@ -36,6 +38,36 @@ def dtype_for_device(device: str) -> dtype:
 def device_kw(device: str) -> dict[str, Any]:
     """Tensor-factory kwargs (``dtype``, ``device``) for ``device``."""
     return {"dtype": dtype_for_device(device), "device": device}
+
+
+#: Ops PyTorch cannot differentiate twice (on some device), mapped to equivalent
+#: calls it can. The oracle runs under :class:`DifferentiableSubstitutes`, which
+#: swaps them in; :func:`assert_jet_matches_oracle` checks on every case that
+#: the swap leaves the forward pass unchanged, and ``test/test_substitutes.py``
+#: asserts per entry the PyTorch limitation behind it, so that a PyTorch fix
+#: shows up as a failure to remove the entry.
+DIFFERENTIABLE_SUBSTITUTES: dict[Callable, Callable] = {
+    # On MPS, ``max_pool2d`` followed by a nonlinearity is not twice
+    # differentiable unless called with ``return_indices=True``.
+    max_pool2d: lambda *args, **kwargs: max_pool2d(
+        *args, **{**kwargs, "return_indices": True}
+    )[0],
+}
+
+
+class DifferentiableSubstitutes(TorchFunctionMode):
+    """Swap each op in :data:`DIFFERENTIABLE_SUBSTITUTES` for its substitute.
+
+    Intercepts the Python-level call (``F.max_pool2d``, which ``nn.MaxPool2d``
+    also goes through), so the substitute's ops are what autograd records.
+    """
+
+    def __torch_function__(self, func, types, args=(), kwargs=None):
+        """Dispatch ``func`` to its substitute if it has one."""
+        kwargs = kwargs or {}
+        if func in DIFFERENTIABLE_SUBSTITUTES:
+            return DIFFERENTIABLE_SUBSTITUTES[func](*args, **kwargs)
+        return func(*args, **kwargs)
 
 
 def _stateless(f: Callable) -> Callable[[str], Callable]:
@@ -215,6 +247,10 @@ def assert_jet_matches_oracle(
 
     Collapsed mode requires ``K >= 2``; for the invalid ``collapsed and K < 2``
     cells, assert the jet call raises the documented guard and return early.
+
+    The oracle runs under :class:`DifferentiableSubstitutes`, so ``f`` may
+    contain ops PyTorch cannot differentiate twice (see
+    :data:`DIFFERENTIABLE_SUBSTITUTES`).
     """
     f, mock_args = setup_case(config, device)
     if collapsed and K < 2:
@@ -224,7 +260,11 @@ def assert_jet_matches_oracle(
             )
         return
     jet_args = make_jet_args(mock_args, K, collapsed=collapsed)
+    plain = f(*mock_args)
     oracle = rev_collapsed_jet(f) if collapsed else _rev_jet(f)
     actual = jet(f, mock_args, collapsed=collapsed)(*jet_args)
-    expected = oracle(*jet_args)
+    with DifferentiableSubstitutes():
+        # The substitutes must not change the function the oracle differentiates.
+        assert_close(f(*mock_args), plain, **tolerances_for(device))
+        expected = oracle(*jet_args)
     assert_close(actual, expected, **tolerances_for(device))

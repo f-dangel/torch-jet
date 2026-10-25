@@ -12,6 +12,13 @@ jobs:
       matrix:
         python-version: ["3.12"]
         torch-version: ["2.10.*", ""]  # "" installs the latest torch
+        # torchvision pins torch exactly, so pair each torch leg with the
+        # matching torchvision release ("" installs the latest)
+        include:
+          - torch-version: "2.10.*"
+            torchvision-version: "0.25.*"
+          - torch-version: ""
+            torchvision-version: ""
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
@@ -29,6 +36,13 @@ jobs:
     - name: Install Dependencies
       run: |
         make install-test
+    - name: Install torchvision ${{ matrix.torchvision-version || 'latest' }} (test-only)
+      run: |
+        if [ -n "${{ matrix.torchvision-version }}" ]; then
+          python -m pip install "torchvision==${{ matrix.torchvision-version }}"
+        else
+          python -m pip install torchvision
+        fi
     - name: Run test
       run: |
         make test

@@ -32,6 +32,7 @@ from torch import (
     zeros_like,
 )
 from torch.func import vmap
+from torch.nn.functional import hardtanh
 from torch.utils._pytree import register_pytree_node
 
 from jet.utils import integer_partitions, multiplicity
@@ -542,6 +543,25 @@ def _relu_derivatives(x0: Tensor, K: int) -> dict[int, Tensor | None]:
     return d
 
 
+def _hardtanh_derivatives(
+    x0: Tensor, min_val: float, max_val: float, K: int
+) -> dict[int, Tensor | None]:
+    """Compute ``hardtanh(x0, min_val, max_val)`` and its derivatives up to order *K*.
+
+    Hardtanh clamps to ``[min_val, max_val]`` and is piecewise linear, so its
+    first derivative is the indicator ``min_val < x0 < max_val`` (strict, as in
+    PyTorch's autograd, so both kinks get subgradient ``0``) and every higher
+    derivative vanishes (``None``, see :func:`_relu_derivatives`). ``relu6`` is
+    the special case ``(0, 6)``.
+    """
+    d: dict[int, Tensor | None] = {0: hardtanh(x0, min_val, max_val)}
+    if K >= 1:
+        d[1] = ((x0 > min_val) & (x0 < max_val)).to(x0.dtype)
+    for k in range(2, K + 1):
+        d[k] = None
+    return d
+
+
 def _exp_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:
     """Compute ``exp(x0)`` and its derivatives up to order *K* (order 0 is the value).
 
@@ -616,6 +636,27 @@ def jet_pow(self: JetTuple, exponent: float | int) -> JetTuple:
     """
     assert isinstance(exponent, (float, int))
     return _elementwise(self, lambda x, k: _pow_derivatives(x, exponent, k))
+
+
+# --- Hardtanh ---
+
+
+def jet_hardtanh(
+    self: Tensor | JetTuple, min_val: float = -1.0, max_val: float = 1.0
+) -> Tensor | JetTuple:
+    """Taylor-mode arithmetic for ``aten.hardtanh(self, min_val, max_val)``.
+
+    Args:
+        self: The primal and its Taylor coefficients.
+        min_val: Lower clamp bound.
+        max_val: Upper clamp bound.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    return _elementwise(
+        self, lambda x, k: _hardtanh_derivatives(x, min_val, max_val, k)
+    )
 
 
 # --- Arithmetic ---

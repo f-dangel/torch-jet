@@ -30,3 +30,6 @@ poster/main.pdf
 .envrc
 docs/generated/
 docs/examples/*.png
+
+# Local virtual environment
+.venv

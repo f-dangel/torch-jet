@@ -123,6 +123,8 @@ ignore = [
     "B905",
     # Too many arguments in function definition (9 > 5)
     "PLR0913",
+    # Too many positional arguments (6 > 5), sibling of PLR0913
+    "PLR0917",
     # Magic value comparison
     "PLR2004",
     # Loop variable overwritten by assignment target

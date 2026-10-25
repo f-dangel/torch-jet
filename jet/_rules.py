@@ -56,6 +56,9 @@ RULES: dict = {
     # Power (also elementwise, but the exponent is a call-time arg, so it carries
     # its own rule rather than registering through ``_defelementwise``).
     ops.aten.pow.Tensor_Scalar: _defshared(primitives.jet_pow),
+    # Hardtanh likewise takes its clamp bounds at call time (``relu6`` lowers
+    # to ``hardtanh(x, 0, 6)``).
+    ops.aten.hardtanh.default: _defshared(primitives.jet_hardtanh),
     # Mode-agnostic primitives (one body reading ``self.collapsed``)
     ops.aten.add.Tensor: _defshared(primitives.jet_add),
     ops.aten.sub.Tensor: _defshared(primitives.jet_sub),

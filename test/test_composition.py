@@ -8,7 +8,7 @@ from typing import Any
 
 from pytest import mark
 from torch import Tensor, cos, manual_seed, rand, randn, sin, tanh
-from torch.nn import Linear, ReLU, Sequential
+from torch.nn import Linear, ReLU, ReLU6, Sequential
 from torch.nn.functional import cross_entropy
 
 from test.utils import (
@@ -40,6 +40,19 @@ def _relu_inplace_mlp(device: str) -> Sequential:
     )
 
 
+def _relu6_inplace_mlp(device: str) -> Sequential:
+    """MLP with in-place ReLU6 -- MobileNetV2's pattern."""
+    manual_seed(0)
+    kw = device_kw(device)
+    return Sequential(
+        Linear(5, 4, **kw),
+        ReLU6(inplace=True),
+        Linear(4, 3, **kw),
+        ReLU6(inplace=True),
+        Linear(3, 1, **kw),
+    )
+
+
 def _channel_shuffle(x: Tensor, groups: int = 2) -> Tensor:
     """Channel shuffle as in torchvision's ShuffleNet: view, transpose, contiguous, view."""
     N, C, H, W = x.shape
@@ -56,6 +69,11 @@ COMPOSITION_CASES = [
     {"id": "mlp", "f": mlp, "args_fn": lambda: (rand(5),)},
     {"id": "mlp_batched", "f": mlp, "args_fn": lambda: (rand(10, 5),)},
     {"id": "relu_inplace_mlp", "f": _relu_inplace_mlp, "args_fn": lambda: (randn(5),)},
+    {
+        "id": "relu6_inplace_mlp",
+        "f": _relu6_inplace_mlp,
+        "args_fn": lambda: (3 * randn(5),),
+    },
     {
         "id": "deep_pytree",
         "f": _stateless(_deep_pytree_f),

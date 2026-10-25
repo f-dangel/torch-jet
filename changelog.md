@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Support `aten.hardtanh.default` (incl. `relu6`) in Taylor mode (both standard
+  and collapsed modes), which unlocks torchvision's MobileNetV2
+  ([PR](https://github.com/f-dangel/torch-jet/pull/196)).
+
 - Support the linear view ops `aten.transpose.int`, `aten.permute.default`,
   `aten.expand.default`, and `aten.clone.default` in Taylor mode (both standard
   and collapsed modes), which makes torchvision's `channel_shuffle` traceable

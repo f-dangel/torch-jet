@@ -33,10 +33,12 @@ from torch.nn.functional import (
     avg_pool2d,
     batch_norm,
     conv2d,
+    hardtanh,
     log_softmax,
     max_pool2d,
     mse_loss,
     nll_loss,
+    relu6,
 )
 from torch.testing import assert_close
 
@@ -467,6 +469,23 @@ PRIMITIVE_CASES = [
         }
         for sid, dims in _UNARY_SHAPES.items()
     ),
+    # ---- Hardtanh (piecewise linear with two kinks; ``4 * randn`` straddles
+    # the default bounds ``[-1, 1]`` and ``relu6``'s ``[0, 6]`` to exercise the
+    # inner slope and both clamped branches) --------------------------------
+    *(
+        {
+            "id": f"hardtanh-{sid}",
+            "f": _stateless(hardtanh),
+            "args_fn": lambda dims=dims: (4 * randn(*dims),),
+        }
+        for sid, dims in _UNARY_SHAPES.items()
+    ),
+    {
+        "id": "hardtanh_bounds",
+        "f": _stateless(lambda x: hardtanh(x, -2.0, 3.0)),
+        "args_fn": lambda: (4 * randn(3, 4),),
+    },
+    {"id": "relu6", "f": _stateless(relu6), "args_fn": lambda: (4 * randn(3, 4),)},
     # ---- log (positive domain; ``rand + 0.5`` keeps inputs in [0.5, 1.5)
     # so the ``1 / x0**k`` derivatives stay well-conditioned) --------------
     *(

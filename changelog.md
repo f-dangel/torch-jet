@@ -11,8 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add end-to-end Taylor-mode tests on nine torchvision CNNs (AlexNet, VGG11-BN,
   ResNet18, SqueezeNet, DenseNet121, GoogLeNet, RegNet, MNASNet, MobileNetV2)
-  against the nested reverse-mode oracle on every device; CI installs a
-  torch-matched torchvision for the tests only
+  against the nested reverse-mode oracle on every device (`torchvision` is a
+  `test` extra, since it pins `torch` exactly)
   ([PR](https://github.com/f-dangel/torch-jet/pull/197)).
 
 - Support `aten.cudnn_batch_norm.default`, the overload eval-mode batch norm

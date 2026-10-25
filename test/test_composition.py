@@ -40,6 +40,13 @@ def _relu_inplace_mlp(device: str) -> Sequential:
     )
 
 
+def _channel_shuffle(x: Tensor, groups: int = 2) -> Tensor:
+    """Channel shuffle as in torchvision's ShuffleNet: view, transpose, contiguous, view."""
+    N, C, H, W = x.shape
+    x = x.view(N, groups, C // groups, H, W).transpose(1, 2).contiguous()
+    return x.view(N, C, H, W)
+
+
 COMPOSITION_CASES = [
     {
         "id": "scalar_Rn_to_R",
@@ -99,6 +106,13 @@ COMPOSITION_CASES = [
         for reduction in ("mean", "sum", "none")
         for weighted in (False, True)
     ),
+    {
+        "id": "channel_shuffle",
+        # view -> transpose -> contiguous (clone) -> view, then a nonlinearity so
+        # the higher-order coefficients are non-trivial.
+        "f": _stateless(lambda x: sin(_channel_shuffle(x)) * x),
+        "args_fn": lambda: (rand(2, 4, 3, 3),),
+    },
 ]
 
 

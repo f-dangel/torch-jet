@@ -769,6 +769,35 @@ PRIMITIVE_CASES = [
         "f": _stateless(lambda x: x.squeeze([0, 1])),
         "args_fn": lambda: (rand(1, 1, 4),),
     },
+    # ``transpose.int`` / ``permute`` are the general axis swaps (``t`` covers
+    # only 2d). ``expand`` broadcasts to a larger (view) shape. ``clone`` is what
+    # ``.contiguous()`` lowers to after a non-contiguous view (torchvision's
+    # ``channel_shuffle``) and carries a ``memory_format`` kwarg.
+    {
+        "id": "transpose",
+        "f": _stateless(lambda x: x.transpose(0, 2)),
+        "args_fn": lambda: (rand(2, 3, 4),),
+    },
+    {
+        "id": "permute",
+        "f": _stateless(lambda x: x.permute(2, 0, 1)),
+        "args_fn": lambda: (rand(2, 3, 4),),
+    },
+    {
+        "id": "expand",
+        "f": _stateless(lambda x: x.expand(2, 3, 4)),
+        "args_fn": lambda: (rand(1, 4),),
+    },
+    {
+        "id": "clone",
+        "f": _stateless(lambda x: x.clone()),
+        "args_fn": lambda: (rand(3, 4),),
+    },
+    {
+        "id": "contiguous",
+        "f": _stateless(lambda x: x.t().contiguous()),
+        "args_fn": lambda: (rand(3, 4),),
+    },
     # ---- Loss functions --------------------------------------------------
     # ``mse_loss`` composes ``sub`` + ``pow`` then a linear reduction, against
     # a frozen target (the common loss usage). Cover all three reduction

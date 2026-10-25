@@ -29,10 +29,11 @@ from torch import (
     sigmoid,
     sin,
     tanh,
+    where,
     zeros_like,
 )
 from torch.func import vmap
-from torch.nn.functional import hardsigmoid, hardtanh
+from torch.nn.functional import hardsigmoid, hardswish, hardtanh
 from torch.utils._pytree import register_pytree_node
 
 from jet.utils import integer_partitions, multiplicity
@@ -577,6 +578,36 @@ def _hardsigmoid_derivatives(x0: Tensor, K: int) -> dict[int, Tensor | None]:
     for k in range(2, K + 1):
         d[k] = None
     return d
+
+
+def _hardswish_derivatives(x0: Tensor, K: int) -> dict[int, Tensor | None]:
+    """Compute ``hardswish(x0)`` and its derivatives up to order *K*.
+
+    ``hardswish(x) = x * relu6(x + 3) / 6`` is quadratic on ``(-3, 3)``, zero
+    below and the identity above. Order 1 is ``x0 / 3 + 1/2`` inside, ``0``
+    below, ``1`` above (the kinks join the outer branches); order 2 is ``1/3``
+    inside and ``0`` outside; every higher order vanishes (``None``, see
+    :func:`_relu_derivatives`).
+    """
+    d: dict[int, Tensor | None] = {0: hardswish(x0)}
+    if K >= 1:
+        inner = (x0 > -3) & (x0 < 3)
+        d[1] = where(inner, x0 / 3 + 0.5, (x0 >= 3).to(x0.dtype))
+    if K >= 2:
+        d[2] = inner.to(x0.dtype) / 3
+    for k in range(3, K + 1):
+        d[k] = None
+    return d
+
+
+def _silu_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:
+    """Compute ``silu(x0) = x0 * sigmoid(x0)`` and its derivatives up to order *K*.
+
+    By the Leibniz rule, ``silu^(k) = x0 * sigmoid^(k) + k * sigmoid^(k-1)``,
+    so all orders come from :func:`_sigmoid_derivatives`.
+    """
+    s = _sigmoid_derivatives(x0, K)
+    return {k: x0 * s[k] + (k * s[k - 1] if k else 0) for k in range(K + 1)}
 
 
 def _exp_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:

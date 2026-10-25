@@ -24,6 +24,7 @@ MODELS: dict[str, tuple[Callable, int]] = {
     "regnet_x_400mf": (models.regnet_x_400mf, 32),
     "mnasnet0_5": (models.mnasnet0_5, 32),
     "mobilenet_v2": (models.mobilenet_v2, 32),
+    "efficientnet_b0": (models.efficientnet_b0, 32),
 }
 
 

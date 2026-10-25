@@ -53,6 +53,8 @@ RULES: dict = {
     ops.aten.relu.default: _defelementwise(primitives._relu_derivatives),
     ops.aten.exp.default: _defelementwise(primitives._exp_derivatives),
     ops.aten.log.default: _defelementwise(primitives._log_derivatives),
+    ops.aten.hardswish.default: _defelementwise(primitives._hardswish_derivatives),
+    ops.aten.silu.default: _defelementwise(primitives._silu_derivatives),
     # Power (also elementwise, but the exponent is a call-time arg, so it carries
     # its own rule rather than registering through ``_defelementwise``).
     ops.aten.pow.Tensor_Scalar: _defshared(primitives.jet_pow),

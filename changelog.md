@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Support `aten.hardswish.default` and `aten.silu.default` in Taylor mode
+  (both standard and collapsed modes), which unlocks torchvision's
+  EfficientNet ([PR](https://github.com/f-dangel/torch-jet/pull/201)).
 - Support `aten.hardsigmoid.default` in Taylor mode (both standard and
   collapsed modes), one of the two activations torchvision's MobileNetV3 needs
   ([PR](https://github.com/f-dangel/torch-jet/pull/200)).

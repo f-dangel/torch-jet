@@ -1,20 +1,20 @@
 """End-to-end Taylor-mode tests on torchvision CNNs (eval mode, CPU, float64).
 
 torchvision pins torch exactly, so it is not a package extra: CI installs it in
-a separate step, and this module is skipped when it is absent.
+a separate step. A missing torchvision fails this module rather than skipping
+it, so a broken install step cannot pass silently.
 """
 
 from math import factorial
 from typing import Callable
 
-from pytest import importorskip, mark
+from pytest import mark
 from torch import Tensor, float64, manual_seed, randn, zeros_like
 from torch.func import jvp
 from torch.testing import assert_close
+from torchvision import models
 
 from jet import jet
-
-models = importorskip("torchvision.models")
 
 #: Models that trace end to end, with the input resolution they need.
 MODELS: dict[str, tuple[Callable, int]] = {

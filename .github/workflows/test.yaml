@@ -29,8 +29,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         if [ -n "${{ matrix.torch-version }}" ]; then
-          python -m pip install "torch==${{ matrix.torch-version }}" \
-            "torchvision==${{ matrix.torchvision-version }}"
+          python -m pip install "torch==${{ matrix.torch-version }}" "torchvision==${{ matrix.torchvision-version }}"
         fi
     - name: Install Dependencies
       run: |

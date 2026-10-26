@@ -25,6 +25,7 @@ MODELS: dict[str, tuple[Callable, int]] = {
     "mnasnet0_5": (models.mnasnet0_5, 32),
     "mobilenet_v2": (models.mobilenet_v2, 32),
     "efficientnet_b0": (models.efficientnet_b0, 32),
+    "mobilenet_v3_small": (models.mobilenet_v3_small, 32),
 }
 
 

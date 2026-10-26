@@ -1,4 +1,4 @@
-"""Guards for ``DIFFERENTIABLE_SUBSTITUTES`` (see ``test.utils``).
+"""Guards for ``DifferentiableSubstitutes.SUBSTITUTES`` (see ``test.utils``).
 
 One test per entry asserts, per device, the PyTorch limitation that justifies
 the entry and that the substitute does not share it. When such a test fails,
@@ -10,7 +10,7 @@ from torch import Tensor, rand
 from torch.autograd import grad
 from torch.nn.functional import max_pool2d
 
-from test.utils import DIFFERENTIABLE_SUBSTITUTES, device_kw
+from test.utils import DifferentiableSubstitutes, device_kw
 
 
 def _second_derivative(pool, x: Tensor) -> Tensor:
@@ -30,4 +30,4 @@ def test_max_pool2d_double_backward(device: str):
             _second_derivative(max_pool2d, x)
     else:
         _second_derivative(max_pool2d, x)
-    _second_derivative(DIFFERENTIABLE_SUBSTITUTES[max_pool2d], x)
+    _second_derivative(DifferentiableSubstitutes.SUBSTITUTES[max_pool2d], x)

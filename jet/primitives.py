@@ -601,7 +601,10 @@ def _silu_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:
     so all orders come from :func:`_sigmoid_derivatives`.
     """
     s = _sigmoid_derivatives(x0, K)
-    return {k: x0 * s[k] + (k * s[k - 1] if k else 0) for k in range(K + 1)}
+    d = {0: x0 * s[0]}
+    for k in range(1, K + 1):
+        d[k] = x0 * s[k] + (s[0] if k == 1 else k * s[k - 1])
+    return d
 
 
 def _exp_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:

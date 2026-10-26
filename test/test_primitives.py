@@ -287,11 +287,12 @@ def _stack_jet_const(device):
     return lambda x: stack([x, const], dim=0)
 
 
-def _bn_pick(args, inp: str, weight: str, bias: str, x_const, w_const, b_const):
-    # Resolve input/weight/bias from the positional jet args (order: input,
-    # weight, bias). ``inp`` is ``"J"`` (a jet arg) or ``"C"`` (captured
-    # constant); ``weight`` / ``bias`` add ``"N"`` (absent). Jets are consumed
-    # from ``args`` in order; constants/None come from the captured closures.
+def _norm_pick(args, inp: str, weight: str, bias: str, x_const, w_const, b_const):
+    # Resolve input/weight/bias of a normalization case from the positional jet
+    # args (order: input, weight, bias). ``inp`` is ``"J"`` (a jet arg) or
+    # ``"C"`` (captured constant); ``weight`` / ``bias`` add ``"N"`` (absent).
+    # Jets are consumed from ``args`` in order; constants/None come from the
+    # captured closures.
     it = iter(args)
     x = next(it) if inp == "J" else x_const
     w = next(it) if weight == "J" else (w_const if weight == "C" else None)
@@ -299,53 +300,83 @@ def _bn_pick(args, inp: str, weight: str, bias: str, x_const, w_const, b_const):
     return x, w, b
 
 
-def _bn_primals(shape, inp: str, weight: str, bias: str):
-    # Jet primals (CPU) for a batch-norm case, in the order input, weight, bias --
-    # only the entries flagged ``"J"`` (Taylor-expanded). Seeded apart from the
-    # captured constants so the values differ; ``setup_case`` migrates these to
-    # the device/dtype.
+def _norm_primals(shape, param_shape, inp: str, weight: str, bias: str):
+    # Jet primals (CPU) for a normalization case, in the order input, weight,
+    # bias -- only the entries flagged ``"J"`` (Taylor-expanded); the affine
+    # parameters have ``param_shape``. Seeded apart from the captured constants
+    # so the values differ; ``setup_case`` migrates these to the device/dtype.
     manual_seed(1)
     out = []
     if inp == "J":
         out.append(rand(*shape))
     if weight == "J":
-        out.append(rand(shape[1]))
+        out.append(rand(*param_shape))
     if bias == "J":
-        out.append(rand(shape[1]))
+        out.append(rand(*param_shape))
     return tuple(out)
 
 
-def _bn_case(inp: str, weight: str, bias: str, shape, eps: float) -> dict[str, Any]:
-    """Build one ``{id, f, args_fn}`` eval batch-norm case.
+def _norm_case(
+    prefix: str,
+    call: Callable,
+    shape,
+    param_shape,
+    inp: str,
+    weight: str,
+    bias: str,
+    consts: Callable = lambda kw: (),
+    suffix: str = "",
+) -> dict[str, Any]:
+    """Build one ``{id, f, args_fn}`` normalization case.
 
     Each operand code is ``"J"`` (jet) or ``"C"`` (constant); ``weight`` /
-    ``bias`` may also be ``"N"`` (absent, ``affine=False``). Jet operands are
-    consumed positionally in the order input, weight, bias; constants and the
-    running statistics are captured. Eval-mode batch norm is affine, so the
-    generic oracle (reverse-mode AD of the fused op) is exact -- no bespoke test.
+    ``bias`` may also be ``"N"`` (absent). Jet operands are consumed
+    positionally in the order input, weight, bias; constants are captured.
+    ``call(x, w, b, *consts(kw))`` applies the normalization, with
+    ``consts(kw)`` building further captured constants (e.g. running stats) on
+    the device. The affine parameters have ``param_shape``.
     """
-    C = shape[1]
 
     def builder(device):
         manual_seed(0)
         kw = device_kw(device)
         x_const = randn(*shape, **kw)
-        w_const, b_const = randn(C, **kw), randn(C, **kw)
-        rm, rv = randn(C, **kw), rand(C, **kw) + 0.5  # running stats (constant)
+        w_const, b_const = randn(*param_shape, **kw), randn(*param_shape, **kw)
+        extra = consts(kw)
 
         def f(*args):
-            x, w, b = _bn_pick(args, inp, weight, bias, x_const, w_const, b_const)
-            return batch_norm(x, rm, rv, w, b, training=False, eps=eps)
+            x, w, b = _norm_pick(args, inp, weight, bias, x_const, w_const, b_const)
+            return call(x, w, b, *extra)
 
         return f
 
-    suffix = "_eps" if eps != 1e-5 else ""
-    cid = f"batch_norm_in{inp}_w{weight}_b{bias}_{len(shape)}d{suffix}"
     return {
-        "id": cid,
+        "id": f"{prefix}_in{inp}_w{weight}_b{bias}{suffix}",
         "f": builder,
-        "args_fn": lambda: _bn_primals(shape, inp, weight, bias),
+        "args_fn": lambda: _norm_primals(shape, param_shape, inp, weight, bias),
     }
+
+
+def _bn_case(inp: str, weight: str, bias: str, shape, eps: float) -> dict[str, Any]:
+    """One eval batch-norm case (see :func:`_norm_case`).
+
+    Eval-mode batch norm is affine, so the generic oracle (reverse-mode AD of
+    the fused op) is exact -- no bespoke test. The running statistics are
+    captured constants.
+    """
+    C = shape[1]
+    suffix = f"_{len(shape)}d" + ("_eps" if eps != 1e-5 else "")
+    return _norm_case(
+        "batch_norm",
+        lambda x, w, b, rm, rv: batch_norm(x, rm, rv, w, b, training=False, eps=eps),
+        shape,
+        (C,),
+        inp,
+        weight,
+        bias,
+        consts=lambda kw: (randn(C, **kw), rand(C, **kw) + 0.5),
+        suffix=suffix,
+    )
 
 
 def _bn_cases() -> list[dict[str, Any]]:

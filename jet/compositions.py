@@ -244,6 +244,15 @@ def log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTup
     return sub(shifted, log_sum_exp)
 
 
+def _affine(out: object, weight: object, bias: object, collapsed: bool) -> object:
+    """``out * weight + bias`` for optional (``None`` = absent) broadcastable params."""
+    if weight is not None:
+        out = _rule(ops.aten.mul.Tensor, collapsed)(out, weight)
+    if bias is not None:
+        out = _rule(ops.aten.add.Tensor, collapsed)(out, bias)
+    return out
+
+
 def native_batch_norm(
     input: object,
     weight: object,
@@ -289,7 +298,6 @@ def native_batch_norm(
     collapsed = _collapsed_of(input, weight, bias)
     sub = _rule(ops.aten.sub.Tensor, collapsed)
     mul = _rule(ops.aten.mul.Tensor, collapsed)
-    add = _rule(ops.aten.add.Tensor, collapsed)
     view = _rule(ops.aten.view.default, collapsed)
 
     primal = input[0] if isinstance(input, JetTuple) else input
@@ -297,10 +305,9 @@ def native_batch_norm(
     rstd = (running_var + eps).rsqrt()
     out = sub(input, view(running_mean, shape))
     out = mul(out, view(rstd, shape))
-    if weight is not None:
-        out = mul(out, view(weight, shape))
-    if bias is not None:
-        out = add(out, view(bias, shape))
+    weight = None if weight is None else view(weight, shape)
+    bias = None if bias is None else view(bias, shape)
+    out = _affine(out, weight, bias, collapsed)
     empty = primal.new_empty(0)
     return out, empty, empty
 

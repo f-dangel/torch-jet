@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Support `aten.upsample_bilinear2d.default` (`F.interpolate(mode="bilinear")`
+  with `size=` or `scale_factor=`, either `align_corners`) in Taylor mode (both
+  standard and collapsed modes), and test torchvision's FCN-ResNet50
+  segmentation model end to end
+  ([PR](https://github.com/f-dangel/torch-jet/pull/203)).
 - Support `aten.split.Tensor` in Taylor mode (both standard and collapsed
   modes), which `chunk` lowers to, and add torchvision's ShuffleNetV2 to the
   end-to-end tests ([PR](https://github.com/f-dangel/torch-jet/pull/202)).

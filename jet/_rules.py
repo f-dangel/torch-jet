@@ -116,6 +116,9 @@ for _prim in (
     ops.aten.view.default,
     ops.aten._adaptive_avg_pool2d.default,
     ops.aten.avg_pool2d.default,
+    # Bilinear upsampling (``F.interpolate(mode="bilinear")``, e.g. torchvision's
+    # segmentation heads); both ``size=`` and ``scale_factor=`` lower to it.
+    ops.aten.upsample_bilinear2d.default,
     ops.aten.mean.default,
     ops.aten.mean.dim,
     ops.aten.split.Tensor,  # ``Tensor[]`` output: one jet per piece

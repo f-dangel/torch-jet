@@ -288,11 +288,12 @@ def _stack_jet_const(device):
     return lambda x: stack([x, const], dim=0)
 
 
-def _bn_pick(args, inp: str, weight: str, bias: str, x_const, w_const, b_const):
-    # Resolve input/weight/bias from the positional jet args (order: input,
-    # weight, bias). ``inp`` is ``"J"`` (a jet arg) or ``"C"`` (captured
-    # constant); ``weight`` / ``bias`` add ``"N"`` (absent). Jets are consumed
-    # from ``args`` in order; constants/None come from the captured closures.
+def _norm_pick(args, inp: str, weight: str, bias: str, x_const, w_const, b_const):
+    # Resolve input/weight/bias of a normalization case from the positional jet
+    # args (order: input, weight, bias). ``inp`` is ``"J"`` (a jet arg) or
+    # ``"C"`` (captured constant); ``weight`` / ``bias`` add ``"N"`` (absent).
+    # Jets are consumed from ``args`` in order; constants/None come from the
+    # captured closures.
     it = iter(args)
     x = next(it) if inp == "J" else x_const
     w = next(it) if weight == "J" else (w_const if weight == "C" else None)
@@ -300,19 +301,19 @@ def _bn_pick(args, inp: str, weight: str, bias: str, x_const, w_const, b_const):
     return x, w, b
 
 
-def _bn_primals(shape, inp: str, weight: str, bias: str):
-    # Jet primals (CPU) for a batch-norm case, in the order input, weight, bias --
-    # only the entries flagged ``"J"`` (Taylor-expanded). Seeded apart from the
-    # captured constants so the values differ; ``setup_case`` migrates these to
-    # the device/dtype.
+def _norm_primals(shape, param_shape, inp: str, weight: str, bias: str):
+    # Jet primals (CPU) for a normalization case, in the order input, weight,
+    # bias -- only the entries flagged ``"J"`` (Taylor-expanded); the affine
+    # parameters have ``param_shape``. Seeded apart from the captured constants
+    # so the values differ; ``setup_case`` migrates these to the device/dtype.
     manual_seed(1)
     out = []
     if inp == "J":
         out.append(rand(*shape))
     if weight == "J":
-        out.append(rand(shape[1]))
+        out.append(rand(*param_shape))
     if bias == "J":
-        out.append(rand(shape[1]))
+        out.append(rand(*param_shape))
     return tuple(out)
 
 
@@ -335,7 +336,7 @@ def _bn_case(inp: str, weight: str, bias: str, shape, eps: float) -> dict[str, A
         rm, rv = randn(C, **kw), rand(C, **kw) + 0.5  # running stats (constant)
 
         def f(*args):
-            x, w, b = _bn_pick(args, inp, weight, bias, x_const, w_const, b_const)
+            x, w, b = _norm_pick(args, inp, weight, bias, x_const, w_const, b_const)
             return batch_norm(x, rm, rv, w, b, training=False, eps=eps)
 
         return f
@@ -345,7 +346,7 @@ def _bn_case(inp: str, weight: str, bias: str, shape, eps: float) -> dict[str, A
     return {
         "id": cid,
         "f": builder,
-        "args_fn": lambda: _bn_primals(shape, inp, weight, bias),
+        "args_fn": lambda: _norm_primals(shape, (C,), inp, weight, bias),
     }
 
 
@@ -374,30 +375,33 @@ def _bn_cases() -> list[dict[str, Any]]:
     return cases
 
 
-def _ln_case(shape, nd: int, affine: str) -> dict[str, Any]:
-    """One layer-norm case over the last ``nd`` dims of a jet input.
+def _ln_case(inp: str, weight: str, bias: str, shape, nd: int) -> dict[str, Any]:
+    """Build one ``{id, f, args_fn}`` layer-norm case over the last ``nd`` dims.
 
-    ``affine``: ``"J"`` (jet weight/bias), ``"C"`` (constants) or ``"N"`` (absent).
+    Operand codes as in :func:`_bn_case` (``"J"`` jet, ``"C"`` constant, ``"N"``
+    absent); the affine parameters have the normalized shape. Layer norm is
+    nonlinear in its input, so the oracle runs on the substitute definition
+    (see ``DifferentiableSubstitutes``).
     """
     normalized = shape[-nd:]
 
     def builder(device):
         manual_seed(0)
         kw = device_kw(device)
+        x_const = randn(*shape, **kw)
         w_const, b_const = randn(*normalized, **kw), randn(*normalized, **kw)
 
         def f(*args):
-            x, w, b = _bn_pick(args, "J", affine, affine, None, w_const, b_const)
+            x, w, b = _norm_pick(args, inp, weight, bias, x_const, w_const, b_const)
             return layer_norm(x, normalized, w, b)
 
         return f
 
-    def args_fn():
-        manual_seed(1)
-        extra = (rand(*normalized), rand(*normalized)) if affine == "J" else ()
-        return (randn(*shape), *extra)
-
-    return {"id": f"layer_norm_{nd}d_affine{affine}", "f": builder, "args_fn": args_fn}
+    return {
+        "id": f"layer_norm_in{inp}_w{weight}_b{bias}_{nd}d",
+        "f": builder,
+        "args_fn": lambda: _norm_primals(shape, normalized, inp, weight, bias),
+    }
 
 
 _UNARY_POINTWISE = {
@@ -757,11 +761,14 @@ PRIMITIVE_CASES = [
     },
     # ---- Normalization ---------------------------------------------------
     # ``layer_norm`` couples elements over the normalized dims via the sample
-    # statistics. One and two normalized dims; jet / constant / no affine params.
-    _ln_case((2, 8), 1, "J"),
-    _ln_case((2, 8), 1, "N"),
-    _ln_case((2, 4, 3, 3), 2, "J"),
-    _ln_case((2, 4, 3, 3), 2, "C"),
+    # statistics. One and two normalized dims; jet / constant / absent affine
+    # params (coupled by ``elementwise_affine``), and the parameter-only path
+    # (constant input, jet weight and bias).
+    _ln_case("J", "J", "J", (2, 8), 1),
+    _ln_case("J", "N", "N", (2, 8), 1),
+    _ln_case("C", "J", "J", (2, 8), 1),
+    _ln_case("J", "J", "J", (2, 4, 3, 3), 2),
+    _ln_case("J", "C", "C", (2, 4, 3, 3), 2),
     # ``log_softmax`` couples elements along ``dim`` via logsumexp; the rule
     # composes elementwise exp/log with a linear sum and a broadcast sub.
     # Cover a positive dim, a negative dim, and a 1d (dim-0) case.

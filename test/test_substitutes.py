@@ -11,6 +11,7 @@ from pytest import raises
 from torch import Tensor, rand
 from torch.autograd import grad
 from torch.nn.functional import max_pool2d
+from torch.testing import assert_close
 
 from test.utils import DifferentiableSubstitutes, device_kw
 
@@ -24,18 +25,19 @@ def _second_derivative(f: Callable, x: Tensor) -> Tensor:
 def test_max_pool2d_double_backward(device: str):
     """On MPS, ``max_pool2d`` after a nonlinearity is not twice differentiable.
 
-    Other devices are fine, and so is the ``return_indices=True`` substitute.
+    The ``return_indices=True`` substitute is, on every device, and agrees
+    with the plain op where that works.
     """
     x = rand(1, 2, 6, 6, requires_grad=True, **device_kw(device))
 
     def squared_pool(pool: Callable) -> Callable:
         return lambda x: pool(x, kernel_size=2) ** 2
 
+    expected = _second_derivative(
+        squared_pool(DifferentiableSubstitutes.SUBSTITUTES[max_pool2d]), x
+    )
     if device == "mps":
         with raises(RuntimeError, match="not infinitely differentiable"):
             _second_derivative(squared_pool(max_pool2d), x)
     else:
-        _second_derivative(squared_pool(max_pool2d), x)
-    _second_derivative(
-        squared_pool(DifferentiableSubstitutes.SUBSTITUTES[max_pool2d]), x
-    )
+        assert_close(_second_derivative(squared_pool(max_pool2d), x), expected)

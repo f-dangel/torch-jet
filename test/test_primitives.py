@@ -675,6 +675,23 @@ PRIMITIVE_CASES = [
         "f": _cat_jet_const,
         "args_fn": lambda: (rand(1, 4, 6, 6),),
     },
+    # ---- Split (linear; a tuple of jets consumed via ``getitem``) ---------
+    # Uneven split (``4 = 3 + 1``) along a negative dim, both pieces returned.
+    {
+        "id": "split",
+        "f": _stateless(lambda x: x.split(3, dim=-1)),
+        "args_fn": lambda: (rand(2, 4),),
+    },
+    # ShuffleNetV2's pattern: ``chunk(2, dim=1)`` lowers to ``split.Tensor``;
+    # one half passes through, the other goes through a nonlinearity, and
+    # ``cat`` rejoins them, so both ``getitem`` outputs feed the result.
+    {
+        "id": "chunk_shufflenet",
+        "f": _stateless(
+            lambda x: cat([x.chunk(2, dim=1)[0], sin(x.chunk(2, dim=1)[1])], dim=1)
+        ),
+        "args_fn": lambda: (rand(2, 4, 3, 3),),
+    },
     # ---- Stack (cat of unsqueeze; jets nested in the operand list) --------
     # ``stack`` inserts a new axis at ``dim`` and concatenates along it. Cover
     # the default ``dim=0`` and a positive ``dim`` (both exercise the

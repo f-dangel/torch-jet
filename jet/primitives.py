@@ -13,6 +13,7 @@ At each nonlinear collapsed op, the K-th output coefficient is computed as
 ``out_K = LINEAR_TERM(in_K_collapsed) + NONLINEAR_TERMS(in_1..K-1).sum(0)``.
 """
 
+from collections.abc import Sequence
 from operator import add, sub
 from typing import Callable, Self
 
@@ -104,7 +105,9 @@ def _is_batched(k: int, K: int, collapsed: bool) -> bool:
     return collapsed and 0 < k < K
 
 
-def _apply_linear(self: JetTuple, op: Callable[[Tensor], Tensor]) -> JetTuple:
+def _apply_linear(
+    self: JetTuple, op: Callable[[Tensor], Tensor | Sequence[Tensor]]
+) -> JetTuple | tuple[JetTuple, ...]:
     """Apply a linear ``op`` coefficient-wise to every entry of ``self``.
 
     Linear ops commute with the Taylor expansion, so the result's coefficients
@@ -113,16 +116,24 @@ def _apply_linear(self: JetTuple, op: Callable[[Tensor], Tensor]) -> JetTuple:
     ``c_1..c_{K-1}`` over the direction dim ``R`` and applies ``op`` directly to
     the primal and the already-collapsed slot ``c_K``.
 
+    An ``op`` with a ``Tensor[]`` output (e.g. ``split``, ``unbind``) yields one
+    jet per piece: the per-order piece lists are transposed into a plain
+    ``tuple`` of jets (not a ``JetTuple``), mirroring the op's output so a
+    downstream ``getitem`` falls through to the native op.
+
     Args:
         self: The primal and its Taylor coefficients.
-        op: A linear function from a single coefficient tensor to a tensor.
+        op: A linear function from a single coefficient tensor to a tensor, or
+            to a list/tuple of tensors.
 
     Returns:
-        The value and its Taylor coefficients, with ``op`` applied to each.
+        The value and its Taylor coefficients, with ``op`` applied to each; one
+        such jet per piece if ``op`` returns several tensors.
     """
-    return JetTuple(
-        (op(self[0]), *_apply_linear_coeffs(self, op)), collapsed=self.collapsed
-    )
+    out0, coeffs = op(self[0]), _apply_linear_coeffs(self, op)
+    if isinstance(out0, (tuple, list)):
+        return tuple(JetTuple(p, collapsed=self.collapsed) for p in zip(out0, *coeffs))
+    return JetTuple((out0, *coeffs), collapsed=self.collapsed)
 
 
 def _apply_linear_coeffs(

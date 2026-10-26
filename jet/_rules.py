@@ -118,6 +118,7 @@ for _prim in (
     ops.aten.avg_pool2d.default,
     ops.aten.mean.default,
     ops.aten.mean.dim,
+    ops.aten.split.Tensor,  # ``Tensor[]`` output: one jet per piece
 ):
     RULES[_prim] = _deflinear(_prim)
 

@@ -14,10 +14,11 @@ from torch import (
     randint,
     sigmoid,
     stack,
+    where,
     zeros_like,
 )
 from torch.nn import Linear, Sequential, Tanh
-from torch.nn.functional import max_pool2d
+from torch.nn.functional import hardsigmoid, max_pool2d
 from torch.overrides import TorchFunctionMode
 from torch.testing import assert_close
 from torch.utils._pytree import tree_flatten, tree_map
@@ -40,6 +41,16 @@ def device_kw(device: str) -> dict[str, Any]:
     return {"dtype": dtype_for_device(device), "device": device}
 
 
+def _hardsigmoid(x: Tensor, inplace: bool = False) -> Tensor:
+    """``hardsigmoid`` as a twice-differentiable ``where`` with the same kinks.
+
+    ``relu6(x + 3) / 6`` would do, but ``relu6``'s backward puts slope ``1/6``
+    at the kinks on MPS, where ``hardsigmoid``'s puts ``0`` on every device.
+    """
+    out = where((x > -3) & (x < 3), x / 6 + 0.5, (x >= 3).to(x.dtype))
+    return x.copy_(out) if inplace else out
+
+
 class DifferentiableSubstitutes(TorchFunctionMode):
     """Swap ops PyTorch cannot differentiate twice for equivalent calls it can.
 
@@ -59,6 +70,8 @@ class DifferentiableSubstitutes(TorchFunctionMode):
         max_pool2d: lambda *args, **kwargs: max_pool2d(
             *args, **{**kwargs, "return_indices": True}
         )[0],
+        # ``hardsigmoid_backward`` has no derivative on any device.
+        hardsigmoid: lambda x, inplace=False: _hardsigmoid(x, inplace),
     }
 
     def __torch_function__(self, func, types, args=(), kwargs=None):

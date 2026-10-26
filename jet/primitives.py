@@ -32,7 +32,7 @@ from torch import (
     zeros_like,
 )
 from torch.func import vmap
-from torch.nn.functional import hardtanh
+from torch.nn.functional import hardsigmoid, hardtanh
 from torch.utils._pytree import register_pytree_node
 
 from jet.utils import integer_partitions, multiplicity
@@ -557,6 +557,23 @@ def _hardtanh_derivatives(
     d: dict[int, Tensor | None] = {0: hardtanh(x0, min_val, max_val)}
     if K >= 1:
         d[1] = ((x0 > min_val) & (x0 < max_val)).to(x0.dtype)
+    for k in range(2, K + 1):
+        d[k] = None
+    return d
+
+
+def _hardsigmoid_derivatives(x0: Tensor, K: int) -> dict[int, Tensor | None]:
+    """Compute ``hardsigmoid(x0)`` and its derivatives up to order *K*.
+
+    Hardsigmoid is ``relu6(x0 + 3) / 6``: piecewise linear with slope ``1/6``
+    on ``(-3, 3)`` and clamped to ``0`` / ``1`` outside. Its first derivative is
+    the indicator ``-3 < x0 < 3`` over ``6`` (strict, as in PyTorch's autograd)
+    and every higher derivative vanishes (``None``, see
+    :func:`_relu_derivatives`).
+    """
+    d: dict[int, Tensor | None] = {0: hardsigmoid(x0)}
+    if K >= 1:
+        d[1] = ((x0 > -3) & (x0 < 3)).to(x0.dtype) / 6
     for k in range(2, K + 1):
         d[k] = None
     return d

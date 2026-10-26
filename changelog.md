@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Support `aten.hardsigmoid.default` in Taylor mode (both standard and
+  collapsed modes), one of the two activations torchvision's MobileNetV3 needs
+  ([PR](https://github.com/f-dangel/torch-jet/pull/200)).
+
 - Run the test oracle under a substitution mode that swaps ops PyTorch cannot
   differentiate twice (first: MPS `max_pool2d`) for equivalent ones, so every
   torchvision model is checked against the oracle on every device

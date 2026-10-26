@@ -59,6 +59,8 @@ RULES: dict = {
     # Hardtanh likewise takes its clamp bounds at call time (``relu6`` lowers
     # to ``hardtanh(x, 0, 6)``).
     ops.aten.hardtanh.default: _defshared(primitives.jet_hardtanh),
+    # Hardsigmoid's bounds are fixed, so it is an ordinary elementwise table.
+    ops.aten.hardsigmoid.default: _defelementwise(primitives._hardsigmoid_derivatives),
     # Mode-agnostic primitives (one body reading ``self.collapsed``)
     ops.aten.add.Tensor: _defshared(primitives.jet_add),
     ops.aten.sub.Tensor: _defshared(primitives.jet_sub),

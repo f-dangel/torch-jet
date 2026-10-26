@@ -69,6 +69,8 @@ RULES: dict = {
     ops.aten.mul.Tensor: _defshared(primitives.jet_mul),
     ops.aten.mm.default: _defshared(primitives.jet_mm),
     ops.aten.cat.default: _defshared(primitives.jet_cat),
+    # Linear, but returns a tuple of jets (one per piece) for ``getitem``.
+    ops.aten.split.Tensor: _defshared(primitives.jet_split),
     ops.aten.max_pool2d_with_indices.default: _defshared(
         primitives.jet_max_pool2d_with_indices
     ),

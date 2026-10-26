@@ -922,6 +922,34 @@ def jet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
     return JetTuple(tuple(out), collapsed=collapsed)
 
 
+# --- Split ---
+
+
+def jet_split(self: JetTuple, split_size: int, dim: int = 0) -> tuple[JetTuple, ...]:
+    """Taylor-mode arithmetic for ``aten.split.Tensor(self, split_size, dim)``.
+
+    Splitting is linear, so every coefficient is split like the primal (via the
+    mode-aware :func:`_apply_linear`, which vmaps collapsed mode's batched
+    coefficients over the direction dim so ``dim`` needs no shift). The
+    per-order piece lists are then regrouped into one jet per piece. Returns a
+    plain ``tuple`` (not a ``JetTuple``) mirroring the op's ``Tensor[]`` output,
+    so the downstream ``getitem`` falls through to the native op. This is what
+    ``x.chunk(n, dim)`` lowers to (torchvision's ShuffleNetV2).
+
+    Args:
+        self: The input and its Taylor coefficients.
+        split_size: Size of each piece along ``dim`` (the last may be smaller).
+        dim: The dimension to split along.
+
+    Returns:
+        One ``JetTuple`` per piece, in order.
+    """
+    per_order = _apply_linear(self, lambda c: ops.aten.split.Tensor(c, split_size, dim))
+    return tuple(
+        JetTuple(pieces, collapsed=self.collapsed) for pieces in zip(*per_order)
+    )
+
+
 # --- Loss functions ---
 
 

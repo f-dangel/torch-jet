@@ -45,7 +45,7 @@ def _mobilenet_mlp(device: str) -> Callable[[Tensor], Tensor]:
     """In-place-ReLU6 MLP gated by a ``Hardsigmoid`` -- MobileNetV3's pattern."""
     net = _inplace_mlp(device, ReLU6)
     manual_seed(1)
-    gate = Sequential(Linear(5, 1, **device_kw(device)), Hardsigmoid())
+    gate = Sequential(Linear(5, 1, **device_kw(device)), Hardsigmoid(inplace=True))
     return lambda x: net(x) * gate(x)
 
 

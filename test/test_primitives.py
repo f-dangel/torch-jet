@@ -498,6 +498,13 @@ PRIMITIVE_CASES = [
         }
         for sid, dims in _UNARY_SHAPES.items()
     ),
+    # The kinks themselves: autograd's convention there (slope ``0`` at both)
+    # must hold on every device.
+    {
+        "id": "hardsigmoid_kinks",
+        "f": _stateless(hardsigmoid),
+        "args_fn": lambda: (tensor([-3.0, -1.0, 0.0, 1.0, 3.0]),),
+    },
     # ---- log (positive domain; ``rand + 0.5`` keeps inputs in [0.5, 1.5)
     # so the ``1 / x0**k`` derivatives stay well-conditioned) --------------
     *(

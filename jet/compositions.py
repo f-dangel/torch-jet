@@ -330,7 +330,7 @@ def native_layer_norm(
     dims = list(range(-len(normalized_shape), 0))
     mu = mean(input, dims, True)
     centered = sub(input, mu)
-    rstd = pow(add(mean(mul(centered, centered), dims, True), eps), -0.5)
+    rstd = pow(add(mean(pow(centered, 2), dims, True), eps), -0.5)
     out = mul(centered, rstd)
     if weight is not None:
         out = mul(out, weight)

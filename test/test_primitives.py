@@ -36,6 +36,7 @@ from torch.nn.functional import (
     hardsigmoid,
     hardswish,
     hardtanh,
+    interpolate,
     log_softmax,
     max_pool2d,
     mse_loss,
@@ -650,6 +651,21 @@ PRIMITIVE_CASES = [
         "f": _stateless(lambda x: avg_pool2d(x, kernel_size=2, stride=2)),
         "args_fn": lambda: (rand(1, 2, 6, 6),),
     },
+    # ---- Bilinear upsampling (linear); ``size=`` and ``scale_factor=`` both
+    # lower to ``aten.upsample_bilinear2d.default`` (the latter with scales) --
+    *(
+        {
+            "id": f"upsample_bilinear_{name}",
+            "f": _stateless(lambda x, kw=kw: interpolate(x, mode="bilinear", **kw)),
+            "args_fn": lambda: (rand(2, 3, 4, 5),),
+        }
+        for name, kw in {
+            "size": {"size": (7, 9), "align_corners": False},
+            "size_align_corners": {"size": (7, 9), "align_corners": True},
+            "scale": {"scale_factor": (2.0, 1.5), "align_corners": False},
+            "scale_align_corners": {"scale_factor": 2.0, "align_corners": True},
+        }.items()
+    ),
     # ---- Concatenation (linear; jets nested in the operand list) ---------
     {
         "id": "cat_JJ",

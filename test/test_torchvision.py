@@ -8,7 +8,7 @@ install cannot pass silently.
 from typing import Any, Callable
 
 from pytest import mark
-from torch import manual_seed, randn
+from torch import Tensor, manual_seed, randn
 from torchvision import models
 
 from test.utils import assert_jet_matches_oracle, device_kw
@@ -27,10 +27,34 @@ MODELS: dict[str, tuple[Callable, int]] = {
     "shufflenet_v2_x0_5": (models.shufflenet_v2_x0_5, 32),
     "efficientnet_b0": (models.efficientnet_b0, 32),
     "mobilenet_v3_small": (models.mobilenet_v3_small, 32),
+    "fcn_resnet50": (
+        lambda: models.segmentation.fcn_resnet50(
+            weights=None, weights_backbone=None, aux_loss=False
+        ),
+        32,
+    ),
+    "deeplabv3_mobilenet_v3_large": (
+        lambda: models.segmentation.deeplabv3_mobilenet_v3_large(
+            weights=None, weights_backbone=None, aux_loss=False
+        ),
+        32,
+    ),
+    "lraspp_mobilenet_v3_large": (
+        lambda: models.segmentation.lraspp_mobilenet_v3_large(
+            weights=None, weights_backbone=None
+        ),
+        32,
+    ),
 }
 
 
-def _projected(ctor: Callable) -> Callable[[str], Callable]:
+def _out(model: Callable, x: Tensor) -> Tensor:
+    """Forward ``x``; segmentation models return a dict with the logits at ``"out"``."""
+    out = model(x)
+    return out["out"] if isinstance(out, dict) else out
+
+
+def _projected(ctor: Callable, res: int) -> Callable[[str], Callable]:
     """Build ``x -> sum(model(x) * w)`` with a fixed random ``w`` on ``device``.
 
     The scalar output keeps the nested reverse-mode oracle cheap (it
@@ -43,8 +67,8 @@ def _projected(ctor: Callable) -> Callable[[str], Callable]:
         manual_seed(0)
         kw = device_kw(device)
         model = ctor().eval().requires_grad_(False).to(**kw)
-        w = randn(1, 1000, **kw)
-        return lambda x: (model(x) * w).sum()
+        w = randn(1, *_out(model, randn(2, 3, res, res, **kw)).shape[1:], **kw)
+        return lambda x: (_out(model, x) * w).sum()
 
     return builder
 
@@ -52,7 +76,7 @@ def _projected(ctor: Callable) -> Callable[[str], Callable]:
 TORCHVISION_CASES = [
     {
         "id": name,
-        "f": _projected(ctor),
+        "f": _projected(ctor, res),
         "args_fn": lambda res=res: (randn(2, 3, res, res),),
     }
     for name, (ctor, res) in MODELS.items()

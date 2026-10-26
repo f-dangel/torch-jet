@@ -520,6 +520,13 @@ PRIMITIVE_CASES = [
         for name, f, scale in (("hardswish", hardswish, 4), ("silu", silu, 1))
         for sid, dims in _UNARY_SHAPES.items()
     ),
+    # The kinks themselves: autograd's one-sided convention there (``0`` at
+    # ``-3``, ``1`` at ``3``) must hold on every device.
+    {
+        "id": "hardswish_kinks",
+        "f": _stateless(hardswish),
+        "args_fn": lambda: (tensor([-3.0, -1.0, 0.0, 1.0, 3.0]),),
+    },
     # ---- log (positive domain; ``rand + 0.5`` keeps inputs in [0.5, 1.5)
     # so the ``1 / x0**k`` derivatives stay well-conditioned) --------------
     *(

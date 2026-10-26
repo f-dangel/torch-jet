@@ -34,12 +34,14 @@ from torch.nn.functional import (
     batch_norm,
     conv2d,
     hardsigmoid,
+    hardswish,
     hardtanh,
     log_softmax,
     max_pool2d,
     mse_loss,
     nll_loss,
     relu6,
+    silu,
 )
 from torch.testing import assert_close
 
@@ -503,6 +505,26 @@ PRIMITIVE_CASES = [
     {
         "id": "hardsigmoid_kinks",
         "f": _stateless(hardsigmoid),
+        "args_fn": lambda: (tensor([-3.0, -1.0, 0.0, 1.0, 3.0]),),
+    },
+    # ---- Hardswish (quadratic on (-3, 3), kinks at +-3; ``4 * randn`` covers
+    # all three branches) and SiLU (smooth ``x * sigmoid(x)``; plain ``randn``
+    # like ``sigmoid``, whose float32 Stirling-form derivatives lose precision
+    # at high order for large ``|x|``) ---------------------------------------
+    *(
+        {
+            "id": f"{name}-{sid}",
+            "f": _stateless(f),
+            "args_fn": lambda dims=dims, scale=scale: (scale * randn(*dims),),
+        }
+        for name, f, scale in (("hardswish", hardswish, 4), ("silu", silu, 1))
+        for sid, dims in _UNARY_SHAPES.items()
+    ),
+    # The kinks themselves: autograd's one-sided convention there (``0`` at
+    # ``-3``, ``1`` at ``3``) must hold on every device.
+    {
+        "id": "hardswish_kinks",
+        "f": _stateless(hardswish),
         "args_fn": lambda: (tensor([-3.0, -1.0, 0.0, 1.0, 3.0]),),
     },
     # ---- log (positive domain; ``rand + 0.5`` keeps inputs in [0.5, 1.5)

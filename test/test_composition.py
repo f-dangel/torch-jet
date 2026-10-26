@@ -9,7 +9,16 @@ from typing import Any, Callable
 
 from pytest import mark
 from torch import Tensor, cos, manual_seed, rand, randn, sin, tanh
-from torch.nn import Hardsigmoid, Linear, Module, ReLU, ReLU6, Sequential
+from torch.nn import (
+    Hardsigmoid,
+    Hardswish,
+    Linear,
+    Module,
+    ReLU,
+    ReLU6,
+    Sequential,
+    SiLU,
+)
 from torch.nn.functional import cross_entropy
 
 from test.utils import (
@@ -75,6 +84,16 @@ COMPOSITION_CASES = [
         "args_fn": lambda: (3 * randn(5),),
     },
     {"id": "mobilenet_mlp", "f": _mobilenet_mlp, "args_fn": lambda: (3 * randn(5),)},
+    {
+        "id": "hardswish_inplace_mlp",
+        "f": partial(_inplace_mlp, activation=Hardswish),
+        "args_fn": lambda: (4 * randn(5),),
+    },
+    {
+        "id": "silu_inplace_mlp",
+        "f": partial(_inplace_mlp, activation=SiLU),
+        "args_fn": lambda: (randn(5),),
+    },
     {
         "id": "deep_pytree",
         "f": _stateless(_deep_pytree_f),

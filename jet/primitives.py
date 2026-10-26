@@ -32,7 +32,7 @@ from torch import (
     zeros_like,
 )
 from torch.func import vmap
-from torch.nn.functional import hardsigmoid, hardtanh
+from torch.nn.functional import hardtanh
 from torch.utils._pytree import register_pytree_node
 
 from jet.utils import integer_partitions, multiplicity
@@ -565,17 +565,42 @@ def _hardtanh_derivatives(
 def _hardsigmoid_derivatives(x0: Tensor, K: int) -> dict[int, Tensor | None]:
     """Compute ``hardsigmoid(x0)`` and its derivatives up to order *K*.
 
-    Hardsigmoid is ``relu6(x0 + 3) / 6``: piecewise linear with slope ``1/6``
-    on ``(-3, 3)`` and clamped to ``0`` / ``1`` outside. Its first derivative is
-    the indicator ``-3 < x0 < 3`` over ``6`` (strict, as in PyTorch's autograd)
-    and every higher derivative vanishes (``None``, see
-    :func:`_relu_derivatives`).
+    Hardsigmoid is ``relu6(x0 + 3) / 6``, so its table is the ``relu6`` table
+    (see :func:`_hardtanh_derivatives`) scaled by ``1/6``.
     """
-    d: dict[int, Tensor | None] = {0: hardsigmoid(x0)}
+    r = _hardtanh_derivatives(x0 + 3, 0.0, 6.0, K)
+    return {k: None if r[k] is None else r[k] / 6 for k in range(K + 1)}
+
+
+def _hardswish_derivatives(x0: Tensor, K: int) -> dict[int, Tensor | None]:
+    """Compute ``hardswish(x0) = x0 * hardsigmoid(x0)`` and its derivatives up to order *K*.
+
+    By the Leibniz rule, ``hardswish^(k) = x0 * hardsigmoid^(k) + k *
+    hardsigmoid^(k-1)``, so orders 1 and 2 come from
+    :func:`_hardsigmoid_derivatives` and every higher order vanishes (``None``,
+    see :func:`_relu_derivatives`).
+    """
+    h = _hardsigmoid_derivatives(x0, K)
+    d: dict[int, Tensor | None] = {0: x0 * h[0]}
     if K >= 1:
-        d[1] = ((x0 > -3) & (x0 < 3)).to(x0.dtype) / 6
-    for k in range(2, K + 1):
+        d[1] = h[0] + x0 * h[1]
+    if K >= 2:
+        d[2] = 2 * h[1]
+    for k in range(3, K + 1):
         d[k] = None
+    return d
+
+
+def _silu_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:
+    """Compute ``silu(x0) = x0 * sigmoid(x0)`` and its derivatives up to order *K*.
+
+    By the Leibniz rule, ``silu^(k) = x0 * sigmoid^(k) + k * sigmoid^(k-1)``,
+    so all orders come from :func:`_sigmoid_derivatives`.
+    """
+    s = _sigmoid_derivatives(x0, K)
+    d = {0: x0 * s[0]}
+    for k in range(1, K + 1):
+        d[k] = x0 * s[k] + (s[0] if k == 1 else k * s[k - 1])
     return d
 
 

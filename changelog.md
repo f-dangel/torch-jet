@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Support `aten.native_layer_norm.default` in Taylor mode (both standard and
+  collapsed modes), the first of the ops torchvision's ConvNeXt needs; the
+  affine parameters may be Taylor-expanded too
+  ([PR](https://github.com/f-dangel/torch-jet/pull/204)).
 - Support `aten.upsample_bilinear2d.default` (`F.interpolate(mode="bilinear")`
   with `size=` or `scale_factor=`, either `align_corners`) in Taylor mode (both
   standard and collapsed modes), and test torchvision's FCN, DeepLabV3 and

@@ -37,6 +37,7 @@ from torch.nn.functional import (
     hardswish,
     hardtanh,
     interpolate,
+    layer_norm,
     log_softmax,
     max_pool2d,
     mse_loss,
@@ -371,6 +372,32 @@ def _bn_cases() -> list[dict[str, Any]]:
     cases += [_bn_case("J", "C", "C", s, 1e-5) for s in ranks]
     cases += [_bn_case("J", "J", "J", s, 1e-5) for s in ranks]
     return cases
+
+
+def _ln_case(shape, nd: int, affine: str) -> dict[str, Any]:
+    """One layer-norm case over the last ``nd`` dims of a jet input.
+
+    ``affine``: ``"J"`` (jet weight/bias), ``"C"`` (constants) or ``"N"`` (absent).
+    """
+    normalized = shape[-nd:]
+
+    def builder(device):
+        manual_seed(0)
+        kw = device_kw(device)
+        w_const, b_const = randn(*normalized, **kw), randn(*normalized, **kw)
+
+        def f(*args):
+            x, w, b = _bn_pick(args, "J", affine, affine, None, w_const, b_const)
+            return layer_norm(x, normalized, w, b)
+
+        return f
+
+    def args_fn():
+        manual_seed(1)
+        extra = (rand(*normalized), rand(*normalized)) if affine == "J" else ()
+        return (randn(*shape), *extra)
+
+    return {"id": f"layer_norm_{nd}d_affine{affine}", "f": builder, "args_fn": args_fn}
 
 
 _UNARY_POINTWISE = {
@@ -729,6 +756,12 @@ PRIMITIVE_CASES = [
         "args_fn": lambda: (rand(2, 3, 4),),
     },
     # ---- Normalization ---------------------------------------------------
+    # ``layer_norm`` couples elements over the normalized dims via the sample
+    # statistics. One and two normalized dims; jet / constant / no affine params.
+    _ln_case((2, 8), 1, "J"),
+    _ln_case((2, 8), 1, "N"),
+    _ln_case((2, 4, 3, 3), 2, "J"),
+    _ln_case((2, 4, 3, 3), 2, "C"),
     # ``log_softmax`` couples elements along ``dim`` via logsumexp; the rule
     # composes elementwise exp/log with a linear sum and a broadcast sub.
     # Cover a positive dim, a negative dim, and a 1d (dim-0) case.

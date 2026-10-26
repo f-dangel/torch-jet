@@ -10,7 +10,7 @@ algebraic identity (e.g. ``addmm == add(self, mm(mat1, mat2))``).
 
 from typing import Callable
 
-from torch import ops, uint8
+from torch import contiguous_format, ops, uint8
 
 import jet._rules
 from jet.primitives import (
@@ -303,6 +303,44 @@ def native_batch_norm(
         out = add(out, view(bias, shape))
     empty = primal.new_empty(0)
     return out, empty, empty
+
+
+def native_layer_norm(
+    input: object, normalized_shape: list[int], weight: object, bias: object, eps: float
+) -> tuple:
+    """Taylor-mode arithmetic for ``aten.native_layer_norm``.
+
+    Layer norm standardizes each sample over its trailing ``normalized_shape``
+    dims with its own statistics: ``(input - mean) * (var + eps)**-0.5 * weight
+    + bias``. Composed from the registered ``mean`` / ``sub`` / ``mul`` / ``pow``
+    / ``add`` rules, so ``input`` / ``weight`` / ``bias`` may each be a jet or a
+    constant (``weight`` / ``bias`` also ``None``).
+
+    Returns:
+        The ATen op's ``(output, mean, rstd)`` triple as a plain tuple of jets
+        (``mean`` / ``rstd`` keep the normalized dims as size 1, like the op),
+        so a downstream ``getitem`` falls through to the native op.
+    """
+    collapsed = _collapsed_of(input, weight, bias)
+    sub = _rule(ops.aten.sub.Tensor, collapsed)
+    mul = _rule(ops.aten.mul.Tensor, collapsed)
+    add = _rule(ops.aten.add.Tensor, collapsed)
+    pow = _rule(ops.aten.pow.Tensor_Scalar, collapsed)
+    mean = _rule(ops.aten.mean.dim, collapsed)
+    dims = list(range(-len(normalized_shape), 0))
+    mu = mean(input, dims, True)
+    centered = sub(input, mu)
+    rstd = pow(add(mean(mul(centered, centered), dims, True), eps), -0.5)
+    out = mul(centered, rstd)
+    if weight is not None:
+        out = mul(out, weight)
+    if bias is not None:
+        out = add(out, bias)
+    # The ATen op's output is contiguous (ConvNeXt ``view``s it after a permute).
+    if not out[0].is_contiguous():
+        clone = _rule(ops.aten.clone.default, collapsed)
+        out = clone(out, memory_format=contiguous_format)
+    return out, mu, rstd
 
 
 def cudnn_batch_norm(

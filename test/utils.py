@@ -18,7 +18,7 @@ from torch import (
     zeros_like,
 )
 from torch.nn import Linear, Sequential, Tanh
-from torch.nn.functional import hardsigmoid, max_pool2d
+from torch.nn.functional import hardsigmoid, layer_norm, max_pool2d
 from torch.overrides import TorchFunctionMode
 from torch.testing import assert_close
 from torch.utils._pytree import tree_flatten, tree_map
@@ -51,8 +51,17 @@ def _hardsigmoid(x: Tensor, inplace: bool = False) -> Tensor:
     return x.copy_(out) if inplace else out
 
 
+def _layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5) -> Tensor:
+    """``layer_norm`` from its definition (pytorch/pytorch#175754)."""
+    dims = tuple(range(-len(normalized_shape), 0))
+    centered = input - input.mean(dims, keepdim=True)
+    out = centered * (centered.square().mean(dims, keepdim=True) + eps).rsqrt()
+    out = out if weight is None else out * weight
+    return out if bias is None else out + bias
+
+
 class DifferentiableSubstitutes(TorchFunctionMode):
-    """Swap ops PyTorch cannot differentiate twice for equivalent calls it can.
+    """Swap ops PyTorch cannot differentiate (correctly) to high order for equivalent calls it can.
 
     ``SUBSTITUTES`` maps each such op (on some device) to its substitute. The
     oracle runs under this mode; :func:`assert_jet_matches_oracle` checks on
@@ -72,6 +81,9 @@ class DifferentiableSubstitutes(TorchFunctionMode):
         )[0],
         # ``hardsigmoid_backward`` has no derivative on any device.
         hardsigmoid: lambda x, inplace=False: _hardsigmoid(x, inplace),
+        # ``native_layer_norm``'s third derivative is wrong on every device
+        # (pytorch/pytorch#175754; the pending fix raises instead).
+        layer_norm: _layer_norm,
     }
 
     def __torch_function__(self, func, types, args=(), kwargs=None):
@@ -261,7 +273,7 @@ def assert_jet_matches_oracle(
     cells, assert the jet call raises the documented guard and return early.
 
     The oracle runs under :class:`DifferentiableSubstitutes`, so ``f`` may
-    contain ops PyTorch cannot differentiate twice.
+    contain ops PyTorch cannot differentiate (correctly) to high order.
     """
     f, mock_args = setup_case(config, device)
     if collapsed and K < 2:

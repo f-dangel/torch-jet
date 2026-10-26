@@ -317,37 +317,67 @@ def _norm_primals(shape, param_shape, inp: str, weight: str, bias: str):
     return tuple(out)
 
 
-def _bn_case(inp: str, weight: str, bias: str, shape, eps: float) -> dict[str, Any]:
-    """Build one ``{id, f, args_fn}`` eval batch-norm case.
+def _norm_case(
+    prefix: str,
+    call: Callable,
+    shape,
+    param_shape,
+    inp: str,
+    weight: str,
+    bias: str,
+    consts: Callable = lambda kw: (),
+    suffix: str = "",
+) -> dict[str, Any]:
+    """Build one ``{id, f, args_fn}`` normalization case.
 
     Each operand code is ``"J"`` (jet) or ``"C"`` (constant); ``weight`` /
-    ``bias`` may also be ``"N"`` (absent, ``affine=False``). Jet operands are
-    consumed positionally in the order input, weight, bias; constants and the
-    running statistics are captured. Eval-mode batch norm is affine, so the
-    generic oracle (reverse-mode AD of the fused op) is exact -- no bespoke test.
+    ``bias`` may also be ``"N"`` (absent). Jet operands are consumed
+    positionally in the order input, weight, bias; constants are captured.
+    ``call(x, w, b, *consts(kw))`` applies the normalization, with
+    ``consts(kw)`` building further captured constants (e.g. running stats) on
+    the device. The affine parameters have ``param_shape``.
     """
-    C = shape[1]
 
     def builder(device):
         manual_seed(0)
         kw = device_kw(device)
         x_const = randn(*shape, **kw)
-        w_const, b_const = randn(C, **kw), randn(C, **kw)
-        rm, rv = randn(C, **kw), rand(C, **kw) + 0.5  # running stats (constant)
+        w_const, b_const = randn(*param_shape, **kw), randn(*param_shape, **kw)
+        extra = consts(kw)
 
         def f(*args):
             x, w, b = _norm_pick(args, inp, weight, bias, x_const, w_const, b_const)
-            return batch_norm(x, rm, rv, w, b, training=False, eps=eps)
+            return call(x, w, b, *extra)
 
         return f
 
-    suffix = "_eps" if eps != 1e-5 else ""
-    cid = f"batch_norm_in{inp}_w{weight}_b{bias}_{len(shape)}d{suffix}"
     return {
-        "id": cid,
+        "id": f"{prefix}_in{inp}_w{weight}_b{bias}{suffix}",
         "f": builder,
-        "args_fn": lambda: _norm_primals(shape, (C,), inp, weight, bias),
+        "args_fn": lambda: _norm_primals(shape, param_shape, inp, weight, bias),
     }
+
+
+def _bn_case(inp: str, weight: str, bias: str, shape, eps: float) -> dict[str, Any]:
+    """One eval batch-norm case (see :func:`_norm_case`).
+
+    Eval-mode batch norm is affine, so the generic oracle (reverse-mode AD of
+    the fused op) is exact -- no bespoke test. The running statistics are
+    captured constants.
+    """
+    C = shape[1]
+    suffix = f"_{len(shape)}d" + ("_eps" if eps != 1e-5 else "")
+    return _norm_case(
+        "batch_norm",
+        lambda x, w, b, rm, rv: batch_norm(x, rm, rv, w, b, training=False, eps=eps),
+        shape,
+        (C,),
+        inp,
+        weight,
+        bias,
+        consts=lambda kw: (randn(C, **kw), rand(C, **kw) + 0.5),
+        suffix=suffix,
+    )
 
 
 def _bn_cases() -> list[dict[str, Any]]:
@@ -376,32 +406,22 @@ def _bn_cases() -> list[dict[str, Any]]:
 
 
 def _ln_case(inp: str, weight: str, bias: str, shape, nd: int) -> dict[str, Any]:
-    """Build one ``{id, f, args_fn}`` layer-norm case over the last ``nd`` dims.
+    """One layer-norm case over the last ``nd`` dims (see :func:`_norm_case`).
 
-    Operand codes as in :func:`_bn_case` (``"J"`` jet, ``"C"`` constant, ``"N"``
-    absent); the affine parameters have the normalized shape. Layer norm is
-    nonlinear in its input, so the oracle runs on the substitute definition
-    (see ``DifferentiableSubstitutes``).
+    Layer norm is nonlinear in its input, so the oracle runs on the substitute
+    definition (see ``DifferentiableSubstitutes``).
     """
     normalized = shape[-nd:]
-
-    def builder(device):
-        manual_seed(0)
-        kw = device_kw(device)
-        x_const = randn(*shape, **kw)
-        w_const, b_const = randn(*normalized, **kw), randn(*normalized, **kw)
-
-        def f(*args):
-            x, w, b = _norm_pick(args, inp, weight, bias, x_const, w_const, b_const)
-            return layer_norm(x, normalized, w, b)
-
-        return f
-
-    return {
-        "id": f"layer_norm_in{inp}_w{weight}_b{bias}_{nd}d",
-        "f": builder,
-        "args_fn": lambda: _norm_primals(shape, normalized, inp, weight, bias),
-    }
+    return _norm_case(
+        "layer_norm",
+        lambda x, w, b: layer_norm(x, normalized, w, b),
+        shape,
+        normalized,
+        inp,
+        weight,
+        bias,
+        suffix=f"_{nd}d",
+    )
 
 
 _UNARY_POINTWISE = {

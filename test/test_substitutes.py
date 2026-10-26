@@ -8,7 +8,7 @@ PyTorch has caught up: drop the entry and the test.
 from typing import Callable
 
 from pytest import raises
-from torch import Tensor, rand, randn, zeros_like
+from torch import Tensor, manual_seed, rand, randn, zeros_like
 from torch.autograd import grad
 from torch.nn.functional import hardsigmoid, max_pool2d
 from torch.testing import assert_close
@@ -32,6 +32,7 @@ def test_max_pool2d_double_backward(device: str):
     The ``return_indices=True`` substitute is, on every device, and agrees
     with the plain op where that works.
     """
+    manual_seed(0)
     x = rand(1, 2, 6, 6, requires_grad=True, **device_kw(device))
 
     def squared_pool(pool: Callable) -> Callable:
@@ -49,6 +50,7 @@ def test_max_pool2d_double_backward(device: str):
 
 def test_hardsigmoid_double_backward(device: str):
     """``hardsigmoid`` is not twice differentiable on any device; its substitute is."""
+    manual_seed(0)
     x = randn(10, requires_grad=True, **device_kw(device))
     with raises(RuntimeError, match="hardsigmoid_backward is not implemented"):
         _second_derivative(hardsigmoid, x)

@@ -33,6 +33,18 @@ MODELS: dict[str, tuple[Callable, int]] = {
         ),
         32,
     ),
+    "deeplabv3_mobilenet_v3_large": (
+        lambda: models.segmentation.deeplabv3_mobilenet_v3_large(
+            weights=None, weights_backbone=None, aux_loss=False
+        ),
+        32,
+    ),
+    "lraspp_mobilenet_v3_large": (
+        lambda: models.segmentation.lraspp_mobilenet_v3_large(
+            weights=None, weights_backbone=None
+        ),
+        32,
+    ),
 }
 
 

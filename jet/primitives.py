@@ -13,6 +13,7 @@ At each nonlinear collapsed op, the K-th output coefficient is computed as
 ``out_K = LINEAR_TERM(in_K_collapsed) + NONLINEAR_TERMS(in_1..K-1).sum(0)``.
 """
 
+from collections.abc import Sequence
 from operator import add, sub
 from typing import Callable, Self
 
@@ -104,7 +105,9 @@ def _is_batched(k: int, K: int, collapsed: bool) -> bool:
     return collapsed and 0 < k < K
 
 
-def _apply_linear(self: JetTuple, op: Callable[[Tensor], Tensor]) -> JetTuple:
+def _apply_linear(
+    self: JetTuple, op: Callable[[Tensor], Tensor | Sequence[Tensor]]
+) -> JetTuple | tuple[JetTuple, ...]:
     """Apply a linear ``op`` coefficient-wise to every entry of ``self``.
 
     Linear ops commute with the Taylor expansion, so the result's coefficients
@@ -113,16 +116,24 @@ def _apply_linear(self: JetTuple, op: Callable[[Tensor], Tensor]) -> JetTuple:
     ``c_1..c_{K-1}`` over the direction dim ``R`` and applies ``op`` directly to
     the primal and the already-collapsed slot ``c_K``.
 
+    An ``op`` with a ``Tensor[]`` output (e.g. ``split``, ``unbind``) yields one
+    jet per piece: the per-order piece lists are transposed into a plain
+    ``tuple`` of jets (not a ``JetTuple``), mirroring the op's output so a
+    downstream ``getitem`` falls through to the native op.
+
     Args:
         self: The primal and its Taylor coefficients.
-        op: A linear function from a single coefficient tensor to a tensor.
+        op: A linear function from a single coefficient tensor to a tensor, or
+            to a list/tuple of tensors.
 
     Returns:
-        The value and its Taylor coefficients, with ``op`` applied to each.
+        The value and its Taylor coefficients, with ``op`` applied to each; one
+        such jet per piece if ``op`` returns several tensors.
     """
-    return JetTuple(
-        (op(self[0]), *_apply_linear_coeffs(self, op)), collapsed=self.collapsed
-    )
+    out0, coeffs = op(self[0]), _apply_linear_coeffs(self, op)
+    if isinstance(out0, (tuple, list)):
+        return tuple(JetTuple(p, collapsed=self.collapsed) for p in zip(out0, *coeffs))
+    return JetTuple((out0, *coeffs), collapsed=self.collapsed)
 
 
 def _apply_linear_coeffs(
@@ -920,34 +931,6 @@ def jet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
         d = dim + 1 if (batched and dim >= 0) else dim
         out.append(cat([part(t, k, batched) for t in tensors], d))
     return JetTuple(tuple(out), collapsed=collapsed)
-
-
-# --- Split ---
-
-
-def jet_split(self: JetTuple, split_size: int, dim: int = 0) -> tuple[JetTuple, ...]:
-    """Taylor-mode arithmetic for ``aten.split.Tensor(self, split_size, dim)``.
-
-    Splitting is linear, so every coefficient is split like the primal (via the
-    mode-aware :func:`_apply_linear`, which vmaps collapsed mode's batched
-    coefficients over the direction dim so ``dim`` needs no shift). The
-    per-order piece lists are then regrouped into one jet per piece. Returns a
-    plain ``tuple`` (not a ``JetTuple``) mirroring the op's ``Tensor[]`` output,
-    so the downstream ``getitem`` falls through to the native op. This is what
-    ``x.chunk(n, dim)`` lowers to (torchvision's ShuffleNetV2).
-
-    Args:
-        self: The input and its Taylor coefficients.
-        split_size: Size of each piece along ``dim`` (the last may be smaller).
-        dim: The dimension to split along.
-
-    Returns:
-        One ``JetTuple`` per piece, in order.
-    """
-    per_order = _apply_linear(self, lambda c: ops.aten.split.Tensor(c, split_size, dim))
-    return tuple(
-        JetTuple(pieces, collapsed=self.collapsed) for pieces in zip(*per_order)
-    )
 
 
 # --- Loss functions ---

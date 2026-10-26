@@ -32,7 +32,7 @@ from torch import (
     zeros_like,
 )
 from torch.func import vmap
-from torch.nn.functional import hardsigmoid, hardswish, hardtanh
+from torch.nn.functional import hardtanh
 from torch.utils._pytree import register_pytree_node
 
 from jet.utils import integer_partitions, multiplicity
@@ -565,14 +565,11 @@ def _hardtanh_derivatives(
 def _hardsigmoid_derivatives(x0: Tensor, K: int) -> dict[int, Tensor | None]:
     """Compute ``hardsigmoid(x0)`` and its derivatives up to order *K*.
 
-    Hardsigmoid is ``relu6(x0 + 3) / 6``, so its derivatives are the
-    ``relu6`` table's (see :func:`_hardtanh_derivatives`), scaled by ``1/6``.
+    Hardsigmoid is ``relu6(x0 + 3) / 6``, so its table is the ``relu6`` table
+    (see :func:`_hardtanh_derivatives`) scaled by ``1/6``.
     """
     r = _hardtanh_derivatives(x0 + 3, 0.0, 6.0, K)
-    d: dict[int, Tensor | None] = {0: hardsigmoid(x0)}
-    for k in range(1, K + 1):
-        d[k] = None if r[k] is None else r[k] / 6
-    return d
+    return {k: None if r[k] is None else r[k] / 6 for k in range(K + 1)}
 
 
 def _hardswish_derivatives(x0: Tensor, K: int) -> dict[int, Tensor | None]:
@@ -584,7 +581,7 @@ def _hardswish_derivatives(x0: Tensor, K: int) -> dict[int, Tensor | None]:
     see :func:`_relu_derivatives`).
     """
     h = _hardsigmoid_derivatives(x0, K)
-    d: dict[int, Tensor | None] = {0: hardswish(x0)}
+    d: dict[int, Tensor | None] = {0: x0 * h[0]}
     if K >= 1:
         d[1] = h[0] + x0 * h[1]
     if K >= 2:

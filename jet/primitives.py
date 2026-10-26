@@ -29,7 +29,6 @@ from torch import (
     sigmoid,
     sin,
     tanh,
-    where,
     zeros_like,
 )
 from torch.func import vmap
@@ -566,35 +565,30 @@ def _hardtanh_derivatives(
 def _hardsigmoid_derivatives(x0: Tensor, K: int) -> dict[int, Tensor | None]:
     """Compute ``hardsigmoid(x0)`` and its derivatives up to order *K*.
 
-    Hardsigmoid is ``relu6(x0 + 3) / 6``: piecewise linear with slope ``1/6``
-    on ``(-3, 3)`` and clamped to ``0`` / ``1`` outside. Its first derivative is
-    the indicator ``-3 < x0 < 3`` over ``6`` (strict, as in PyTorch's autograd)
-    and every higher derivative vanishes (``None``, see
-    :func:`_relu_derivatives`).
+    Hardsigmoid is ``relu6(x0 + 3) / 6``, so its derivatives are the
+    ``relu6`` table's (see :func:`_hardtanh_derivatives`), scaled by ``1/6``.
     """
+    r = _hardtanh_derivatives(x0 + 3, 0.0, 6.0, K)
     d: dict[int, Tensor | None] = {0: hardsigmoid(x0)}
-    if K >= 1:
-        d[1] = ((x0 > -3) & (x0 < 3)).to(x0.dtype) / 6
-    for k in range(2, K + 1):
-        d[k] = None
+    for k in range(1, K + 1):
+        d[k] = None if r[k] is None else r[k] / 6
     return d
 
 
 def _hardswish_derivatives(x0: Tensor, K: int) -> dict[int, Tensor | None]:
-    """Compute ``hardswish(x0)`` and its derivatives up to order *K*.
+    """Compute ``hardswish(x0) = x0 * hardsigmoid(x0)`` and its derivatives up to order *K*.
 
-    ``hardswish(x) = x * relu6(x + 3) / 6`` is quadratic on ``(-3, 3)``, zero
-    below and the identity above. Order 1 is ``x0 / 3 + 1/2`` inside, ``0``
-    below, ``1`` above (the kinks join the outer branches); order 2 is ``1/3``
-    inside and ``0`` outside; every higher order vanishes (``None``, see
-    :func:`_relu_derivatives`).
+    By the Leibniz rule, ``hardswish^(k) = x0 * hardsigmoid^(k) + k *
+    hardsigmoid^(k-1)``, so orders 1 and 2 come from
+    :func:`_hardsigmoid_derivatives` and every higher order vanishes (``None``,
+    see :func:`_relu_derivatives`).
     """
+    h = _hardsigmoid_derivatives(x0, K)
     d: dict[int, Tensor | None] = {0: hardswish(x0)}
     if K >= 1:
-        inner = (x0 > -3) & (x0 < 3)
-        d[1] = where(inner, x0 / 3 + 0.5, (x0 >= 3).to(x0.dtype))
+        d[1] = h[0] + x0 * h[1]
     if K >= 2:
-        d[2] = inner.to(x0.dtype) / 3
+        d[2] = 2 * h[1]
     for k in range(3, K + 1):
         d[k] = None
     return d

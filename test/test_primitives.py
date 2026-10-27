@@ -981,7 +981,7 @@ PRIMITIVE_CASES = [
     {
         "id": "as_strided_",
         # Permute to NHWC, make contiguous, permute back: logically still NCHW, but
-        # with NHWC memory strides; pooling then restrides its output via ``as_strided_``.
+        # with NHWC memory strides; pooling then restrides its output (``as_strided_``).
         "f": _stateless(
             lambda x: adaptive_avg_pool2d(
                 x.permute(0, 2, 3, 1).contiguous().permute(0, 3, 1, 2), 1

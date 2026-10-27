@@ -660,6 +660,11 @@ def _pow_derivatives(
     return d
 
 
+def _rsqrt_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:
+    """Compute ``rsqrt(x0) = x0 ** -0.5`` and its derivatives up to order *K* (order 0 is the value)."""
+    return _pow_derivatives(x0, -0.5, K)
+
+
 def _log_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:
     """Compute ``log(x0)`` and its derivatives up to order *K* (order 0 is the value)."""
     log_x0 = log(x0)

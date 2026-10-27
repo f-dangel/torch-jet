@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Support `aten.where.self` and `aten.masked_fill.{Scalar,Tensor}` (constant
   mask) in Taylor mode (both standard and collapsed modes)
-  ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
+  ([PR](https://github.com/f-dangel/torch-jet/pull/219)).
 - Support `aten.rsqrt.default` and `aten.add.Scalar` in Taylor mode (both
   standard and collapsed modes)
   ([PR](https://github.com/f-dangel/torch-jet/pull/211)).

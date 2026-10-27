@@ -1030,41 +1030,20 @@ PRIMITIVE_CASES = [
         "f": _stateless(lambda x: x.t().contiguous()),
         "args_fn": lambda: (rand(3, 4),),
     },
-    # Transformer views: ``x[0]`` / ``x[:, 1]`` lower to ``select.int``, ``x[1:3]``
-    # / ``x[..., ::2]`` to ``slice.Tensor``, ``x[idx]`` / ``x[:, idx]`` to
-    # ``index.Tensor``, ``alias`` is an identity view, and ``.to(dtype)`` lowers to
-    # ``_to_copy`` (a same-dtype ``.to`` leaves no op in the trace, so the cast
-    # is only exercised on float64 devices; MPS has no float64 to cast to).
-    {
-        "id": "select_dim0",
-        "f": _stateless(lambda x: x[0]),
-        "args_fn": lambda: (rand(3, 4),),
-    },
-    {
-        "id": "select_dim1",
-        "f": _stateless(lambda x: x[:, 1]),
-        "args_fn": lambda: (rand(3, 4),),
-    },
-    {
-        "id": "slice_rows",
-        "f": _stateless(lambda x: x[1:3]),
-        "args_fn": lambda: (rand(3, 4),),
-    },
-    {
-        "id": "slice_step",
-        "f": _stateless(lambda x: x[..., ::2]),
-        "args_fn": lambda: (rand(3, 4),),
-    },
-    {
-        "id": "alias",
-        "f": _stateless(ops.aten.alias.default),
-        "args_fn": lambda: (rand(3, 4),),
-    },
-    {
-        "id": "to_copy_f32",
-        "f": _stateless(lambda x: x.to(float32)),
-        "args_fn": lambda: (rand(3, 4),),
-    },
+    # Transformer views: ``x[0]``/``x[:, 1]`` -> ``select.int``, ``x[1:3]``/
+    # ``x[..., ::2]`` -> ``slice.Tensor``, ``x[idx]``/``x[:, idx]`` -> ``index.Tensor``,
+    # ``.to(dtype)`` -> ``_to_copy`` (a same-dtype ``.to``, as on MPS, is a no-op).
+    *(
+        {"id": sid, "f": _stateless(fn), "args_fn": lambda: (rand(3, 4),)}
+        for sid, fn in (
+            ("select_dim0", lambda x: x[0]),
+            ("select_dim1", lambda x: x[:, 1]),
+            ("slice_rows", lambda x: x[1:3]),
+            ("slice_step", lambda x: x[..., ::2]),
+            ("alias", ops.aten.alias.default),
+            ("to_copy_f32", lambda x: x.to(float32)),
+        )
+    ),
     _index_case("index_rows", lambda idx: idx),
     _index_case("index_cols", lambda idx: (slice(None), idx)),
     # ``as_strided`` restrides a tensor over the same storage; here into the

@@ -823,34 +823,17 @@ def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
 
 
 def jet_mm(self: Tensor | JetTuple, mat2: Tensor | JetTuple) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.mm(self, mat2)``.
+    """Taylor-mode arithmetic for ``aten.mm`` / ``aten.bmm`` (``self @ mat2``).
 
     Mode-agnostic. Uses ``matmul`` rather than ``mm`` as the bilinear op: it
-    agrees with ``mm`` on the 2-D coefficients standard mode passes, and is the
-    form collapsed mode needs (:func:`_leibniz` vmaps it over the direction
+    agrees with ``mm`` on the 2-D coefficients standard mode passes (and with
+    ``bmm`` on 3-D ones, since ``matmul`` broadcasts over batch dims), and is
+    the form collapsed mode needs (:func:`_leibniz` vmaps it over the direction
     dim ``R``).
 
     Args:
         self: The first matrix and its Taylor coefficients.
         mat2: The second matrix and its Taylor coefficients.
-
-    Returns:
-        The value and its Taylor coefficients.
-    """
-    return _apply_bilinear(matmul, self, mat2)
-
-
-def jet_bmm(self: Tensor | JetTuple, mat2: Tensor | JetTuple) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.bmm(self, mat2)`` (3-D batched inputs).
-
-    Mode-agnostic. Uses ``matmul`` rather than ``bmm`` as the bilinear op: it
-    agrees with ``bmm`` on the 3-D coefficients standard mode passes, and is the
-    form collapsed mode needs (:func:`_leibniz` vmaps it over the direction
-    dim ``R``). This is the op batched ``matmul`` (e.g. attention) lowers to.
-
-    Args:
-        self: The first batch of matrices and its Taylor coefficients.
-        mat2: The second batch of matrices and its Taylor coefficients.
 
     Returns:
         The value and its Taylor coefficients.

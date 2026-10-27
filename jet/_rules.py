@@ -108,8 +108,6 @@ for _prim in (
     ops.aten.permute.default,
     ops.aten.expand.default,
     ops.aten.clone.default,
-    # Restride (same storage, new strides); the mapped in-place ``as_strided_``
-    # that adaptive average pooling emits on a channels_last input lands here.
     ops.aten.as_strided.default,
     ops.aten._unsafe_view.default,
     ops.aten.unsqueeze.default,

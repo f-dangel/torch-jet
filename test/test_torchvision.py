@@ -13,6 +13,9 @@ from torchvision import models
 
 from test.utils import assert_jet_matches_oracle, device_kw
 
+#: Mark the whole module so CI can run it in its own job (``-m models``).
+pytestmark = mark.models
+
 #: Models that trace end to end, with the input resolution they need.
 MODELS: dict[str, tuple[Callable, int]] = {
     "alexnet": (models.alexnet, 64),

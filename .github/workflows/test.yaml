@@ -5,13 +5,14 @@ on: [push, pull_request]
 
 jobs:
   tests:
-    name: "Python ${{ matrix.python-version }} / torch ${{ matrix.torch-version }}"
+    name: "${{ matrix.suite }} / Python ${{ matrix.python-version }} / torch ${{ matrix.torch-version }}"
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.12"]
         torch-version: ["2.10.*", ""]  # "" installs the latest torch
+        suite: ["unit", "models"]  # unit: `-m "not models"` + doctest; models: `-m models`
         # torchvision pins torch exactly, so pin it with the matching release
         include:
           - torch-version: "2.10.*"
@@ -33,9 +34,10 @@ jobs:
     - name: Install Dependencies
       run: |
         make install-test
-    - name: Run test
+    - name: Run ${{ matrix.suite }} tests
       run: |
-        make test
+        make test-${{ matrix.suite }}
     - name: Run doctest
+      if: matrix.suite == 'unit'
       run: |
         make doctest

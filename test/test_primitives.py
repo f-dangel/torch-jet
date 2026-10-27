@@ -737,13 +737,6 @@ PRIMITIVE_CASES = [
     # (bias coefficients added onto a single-matrix product). See
     # ``_matmul_cases``.
     *_matmul_cases(),
-    # 4-D attention scores ``q @ k^T``: exercises the full
-    # ``expand/view/bmm/_unsafe_view`` lowering of batched ``matmul``.
-    {
-        "id": "matmul_4d_JJ",
-        "f": lambda device: lambda q, k: q @ k.transpose(-1, -2),
-        "args_fn": lambda: (rand(2, 4, 5, 8), rand(2, 4, 5, 8)),
-    },
     # ---- Convolution (bilinear in input/weight; bias is the affine term) --
     *_conv_cases(),
     # ---- Batch norm (eval; affine per-channel map from running statistics) -

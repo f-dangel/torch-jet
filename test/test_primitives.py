@@ -46,6 +46,7 @@ from torch.nn.functional import (
     mse_loss,
     nll_loss,
     relu6,
+    rms_norm,
     silu,
 )
 from torch.testing import assert_close
@@ -396,6 +397,24 @@ def _ln_variant(shape: tuple[int, ...], nd: int) -> dict[str, Any]:
     }
 
 
+def _rms_variant(
+    shape: tuple[int, ...], nd: int, eps: float | None = 1e-5
+) -> dict[str, Any]:
+    """RMS norm over the last ``nd`` dims of ``shape`` (see :func:`_norm_cases`).
+
+    On CUDA / MPS, ``rms_norm`` lowers to the fused ``_fused_rms_norm`` (its own
+    rule); on CPU, to ``pow`` / ``mean`` / ``add`` / ``rsqrt`` / ``mul``.
+    ``eps=None`` is the op's default (``finfo(dtype).eps``); there is no bias.
+    """
+    normalized = shape[-nd:]
+    return {
+        "call": lambda x, w, b: rms_norm(x, normalized, w, eps),
+        "shape": shape,
+        "param_shape": normalized,
+        "suffix": f"_{nd}d" + ("_default_eps" if eps is None else ""),
+    }
+
+
 _BN_RANKS = ({"shape": (4, 3, 7)}, {"shape": (4, 3, 2, 3, 3)}, {"shape": (4, 3)})
 # ``nn.BatchNorm`` creates weight and bias together (``affine``), so only the
 # both-present and both-absent pairs occur. The non-4D ranks also run with jet
@@ -427,6 +446,16 @@ _LN_GRID = (
         ({"shape": (2, 8), "nd": 1},),
     ),
     (("J",), (("J", "J"), ("C", "C")), ({"shape": (2, 4, 3, 3), "nd": 2},)),
+)
+# ``nn.RMSNorm`` has a weight but no bias. Normalizing over two dims also runs
+# with jet weight; one case leaves ``eps`` at the op's default.
+_RMS_GRID = (
+    (("J", "C"), (("N", "N"), ("J", "N"), ("C", "N")), ({"shape": (2, 8), "nd": 1},)),
+    (
+        ("J",),
+        (("J", "N"),),
+        ({"shape": (2, 4, 3, 3), "nd": 2}, {"shape": (2, 8), "nd": 1, "eps": None}),
+    ),
 )
 
 
@@ -852,6 +881,8 @@ PRIMITIVE_CASES = [
     # ``layer_norm`` couples elements over the normalized dims via the sample
     # statistics; full jet / constant / absent matrix over input, weight, bias.
     *_norm_cases("layer_norm", _ln_variant, _LN_GRID),
+    # ``rms_norm`` couples elements via the root mean square (no centering).
+    *_norm_cases("rms_norm", _rms_variant, _RMS_GRID),
     # ``log_softmax`` couples elements along ``dim`` via logsumexp; the rule
     # composes elementwise exp/log with a linear sum and a broadcast sub.
     # Cover a positive dim, a negative dim, and a 1d (dim-0) case.

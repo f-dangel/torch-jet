@@ -94,6 +94,8 @@ RULES: dict = {
     ops.aten.gelu.default: _defshared(compositions.gelu),
     ops.aten.native_batch_norm.default: _defshared(compositions.native_batch_norm),
     ops.aten.native_layer_norm.default: _defshared(compositions.native_layer_norm),
+    # CUDA / MPS lower ``nn.RMSNorm`` to this fused op (CPU traces its primitives).
+    ops.aten._fused_rms_norm.default: _defshared(compositions._fused_rms_norm),
     # CUDA lowers eval-mode batch norm to the cuDNN overload (same map, one
     # extra output).
     ops.aten.cudnn_batch_norm.default: _defshared(compositions.cudnn_batch_norm),

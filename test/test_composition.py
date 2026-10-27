@@ -19,7 +19,7 @@ from torch.nn import (
     Sequential,
     SiLU,
 )
-from torch.nn.functional import cross_entropy, rms_norm
+from torch.nn.functional import cross_entropy
 
 from test.utils import (
     _stateless,
@@ -63,6 +63,11 @@ def _channel_shuffle(x: Tensor, groups: int = 2) -> Tensor:
     N, C, H, W = x.shape
     x = x.view(N, groups, C // groups, H, W).transpose(1, 2).contiguous()
     return x.view(N, C, H, W)
+
+
+def _rms_norm(x: Tensor, eps: float = 1e-6) -> Tensor:
+    """RMS normalization over the last dim, written from primitives."""
+    return x * (x.pow(2).mean(-1, keepdim=True) + eps).rsqrt()
 
 
 COMPOSITION_CASES = [
@@ -144,18 +149,19 @@ COMPOSITION_CASES = [
         for reduction in ("mean", "sum", "none")
         for weighted in (False, True)
     ),
-    # ``nn.RMSNorm`` traces to ``pow`` / ``mean`` / ``add`` / ``rsqrt`` / ``mul``
-    # (the fused CUDA/MPS kernel is decomposed); the weight is a second jet.
-    # Inputs are shifted off zero so the rsqrt derivatives stay well-conditioned.
+    # RMS normalization from primitives (Hugging Face's RMSNorm); the weight is
+    # a second jet. ``torch.nn.RMSNorm`` dispatches to the fused
+    # ``_fused_rms_norm`` on CUDA/MPS, which gets its own composition rule in a
+    # follow-up PR. Inputs are shifted off zero to keep ``rsqrt`` well-conditioned.
     {
         "id": "rms_norm",
-        "f": _stateless(lambda x: rms_norm(x, (3,))),
-        "args_fn": lambda: (rand(2, 4, 3) + 0.5,),
+        "f": _stateless(_rms_norm),
+        "args_fn": lambda: (rand(2, 4, 3) + 1,),
     },
     {
         "id": "rms_norm_weighted",
-        "f": _stateless(lambda x, w: rms_norm(x, (3,), w)),
-        "args_fn": lambda: (rand(2, 4, 3) + 0.5, rand(3)),
+        "f": _stateless(lambda x, w: _rms_norm(x) * w),
+        "args_fn": lambda: (rand(2, 4, 3) + 1, rand(3)),
     },
     {
         "id": "channel_shuffle",

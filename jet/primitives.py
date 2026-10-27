@@ -32,6 +32,7 @@ from torch import (
     sigmoid,
     sin,
     tanh,
+    where,
     zeros_like,
 )
 from torch.func import vmap
@@ -954,6 +955,61 @@ def jet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
         d = dim + 1 if (batched and dim >= 0) else dim
         out.append(cat([part(t, k, batched) for t in tensors], d))
     return JetTuple(tuple(out), collapsed=collapsed)
+
+
+def jet_where(
+    condition: Tensor,
+    self: Tensor | JetTuple | float | int,
+    other: Tensor | JetTuple | float | int,
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.where(condition, self, other)``.
+
+    With a constant ``condition``, ``where`` is linear in ``(self, other)``
+    jointly: every coefficient is ``where(condition, self_k, other_k)``, where a
+    constant operand contributes zeros shaped like the jet operand's coefficient
+    (broadcast up to the primal via :func:`_broadcast_coeffs`, R-aware in
+    collapsed mode, so ``condition`` broadcasts against the trailing dims).
+
+    Args:
+        condition: A constant boolean mask; a jet raises ``NotImplementedError``.
+        self: The operand taken where ``condition`` holds, or a constant.
+        other: The operand taken elsewhere, or a constant.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    if isinstance(condition, JetTuple):
+        raise NotImplementedError("jet_where: a jet-valued condition is not supported")
+    _jet_order(self, other)  # validates K-consistency, raises on mismatch
+    jets = [t for t in (self, other) if isinstance(t, JetTuple)]
+    primal = where(
+        condition, *(t[0] if isinstance(t, JetTuple) else t for t in (self, other))
+    )
+    ref = _broadcast_coeffs(jets[0], primal)
+    coeffs = [
+        _broadcast_coeffs(t, primal)
+        if isinstance(t, JetTuple)
+        else map(zeros_like, ref)
+        for t in (self, other)
+    ]
+    out = (where(condition, a, b) for a, b in zip(*coeffs))
+    return JetTuple((primal, *out), collapsed=jets[0].collapsed)
+
+
+def jet_masked_fill(
+    self: Tensor | JetTuple, mask: Tensor, value: Tensor | JetTuple | float | int
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.masked_fill(self, mask, value)``.
+
+    Args:
+        self: The tensor to fill and its Taylor coefficients, or a constant.
+        mask: A constant boolean mask (a jet mask raises in :func:`jet_where`).
+        value: The fill value: a scalar, a 0-d constant tensor, or a jet.
+
+    Returns:
+        ``where(mask, value, self)`` and its Taylor coefficients.
+    """
+    return jet_where(mask, value, self)
 
 
 # --- Loss functions ---

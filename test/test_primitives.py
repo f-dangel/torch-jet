@@ -397,11 +397,10 @@ def _ln_variant(shape: tuple[int, ...], nd: int) -> dict[str, Any]:
 
 
 _BN_RANKS = ({"shape": (4, 3, 7)}, {"shape": (4, 3, 2, 3, 3)}, {"shape": (4, 3)})
-# Weight and bias are coupled by BatchNorm's ``affine`` flag -- both learnable
-# or both absent; ``nn.BatchNorm`` never produces weight-only / bias-only. The
-# non-4D ranks (1d/3d/... batch norm) are swept with constant and jet
-# weight/bias: reshaping a *jet* weight/bias to the per-channel view is the
-# rank-sensitive path (vmapped over the direction dim ``R`` in collapsed mode).
+# ``nn.BatchNorm`` creates weight and bias together (``affine``), so only the
+# both-present and both-absent pairs occur. The non-4D ranks also run with jet
+# weight/bias: the rule reshapes them to the per-channel view, and that reshape
+# depends on the input rank (and on the direction dim in collapsed mode).
 _BN_GRID = (
     (
         ("J", "C"),

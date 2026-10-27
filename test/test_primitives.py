@@ -362,7 +362,7 @@ def _norm_case(
     }
 
 
-@dataclass(frozen=True)
+@dataclass
 class _NormSpec:
     """The dispatch matrix of one normalization, expanded by :func:`_norm_cases`.
 

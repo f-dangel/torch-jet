@@ -672,12 +672,16 @@ PRIMITIVE_CASES = [
     },
     {"id": "add_JC", "f": _stateless(lambda x: x + 2.0), "args_fn": lambda: (rand(4),)},
     {"id": "add_CJ", "f": _stateless(lambda x: 2.0 + x), "args_fn": lambda: (rand(4),)},
-    # ``add.Scalar`` (RMS normalization's ``+ eps`` traces to it)
-    {
-        "id": "add_Scalar",
-        "f": _stateless(lambda x: ops.aten.add.Scalar(x, 2.0)),
-        "args_fn": lambda: (rand(4),),
-    },
+    # ---- add.Scalar (called directly: ``x + 0.5`` and functionalized
+    # ``add_`` trace to ``add.Tensor``) ------------------------------------
+    *(
+        {
+            "id": f"add_scalar-{sid}",
+            "f": _stateless(lambda x: ops.aten.add.Scalar(x, 0.5)),
+            "args_fn": lambda dims=dims: (rand(*dims),),
+        }
+        for sid, dims in _UNARY_SHAPES.items()
+    ),
     # ---- Binary sub (non-commutative) ------------------------------------
     {
         "id": "sub_JJ",

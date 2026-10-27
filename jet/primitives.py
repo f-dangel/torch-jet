@@ -14,6 +14,7 @@ At each nonlinear collapsed op, the K-th output coefficient is computed as
 """
 
 from collections.abc import Sequence
+from functools import partial
 from math import pi
 from operator import add, sub
 from typing import Callable, Self
@@ -964,11 +965,10 @@ def jet_where(
 ) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.where(condition, self, other)``.
 
-    With a constant ``condition``, ``where`` is linear in ``(self, other)``
-    jointly: every coefficient is ``where(condition, self_k, other_k)``, where a
-    constant operand contributes zeros shaped like the jet operand's coefficient
-    (broadcast up to the primal via :func:`_broadcast_coeffs`, R-aware in
-    collapsed mode, so ``condition`` broadcasts against the trailing dims).
+    ``where(c, a, b) == where(c, a, 0) + where(c, 0, b)`` and each term is
+    linear in its single operand, so a jet term maps coefficient-wise via
+    :func:`_apply_linear` (a constant term stays plain) and :func:`jet_add`
+    sums the two, validating ``K`` and broadcasting mode-aware.
 
     Args:
         condition: A constant boolean mask; a jet raises ``NotImplementedError``.
@@ -980,20 +980,12 @@ def jet_where(
     """
     if isinstance(condition, JetTuple):
         raise NotImplementedError("jet_where: a jet-valued condition is not supported")
-    _jet_order(self, other)  # validates K-consistency, raises on mismatch
-    jets = [t for t in (self, other) if isinstance(t, JetTuple)]
-    primal = where(
-        condition, *(t[0] if isinstance(t, JetTuple) else t for t in (self, other))
-    )
-    ref = _broadcast_coeffs(jets[0], primal)
-    coeffs = [
-        _broadcast_coeffs(t, primal)
-        if isinstance(t, JetTuple)
-        else map(zeros_like, ref)
-        for t in (self, other)
-    ]
-    out = (where(condition, a, b) for a, b in zip(*coeffs))
-    return JetTuple((primal, *out), collapsed=jets[0].collapsed)
+
+    def keep(t, cond):  # ``where(cond, t, 0)``: linear in ``t``
+        f = partial(where, cond, other=0.0)
+        return _apply_linear(t, f) if isinstance(t, JetTuple) else f(t)
+
+    return jet_add(keep(self, condition), keep(other, ~condition))
 
 
 def jet_masked_fill(

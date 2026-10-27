@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Shared building blocks for normalization rules and their tests:
+  `_standardize` (center and scale an input by its own statistics) and
+  `_affine` (optional weight / bias) in `jet/compositions.py`, and a generic
+  `_norm_case` test builder over jet / constant / absent operands; eval batch
+  norm uses `_affine`, with unchanged behaviour and test ids
+  ([PR](https://github.com/f-dangel/torch-jet/pull/206)).
 - Support `aten.upsample_bilinear2d.default` (`F.interpolate(mode="bilinear")`
   with `size=` or `scale_factor=`, either `align_corners`) in Taylor mode (both
   standard and collapsed modes), and test torchvision's FCN, DeepLabV3 and

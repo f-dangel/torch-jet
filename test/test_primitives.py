@@ -20,6 +20,7 @@ from torch import (
     manual_seed,
     ops,
     rand,
+    randint,
     randn,
     relu,
     rsqrt,
@@ -520,6 +521,21 @@ def _binop_case(name, op, sa, sb, variant: str) -> dict[str, Any]:
     return {"id": cid, "f": build, "args_fn": lambda js=jet_shape: (rand(*js),)}
 
 
+def _index_case(cid: str, index: Callable) -> dict[str, Any]:
+    """Fancy-indexing case ``x[index(idx)]`` on a ``rand(3, 4)`` input.
+
+    ``idx`` is a constant long index tensor drawn under ``manual_seed(3)`` on
+    the device; ``index`` turns it into the subscript (e.g. ``(slice(None), idx)``).
+    """
+
+    def build(device):
+        manual_seed(3)
+        idx = randint(0, 3, (2,), device=device)
+        return lambda x: x[index(idx)]
+
+    return {"id": cid, "f": build, "args_fn": lambda: (rand(3, 4),)}
+
+
 def _binop_cases() -> list[dict[str, Any]]:
     """Every (op, shape-pair, dispatch-branch) broadcasting case for add/sub/mul."""
     return [
@@ -1014,6 +1030,43 @@ PRIMITIVE_CASES = [
         "f": _stateless(lambda x: x.t().contiguous()),
         "args_fn": lambda: (rand(3, 4),),
     },
+    # Transformer views: ``x[0]`` / ``x[:, 1]`` lower to ``select.int``, ``x[1:3]``
+    # / ``x[..., ::2]`` to ``slice.Tensor``, ``x[idx]`` / ``x[:, idx]`` to
+    # ``index.Tensor``, ``alias`` is an identity view, and ``.to(dtype)`` lowers to
+    # ``_to_copy`` (a same-dtype ``.to`` leaves no op in the trace, so the cast
+    # is only exercised on float64 devices; MPS has no float64 to cast to).
+    {
+        "id": "select_dim0",
+        "f": _stateless(lambda x: x[0]),
+        "args_fn": lambda: (rand(3, 4),),
+    },
+    {
+        "id": "select_dim1",
+        "f": _stateless(lambda x: x[:, 1]),
+        "args_fn": lambda: (rand(3, 4),),
+    },
+    {
+        "id": "slice_rows",
+        "f": _stateless(lambda x: x[1:3]),
+        "args_fn": lambda: (rand(3, 4),),
+    },
+    {
+        "id": "slice_step",
+        "f": _stateless(lambda x: x[..., ::2]),
+        "args_fn": lambda: (rand(3, 4),),
+    },
+    {
+        "id": "alias",
+        "f": _stateless(ops.aten.alias.default),
+        "args_fn": lambda: (rand(3, 4),),
+    },
+    {
+        "id": "to_copy_f32",
+        "f": _stateless(lambda x: x.to(float32)),
+        "args_fn": lambda: (rand(3, 4),),
+    },
+    _index_case("index_rows", lambda idx: idx),
+    _index_case("index_cols", lambda idx: (slice(None), idx)),
     # ``as_strided`` restrides a tensor over the same storage; here into the
     # channels_last strides of a ``[N, C, 1, 1]`` tensor. ``as_strided_`` is the
     # in-place variant that adaptive average pooling emits on a channels_last

@@ -992,6 +992,28 @@ PRIMITIVE_CASES = [
         "f": _stateless(lambda x: x.t().contiguous()),
         "args_fn": lambda: (rand(3, 4),),
     },
+    # ``as_strided`` restrides a tensor over the same storage; here into the
+    # channels_last strides of a ``[N, C, 1, 1]`` tensor. ``as_strided_`` is the
+    # in-place variant that adaptive average pooling emits on a channels_last
+    # input (torchvision's ConvNeXt); ``capture_graph`` maps it to ``as_strided``.
+    {
+        "id": "as_strided",
+        "f": _stateless(
+            lambda x: ops.aten.as_strided.default(x, [2, 3, 1, 1], [3, 1, 3, 3])
+        ),
+        "args_fn": lambda: (rand(2, 3, 1, 1),),
+    },
+    {
+        "id": "as_strided_",
+        # Permute to NHWC, make contiguous, permute back: logically still NCHW, but
+        # with NHWC memory strides; pooling then restrides its output (``as_strided_``).
+        "f": _stateless(
+            lambda x: adaptive_avg_pool2d(
+                x.permute(0, 2, 3, 1).contiguous().permute(0, 3, 1, 2), 1
+            )
+        ),
+        "args_fn": lambda: (rand(2, 3, 4, 4),),
+    },
     # ---- Loss functions --------------------------------------------------
     # ``mse_loss`` composes ``sub`` + ``pow`` then a linear reduction, against
     # a frozen target (the common loss usage). Cover all three reduction

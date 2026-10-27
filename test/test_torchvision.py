@@ -83,7 +83,27 @@ TORCHVISION_CASES = [
 ]
 
 
+#: Taylor orders and modes for the CNN cells, overriding the ``K`` and
+#: ``collapsed`` fixtures. Orders stop at 3: the nested reverse-mode oracle
+#: dominates the cost and grows steeply with ``K`` on whole CNNs, while every
+#: rule the CNNs hit is tested at ``K=5`` in ``test_primitives``. Collapsed
+#: mode with ``K < 2`` only raises (tested there too), so those cells are left out.
+ORDERS = [
+    (0, False),
+    (1, False),
+    (2, False),
+    (3, False),
+    (2, True),
+    (3, True),
+]
+
+
 @mark.parametrize("config", TORCHVISION_CASES, ids=lambda c: c["id"])
+@mark.parametrize(
+    "K, collapsed",
+    ORDERS,
+    ids=[f"K{K}-{'collapsed' if c else 'standard'}" for K, c in ORDERS],
+)
 def test_torchvision_model(
     config: dict[str, Any], K: int, collapsed: bool, device: str
 ):

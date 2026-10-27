@@ -13,6 +13,10 @@ help:
 	@echo "        Install only the testing tools (included in install-dev)"
 	@echo "test"
 	@echo "        Run pytest on test and report coverage"
+	@echo "test-unit"
+	@echo "        Run only the tests not marked 'models'"
+	@echo "test-models"
+	@echo "        Run only the tests marked 'models' (torchvision CNNs, LLMs)"
 	@echo "install-lint"
 	@echo "        Install only the linter tools (included in install-dev)"
 	@echo "ruff-format"
@@ -49,10 +53,16 @@ install-dev:
 install-test:
 	@pip install -e ."[test,exp]"
 
-.PHONY: test
+.PHONY: test test-unit test-models
 
 test:
-	@pytest -vx -n auto --cov=jet test
+	@pytest -vx --cov=jet test
+
+test-unit:
+	@pytest -vx --cov=jet -m "not models" test
+
+test-models:
+	@pytest -vx --cov=jet -m models test
 
 .PHONY: doctest
 

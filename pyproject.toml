@@ -85,6 +85,11 @@ doc = [
 
 [tool.setuptools_scm]
 
+[tool.pytest.ini_options]
+markers = [
+    "models: end-to-end tests on full models (torchvision CNNs, LLMs); run in a separate CI job",
+]
+
 [tool.coverage.run]
 # The experiments under jet/exp are not part of the shipped library; excluding
 # them keeps the coverage figure focused on the public package.

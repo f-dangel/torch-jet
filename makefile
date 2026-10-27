@@ -52,7 +52,7 @@ install-test:
 .PHONY: test
 
 test:
-	@pytest -vx --cov=jet test
+	@pytest -vx -n auto --cov=jet test
 
 .PHONY: doctest
 

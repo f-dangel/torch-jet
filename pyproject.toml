@@ -63,6 +63,7 @@ test = [
     "pydot",
     "pytest",
     "pytest-cov",
+    "pytest-xdist",
     "torchvision",
 ]
 # Dependencies needed for linting (semicolon/line-separated)

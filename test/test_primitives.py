@@ -361,7 +361,8 @@ def _bn_case(inp: str, weight: str, bias: str, shape, eps: float) -> dict[str, A
     """One eval batch-norm case (see :func:`_norm_case`).
 
     Eval-mode batch norm is affine, so the generic oracle (reverse-mode AD of
-    the fused op) is exact. The running statistics are captured constants.
+    the fused op) is exact. The running statistics are closed-over plain
+    tensors (never jets), like module buffers.
     """
     C = shape[1]
     suffix = f"_{len(shape)}d" + ("_eps" if eps != 1e-5 else "")

@@ -1031,6 +1031,47 @@ def _bn_channel_view(primal: Tensor) -> tuple[int, ...]:
 # ``RULES`` registry lives in :mod:`jet._rules`.
 
 
+def jet_embedding(
+    weight: Tensor | JetTuple, indices: Tensor | JetTuple, *args
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.embedding(weight, indices, ...)``.
+
+    ``weight[indices]`` is linear in ``weight`` once the (integer) ``indices``
+    are fixed, so the ATen op is applied to every coefficient via
+    :func:`_apply_linear` (collapsed mode vmaps it over the direction dim).
+    The row at ``padding_idx`` is a frozen constant (autograd excludes it from
+    the gradient), so the coefficients at positions that look it up are zeroed,
+    matching nested reverse-mode AD; the remaining ATen args only affect the
+    backward and are forwarded unchanged.
+
+    Args:
+        weight: The embedding table and its Taylor coefficients.
+        indices: The (constant) integer token indices.
+        *args: ``padding_idx`` (``-1``: none) and the remaining ATen args.
+
+    Returns:
+        The looked-up rows and their Taylor coefficients.
+
+    Raises:
+        NotImplementedError: If ``indices`` is Taylor-expanded; token indices are
+            integers, so only the weight can carry a jet.
+    """
+    if isinstance(indices, JetTuple):
+        raise NotImplementedError(
+            "jet_embedding does not support Taylor-expanded indices; only the "
+            "embedding weight can be a jet (token indices are integers)."
+        )
+    op = ops.aten.embedding.default
+    if not isinstance(weight, JetTuple):
+        return op(weight, indices, *args)
+    out = _apply_linear(weight, lambda c: op(c, indices, *args))
+    padding_idx = args[0] if args else -1
+    if padding_idx < 0:
+        return out
+    keep = (indices != padding_idx).unsqueeze(-1)
+    return JetTuple((out[0], *(c * keep for c in out[1:])), collapsed=out.collapsed)
+
+
 def _deflinear(prim: Callable) -> Callable:
     """Build a linear jet rule (standard or collapsed).
 

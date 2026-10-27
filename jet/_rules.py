@@ -78,6 +78,8 @@ RULES: dict = {
     # The fused, indices-free pooling op some backends emit (e.g. MPS).
     ops.aten.max_pool2d.default: _defshared(primitives.jet_max_pool2d),
     ops.aten.nll_loss_forward.default: _defshared(primitives.jet_nll_loss_forward),
+    # Token embedding lookup: linear in the weight, integer indices stay constant.
+    ops.aten.embedding.default: _defshared(primitives.jet_embedding),
     # Composites -- one mode-agnostic body that pulls its sub-rules from this
     # registry (see :mod:`jet.compositions`).
     # ``a / b == a * b**(-1)``; current torch lowers all scalar division

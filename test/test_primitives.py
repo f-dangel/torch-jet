@@ -20,6 +20,7 @@ from torch import (
     manual_seed,
     ops,
     rand,
+    randint,
     randn,
     relu,
     rsqrt,
@@ -35,6 +36,7 @@ from torch.nn.functional import (
     avg_pool2d,
     batch_norm,
     conv2d,
+    embedding,
     gelu,
     hardsigmoid,
     hardswish,
@@ -52,7 +54,7 @@ from torch.testing import assert_close
 
 from jet import jet, primitives
 from jet.compositions import native_batch_norm
-from jet.primitives import JetTuple, jet_nll_loss_forward
+from jet.primitives import JetTuple, jet_embedding, jet_nll_loss_forward
 from test.utils import (
     _stateless,
     assert_jet_matches_oracle,
@@ -520,6 +522,21 @@ def _binop_case(name, op, sa, sb, variant: str) -> dict[str, Any]:
     return {"id": cid, "f": build, "args_fn": lambda js=jet_shape: (rand(*js),)}
 
 
+def _embedding_case(name: str, shape: tuple[int, ...], **kw) -> dict[str, Any]:
+    """``embedding(indices, weight, **kw)`` with a jet weight ``(7, 4)``.
+
+    The constant long ``indices`` of ``shape`` (values in ``[0, 7)``) are
+    drawn under ``manual_seed(3)`` on the device.
+    """
+
+    def build(device):
+        manual_seed(3)
+        idx = randint(0, 7, shape, device=device)
+        return lambda w: embedding(idx, w, **kw)
+
+    return {"id": f"embedding_{name}", "f": build, "args_fn": lambda: (rand(7, 4),)}
+
+
 def _binop_cases() -> list[dict[str, Any]]:
     """Every (op, shape-pair, dispatch-branch) broadcasting case for add/sub/mul."""
     return [
@@ -867,6 +884,10 @@ PRIMITIVE_CASES = [
             ("log_softmax_dim0_1d", 0, (4,)),
         )
     ),
+    # ---- Token embedding (linear in the weight; constant integer indices) --
+    _embedding_case("1d", (5,)),
+    _embedding_case("2d", (2, 3)),
+    _embedding_case("padding_idx", (2, 3), padding_idx=0),
     # ---- Loss functions --------------------------------------------------
     # ``nll_loss`` is linear in the (log-prob) input given a frozen integer
     # target, so the same op applies to every coefficient. It returns
@@ -1132,6 +1153,16 @@ def test_nll_loss_taylor_expanded_target_raises(collapsed: bool, device: str):
     target = tup((rand(8, **kw), rand(8, **kw)))  # a Taylor-expanded label
     with raises(NotImplementedError, match="Taylor-expanded target"):
         jet_nll_loss_forward(logits, target, None, 1, -100)
+
+
+def test_embedding_taylor_expanded_indices_raises(collapsed: bool, device: str):
+    """Taylor-expanded embedding indices are rejected (they must be constant)."""
+    kw = device_kw(device)
+    tup = partial(JetTuple, collapsed=collapsed)
+    weight = tup((rand(7, 4, **kw), rand(7, 4, **kw)))
+    indices = tup((rand(5, **kw), rand(5, **kw)))  # a Taylor-expanded index
+    with raises(NotImplementedError, match="Taylor-expanded indices"):
+        jet_embedding(weight, indices, -1, False, False)
 
 
 def test_max_pool2d_matches_with_indices(collapsed: bool, device: str):

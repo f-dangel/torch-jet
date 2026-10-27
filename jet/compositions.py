@@ -244,6 +244,37 @@ def log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTup
     return sub(shifted, log_sum_exp)
 
 
+def _standardize(input: object, dims: list[int], eps: float, collapsed: bool) -> tuple:
+    """Standardize ``input`` over ``dims`` with its own statistics.
+
+    ``(input - mean) * (var + eps)**-0.5`` with biased ``var``, composed from
+    the registered ``mean`` / ``sub`` / ``mul`` / ``pow`` / ``add`` rules. The
+    shared core of layer / group / instance norm; ``input`` may be a jet or a
+    constant.
+
+    Returns:
+        ``(out, mean, rstd)``; ``mean`` / ``rstd`` keep ``dims`` as size 1.
+    """
+    sub = _rule(ops.aten.sub.Tensor, collapsed)
+    mul = _rule(ops.aten.mul.Tensor, collapsed)
+    add = _rule(ops.aten.add.Tensor, collapsed)
+    pow = _rule(ops.aten.pow.Tensor_Scalar, collapsed)
+    mean = _rule(ops.aten.mean.dim, collapsed)
+    mu = mean(input, dims, keepdim=True)
+    centered = sub(input, mu)
+    rstd = pow(add(mean(pow(centered, 2), dims, keepdim=True), eps), -0.5)
+    return mul(centered, rstd), mu, rstd
+
+
+def _affine(out: object, weight: object, bias: object, collapsed: bool) -> object:
+    """``out * weight + bias`` for optional (``None`` = absent) broadcastable params."""
+    if weight is not None:
+        out = _rule(ops.aten.mul.Tensor, collapsed)(out, weight)
+    if bias is not None:
+        out = _rule(ops.aten.add.Tensor, collapsed)(out, bias)
+    return out
+
+
 def native_batch_norm(
     input: object,
     weight: object,
@@ -289,7 +320,6 @@ def native_batch_norm(
     collapsed = _collapsed_of(input, weight, bias)
     sub = _rule(ops.aten.sub.Tensor, collapsed)
     mul = _rule(ops.aten.mul.Tensor, collapsed)
-    add = _rule(ops.aten.add.Tensor, collapsed)
     view = _rule(ops.aten.view.default, collapsed)
 
     primal = input[0] if isinstance(input, JetTuple) else input
@@ -297,10 +327,9 @@ def native_batch_norm(
     rstd = (running_var + eps).rsqrt()
     out = sub(input, view(running_mean, shape))
     out = mul(out, view(rstd, shape))
-    if weight is not None:
-        out = mul(out, view(weight, shape))
-    if bias is not None:
-        out = add(out, view(bias, shape))
+    weight = None if weight is None else view(weight, shape)
+    bias = None if bias is None else view(bias, shape)
+    out = _affine(out, weight, bias, collapsed)
     empty = primal.new_empty(0)
     return out, empty, empty
 

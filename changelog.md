@@ -48,6 +48,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and collapsed modes), which makes torchvision's `channel_shuffle` traceable
   ([PR](https://github.com/f-dangel/torch-jet/pull/195)).
 
+### Internal
+
+- Shared building blocks for normalization rules (`_standardize`, `_affine`)
+  and their tests; batch norm uses them, no behaviour change
+  ([PR](https://github.com/f-dangel/torch-jet/pull/206)).
+
 ## [1.0.0] - 2026-06-12
 
 First stable release: the public API (`jet`, `laplacian`, `bilaplacian`) is now

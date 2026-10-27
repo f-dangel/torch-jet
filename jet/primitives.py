@@ -840,6 +840,24 @@ def jet_mm(self: Tensor | JetTuple, mat2: Tensor | JetTuple) -> JetTuple:
     return _apply_bilinear(matmul, self, mat2)
 
 
+def jet_bmm(self: Tensor | JetTuple, mat2: Tensor | JetTuple) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.bmm(self, mat2)`` (3-D batched inputs).
+
+    Mode-agnostic. Uses ``matmul`` rather than ``bmm`` as the bilinear op: it
+    agrees with ``bmm`` on the 3-D coefficients standard mode passes, and is the
+    form collapsed mode needs (:func:`_leibniz` vmaps it over the direction
+    dim ``R``). This is the op batched ``matmul`` (e.g. attention) lowers to.
+
+    Args:
+        self: The first batch of matrices and its Taylor coefficients.
+        mat2: The second batch of matrices and its Taylor coefficients.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    return _apply_bilinear(matmul, self, mat2)
+
+
 def _align_conv_bias(bias: Tensor | JetTuple, ndim: int) -> Tensor | JetTuple:
     """Reshape a 1-D conv bias to broadcast over the output's batch/spatial dims.
 

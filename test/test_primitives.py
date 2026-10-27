@@ -11,6 +11,7 @@ from typing import Any, Callable
 from pytest import mark, raises
 from torch import (
     addmm,
+    bmm,
     cat,
     cos,
     erf,
@@ -163,6 +164,46 @@ def _matmul_cases() -> list[dict[str, Any]]:
             continue  # no jet operand -> nothing to differentiate
         for shape in ["full", "bcast"] if bias == "J" else ["full"]:
             cases.append(_matmul_case(bias, mat1, mat2, shape))
+    return cases
+
+
+def _bmm_cases() -> list[dict[str, Any]]:
+    """``bmm`` dispatch branches ``JJ``/``JC``/``CJ`` plus a 4-D ``matmul``.
+
+    The ``bmm`` cases use ``(2, 3, 4) @ (2, 4, 5)``; the 4-D attention-score
+    case ``q @ k.transpose(-1, -2)`` goes through the whole
+    ``expand/view/bmm/_unsafe_view`` lowering of batched ``matmul``.
+    """
+
+    def builder(mat1: str, mat2: str):
+        def build(device):
+            manual_seed(0)
+            kw = device_kw(device)
+            L, R = rand(2, 3, 4, **kw), rand(2, 4, 5, **kw)
+            if mat1 == "C":
+                return lambda m2: bmm(L, m2)
+            if mat2 == "C":
+                return lambda m1: bmm(m1, R)
+            return bmm
+
+        return build
+
+    def args(mat1: str, mat2: str):
+        shapes = [(2, 3, 4)] if mat1 == "J" else []
+        shapes += [(2, 4, 5)] if mat2 == "J" else []
+        return lambda: tuple(rand(*s) for s in shapes)
+
+    cases = [
+        {"id": f"bmm_{m1}{m2}", "f": builder(m1, m2), "args_fn": args(m1, m2)}
+        for m1, m2 in ["JJ", "JC", "CJ"]
+    ]
+    cases.append(
+        {
+            "id": "matmul_4d_JJ",
+            "f": lambda device: lambda q, k: q @ k.transpose(-1, -2),
+            "args_fn": lambda: (rand(2, 4, 5, 8), rand(2, 4, 5, 8)),
+        }
+    )
     return cases
 
 
@@ -725,6 +766,9 @@ PRIMITIVE_CASES = [
     # (bias coefficients added onto a single-matrix product). See
     # ``_matmul_cases``.
     *_matmul_cases(),
+    # Batched matmul: the three ``bmm`` dispatch branches plus a 4-D ``matmul``
+    # that lowers to ``expand/view/bmm/_unsafe_view`` (attention scores).
+    *_bmm_cases(),
     # ---- Convolution (bilinear in input/weight; bias is the affine term) --
     *_conv_cases(),
     # ---- Batch norm (eval; affine per-channel map from running statistics) -

@@ -260,9 +260,9 @@ def _standardize(input: object, dims: list[int], eps: float, collapsed: bool) ->
     add = _rule(ops.aten.add.Tensor, collapsed)
     pow = _rule(ops.aten.pow.Tensor_Scalar, collapsed)
     mean = _rule(ops.aten.mean.dim, collapsed)
-    mu = mean(input, dims, True)
+    mu = mean(input, dims, keepdim=True)
     centered = sub(input, mu)
-    rstd = pow(add(mean(pow(centered, 2), dims, True), eps), -0.5)
+    rstd = pow(add(mean(pow(centered, 2), dims, keepdim=True), eps), -0.5)
     return mul(centered, rstd), mu, rstd
 
 

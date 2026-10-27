@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Support `aten.embedding.default` in Taylor mode (both standard and collapsed
+  modes); jets flow through the embedding weight, token indices stay integers
+  ([PR](https://github.com/f-dangel/torch-jet/pull/217)).
 - Support `aten.rsqrt.default` and `aten.add.Scalar` in Taylor mode (both
   standard and collapsed modes)
   ([PR](https://github.com/f-dangel/torch-jet/pull/211)).

@@ -410,9 +410,8 @@ _BN_GRID = (
     (("J",), (("C", "C"),), ({"shape": (4, 3, 5, 5), "eps": 1e-2},)),  # non-default eps
     (("J",), (("C", "C"), ("J", "J")), _BN_RANKS),  # 3d / 5d / 2d
 )
-# ``nn.LayerNorm`` produces weight and bias (``elementwise_affine``), weight
-# only (``bias=False``), or neither. The two-dim case (ConvNeXt's channels-last
-# layer norm) is swept with jet and constant params.
+# ``nn.LayerNorm`` has weight and bias, weight only (``bias=False``), or
+# neither. Normalizing over two dims (ConvNeXt) also runs with jet weight/bias.
 _LN_GRID = (
     (
         ("J", "C"),

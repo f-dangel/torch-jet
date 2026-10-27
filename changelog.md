@@ -48,15 +48,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - ConvNeXt-Tiny in the end-to-end tests, completing the list above
     ([PR](https://github.com/f-dangel/torch-jet/pull/212)).
 
-- Cap the torchvision CNN tests at Taylor order 3 and drop their collapsed
-  `K < 2` cells; every rule stays tested at `K=5` in the unit tests
-  ([PR](https://github.com/f-dangel/torch-jet/pull/205)).
-
-- Run the test oracle under a substitution mode that swaps ops PyTorch cannot
-  differentiate twice (first: MPS `max_pool2d`) for equivalent ones, so every
-  torchvision model is checked against the oracle on every device
-  ([PR](https://github.com/f-dangel/torch-jet/pull/199)).
-
 ### Internal
 
 - Test CI runs the unit and model suites as separate jobs with pytest-xdist;
@@ -65,6 +56,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Shared building blocks for normalization rules (`_standardize`, `_affine`)
   and their tests; batch norm uses them, no behaviour change
   ([PR](https://github.com/f-dangel/torch-jet/pull/206)).
+- Cap the torchvision CNN tests at Taylor order 3 and drop their collapsed
+  `K < 2` cells; every rule stays tested at `K=5` in the unit tests
+  ([PR](https://github.com/f-dangel/torch-jet/pull/205)).
+- Run the test oracle under a substitution mode that swaps ops PyTorch cannot
+  differentiate twice (first: MPS `max_pool2d`) for equivalent ones, so every
+  torchvision model is checked against the oracle on every device
+  ([PR](https://github.com/f-dangel/torch-jet/pull/199)).
 
 ## [1.0.0] - 2026-06-12
 

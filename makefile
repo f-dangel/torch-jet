@@ -56,13 +56,13 @@ install-test:
 .PHONY: test test-unit test-models
 
 test:
-	@pytest -vx -n logical --cov=jet test
+	@pytest -vx -n auto --cov=jet test
 
 test-unit:
-	@pytest -vx -n logical --cov=jet -m "not models" test
+	@pytest -vx -n auto --cov=jet -m "not models" test
 
 test-models:
-	@pytest -vx -n logical --cov=jet -m models test
+	@pytest -vx -n auto --cov=jet -m models test
 
 .PHONY: doctest
 

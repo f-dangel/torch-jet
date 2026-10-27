@@ -23,6 +23,7 @@ from torch import (
     rand,
     randn,
     relu,
+    rsqrt,
     sigmoid,
     sin,
     stack,
@@ -35,6 +36,7 @@ from torch.nn.functional import (
     avg_pool2d,
     batch_norm,
     conv2d,
+    gelu,
     hardsigmoid,
     hardswish,
     hardtanh,
@@ -620,12 +622,35 @@ PRIMITIVE_CASES = [
         }
         for sid, dims in _UNARY_SHAPES.items()
     ),
+    # ---- GELU, exact and tanh (``2 * randn`` covers the tails of the exact
+    # variant; plain ``randn`` for the tanh variant, like ``sigmoid`` / ``silu``)
+    *(
+        {
+            "id": f"{name}-{sid}",
+            "f": _stateless(f),
+            "args_fn": lambda dims=dims, scale=scale: (scale * randn(*dims),),
+        }
+        for name, f, scale in (
+            ("gelu", gelu, 2),
+            ("gelu_tanh", lambda x: gelu(x, approximate="tanh"), 1),
+        )
+        for sid, dims in _UNARY_SHAPES.items()
+    ),
     # ---- log (positive domain; ``rand + 0.5`` keeps inputs in [0.5, 1.5)
     # so the ``1 / x0**k`` derivatives stay well-conditioned) --------------
     *(
         {
             "id": f"log-{sid}",
             "f": _stateless(log),
+            "args_fn": lambda dims=dims: (rand(*dims) + 0.5,),
+        }
+        for sid, dims in _UNARY_SHAPES.items()
+    ),
+    # ---- rsqrt (positive domain, shifted like ``log``) --------------------
+    *(
+        {
+            "id": f"rsqrt-{sid}",
+            "f": _stateless(rsqrt),
             "args_fn": lambda dims=dims: (rand(*dims) + 0.5,),
         }
         for sid, dims in _UNARY_SHAPES.items()
@@ -656,6 +681,16 @@ PRIMITIVE_CASES = [
     },
     {"id": "add_JC", "f": _stateless(lambda x: x + 2.0), "args_fn": lambda: (rand(4),)},
     {"id": "add_CJ", "f": _stateless(lambda x: 2.0 + x), "args_fn": lambda: (rand(4),)},
+    # ---- add.Scalar (called directly: ``x + 0.5`` and functionalized
+    # ``add_`` trace to ``add.Tensor``) ------------------------------------
+    *(
+        {
+            "id": f"add_scalar-{sid}",
+            "f": _stateless(lambda x: ops.aten.add.Scalar(x, 0.5)),
+            "args_fn": lambda dims=dims: (rand(*dims),),
+        }
+        for sid, dims in _UNARY_SHAPES.items()
+    ),
     # ---- Binary sub (non-commutative) ------------------------------------
     {
         "id": "sub_JJ",

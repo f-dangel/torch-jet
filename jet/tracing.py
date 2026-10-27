@@ -15,6 +15,7 @@ from jet.utils import PyTree
 _INPLACE_TO_FUNCTIONAL = {
     ops.aten.squeeze_.dim: ops.aten.squeeze.dim,
     ops.aten.as_strided_.default: ops.aten.as_strided.default,
+    ops.aten.add_.Scalar: ops.aten.add.Scalar,
 }
 
 #: Fake-tensor mode skips kernel execution and just propagates shape/dtype,

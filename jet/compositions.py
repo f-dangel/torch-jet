@@ -8,6 +8,7 @@ share one body. The primitives a composition wires together (``add``, ``mm``,
 algebraic identity (e.g. ``addmm == add(self, mm(mat1, mat2))``).
 """
 
+from math import pi, sqrt
 from typing import Callable
 
 from torch import contiguous_format, ops, uint8
@@ -242,6 +243,37 @@ def log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTup
     sum_exp = sum(exp_jet, dim, keepdim=True)
     log_sum_exp = log(sum_exp)
     return sub(shifted, log_sum_exp)
+
+
+def gelu(self: JetTuple, approximate: str = "none") -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.gelu(self, approximate=...)``.
+
+    Composed from registered rules: the exact GELU ``0.5 x (1 + erf(x / sqrt(2)))``
+    from ``erf`` / ``mul`` / ``add``, the ``"tanh"`` approximation
+    ``0.5 x (1 + tanh(sqrt(2/pi) (x + 0.044715 x^3)))`` from ``tanh`` / ``pow`` as well.
+
+    Args:
+        self: The input and its Taylor coefficients.
+        approximate: ``"none"`` (exact) or ``"tanh"``.
+
+    Returns:
+        The value and its Taylor coefficients.
+
+    Raises:
+        NotImplementedError: If ``approximate`` is neither ``"none"`` nor ``"tanh"``.
+    """
+    collapsed = _collapsed_of(self)
+    mul = _rule(ops.aten.mul.Tensor, collapsed)
+    add = _rule(ops.aten.add.Tensor, collapsed)
+    if approximate == "none":
+        inner = _rule(ops.aten.erf.default, collapsed)(mul(self, 1 / sqrt(2)))
+    elif approximate == "tanh":
+        pow = _rule(ops.aten.pow.Tensor_Scalar, collapsed)
+        cubic = add(self, mul(pow(self, 3), 0.044715))
+        inner = _rule(ops.aten.tanh.default, collapsed)(mul(cubic, sqrt(2 / pi)))
+    else:
+        raise NotImplementedError(f"gelu: unsupported approximate={approximate!r}")
+    return mul(mul(self, 0.5), add(inner, 1.0))
 
 
 def _standardize(input: object, dims: list[int], eps: float, collapsed: bool) -> tuple:

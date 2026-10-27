@@ -42,6 +42,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     ([PR](https://github.com/f-dangel/torch-jet/pull/208)).
   - `aten.gelu.default` (exact and `approximate="tanh"`; ConvNeXt)
     ([PR](https://github.com/f-dangel/torch-jet/pull/209)).
+  - ConvNeXt-Tiny in the end-to-end tests, completing the list above
+    ([PR](https://github.com/f-dangel/torch-jet/pull/212)).
 
 - Cap the torchvision CNN tests at Taylor order 3 and drop their collapsed
   `K < 2` cells; every rule stays tested at `K=5` in the unit tests

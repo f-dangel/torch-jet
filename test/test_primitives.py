@@ -323,8 +323,8 @@ def _norm_primals(shape, param_shape, inp: str, weight: str, bias: str):
 def _norm_case(
     prefix: str,
     call: Callable,
-    shape,
-    param_shape,
+    shape: tuple[int, ...],
+    param_shape: tuple[int, ...],
     inp: str,
     weight: str,
     bias: str,
@@ -361,7 +361,7 @@ def _norm_case(
     }
 
 
-def _bn_variant(shape, eps: float = 1e-5) -> dict[str, Any]:
+def _bn_variant(shape: tuple[int, ...], eps: float = 1e-5) -> dict[str, Any]:
     """Eval batch norm at ``shape`` (see :func:`_norm_cases`).
 
     Eval-mode batch norm is affine, so the generic oracle (reverse-mode AD of
@@ -380,7 +380,7 @@ def _bn_variant(shape, eps: float = 1e-5) -> dict[str, Any]:
     }
 
 
-def _ln_variant(shape, nd: int) -> dict[str, Any]:
+def _ln_variant(shape: tuple[int, ...], nd: int) -> dict[str, Any]:
     """Layer norm over the last ``nd`` dims of ``shape`` (see :func:`_norm_cases`).
 
     The oracle differentiates the substitute definition from

@@ -602,8 +602,7 @@ PRIMITIVE_CASES = [
         "f": _stateless(hardswish),
         "args_fn": lambda: (tensor([-3.0, -1.0, 0.0, 1.0, 3.0]),),
     },
-    # ---- erf (``2 * randn`` covers the tails; the Hermite-recurrence
-    # derivatives have no cancellation, so float32 stays accurate there) ----
+    # ---- erf (``2 * randn`` covers the tails) ------------------------------
     *(
         {
             "id": f"erf-{sid}",

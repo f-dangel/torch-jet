@@ -9,60 +9,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
-- Support `aten.gelu.default` (exact and `approximate="tanh"`) in Taylor mode
-  (both standard and collapsed modes)
-  ([PR](https://github.com/f-dangel/torch-jet/pull/209)).
-- Support `aten.as_strided.default` in Taylor mode (both standard and collapsed
-  modes) and map the in-place `as_strided_` that adaptive average pooling
-  emits on channels_last inputs (torchvision's ConvNeXt) to it
-  ([PR](https://github.com/f-dangel/torch-jet/pull/208)).
-- Support `aten.erf.default` in Taylor mode (both standard and collapsed
-  modes) ([PR](https://github.com/f-dangel/torch-jet/pull/207)).
+- Support torchvision's CNN architectures in Taylor mode (AlexNet, VGG, ResNet,
+  SqueezeNet, DenseNet, GoogLeNet, RegNet, MNASNet, MobileNet V2/V3,
+  ShuffleNet V2, EfficientNet, ConvNeXt, and the FCN/DeepLabV3/LRASPP
+  segmentation heads; see `test/test_torchvision.py`) by adding jet rules for
+  the ATen ops they need:
+  - the linear view ops `aten.transpose.int`, `aten.permute.default`,
+    `aten.expand.default`, and `aten.clone.default` (`channel_shuffle`)
+    ([PR](https://github.com/f-dangel/torch-jet/pull/195)).
+  - `aten.hardtanh.default` (incl. `relu6`; MobileNetV2)
+    ([PR](https://github.com/f-dangel/torch-jet/pull/196)).
+  - End-to-end tests on nine CNNs (AlexNet, VGG11-BN, ResNet18, SqueezeNet,
+    DenseNet121, GoogLeNet, RegNet, MNASNet, MobileNetV2) against the nested
+    reverse-mode oracle on every device
+    ([PR](https://github.com/f-dangel/torch-jet/pull/197)).
+  - `aten.cudnn_batch_norm.default`, the overload eval-mode batch norm lowers
+    to on CUDA ([PR](https://github.com/f-dangel/torch-jet/pull/198)).
+  - `aten.hardsigmoid.default` (MobileNetV3)
+    ([PR](https://github.com/f-dangel/torch-jet/pull/200)).
+  - `aten.hardswish.default` and `aten.silu.default` (EfficientNet,
+    MobileNetV3) ([PR](https://github.com/f-dangel/torch-jet/pull/201)).
+  - `aten.split.Tensor`, which `chunk` lowers to (ShuffleNetV2)
+    ([PR](https://github.com/f-dangel/torch-jet/pull/202)).
+  - `aten.upsample_bilinear2d.default` (`F.interpolate(mode="bilinear")` with
+    `size=` or `scale_factor=`, either `align_corners`; FCN, DeepLabV3, LRASPP)
+    ([PR](https://github.com/f-dangel/torch-jet/pull/203)).
+  - `aten.native_layer_norm.default`, with Taylor-expanded affine parameters
+    too (ConvNeXt) ([PR](https://github.com/f-dangel/torch-jet/pull/204)).
+  - `aten.erf.default` ([PR](https://github.com/f-dangel/torch-jet/pull/207)).
+  - `aten.as_strided.default`, to which the in-place `as_strided_` that
+    adaptive average pooling emits on channels_last inputs is mapped (ConvNeXt)
+    ([PR](https://github.com/f-dangel/torch-jet/pull/208)).
+  - `aten.gelu.default` (exact and `approximate="tanh"`; ConvNeXt)
+    ([PR](https://github.com/f-dangel/torch-jet/pull/209)).
+
 - Cap the torchvision CNN tests at Taylor order 3 and drop their collapsed
   `K < 2` cells; every rule stays tested at `K=5` in the unit tests
   ([PR](https://github.com/f-dangel/torch-jet/pull/205)).
-- Support `aten.native_layer_norm.default` in Taylor mode (both standard and
-  collapsed modes), the first of the ops torchvision's ConvNeXt needs; the
-  affine parameters may be Taylor-expanded too
-  ([PR](https://github.com/f-dangel/torch-jet/pull/204)).
-- Support `aten.upsample_bilinear2d.default` (`F.interpolate(mode="bilinear")`
-  with `size=` or `scale_factor=`, either `align_corners`) in Taylor mode (both
-  standard and collapsed modes), and test torchvision's FCN, DeepLabV3 and
-  LRASPP segmentation models end to end
-  ([PR](https://github.com/f-dangel/torch-jet/pull/203)).
-- Support `aten.split.Tensor` in Taylor mode (both standard and collapsed
-  modes), which `chunk` lowers to, and add torchvision's ShuffleNetV2 to the
-  end-to-end tests ([PR](https://github.com/f-dangel/torch-jet/pull/202)).
-- Support `aten.hardswish.default` and `aten.silu.default` in Taylor mode
-  (both standard and collapsed modes), which unlocks torchvision's
-  EfficientNet and, together with `hardsigmoid`, MobileNetV3
-  ([PR](https://github.com/f-dangel/torch-jet/pull/201)).
-- Support `aten.hardsigmoid.default` in Taylor mode (both standard and
-  collapsed modes), one of the two activations torchvision's MobileNetV3 needs
-  ([PR](https://github.com/f-dangel/torch-jet/pull/200)).
 
 - Run the test oracle under a substitution mode that swaps ops PyTorch cannot
   differentiate twice (first: MPS `max_pool2d`) for equivalent ones, so every
   torchvision model is checked against the oracle on every device
   ([PR](https://github.com/f-dangel/torch-jet/pull/199)).
-
-- Add end-to-end Taylor-mode tests on nine torchvision CNNs (AlexNet, VGG11-BN,
-  ResNet18, SqueezeNet, DenseNet121, GoogLeNet, RegNet, MNASNet, MobileNetV2)
-  against the nested reverse-mode oracle on every device
-  ([PR](https://github.com/f-dangel/torch-jet/pull/197)).
-
-- Support `aten.cudnn_batch_norm.default`, the overload eval-mode batch norm
-  lowers to on CUDA, so batch-norm models run in Taylor mode on GPUs
-  ([PR](https://github.com/f-dangel/torch-jet/pull/198)).
-
-- Support `aten.hardtanh.default` (incl. `relu6`) in Taylor mode (both standard
-  and collapsed modes), which unlocks torchvision's MobileNetV2
-  ([PR](https://github.com/f-dangel/torch-jet/pull/196)).
-
-- Support the linear view ops `aten.transpose.int`, `aten.permute.default`,
-  `aten.expand.default`, and `aten.clone.default` in Taylor mode (both standard
-  and collapsed modes), which makes torchvision's `channel_shuffle` traceable
-  ([PR](https://github.com/f-dangel/torch-jet/pull/195)).
 
 ### Internal
 

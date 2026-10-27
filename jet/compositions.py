@@ -244,6 +244,28 @@ def log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTup
     return sub(shifted, log_sum_exp)
 
 
+def _standardize(input: object, dims: list[int], eps: float, collapsed: bool) -> tuple:
+    """Standardize ``input`` over ``dims`` with its own statistics.
+
+    ``(input - mean) * (var + eps)**-0.5`` with biased ``var``, composed from
+    the registered ``mean`` / ``sub`` / ``mul`` / ``pow`` / ``add`` rules. The
+    shared core of layer / group / instance norm; ``input`` may be a jet or a
+    constant.
+
+    Returns:
+        ``(out, mean, rstd)``; ``mean`` / ``rstd`` keep ``dims`` as size 1.
+    """
+    sub = _rule(ops.aten.sub.Tensor, collapsed)
+    mul = _rule(ops.aten.mul.Tensor, collapsed)
+    add = _rule(ops.aten.add.Tensor, collapsed)
+    pow = _rule(ops.aten.pow.Tensor_Scalar, collapsed)
+    mean = _rule(ops.aten.mean.dim, collapsed)
+    mu = mean(input, dims, True)
+    centered = sub(input, mu)
+    rstd = pow(add(mean(pow(centered, 2), dims, True), eps), -0.5)
+    return mul(centered, rstd), mu, rstd
+
+
 def _affine(out: object, weight: object, bias: object, collapsed: bool) -> object:
     """``out * weight + bias`` for optional (``None`` = absent) broadcastable params."""
     if weight is not None:

@@ -14,6 +14,7 @@ At each nonlinear collapsed op, the K-th output coefficient is computed as
 """
 
 from collections.abc import Sequence
+from math import pi
 from operator import add, sub
 from typing import Callable, Self
 
@@ -22,6 +23,7 @@ from torch import (
     Tensor,
     cat,
     cos,
+    erf,
     exp,
     log,
     matmul,
@@ -622,6 +624,24 @@ def _exp_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:
     single ``exp(x0)`` tensor.
     """
     return dict.fromkeys(range(K + 1), exp(x0))
+
+
+def _erf_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:
+    """Compute ``erf(x0)`` and its derivatives up to order *K* (order 0 is the value).
+
+    ``erf'(x) = 2 / sqrt(pi) * exp(-x**2)`` and ``erf^(n)(x) = 2 / sqrt(pi) *
+    (-1)**(n-1) * H_{n-1}(x) * exp(-x**2)`` with the physicists' Hermite
+    polynomials ``H_0 = 1``, ``H_1 = 2x``, ``H_{n+1} = 2x H_n - 2n H_{n-1}``.
+    The recurrence has no cancelling large terms, so float32 stays accurate in
+    the tails.
+    """
+    d = {0: erf(x0)}
+    gauss = 2 / pi**0.5 * exp(-(x0**2))
+    h_prev, h = 0.0, 1.0  # H_{n-2}, H_{n-1}
+    for n in range(1, K + 1):
+        d[n] = (-1) ** (n - 1) * h * gauss
+        h_prev, h = h, 2 * x0 * h - 2 * (n - 1) * h_prev
+    return d
 
 
 def _pow_derivatives(

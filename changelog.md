@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Cap the torchvision CNN tests at Taylor order 3 and drop their collapsed
+  `K < 2` cells; every rule stays tested at `K=5` in the unit tests
+  ([PR](https://github.com/f-dangel/torch-jet/pull/205)).
 - Support `aten.native_layer_norm.default` in Taylor mode (both standard and
   collapsed modes), the first of the ops torchvision's ConvNeXt needs; the
   affine parameters may be Taylor-expanded too

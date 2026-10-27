@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Support `aten.rsqrt.default` in Taylor mode (both standard and collapsed
+  modes); this makes `torch.nn.RMSNorm` work
+  ([PR](https://github.com/f-dangel/torch-jet/pull/211)).
 - Support `aten.as_strided.default` in Taylor mode (both standard and collapsed
   modes) and map the in-place `as_strided_` that adaptive average pooling
   emits on channels_last inputs (torchvision's ConvNeXt) to it

@@ -10,7 +10,7 @@ algebraic identity (e.g. ``addmm == add(self, mm(mat1, mat2))``).
 
 from typing import Callable
 
-from torch import ops, uint8
+from torch import contiguous_format, ops, uint8
 
 import jet._rules
 from jet.primitives import (
@@ -244,6 +244,37 @@ def log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTup
     return sub(shifted, log_sum_exp)
 
 
+def _standardize(input: object, dims: list[int], eps: float, collapsed: bool) -> tuple:
+    """Standardize ``input`` over ``dims`` with its own statistics.
+
+    ``(input - mean) * (var + eps)**-0.5`` with biased ``var``, composed from
+    the registered ``mean`` / ``sub`` / ``mul`` / ``pow`` / ``add`` rules. The
+    shared core of layer / group / instance norm; ``input`` may be a jet or a
+    constant.
+
+    Returns:
+        ``(out, mean, rstd)``; ``mean`` / ``rstd`` keep ``dims`` as size 1.
+    """
+    sub = _rule(ops.aten.sub.Tensor, collapsed)
+    mul = _rule(ops.aten.mul.Tensor, collapsed)
+    add = _rule(ops.aten.add.Tensor, collapsed)
+    pow = _rule(ops.aten.pow.Tensor_Scalar, collapsed)
+    mean = _rule(ops.aten.mean.dim, collapsed)
+    mu = mean(input, dims, keepdim=True)
+    centered = sub(input, mu)
+    rstd = pow(add(mean(pow(centered, 2), dims, keepdim=True), eps), -0.5)
+    return mul(centered, rstd), mu, rstd
+
+
+def _affine(out: object, weight: object, bias: object, collapsed: bool) -> object:
+    """``out * weight + bias`` for optional (``None`` = absent) broadcastable params."""
+    if weight is not None:
+        out = _rule(ops.aten.mul.Tensor, collapsed)(out, weight)
+    if bias is not None:
+        out = _rule(ops.aten.add.Tensor, collapsed)(out, bias)
+    return out
+
+
 def native_batch_norm(
     input: object,
     weight: object,
@@ -289,7 +320,6 @@ def native_batch_norm(
     collapsed = _collapsed_of(input, weight, bias)
     sub = _rule(ops.aten.sub.Tensor, collapsed)
     mul = _rule(ops.aten.mul.Tensor, collapsed)
-    add = _rule(ops.aten.add.Tensor, collapsed)
     view = _rule(ops.aten.view.default, collapsed)
 
     primal = input[0] if isinstance(input, JetTuple) else input
@@ -297,12 +327,37 @@ def native_batch_norm(
     rstd = (running_var + eps).rsqrt()
     out = sub(input, view(running_mean, shape))
     out = mul(out, view(rstd, shape))
-    if weight is not None:
-        out = mul(out, view(weight, shape))
-    if bias is not None:
-        out = add(out, view(bias, shape))
+    weight = None if weight is None else view(weight, shape)
+    bias = None if bias is None else view(bias, shape)
+    out = _affine(out, weight, bias, collapsed)
     empty = primal.new_empty(0)
     return out, empty, empty
+
+
+def native_layer_norm(
+    input: object, normalized_shape: list[int], weight: object, bias: object, eps: float
+) -> tuple:
+    """Taylor-mode arithmetic for ``aten.native_layer_norm``.
+
+    Layer norm standardizes each sample over its trailing ``normalized_shape``
+    dims with its own statistics (:func:`_standardize`), then applies the
+    optional affine ``weight`` / ``bias`` (:func:`_affine`); ``input`` /
+    ``weight`` / ``bias`` may each be a jet or a constant.
+
+    Returns:
+        The ATen op's ``(output, mean, rstd)`` triple as a plain tuple of jets
+        (``mean`` / ``rstd`` keep the normalized dims as size 1, like the op),
+        so a downstream ``getitem`` falls through to the native op.
+    """
+    collapsed = _collapsed_of(input, weight, bias)
+    dims = list(range(-len(normalized_shape), 0))
+    out, mu, rstd = _standardize(input, dims, eps, collapsed)
+    out = _affine(out, weight, bias, collapsed)
+    # The ATen op's output is contiguous (ConvNeXt ``view``s it after a permute).
+    if not out[0].is_contiguous():
+        clone = _rule(ops.aten.clone.default, collapsed)
+        out = clone(out, memory_format=contiguous_format)
+    return out, mu, rstd
 
 
 def cudnn_batch_norm(

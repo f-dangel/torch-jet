@@ -8,9 +8,9 @@ PyTorch has caught up: drop the entry and the test.
 from typing import Callable
 
 from pytest import raises
-from torch import Tensor, manual_seed, rand, randn, zeros_like
+from torch import Tensor, manual_seed, rand, randn, zeros, zeros_like
 from torch.autograd import grad
-from torch.nn.functional import hardsigmoid, max_pool2d
+from torch.nn.functional import hardsigmoid, layer_norm, max_pool2d
 from torch.testing import assert_close
 
 from test.utils import DifferentiableSubstitutes, device_kw
@@ -55,3 +55,29 @@ def test_hardsigmoid_double_backward(device: str):
     with raises(RuntimeError, match="hardsigmoid_backward is not implemented"):
         _second_derivative(hardsigmoid, x)
     _second_derivative(DifferentiableSubstitutes.SUBSTITUTES[hardsigmoid], x)
+
+
+def test_layer_norm_third_derivative(device: str):
+    """``layer_norm``'s third derivative is wrong on every device; its substitute's is not.
+
+    pytorch/pytorch#175754. The pending upstream fix raises on the third
+    derivative instead of returning a wrong value; either way this cell flags it.
+
+    Without affine parameters, ``layer_norm(x).sum()`` is identically zero, so
+    its third directional derivative must vanish.
+    """
+    manual_seed(0)
+    kw = device_kw(device)
+    x, v = randn(2, 8, **kw), randn(2, 8, **kw)
+
+    def third_directional(f: Callable) -> Tensor:
+        t = zeros((), requires_grad=True, **kw)
+        y = f(x + t * v, (8,)).sum()
+        for _ in range(3):
+            (y,) = grad(y, t, create_graph=True)
+        return y
+
+    with raises(AssertionError):
+        assert_close(third_directional(layer_norm), zeros((), **kw))
+    substitute = DifferentiableSubstitutes.SUBSTITUTES[layer_norm]
+    assert_close(third_directional(substitute), zeros((), **kw))

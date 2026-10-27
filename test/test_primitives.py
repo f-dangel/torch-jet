@@ -404,19 +404,19 @@ _BN_RANKS = ({"shape": (4, 3, 7)}, {"shape": (4, 3, 2, 3, 3)}, {"shape": (4, 3)}
 # rank-sensitive path (vmapped over the direction dim ``R`` in collapsed mode).
 _BN_GRID = (
     (
-        "JC",
+        ("J", "C"),
         (("N", "N"), ("J", "J"), ("J", "C"), ("C", "J"), ("C", "C")),
         ({"shape": (4, 3, 5, 5)},),
     ),
-    ("J", (("C", "C"),), ({"shape": (4, 3, 5, 5), "eps": 1e-2},)),  # non-default eps
-    ("J", (("C", "C"), ("J", "J")), _BN_RANKS),  # 3d / 5d / 2d
+    (("J",), (("C", "C"),), ({"shape": (4, 3, 5, 5), "eps": 1e-2},)),  # non-default eps
+    (("J",), (("C", "C"), ("J", "J")), _BN_RANKS),  # 3d / 5d / 2d
 )
 # ``nn.LayerNorm`` produces weight and bias (``elementwise_affine``), weight
 # only (``bias=False``), or neither. The two-dim case (ConvNeXt's channels-last
 # layer norm) is swept with jet and constant params.
 _LN_GRID = (
     (
-        "JC",
+        ("J", "C"),
         (
             ("N", "N"),
             ("J", "N"),
@@ -428,7 +428,7 @@ _LN_GRID = (
         ),
         ({"shape": (2, 8), "nd": 1},),
     ),
-    ("J", (("J", "J"), ("C", "C")), ({"shape": (2, 4, 3, 3), "nd": 2},)),
+    (("J",), (("J", "J"), ("C", "C")), ({"shape": (2, 4, 3, 3), "nd": 2},)),
 )
 
 
@@ -438,7 +438,7 @@ def _norm_cases(
     """Expand a normalization's dispatch ``grid`` into :func:`_norm_case` dicts.
 
     ``grid`` holds ``(input codes, (weight, bias) pairs, variants)`` rows, e.g.
-    ``("JC", (("J", "J"), ("N", "N")), ({"shape": (2, 8)},))``; their products
+    ``(("J", "C"), (("J", "J"), ("N", "N")), ({"shape": (2, 8)},))``; their products
     keeping at least one jet are the cases, and ``variant(**v)`` maps a shape
     variant to the ``call``, ``shape``, ``param_shape``, ``consts`` and
     ``suffix`` keywords of :func:`_norm_case`.

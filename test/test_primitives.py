@@ -34,6 +34,7 @@ from torch.nn.functional import (
     avg_pool2d,
     batch_norm,
     conv2d,
+    gelu,
     hardsigmoid,
     hardswish,
     hardtanh,
@@ -609,6 +610,20 @@ PRIMITIVE_CASES = [
             "f": _stateless(erf),
             "args_fn": lambda dims=dims: (2 * randn(*dims),),
         }
+        for sid, dims in _UNARY_SHAPES.items()
+    ),
+    # ---- GELU, exact and tanh (``2 * randn`` covers the tails of the exact
+    # variant; plain ``randn`` for the tanh variant, like ``sigmoid`` / ``silu``)
+    *(
+        {
+            "id": f"{name}-{sid}",
+            "f": _stateless(f),
+            "args_fn": lambda dims=dims, scale=scale: (scale * randn(*dims),),
+        }
+        for name, f, scale in (
+            ("gelu", gelu, 2),
+            ("gelu_tanh", lambda x: gelu(x, approximate="tanh"), 1),
+        )
         for sid, dims in _UNARY_SHAPES.items()
     ),
     # ---- log (positive domain; ``rand + 0.5`` keeps inputs in [0.5, 1.5)

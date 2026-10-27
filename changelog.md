@@ -10,9 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added/New
 
 - Support `aten.erf.default` in Taylor mode (both standard and collapsed
-  modes) as an elementwise derivative table built from the Hermite recurrence,
-  so float32 stays accurate in the tails
-  ([PR](https://github.com/f-dangel/torch-jet/pull/207)).
+  modes) ([PR](https://github.com/f-dangel/torch-jet/pull/207)).
 - Support `aten.native_layer_norm.default` in Taylor mode (both standard and
   collapsed modes), the first of the ops torchvision's ConvNeXt needs; the
   affine parameters may be Taylor-expanded too

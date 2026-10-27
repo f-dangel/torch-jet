@@ -13,6 +13,7 @@ from torch import (
     addmm,
     cat,
     cos,
+    erf,
     exp,
     float32,
     log,
@@ -601,6 +602,15 @@ PRIMITIVE_CASES = [
         "f": _stateless(hardswish),
         "args_fn": lambda: (tensor([-3.0, -1.0, 0.0, 1.0, 3.0]),),
     },
+    # ---- erf (``2 * randn`` covers the tails) ------------------------------
+    *(
+        {
+            "id": f"erf-{sid}",
+            "f": _stateless(erf),
+            "args_fn": lambda dims=dims: (2 * randn(*dims),),
+        }
+        for sid, dims in _UNARY_SHAPES.items()
+    ),
     # ---- log (positive domain; ``rand + 0.5`` keeps inputs in [0.5, 1.5)
     # so the ``1 / x0**k`` derivatives stay well-conditioned) --------------
     *(

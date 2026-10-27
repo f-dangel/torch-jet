@@ -89,10 +89,12 @@ TORCHVISION_CASES = [
 #: rule the CNNs hit is tested at ``K=5`` in ``test_primitives``. Collapsed
 #: mode with ``K < 2`` only raises (tested there too), so those cells are left out.
 ORDERS = [
-    (K, collapsed)
-    for collapsed in (False, True)
-    for K in range(4)
-    if K >= 2 or not collapsed
+    (0, False),
+    (1, False),
+    (2, False),
+    (3, False),
+    (2, True),
+    (3, True),
 ]
 
 

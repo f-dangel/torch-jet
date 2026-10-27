@@ -63,6 +63,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Normalization test cases are generated from one per-normalization spec
+  (`_norm_cases`), no behaviour change
+  ([PR](https://github.com/f-dangel/torch-jet/pull/210)).
 - Shared building blocks for normalization rules (`_standardize`, `_affine`)
   and their tests; batch norm uses them, no behaviour change
   ([PR](https://github.com/f-dangel/torch-jet/pull/206)).

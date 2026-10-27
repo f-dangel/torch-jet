@@ -425,6 +425,27 @@ def _ln_case(inp: str, weight: str, bias: str, shape, nd: int) -> dict[str, Any]
     )
 
 
+def _ln_cases() -> list[dict[str, Any]]:
+    """Layer-norm dispatch matrix (see :func:`_ln_case`).
+
+    ``input`` is a jet ``J`` or constant ``C``; weight and bias are each jet,
+    constant, or absent ``N`` as ``nn.LayerNorm`` produces them: both present
+    (``elementwise_affine``), weight only (``bias=False``), or both absent.
+    Configs keep at least one jet, over one normalized dim; the two-dim case
+    (ConvNeXt's channels-last layer norm) is swept with jet and constant params.
+    """
+    affine = (("N", "N"), ("J", "N"), ("C", "N"), ("J", "J"), ("J", "C"))
+    affine += (("C", "J"), ("C", "C"))
+    cases = [
+        _ln_case(i, w, b, (2, 8), 1)
+        for i in ("J", "C")
+        for w, b in affine
+        if "J" in (i, w, b)
+    ]
+    cases += [_ln_case("J", w, b, (2, 4, 3, 3), 2) for w, b in (("J", "J"), ("C", "C"))]
+    return cases
+
+
 _UNARY_POINTWISE = {
     "sin": sin,
     "cos": cos,
@@ -782,14 +803,8 @@ PRIMITIVE_CASES = [
     },
     # ---- Normalization ---------------------------------------------------
     # ``layer_norm`` couples elements over the normalized dims via the sample
-    # statistics. One and two normalized dims; jet / constant / absent affine
-    # params (coupled by ``elementwise_affine``), and the parameter-only path
-    # (constant input, jet weight and bias).
-    _ln_case("J", "J", "J", (2, 8), 1),
-    _ln_case("J", "N", "N", (2, 8), 1),
-    _ln_case("C", "J", "J", (2, 8), 1),
-    _ln_case("J", "J", "J", (2, 4, 3, 3), 2),
-    _ln_case("J", "C", "C", (2, 4, 3, 3), 2),
+    # statistics; full jet / constant / absent matrix over input, weight, bias.
+    *_ln_cases(),
     # ``log_softmax`` couples elements along ``dim`` via logsumexp; the rule
     # composes elementwise exp/log with a linear sum and a broadcast sub.
     # Cover a positive dim, a negative dim, and a 1d (dim-0) case.

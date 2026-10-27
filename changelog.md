@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Support `aten.as_strided.default` in Taylor mode (both standard and collapsed
+  modes) and map the in-place `as_strided_` that adaptive average pooling
+  emits on channels_last inputs (torchvision's ConvNeXt) to it
+  ([PR](https://github.com/f-dangel/torch-jet/pull/208)).
 - Support `aten.erf.default` in Taylor mode (both standard and collapsed
   modes) ([PR](https://github.com/f-dangel/torch-jet/pull/207)).
 - Cap the torchvision CNN tests at Taylor order 3 and drop their collapsed

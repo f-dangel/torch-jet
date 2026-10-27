@@ -109,6 +109,7 @@ for _prim in (
     ops.aten.permute.default,
     ops.aten.expand.default,
     ops.aten.clone.default,
+    ops.aten.as_strided.default,
     ops.aten._unsafe_view.default,
     ops.aten.unsqueeze.default,
     ops.aten.squeeze.dim,

@@ -14,6 +14,7 @@ from jet.utils import PyTree
 # Map in-place ATen ops to their out-of-place equivalents.
 _INPLACE_TO_FUNCTIONAL = {
     ops.aten.squeeze_.dim: ops.aten.squeeze.dim,
+    ops.aten.as_strided_.default: ops.aten.as_strided.default,
 }
 
 #: Fake-tensor mode skips kernel execution and just propagates shape/dtype,

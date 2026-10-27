@@ -22,6 +22,7 @@ from torch import (
     rand,
     randn,
     relu,
+    rsqrt,
     sigmoid,
     sin,
     stack,
@@ -636,6 +637,15 @@ PRIMITIVE_CASES = [
         }
         for sid, dims in _UNARY_SHAPES.items()
     ),
+    # ---- rsqrt (positive domain, shifted like ``log``) --------------------
+    *(
+        {
+            "id": f"rsqrt-{sid}",
+            "f": _stateless(rsqrt),
+            "args_fn": lambda dims=dims: (rand(*dims) + 0.5,),
+        }
+        for sid, dims in _UNARY_SHAPES.items()
+    ),
     # ---- Unary with scalar exponent (float + low/high integer) -----------
     # ``pow_int_5`` at ``K=5`` hits the order-equals-exponent edge where the
     # K-th derivative of ``x**5`` vanishes; ``pow_int_0`` is the constant case
@@ -662,6 +672,16 @@ PRIMITIVE_CASES = [
     },
     {"id": "add_JC", "f": _stateless(lambda x: x + 2.0), "args_fn": lambda: (rand(4),)},
     {"id": "add_CJ", "f": _stateless(lambda x: 2.0 + x), "args_fn": lambda: (rand(4),)},
+    # ---- add.Scalar (called directly: ``x + 0.5`` and functionalized
+    # ``add_`` trace to ``add.Tensor``) ------------------------------------
+    *(
+        {
+            "id": f"add_scalar-{sid}",
+            "f": _stateless(lambda x: ops.aten.add.Scalar(x, 0.5)),
+            "args_fn": lambda dims=dims: (rand(*dims),),
+        }
+        for sid, dims in _UNARY_SHAPES.items()
+    ),
     # ---- Binary sub (non-commutative) ------------------------------------
     {
         "id": "sub_JJ",

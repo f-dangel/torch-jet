@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Support `aten.rsqrt.default` and `aten.add.Scalar` in Taylor mode (both
+  standard and collapsed modes)
+  ([PR](https://github.com/f-dangel/torch-jet/pull/211)).
 - Support `aten.gelu.default` (exact and `approximate="tanh"`) in Taylor mode
   (both standard and collapsed modes)
   ([PR](https://github.com/f-dangel/torch-jet/pull/209)).

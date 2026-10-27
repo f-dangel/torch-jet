@@ -408,8 +408,9 @@ def _bn_cases() -> list[dict[str, Any]]:
 def _ln_case(inp: str, weight: str, bias: str, shape, nd: int) -> dict[str, Any]:
     """One layer-norm case over the last ``nd`` dims (see :func:`_norm_case`).
 
-    Layer norm is nonlinear in its input, so the oracle runs on the substitute
-    definition (see ``DifferentiableSubstitutes``).
+    The oracle differentiates the substitute definition from
+    ``DifferentiableSubstitutes`` because the fused ``native_layer_norm`` has
+    a silently wrong third derivative (pytorch/pytorch#175754).
     """
     normalized = shape[-nd:]
     return _norm_case(

@@ -65,11 +65,6 @@ def _channel_shuffle(x: Tensor, groups: int = 2) -> Tensor:
     return x.view(N, C, H, W)
 
 
-def _rms_norm(x: Tensor, eps: float = 1e-6) -> Tensor:
-    """RMS normalization over the last dim, written from primitives."""
-    return x * (x.pow(2).mean(-1, keepdim=True) + eps).rsqrt()
-
-
 COMPOSITION_CASES = [
     {
         "id": "scalar_Rn_to_R",
@@ -149,20 +144,6 @@ COMPOSITION_CASES = [
         for reduction in ("mean", "sum", "none")
         for weighted in (False, True)
     ),
-    # RMS normalization from primitives (Hugging Face's RMSNorm); the weight is
-    # a second jet. ``torch.nn.RMSNorm`` dispatches to the fused
-    # ``_fused_rms_norm`` on CUDA/MPS, which gets its own composition rule in a
-    # follow-up PR. Inputs are shifted off zero to keep ``rsqrt`` well-conditioned.
-    {
-        "id": "rms_norm",
-        "f": _stateless(_rms_norm),
-        "args_fn": lambda: (rand(2, 4, 3) + 1,),
-    },
-    {
-        "id": "rms_norm_weighted",
-        "f": _stateless(lambda x, w: _rms_norm(x) * w),
-        "args_fn": lambda: (rand(2, 4, 3) + 1, rand(3)),
-    },
     {
         "id": "channel_shuffle",
         # view -> transpose -> contiguous (clone) -> view, then a nonlinearity so

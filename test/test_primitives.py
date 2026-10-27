@@ -672,6 +672,12 @@ PRIMITIVE_CASES = [
     },
     {"id": "add_JC", "f": _stateless(lambda x: x + 2.0), "args_fn": lambda: (rand(4),)},
     {"id": "add_CJ", "f": _stateless(lambda x: 2.0 + x), "args_fn": lambda: (rand(4),)},
+    # ``add.Scalar`` (RMS normalization's ``+ eps`` traces to it)
+    {
+        "id": "add_Scalar",
+        "f": _stateless(lambda x: ops.aten.add.Scalar(x, 2.0)),
+        "args_fn": lambda: (rand(4),),
+    },
     # ---- Binary sub (non-commutative) ------------------------------------
     {
         "id": "sub_JJ",

@@ -4,6 +4,7 @@ from functools import partial
 from typing import Any, Callable
 
 from torch import Tensor, ops
+from torch._decomp import get_decompositions
 from torch.func import functionalize
 from torch.fx import GraphModule
 from torch.fx.experimental.proxy_tensor import make_fx
@@ -15,12 +16,22 @@ from jet.utils import PyTree
 _INPLACE_TO_FUNCTIONAL = {
     ops.aten.squeeze_.dim: ops.aten.squeeze.dim,
     ops.aten.as_strided_.default: ops.aten.as_strided.default,
+    ops.aten.add_.Scalar: ops.aten.add.Scalar,
 }
+
+#: Fused ops traced into the primitives they are composed of (``rms_norm`` on
+#: CUDA/MPS calls ``_fused_rms_norm``; CPU emits pow/mean/add/rsqrt/mul).
+_DECOMPOSITIONS = get_decompositions([ops.aten._fused_rms_norm.default])
 
 #: Fake-tensor mode skips kernel execution and just propagates shape/dtype,
 #: cutting trace time substantially on deep models. ``_allow_non_fake_inputs``
 #: is needed because callers' modules close over real ``nn.Parameter`` tensors.
-_make_fx = partial(make_fx, tracing_mode="fake", _allow_non_fake_inputs=True)
+_make_fx = partial(
+    make_fx,
+    decomposition_table=_DECOMPOSITIONS,
+    tracing_mode="fake",
+    _allow_non_fake_inputs=True,
+)
 
 
 def capture_graph(

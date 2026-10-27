@@ -19,7 +19,7 @@ from torch.nn import (
     Sequential,
     SiLU,
 )
-from torch.nn.functional import cross_entropy
+from torch.nn.functional import cross_entropy, rms_norm
 
 from test.utils import (
     _stateless,
@@ -144,6 +144,19 @@ COMPOSITION_CASES = [
         for reduction in ("mean", "sum", "none")
         for weighted in (False, True)
     ),
+    # ``nn.RMSNorm`` traces to ``pow`` / ``mean`` / ``add`` / ``rsqrt`` / ``mul``
+    # (the fused CUDA/MPS kernel is decomposed); the weight is a second jet.
+    # Inputs are shifted off zero so the rsqrt derivatives stay well-conditioned.
+    {
+        "id": "rms_norm",
+        "f": _stateless(lambda x: rms_norm(x, (3,))),
+        "args_fn": lambda: (rand(2, 4, 3) + 0.5,),
+    },
+    {
+        "id": "rms_norm_weighted",
+        "f": _stateless(lambda x, w: rms_norm(x, (3,), w)),
+        "args_fn": lambda: (rand(2, 4, 3) + 0.5, rand(3)),
+    },
     {
         "id": "channel_shuffle",
         # view -> transpose -> contiguous (clone) -> view, then a nonlinearity so

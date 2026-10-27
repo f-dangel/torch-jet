@@ -22,6 +22,7 @@ from torch import (
     rand,
     randn,
     relu,
+    rsqrt,
     sigmoid,
     sin,
     stack,
@@ -617,6 +618,15 @@ PRIMITIVE_CASES = [
         {
             "id": f"log-{sid}",
             "f": _stateless(log),
+            "args_fn": lambda dims=dims: (rand(*dims) + 0.5,),
+        }
+        for sid, dims in _UNARY_SHAPES.items()
+    ),
+    # ---- rsqrt (positive domain, shifted like ``log``) --------------------
+    *(
+        {
+            "id": f"rsqrt-{sid}",
+            "f": _stateless(rsqrt),
             "args_fn": lambda dims=dims: (rand(*dims) + 0.5,),
         }
         for sid, dims in _UNARY_SHAPES.items()

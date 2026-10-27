@@ -54,6 +54,7 @@ RULES: dict = {
     ops.aten.relu.default: _defelementwise(primitives._relu_derivatives),
     ops.aten.exp.default: _defelementwise(primitives._exp_derivatives),
     ops.aten.log.default: _defelementwise(primitives._log_derivatives),
+    ops.aten.rsqrt.default: _defelementwise(primitives._rsqrt_derivatives),
     ops.aten.hardswish.default: _defelementwise(primitives._hardswish_derivatives),
     ops.aten.silu.default: _defelementwise(primitives._silu_derivatives),
     # Power (also elementwise, but the exponent is a call-time arg, so it carries
@@ -66,6 +67,7 @@ RULES: dict = {
     ops.aten.hardsigmoid.default: _defelementwise(primitives._hardsigmoid_derivatives),
     # Mode-agnostic primitives (one body reading ``self.collapsed``)
     ops.aten.add.Tensor: _defshared(primitives.jet_add),
+    ops.aten.add.Scalar: _defshared(primitives.jet_add),
     ops.aten.sub.Tensor: _defshared(primitives.jet_sub),
     ops.aten.mul.Tensor: _defshared(primitives.jet_mul),
     ops.aten.mm.default: _defshared(primitives.jet_mm),

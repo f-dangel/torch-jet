@@ -69,6 +69,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Test CI runs the unit and model suites as separate jobs with pytest-xdist;
+  `make test-unit` / `make test-models` targets (~6.5 min instead of ~11 min
+  per run) ([PR](https://github.com/f-dangel/torch-jet/pull/213)).
 - Shared building blocks for normalization rules (`_standardize`, `_affine`)
   and their tests; batch norm uses them, no behaviour change
   ([PR](https://github.com/f-dangel/torch-jet/pull/206)).

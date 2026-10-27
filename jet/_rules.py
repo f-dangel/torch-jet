@@ -50,6 +50,7 @@ RULES: dict = {
     ops.aten.cos.default: _defelementwise(primitives._cos_derivatives),
     ops.aten.tanh.default: _defelementwise(primitives._tanh_derivatives),
     ops.aten.sigmoid.default: _defelementwise(primitives._sigmoid_derivatives),
+    ops.aten.erf.default: _defelementwise(primitives._erf_derivatives),
     ops.aten.relu.default: _defelementwise(primitives._relu_derivatives),
     ops.aten.exp.default: _defelementwise(primitives._exp_derivatives),
     ops.aten.log.default: _defelementwise(primitives._log_derivatives),

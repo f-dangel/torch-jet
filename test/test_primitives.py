@@ -323,8 +323,8 @@ def _norm_primals(shape, param_shape, inp: str, weight: str, bias: str):
 def _norm_case(
     prefix: str,
     call: Callable,
-    shape,
-    param_shape,
+    shape: tuple[int, ...],
+    param_shape: tuple[int, ...],
     inp: str,
     weight: str,
     bias: str,
@@ -361,92 +361,94 @@ def _norm_case(
     }
 
 
-def _bn_case(inp: str, weight: str, bias: str, shape, eps: float) -> dict[str, Any]:
-    """One eval batch-norm case (see :func:`_norm_case`).
+def _bn_variant(shape: tuple[int, ...], eps: float = 1e-5) -> dict[str, Any]:
+    """Eval batch norm at ``shape`` (see :func:`_norm_cases`).
 
     Eval-mode batch norm is affine, so the generic oracle (reverse-mode AD of
     the fused op) is exact. The running statistics are closed-over plain
     tensors (never jets), like module buffers.
     """
     C = shape[1]
-    suffix = f"_{len(shape)}d" + ("_eps" if eps != 1e-5 else "")
-    return _norm_case(
-        "batch_norm",
-        lambda x, w, b, rm, rv: batch_norm(x, rm, rv, w, b, training=False, eps=eps),
-        shape,
-        (C,),
-        inp,
-        weight,
-        bias,
-        consts=lambda kw: (randn(C, **kw), rand(C, **kw) + 0.5),
-        suffix=suffix,
-    )
+    return {
+        "call": lambda x, w, b, rm, rv: batch_norm(
+            x, rm, rv, w, b, training=False, eps=eps
+        ),
+        "shape": shape,
+        "param_shape": (C,),
+        "consts": lambda kw: (randn(C, **kw), rand(C, **kw) + 0.5),
+        "suffix": f"_{len(shape)}d" + ("_eps" if eps != 1e-5 else ""),
+    }
 
 
-def _bn_cases() -> list[dict[str, Any]]:
-    """Eval batch-norm dispatch matrix (see :func:`_bn_case`).
-
-    ``input`` is a jet ``J`` or constant ``C``; weight and bias are coupled by
-    BatchNorm's ``affine`` flag -- both learnable (each ``J`` or ``C``) or both
-    absent (``N``). ``nn.BatchNorm`` never produces weight-only / bias-only.
-    Configs keep at least one jet, at 4D, plus a non-default ``eps`` and the
-    non-4D ranks (1d/3d/... batch norm) swept with constant and jet weight/bias
-    -- reshaping a *jet* weight/bias to the per-channel view is the
-    rank-sensitive path (vmapped over the direction dim ``R`` in collapsed mode).
-    """
-    affine = (("N", "N"), ("J", "J"), ("J", "C"), ("C", "J"), ("C", "C"))
-    ranks = ((4, 3, 7), (4, 3, 2, 3, 3), (4, 3))  # 3d / 5d / 2d
-    cases = [
-        _bn_case(i, w, b, (4, 3, 5, 5), 1e-5)
-        for i in ("J", "C")
-        for w, b in affine
-        if "J" in (i, w, b)
-    ]
-    cases.append(_bn_case("J", "C", "C", (4, 3, 5, 5), 1e-2))  # non-default eps
-    cases += [_bn_case("J", "C", "C", s, 1e-5) for s in ranks]
-    cases += [_bn_case("J", "J", "J", s, 1e-5) for s in ranks]
-    return cases
-
-
-def _ln_case(inp: str, weight: str, bias: str, shape, nd: int) -> dict[str, Any]:
-    """One layer-norm case over the last ``nd`` dims (see :func:`_norm_case`).
+def _ln_variant(shape: tuple[int, ...], nd: int) -> dict[str, Any]:
+    """Layer norm over the last ``nd`` dims of ``shape`` (see :func:`_norm_cases`).
 
     The oracle differentiates the substitute definition from
     ``DifferentiableSubstitutes`` because the fused ``native_layer_norm`` has
     a silently wrong third derivative (pytorch/pytorch#175754).
     """
     normalized = shape[-nd:]
-    return _norm_case(
-        "layer_norm",
-        lambda x, w, b: layer_norm(x, normalized, w, b),
-        shape,
-        normalized,
-        inp,
-        weight,
-        bias,
-        suffix=f"_{nd}d",
-    )
+    return {
+        "call": lambda x, w, b: layer_norm(x, normalized, w, b),
+        "shape": shape,
+        "param_shape": normalized,
+        "suffix": f"_{nd}d",
+    }
 
 
-def _ln_cases() -> list[dict[str, Any]]:
-    """Layer-norm dispatch matrix (see :func:`_ln_case`).
+_BN_RANKS = ({"shape": (4, 3, 7)}, {"shape": (4, 3, 2, 3, 3)}, {"shape": (4, 3)})
+# ``nn.BatchNorm`` creates weight and bias together (``affine``), so only the
+# both-present and both-absent pairs occur. The non-4D ranks also run with jet
+# weight/bias: the rule reshapes them to the per-channel view, and that reshape
+# depends on the input rank (and on the direction dim in collapsed mode).
+_BN_GRID = (
+    (
+        ("J", "C"),
+        (("N", "N"), ("J", "J"), ("J", "C"), ("C", "J"), ("C", "C")),
+        ({"shape": (4, 3, 5, 5)},),
+    ),
+    (("J",), (("C", "C"),), ({"shape": (4, 3, 5, 5), "eps": 1e-2},)),  # non-default eps
+    (("J",), (("C", "C"), ("J", "J")), _BN_RANKS),  # 3d / 5d / 2d
+)
+# ``nn.LayerNorm`` has weight and bias, weight only (``bias=False``), or
+# neither. Normalizing over two dims (ConvNeXt) also runs with jet weight/bias.
+_LN_GRID = (
+    (
+        ("J", "C"),
+        (
+            ("N", "N"),
+            ("J", "N"),
+            ("C", "N"),
+            ("J", "J"),
+            ("J", "C"),
+            ("C", "J"),
+            ("C", "C"),
+        ),
+        ({"shape": (2, 8), "nd": 1},),
+    ),
+    (("J",), (("J", "J"), ("C", "C")), ({"shape": (2, 4, 3, 3), "nd": 2},)),
+)
 
-    ``input`` is a jet ``J`` or constant ``C``; weight and bias are each jet,
-    constant, or absent ``N`` as ``nn.LayerNorm`` produces them: both present
-    (``elementwise_affine``), weight only (``bias=False``), or both absent.
-    Configs keep at least one jet, over one normalized dim; the two-dim case
-    (ConvNeXt's channels-last layer norm) is swept with jet and constant params.
+
+def _norm_cases(
+    prefix: str, variant: Callable[..., dict[str, Any]], grid: tuple
+) -> list[dict[str, Any]]:
+    """Expand a normalization's dispatch ``grid`` into :func:`_norm_case` dicts.
+
+    ``grid`` holds ``(input codes, (weight, bias) pairs, variants)`` rows, e.g.
+    ``(("J", "C"), (("J", "J"), ("N", "N")), ({"shape": (2, 8)},))``; their products
+    keeping at least one jet are the cases, and ``variant(**v)`` maps a shape
+    variant to the ``call``, ``shape``, ``param_shape``, ``consts`` and
+    ``suffix`` keywords of :func:`_norm_case`.
     """
-    affine = (("N", "N"), ("J", "N"), ("C", "N"), ("J", "J"), ("J", "C"))
-    affine += (("C", "J"), ("C", "C"))
-    cases = [
-        _ln_case(i, w, b, (2, 8), 1)
-        for i in ("J", "C")
-        for w, b in affine
+    return [
+        _norm_case(prefix, inp=i, weight=w, bias=b, **variant(**v))
+        for inputs, pairs, variants in grid
+        for i in inputs
+        for w, b in pairs
+        for v in variants
         if "J" in (i, w, b)
     ]
-    cases += [_ln_case("J", w, b, (2, 4, 3, 3), 2) for w, b in (("J", "J"), ("C", "C"))]
-    return cases
 
 
 _UNARY_POINTWISE = {
@@ -726,7 +728,7 @@ PRIMITIVE_CASES = [
     # ---- Convolution (bilinear in input/weight; bias is the affine term) --
     *_conv_cases(),
     # ---- Batch norm (eval; affine per-channel map from running statistics) -
-    *_bn_cases(),
+    *_norm_cases("batch_norm", _bn_variant, _BN_GRID),
     # ---- Max pooling (piecewise linear; gather at the primal's arg-max) ---
     {
         "id": "max_pool2d",
@@ -849,7 +851,7 @@ PRIMITIVE_CASES = [
     # ---- Normalization ---------------------------------------------------
     # ``layer_norm`` couples elements over the normalized dims via the sample
     # statistics; full jet / constant / absent matrix over input, weight, bias.
-    *_ln_cases(),
+    *_norm_cases("layer_norm", _ln_variant, _LN_GRID),
     # ``log_softmax`` couples elements along ``dim`` via logsumexp; the rule
     # composes elementwise exp/log with a linear sum and a broadcast sub.
     # Cover a positive dim, a negative dim, and a 1d (dim-0) case.

@@ -30,6 +30,7 @@ MODELS: dict[str, tuple[Callable, int]] = {
     "shufflenet_v2_x0_5": (models.shufflenet_v2_x0_5, 32),
     "efficientnet_b0": (models.efficientnet_b0, 32),
     "mobilenet_v3_small": (models.mobilenet_v3_small, 32),
+    "convnext_tiny": (models.convnext_tiny, 32),
     "fcn_resnet50": (
         lambda: models.segmentation.fcn_resnet50(
             weights=None, weights_backbone=None, aux_loss=False

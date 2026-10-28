@@ -1190,4 +1190,4 @@ def test_softmax_half_to_float(rule: Callable, collapsed: bool, device: str):
 
     for g, w in zip(got, want):
         assert g.dtype == float32
-        assert_close(g, w, rtol=1e-2, atol=1e-2)
+        assert_close(g, w, rtol=1e-3, atol=1e-3)  # half rounds the input to ~2e-4

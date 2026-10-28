@@ -526,11 +526,16 @@ def scaled_dot_product_attention(
 
 
 def _sdpa_pair(query, key, value, attn_mask, dropout_p, is_causal, scale) -> tuple:
-    """``(output, empty)`` for the fused two-output sdpa ops (only ``output`` is used)."""
+    """``(output, None)`` for the fused two-output sdpa ops.
+
+    Only ``output`` is read in the forward trace; the backward-only second output
+    is ``None`` so that any consumer (e.g. a future backward rule for nesting)
+    fails loudly.
+    """
     out = scaled_dot_product_attention(
         query, key, value, attn_mask, dropout_p, is_causal, scale
     )
-    return out, out[0].new_empty(0)
+    return out, None
 
 
 def _scaled_dot_product_flash_attention_for_cpu(

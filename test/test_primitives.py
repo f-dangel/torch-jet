@@ -1028,17 +1028,17 @@ PRIMITIVE_CASES = [
     _embedding_case("2d", (2, 3)),
     _embedding_case("padding_idx", (2, 3), padding_idx=0),
     # ``scaled_dot_product_attention`` composes scaled ``bmm``s, masking, and
-    # ``softmax``; each of q/k/v may be a jet, and ``S != L`` in every case
-    # catches transposition bugs.
+    # ``softmax``; every pattern of jet (J) / constant (C) query, key, value
+    # meets every option, and ``S != L`` catches transposition bugs.
     *(
-        _sdpa_case(f"sdpa_{sid}", **kw)
-        for sid, kw in (
-            ("JJJ", {}),
-            ("JCC", {"jets": "JCC"}),
-            ("causal", {"is_causal": True}),
-            ("bool_mask", {"mask": "bool"}),
-            ("float_mask", {"mask": "float"}),
-            ("scale", {"scale": 0.3}),
+        _sdpa_case(f"sdpa_{jets}{oid}", jets=jets, **kw)
+        for jets in ("JJJ", "JCC", "CJJ", "CJC", "JCJ", "JJC")
+        for oid, kw in (
+            ("", {}),
+            ("_causal", {"is_causal": True}),
+            ("_bool_mask", {"mask": "bool"}),
+            ("_float_mask", {"mask": "float"}),
+            ("_scale", {"scale": 0.3}),
         )
     ),
     # ---- Loss functions --------------------------------------------------

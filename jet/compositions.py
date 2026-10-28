@@ -509,16 +509,23 @@ def scaled_dot_product_attention(
     transpose = _rule(ops.aten.transpose.int, collapsed)
     q = query[0] if isinstance(query, JetTuple) else query
     scores = bmm(mul(query, q.shape[-1] ** -0.5), transpose(key, -2, -1))
-    attn = _rule(ops.aten._softmax.default, collapsed)(scores, -1, False)
+    attn = _rule(ops.aten._softmax.default, collapsed)(
+        scores, dim=-1, half_to_float=False
+    )
     return bmm(attn, value)
 
 
 def _sdpa_pair(query, key, value, attn_mask, dropout_p, is_causal, scale) -> tuple:
-    """``(output, empty)`` for the fused two-output sdpa ops (only ``output`` is used)."""
+    """``(output, None)`` for the fused two-output sdpa ops.
+
+    Only ``output`` is read in the forward trace; the backward-only second output
+    is ``None`` so that any consumer (e.g. a future backward rule for nesting)
+    fails loudly.
+    """
     out = scaled_dot_product_attention(
         query, key, value, attn_mask, dropout_p, is_causal, scale
     )
-    return out, out[0].new_empty(0)
+    return out, None
 
 
 def _scaled_dot_product_flash_attention_for_cpu(

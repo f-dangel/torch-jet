@@ -1357,7 +1357,7 @@ def test_div_self_is_exact(collapsed: bool, device: str):
 
     The division recurrence yields ``q_1 = (x_1 - x_1) / x_0 = 0`` and so on,
     whereas the composition ``x * x**-1`` (the previous rule) accumulates
-    float32 roundoff of at least 1e-3 at order ``K = 5``.
+    float32 roundoff.
     """
     manual_seed(0)
     x = 0.1 + rand(3, 4, dtype=float32, device=device)

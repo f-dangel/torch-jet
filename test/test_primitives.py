@@ -1028,8 +1028,8 @@ PRIMITIVE_CASES = [
     _embedding_case("2d", (2, 3)),
     _embedding_case("padding_idx", (2, 3), padding_idx=0),
     # ``scaled_dot_product_attention`` composes scaled ``bmm``s, masking, and
-    # ``softmax``; each of q/k/v may be a jet, and ``S != L`` catches
-    # transposition bugs.
+    # ``softmax``; each of q/k/v may be a jet, and ``S != L`` in every case
+    # catches transposition bugs.
     *(
         _sdpa_case(f"sdpa_{sid}", **kw)
         for sid, kw in (

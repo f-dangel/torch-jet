@@ -18,6 +18,7 @@ from jet.primitives import (
     JetTuple,
     _align_conv_bias,
     _apply_bilinear,
+    _apply_linear,
     _bn_channel_view,
 )
 
@@ -225,13 +226,14 @@ def log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTup
     Args:
         self: The logits and their Taylor coefficients.
         dim: The dimension along which to normalize.
-        half_to_float: Whether inputs were promoted from half precision.
-            Accepted for ATen-signature compatibility; does not affect the
-            float32/float64 paths.
+        half_to_float: Whether to promote half-precision inputs to float32
+            before computing, like the ATen op (then the output is float32).
 
     Returns:
         The value and its Taylor coefficients.
     """
+    if half_to_float:
+        self = _apply_linear(self, lambda c: c.float())
     collapsed = _collapsed_of(self)
     sub = _rule(ops.aten.sub.Tensor, collapsed)
     exp = _rule(ops.aten.exp.default, collapsed)
@@ -258,13 +260,14 @@ def softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTuple:
     Args:
         self: The logits and their Taylor coefficients.
         dim: The dimension along which to normalize.
-        half_to_float: Whether inputs were promoted from half precision.
-            Accepted for ATen-signature compatibility; does not affect the
-            float32/float64 paths.
+        half_to_float: Whether to promote half-precision inputs to float32
+            before computing, like the ATen op (then the output is float32).
 
     Returns:
         The value and its Taylor coefficients.
     """
+    if half_to_float:
+        self = _apply_linear(self, lambda c: c.float())
     collapsed = _collapsed_of(self)
     sub = _rule(ops.aten.sub.Tensor, collapsed)
     exp = _rule(ops.aten.exp.default, collapsed)

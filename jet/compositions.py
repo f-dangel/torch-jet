@@ -12,7 +12,7 @@ from math import pi, sqrt
 from typing import Callable
 
 from torch import bool as bool_dtype
-from torch import contiguous_format, ones, ops, uint8
+from torch import contiguous_format, finfo, ones, ops, uint8
 
 import jet._rules
 from jet.primitives import (
@@ -515,11 +515,12 @@ def scaled_dot_product_attention(
     if is_causal:
         attn_mask = ones(q.shape[-2], k.shape[-2], dtype=bool_dtype, device=q.device)
         attn_mask = attn_mask.tril()
-    if attn_mask is not None and attn_mask.dtype == bool_dtype:
-        masked_fill = _rule(ops.aten.masked_fill.Scalar, collapsed)
-        scores = masked_fill(scores, ~attn_mask, -float("inf"))
-    elif attn_mask is not None:
-        scores = _rule(ops.aten.add.Tensor, collapsed)(scores, attn_mask)
+    if attn_mask is not None:
+        if attn_mask.dtype == bool_dtype:
+            masked_fill = _rule(ops.aten.masked_fill.Scalar, collapsed)
+            scores = masked_fill(scores, ~attn_mask, -float("inf"))
+        else:
+            scores = _rule(ops.aten.add.Tensor, collapsed)(scores, attn_mask)
     attn = _rule(ops.aten._softmax.default, collapsed)(scores, -1, False)
     return bmm(attn, value)
 

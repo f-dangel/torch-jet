@@ -68,15 +68,24 @@ def _layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5) -> Te
     return out if bias is None else out + bias
 
 
-def _sdpa(q, k, v, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None):
+def _sdpa(
+    q: Tensor,
+    k: Tensor,
+    v: Tensor,
+    attn_mask: Tensor | None = None,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    scale: float | None = None,
+) -> Tensor:
     """``scaled_dot_product_attention`` from its definition (``dropout_p == 0``)."""
     scores = (q * (q.shape[-1] ** -0.5 if scale is None else scale)) @ k.mT
     if is_causal:
         attn_mask = ones(q.shape[-2], k.shape[-2], device=q.device).tril().bool()
-    if attn_mask is not None and attn_mask.is_floating_point():
-        scores = scores + attn_mask
-    elif attn_mask is not None:
-        scores = scores.masked_fill(~attn_mask, -float("inf"))
+    if attn_mask is not None:
+        if attn_mask.is_floating_point():
+            scores = scores + attn_mask
+        else:
+            scores = scores.masked_fill(~attn_mask, -float("inf"))
     return softmax(scores, -1) @ v
 
 

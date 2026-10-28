@@ -53,6 +53,7 @@ from torch.nn.functional import (
     mse_loss,
     nll_loss,
     relu6,
+    rms_norm,
     scaled_dot_product_attention,
     silu,
     softmax,

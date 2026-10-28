@@ -521,7 +521,9 @@ def scaled_dot_product_attention(
             scores = masked_fill(scores, ~attn_mask, -float("inf"))
         else:
             scores = _rule(ops.aten.add.Tensor, collapsed)(scores, attn_mask)
-    attn = _rule(ops.aten._softmax.default, collapsed)(scores, -1, False)
+    attn = _rule(ops.aten._softmax.default, collapsed)(
+        scores, dim=-1, half_to_float=False
+    )
     return bmm(attn, value)
 
 

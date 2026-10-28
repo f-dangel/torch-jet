@@ -1024,6 +1024,13 @@ def jet_where(
     if isinstance(condition, JetTuple):
         raise NotImplementedError("jet_where: a jet-valued condition is not supported")
 
+    # A Python scalar takes the jet's dtype (``where`` of two scalars would
+    # default to float32 and upcast a half-precision jet in ``jet_add``).
+    ref = next(x[0] for x in (self, other) if isinstance(x, JetTuple))
+    self, other = (
+        ref.new_tensor(x) if isinstance(x, (float, int)) else x for x in (self, other)
+    )
+
     def keep(t, cond):  # ``where(cond, t, 0)``: linear in ``t``
         f = partial(where, cond, other=0.0)
         return _apply_linear(t, f) if isinstance(t, JetTuple) else f(t)

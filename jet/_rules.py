@@ -71,13 +71,20 @@ RULES: dict = {
     ops.aten.sub.Tensor: _defshared(primitives.jet_sub),
     ops.aten.mul.Tensor: _defshared(primitives.jet_mul),
     ops.aten.mm.default: _defshared(primitives.jet_mm),
+    # Batched matmul: the same bilinear rule (``matmul`` handles the batch dims).
+    ops.aten.bmm.default: _defshared(primitives.jet_mm),
     ops.aten.cat.default: _defshared(primitives.jet_cat),
+    ops.aten.where.self: _defshared(primitives.jet_where),
+    ops.aten.masked_fill.Scalar: _defshared(primitives.jet_masked_fill),
+    ops.aten.masked_fill.Tensor: _defshared(primitives.jet_masked_fill),
     ops.aten.max_pool2d_with_indices.default: _defshared(
         primitives.jet_max_pool2d_with_indices
     ),
     # The fused, indices-free pooling op some backends emit (e.g. MPS).
     ops.aten.max_pool2d.default: _defshared(primitives.jet_max_pool2d),
     ops.aten.nll_loss_forward.default: _defshared(primitives.jet_nll_loss_forward),
+    # Token embedding lookup: linear in the weight, integer indices stay constant.
+    ops.aten.embedding.default: _defshared(primitives.jet_embedding),
     # Composites -- one mode-agnostic body that pulls its sub-rules from this
     # registry (see :mod:`jet.compositions`).
     # ``a / b == a * b**(-1)``; current torch lowers all scalar division
@@ -91,6 +98,7 @@ RULES: dict = {
     ops.aten.convolution.default: _defshared(compositions.convolution),
     ops.aten.mse_loss.default: _defshared(compositions.mse_loss),
     ops.aten._log_softmax.default: _defshared(compositions.log_softmax),
+    ops.aten._softmax.default: _defshared(compositions.softmax),
     ops.aten.gelu.default: _defshared(compositions.gelu),
     ops.aten.native_batch_norm.default: _defshared(compositions.native_batch_norm),
     ops.aten.native_layer_norm.default: _defshared(compositions.native_layer_norm),
@@ -115,6 +123,13 @@ for _prim in (
     ops.aten.expand.default,
     ops.aten.clone.default,
     ops.aten.as_strided.default,
+    # Transformer views: ``x[i]`` (``select``), ``x[a:b]`` (``slice``), fancy
+    # ``x[idx]`` (``index``; its ``indices: Tensor?[]`` list is forwarded as-is),
+    # and ``.to(dtype)`` (``_to_copy``; still linear with a dtype change).
+    ops.aten.select.int,
+    ops.aten.slice.Tensor,
+    ops.aten.index.Tensor,
+    ops.aten._to_copy.default,
     ops.aten._unsafe_view.default,
     ops.aten.unsqueeze.default,
     ops.aten.squeeze.dim,

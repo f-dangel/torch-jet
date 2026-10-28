@@ -15,6 +15,7 @@ from torch import (
     cos,
     erf,
     exp,
+    float16,
     float32,
     log,
     manual_seed,
@@ -51,7 +52,7 @@ from torch.nn.functional import (
 )
 from torch.testing import assert_close
 
-from jet import jet, primitives
+from jet import compositions, jet, primitives
 from jet.compositions import native_batch_norm
 from jet.primitives import JetTuple, jet_nll_loss_forward
 from test.utils import (
@@ -1168,3 +1169,25 @@ def test_max_pool2d_matches_with_indices(collapsed: bool, device: str):
     assert len(fused) == len(expected)
     for got, want in zip(fused, expected):
         assert_close(got, want, **tolerances_for(device))
+
+
+@mark.parametrize(
+    "rule",
+    [compositions.softmax, compositions.log_softmax],
+    ids=["softmax", "log_softmax"],
+)
+def test_softmax_half_to_float(rule: Callable, collapsed: bool, device: str):
+    """``half_to_float=True`` promotes a half jet to float32, like the ATen op.
+
+    ATen rejects the flag for float input on CPU, so the rule is tested directly.
+    """
+    (x,) = make_jet_args((rand(3, 4, device=device),), 3, collapsed=collapsed)
+    x = JetTuple(x, collapsed=collapsed)
+    x_half = JetTuple(tuple(c.to(float16) for c in x), collapsed=collapsed)
+
+    got = rule(x_half, -1, True)
+    want = rule(x, -1, False)
+
+    for g, w in zip(got, want):
+        assert g.dtype == float32
+        assert_close(g, w, rtol=1e-2, atol=1e-2)

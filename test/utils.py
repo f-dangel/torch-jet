@@ -18,7 +18,7 @@ from torch import (
     zeros_like,
 )
 from torch.nn import Linear, Sequential, Tanh
-from torch.nn.functional import hardsigmoid, layer_norm, max_pool2d
+from torch.nn.functional import embedding, hardsigmoid, layer_norm, max_pool2d
 from torch.overrides import TorchFunctionMode
 from torch.testing import assert_close
 from torch.utils._pytree import tree_flatten, tree_map
@@ -84,6 +84,9 @@ class DifferentiableSubstitutes(TorchFunctionMode):
         # ``native_layer_norm``'s third derivative is wrong on every device
         # (pytorch/pytorch#175754; the pending fix raises instead).
         layer_norm: _layer_norm,
+        # ``embedding``'s backward zeroes the ``padding_idx`` row; the true
+        # derivative of ``weight[input]`` does not depend on that flag.
+        embedding: lambda input, weight, *args, **kwargs: weight[input],
     }
 
     def __torch_function__(self, func, types, args=(), kwargs=None):

@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Support `aten.embedding.default` in Taylor mode (both standard and collapsed
+  modes); a warning flags `padding_idx`, which only masks autograd's gradient
+  while jets propagate the true derivative
+  ([PR](https://github.com/f-dangel/torch-jet/pull/217)).
 - Support `aten.masked_fill.Scalar` and `aten.masked_fill.Tensor` in Taylor mode
   (both standard and collapsed modes)
   ([PR](https://github.com/f-dangel/torch-jet/pull/221)).

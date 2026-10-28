@@ -8,9 +8,9 @@ PyTorch has caught up: drop the entry and the test.
 from typing import Callable
 
 from pytest import raises
-from torch import Tensor, manual_seed, rand, randn, zeros, zeros_like
+from torch import Tensor, full, manual_seed, rand, randn, tensor, zeros, zeros_like
 from torch.autograd import grad
-from torch.nn.functional import hardsigmoid, layer_norm, max_pool2d
+from torch.nn.functional import embedding, hardsigmoid, layer_norm, max_pool2d
 from torch.testing import assert_close
 
 from test.utils import DifferentiableSubstitutes, device_kw
@@ -81,3 +81,18 @@ def test_layer_norm_third_derivative(device: str):
         assert_close(third_directional(layer_norm), zeros((), **kw))
     substitute = DifferentiableSubstitutes.SUBSTITUTES[layer_norm]
     assert_close(third_directional(substitute), zeros((), **kw))
+
+
+def test_embedding_padding_idx_gradient(device: str):
+    """``embedding`` masks the ``padding_idx`` row's gradient; its substitute does not.
+
+    Jets compute the true derivative, so the oracle must not inherit the mask.
+    """
+    kw = device_kw(device)
+    idx = tensor([0, 2, 0], device=device)  # two lookups of row 0
+    w = rand(3, 4, requires_grad=True, **kw)
+    (g,) = grad(embedding(idx, w, padding_idx=0).sum(), w)
+    assert_close(g[0], zeros(4, **kw))
+    substitute = DifferentiableSubstitutes.SUBSTITUTES[embedding]
+    (g,) = grad(substitute(idx, w, padding_idx=0).sum(), w)
+    assert_close(g[0], full((4,), 2.0, **kw))

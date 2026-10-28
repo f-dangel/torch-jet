@@ -7,8 +7,9 @@ registered with :class:`JetInterpreter`.
 from functools import partial
 from itertools import product
 from typing import Any, Callable
+from warnings import catch_warnings, filterwarnings
 
-from pytest import mark, raises
+from pytest import mark, raises, warns
 from torch import (
     addmm,
     cat,
@@ -38,6 +39,7 @@ from torch.nn.functional import (
     avg_pool2d,
     batch_norm,
     conv2d,
+    embedding,
     gelu,
     hardsigmoid,
     hardswish,
@@ -63,6 +65,7 @@ from test.utils import (
     class_index_loss,
     device_kw,
     make_jet_args,
+    setup_case,
     tolerances_for,
 )
 
@@ -536,6 +539,20 @@ def _binop_case(name, op, sa, sb, variant: str) -> dict[str, Any]:
     return {"id": cid, "f": build, "args_fn": lambda js=jet_shape: (rand(*js),)}
 
 
+def _embedding_case(name: str, shape: tuple[int, ...], **kw) -> dict[str, Any]:
+    """``embedding(indices, weight, **kw)`` with a jet weight ``(7, 4)``.
+
+    The constant long ``indices`` of ``shape`` are drawn under ``manual_seed(3)``.
+    """
+
+    def build(device):
+        manual_seed(3)
+        idx = randint(0, 7, shape, device=device)
+        return lambda w: embedding(idx, w, **kw)
+
+    return {"id": f"embedding_{name}", "f": build, "args_fn": lambda: (rand(7, 4),)}
+
+
 def _index_case(cid: str, index: Callable) -> dict[str, Any]:
     """Fancy-indexing case ``x[index(idx)]`` on a ``rand(3, 4)`` input.
 
@@ -938,6 +955,10 @@ PRIMITIVE_CASES = [
             (0, (4,), "dim0_1d"),
         )
     ),
+    # ---- Token embedding (linear in the weight; constant integer indices) --
+    _embedding_case("1d", (5,)),
+    _embedding_case("2d", (2, 3)),
+    _embedding_case("padding_idx", (2, 3), padding_idx=0),
     # ---- Loss functions --------------------------------------------------
     # ``nll_loss`` is linear in the (log-prob) input given a frozen integer
     # target, so the same op applies to every coefficient. It returns
@@ -1218,6 +1239,20 @@ def test_nll_loss_taylor_expanded_target_raises(collapsed: bool, device: str):
     target = tup((rand(8, **kw), rand(8, **kw)))  # a Taylor-expanded label
     with raises(NotImplementedError, match="Taylor-expanded target"):
         jet_nll_loss_forward(logits, target, None, 1, -100)
+
+
+def test_embedding_padding_idx_warns(collapsed: bool, device: str):
+    """``padding_idx >= 0`` on a jet weight warns (autograd would mask that row)."""
+
+    def run(case):
+        f, args = setup_case(case, device)
+        jet(f, args, collapsed=collapsed)(*make_jet_args(args, 2, collapsed))
+
+    with warns(UserWarning, match="padding_idx"):
+        run(_embedding_case("padding_idx", (2, 3), padding_idx=0))
+    with catch_warnings():
+        filterwarnings("error", message="padding_idx")
+        run(_embedding_case("1d", (5,)))
 
 
 def test_max_pool2d_matches_with_indices(collapsed: bool, device: str):

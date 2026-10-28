@@ -18,6 +18,7 @@ from functools import partial
 from math import pi
 from operator import add, sub
 from typing import Callable, Self
+from warnings import warn
 
 from scipy.special import comb, factorial, stirling2
 from torch import (
@@ -1078,6 +1079,42 @@ def _bn_channel_view(primal: Tensor) -> tuple[int, ...]:
 #
 # These build the rule for a category of op; registration into the single
 # ``RULES`` registry lives in :mod:`jet._rules`.
+
+
+def jet_embedding(
+    weight: Tensor | JetTuple, indices: Tensor, padding_idx: int = -1, *args
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.embedding(weight, indices, padding_idx, ...)``.
+
+    ``weight[indices]`` is linear in ``weight`` for constant integer ``indices``,
+    so the ATen op is applied coefficient-wise. ``padding_idx``,
+    ``scale_grad_by_freq`` and ``sparse`` only shape autograd's backward and are
+    forwarded unchanged. In particular autograd zeroes the gradient of the
+    ``padding_idx`` row while the jet, like forward-mode ``jvp``, propagates the
+    true derivative through it; a ``UserWarning`` says so.
+
+    Args:
+        weight: The embedding table and its Taylor coefficients.
+        indices: The (constant) integer token indices.
+        padding_idx: Row whose gradient autograd zeroes (``-1``: none).
+        *args: The remaining ATen args (``scale_grad_by_freq``, ``sparse``).
+
+    Returns:
+        The looked-up rows and their Taylor coefficients.
+    """
+    if padding_idx >= 0 and isinstance(weight, JetTuple):
+        warn(
+            UserWarning(
+                "padding_idx only masks autograd's reverse-mode gradient of that "
+                "row; forward mode (jvp) and jets propagate the true derivative "
+                "through it. Derivatives that involve the padding row therefore "
+                "depend on the AD mode: results obtained via reverse mode (e.g. "
+                "Hessian-vector products by double backward) differ from jets. "
+                "Zero the padding row of the direction to make the modes agree."
+            ),
+            stacklevel=2,
+        )
+    return _deflinear(ops.aten.embedding.default)(weight, indices, padding_idx, *args)
 
 
 def _deflinear(prim: Callable) -> Callable:

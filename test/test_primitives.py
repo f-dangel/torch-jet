@@ -19,6 +19,7 @@ from torch import (
     finfo,
     float16,
     float32,
+    linspace,
     log,
     manual_seed,
     ops,
@@ -1360,12 +1361,12 @@ def test_div_self_is_exact(collapsed: bool, device: str):
     float32 roundoff.
     """
     manual_seed(0)
-    x = 0.1 + rand(3, 4, dtype=float32, device=device)
+    x = linspace(0.5, 1.5, 12, dtype=float32, device=device).reshape(3, 4)
     K = 5
     jet_args = make_jet_args((x,), K, collapsed=collapsed)
     coeffs = jet(lambda x: x / x, (x,), collapsed=collapsed)(*jet_args)
     for c in coeffs[1:]:
         assert_close(c, zeros_like(c), atol=0, rtol=0)
     composed = jet(lambda x: x * x**-1, (x,), collapsed=collapsed)(*jet_args)
-    assert_close(composed[K], zeros_like(composed[K]), atol=1e-1, rtol=0)
-    assert composed[K].abs().max() > 1e-4
+    assert_close(composed[K], zeros_like(composed[K]), atol=1e-3, rtol=0)
+    assert composed[K].abs().max() > 1e-5

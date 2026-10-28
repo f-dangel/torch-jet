@@ -58,32 +58,37 @@ def _out(model: Callable, x: Tensor) -> Tensor:
     return out["out"] if isinstance(out, dict) else out
 
 
-def _projected(ctor: Callable, res: int) -> Callable[[str], Callable]:
+def _projected(ctor: Callable, shape: tuple[int, ...]) -> Callable[[str], Callable]:
     """Build ``x -> sum(model(x) * w)`` with a fixed random ``w`` on ``device``.
 
-    The scalar output keeps the nested reverse-mode oracle cheap (it
-    differentiates each output element separately) while every logit still
-    contributes. The parameters are frozen: only the input is differentiated,
-    so autograd need not record graphs for them.
+    ``shape`` is one input's shape (no batch dim). The scalar output keeps the
+    nested reverse-mode oracle cheap (it differentiates each output element
+    separately) while every logit still contributes. The parameters are
+    frozen: only the input is differentiated, so autograd need not record
+    graphs for them.
     """
 
     def builder(device: str) -> Callable:
         manual_seed(0)
         kw = device_kw(device)
         model = ctor().eval().requires_grad_(False).to(**kw)
-        w = randn(1, *_out(model, randn(2, 3, res, res, **kw)).shape[1:], **kw)
+        w = randn(1, *_out(model, randn(2, *shape, **kw)).shape[1:], **kw)
         return lambda x: (_out(model, x) * w).sum()
 
     return builder
 
 
-TORCHVISION_CASES = [
-    {
+def _model_case(name: str, ctor: Callable, shape: tuple[int, ...]) -> dict[str, Any]:
+    """A case for ``ctor()`` on a batch of two inputs of ``shape``."""
+    return {
         "id": name,
-        "f": _projected(ctor, res),
-        "args_fn": lambda res=res: (randn(2, 3, res, res),),
+        "f": _projected(ctor, shape),
+        "args_fn": lambda: (randn(2, *shape),),
     }
-    for name, (ctor, res) in MODELS.items()
+
+
+TORCHVISION_CASES = [
+    _model_case(name, ctor, (3, res, res)) for name, (ctor, res) in MODELS.items()
 ]
 
 
@@ -102,12 +107,11 @@ ORDERS = [
 ]
 
 
+ORDER_IDS = [f"K{K}-{'collapsed' if c else 'standard'}" for K, c in ORDERS]
+
+
 @mark.parametrize("config", TORCHVISION_CASES, ids=lambda c: c["id"])
-@mark.parametrize(
-    "K, collapsed",
-    ORDERS,
-    ids=[f"K{K}-{'collapsed' if c else 'standard'}" for K, c in ORDERS],
-)
+@mark.parametrize("K, collapsed", ORDERS, ids=ORDER_IDS)
 def test_torchvision_model(
     config: dict[str, Any], K: int, collapsed: bool, device: str
 ):

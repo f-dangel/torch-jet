@@ -647,13 +647,13 @@ def _where_case(
 
 
 def _sdpa_case(
-    cid: str, jets: str = "JJJ", S: int = 3, mask: str | None = None, **kw
+    cid: str, jets: str = "JJJ", S: int = 5, mask: str | None = None, **kw
 ) -> dict[str, Any]:
     """``scaled_dot_product_attention(q, k, v, **kw)`` with ``q`` of shape (2, 2, 3, 4).
 
-    ``jets`` marks which of ``q`` / ``k`` / ``v`` (batch, heads, L=3 or ``S``,
-    E=4) are jets, the rest are frozen constants; ``mask`` adds a ``"bool"``
-    (no fully masked row) or additive ``"float"`` mask. Drawn under
+    ``jets`` marks which of ``q`` / ``k`` / ``v`` (batch, heads, L=3 / S=5, E=4)
+    are jets, the rest are frozen constants; ``mask`` adds a ``"bool"`` (no
+    fully masked row) or additive ``"float"`` mask. Drawn under
     ``manual_seed(3)``.
     """
     shapes = ((2, 2, 3, 4), (2, 2, S, 4), (2, 2, S, 4))
@@ -1039,7 +1039,6 @@ PRIMITIVE_CASES = [
             ("bool_mask", {"mask": "bool"}),
             ("float_mask", {"mask": "float"}),
             ("scale", {"scale": 0.3}),
-            ("kv_longer", {"S": 5}),
         )
     ),
     # ---- Loss functions --------------------------------------------------

@@ -646,12 +646,11 @@ def _where_case(
     }
 
 
-def _sdpa_case(cid: str, jets: str = "JJJ", S: int = 3) -> dict[str, Any]:
+def _sdpa_case(cid: str, jets: str = "JJJ", S: int = 5) -> dict[str, Any]:
     """``scaled_dot_product_attention(q, k, v)`` with ``q`` of shape (2, 2, 3, 4).
 
-    ``jets`` marks which of ``q`` / ``k`` / ``v`` (batch, heads, L=3 or ``S``,
-    E=4) are jets, the rest are frozen constants. Drawn under
-    ``manual_seed(3)``.
+    ``jets`` marks which of ``q`` / ``k`` / ``v`` (batch, heads, L=3 / S=5, E=4)
+    are jets, the rest are frozen constants. Drawn under ``manual_seed(3)``.
     """
     shapes = ((2, 2, 3, 4), (2, 2, S, 4), (2, 2, S, 4))
 
@@ -1021,14 +1020,13 @@ PRIMITIVE_CASES = [
     _embedding_case("2d", (2, 3)),
     _embedding_case("padding_idx", (2, 3), padding_idx=0),
     # ``scaled_dot_product_attention`` composes scaled ``bmm``s, masking, and
-    # ``softmax``; each of q/k/v may be a jet, and ``S != L`` catches
-    # transposition bugs.
+    # ``softmax``; each of q/k/v may be a jet, and ``S != L`` in every case
+    # catches transposition bugs.
     *(
         _sdpa_case(f"sdpa_{sid}", **kw)
         for sid, kw in (
             ("JJJ", {}),
             ("JCC", {"jets": "JCC"}),
-            ("kv_longer", {"S": 5}),
         )
     ),
     # ---- Loss functions --------------------------------------------------

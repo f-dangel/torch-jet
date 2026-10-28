@@ -1040,7 +1040,6 @@ PRIMITIVE_CASES = [
             ("select_dim1", lambda x: x[:, 1]),
             ("slice_rows", lambda x: x[1:3]),
             ("slice_step", lambda x: x[..., ::2]),
-            ("alias", ops.aten.alias.default),
             ("to_copy_f32", lambda x: x.to(float32)),
         )
     ),

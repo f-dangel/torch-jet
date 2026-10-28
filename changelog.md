@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     kernel does, so the `view` that follows `nn.MultiheadAttention`'s
     trace-elided `.contiguous()` succeeds
     ([PR](https://github.com/f-dangel/torch-jet/pull/229)).
+  - An adapter for the fused MPS op
+    ([PR](https://github.com/f-dangel/torch-jet/pull/224)).
   - `attn_mask`, `is_causal`, and `scale`
     ([PR](https://github.com/f-dangel/torch-jet/pull/223)).
 - Support `aten._fused_rms_norm.default` in Taylor mode (both standard and

@@ -545,7 +545,12 @@ def _binop_cases() -> list[dict[str, Any]]:
     ]
 
 
-def _where_case(name: str, mask_shape: tuple[int, ...] = (3, 4)) -> dict[str, Any]:
+_WHERE_SHAPE = (3, 4)
+
+
+def _where_case(
+    name: str, mask_shape: tuple[int, ...] = _WHERE_SHAPE
+) -> dict[str, Any]:
     """``where``/``masked_fill`` over a frozen bool mask of ``mask_shape``.
 
     ``JJ`` takes two jets, ``JC``/``CJ`` a jet and a frozen constant (either
@@ -556,7 +561,7 @@ def _where_case(name: str, mask_shape: tuple[int, ...] = (3, 4)) -> dict[str, An
     def build(device):
         manual_seed(3)
         m = rand(*mask_shape, **device_kw(device)) > 0.5
-        c = rand(3, 4, **device_kw(device))
+        c = rand(*_WHERE_SHAPE, **device_kw(device))
         v = tensor(-1.0, **device_kw(device))
         return {
             "where_JJ": lambda x, y: where(m, x, y),
@@ -568,11 +573,11 @@ def _where_case(name: str, mask_shape: tuple[int, ...] = (3, 4)) -> dict[str, An
         }[name]
 
     n = 2 if name == "where_JJ" else 1
-    cid = name if mask_shape == (3, 4) else f"{name}_bcast"
+    cid = name if mask_shape == _WHERE_SHAPE else f"{name}_bcast"
     return {
         "id": cid,
         "f": build,
-        "args_fn": lambda: tuple(rand(3, 4) for _ in range(n)),
+        "args_fn": lambda: tuple(rand(*_WHERE_SHAPE) for _ in range(n)),
     }
 
 

@@ -93,6 +93,7 @@ RULES: dict = {
     ops.aten.convolution.default: _defshared(compositions.convolution),
     ops.aten.mse_loss.default: _defshared(compositions.mse_loss),
     ops.aten._log_softmax.default: _defshared(compositions.log_softmax),
+    ops.aten._softmax.default: _defshared(compositions.softmax),
     ops.aten.gelu.default: _defshared(compositions.gelu),
     ops.aten.native_batch_norm.default: _defshared(compositions.native_batch_norm),
     ops.aten.native_layer_norm.default: _defshared(compositions.native_layer_norm),

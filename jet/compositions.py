@@ -245,6 +245,36 @@ def log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTup
     return sub(shifted, log_sum_exp)
 
 
+def softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten._softmax(self, dim, half_to_float)``.
+
+    Uses the shift-invariant identity
+    ``softmax(x) = exp(x - m) / sum(exp(x - m), dim)`` with ``m = max(x, dim)``
+    a constant taken from the primal. ``exp`` reuses the elementwise machinery,
+    the sum over ``dim`` is linear, and the final division broadcasts. The
+    shift keeps every exponential at most ``1``, which stabilizes the whole
+    jet -- not just the forward pass.
+
+    Args:
+        self: The logits and their Taylor coefficients.
+        dim: The dimension along which to normalize.
+        half_to_float: Whether inputs were promoted from half precision.
+            Accepted for ATen-signature compatibility; does not affect the
+            float32/float64 paths.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    collapsed = _collapsed_of(self)
+    sub = _rule(ops.aten.sub.Tensor, collapsed)
+    exp = _rule(ops.aten.exp.default, collapsed)
+    sum = _rule(ops.aten.sum.dim_IntList, collapsed)
+    div = _rule(ops.aten.div.Tensor, collapsed)
+    shift = self[0].amax(dim, keepdim=True)
+    exp_jet = exp(sub(self, shift))
+    return div(exp_jet, sum(exp_jet, dim, keepdim=True))
+
+
 def gelu(self: JetTuple, approximate: str = "none") -> JetTuple:
     """Taylor-mode arithmetic for ``aten.gelu(self, approximate=...)``.
 

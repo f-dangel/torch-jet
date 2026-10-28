@@ -47,6 +47,7 @@ from torch.nn.functional import (
     nll_loss,
     relu6,
     silu,
+    softmax,
 )
 from torch.testing import assert_close
 
@@ -864,19 +865,20 @@ PRIMITIVE_CASES = [
     # ``layer_norm`` couples elements over the normalized dims via the sample
     # statistics; full jet / constant / absent matrix over input, weight, bias.
     *_norm_cases("layer_norm", _ln_variant, _LN_GRID),
-    # ``log_softmax`` couples elements along ``dim`` via logsumexp; the rule
-    # composes elementwise exp/log with a linear sum and a broadcast sub.
-    # Cover a positive dim, a negative dim, and a 1d (dim-0) case.
+    # ``log_softmax``/``softmax`` couple elements along ``dim`` via the
+    # normalizer; the rules compose exp with a linear sum and a broadcast
+    # sub/div. Inputs are scaled so the max-shift matters.
     *(
         {
-            "id": sid,
-            "f": _stateless(lambda x, d=dim: log_softmax(x, dim=d)),
-            "args_fn": lambda shape=shape: (rand(*shape),),
+            "id": f"{name}_{sid}",
+            "f": _stateless(lambda x, f=f, d=dim: f(x, dim=d)),
+            "args_fn": lambda shape=shape: (4 * randn(*shape),),
         }
-        for sid, dim, shape in (
-            ("log_softmax_dim1", 1, (3, 4)),
-            ("log_softmax_dim_neg1", -1, (3, 4)),
-            ("log_softmax_dim0_1d", 0, (4,)),
+        for name, f in (("log_softmax", log_softmax), ("softmax", softmax))
+        for dim, shape, sid in (
+            (1, (3, 4), "dim1"),
+            (-1, (3, 4), "dim_neg1"),
+            (0, (4,), "dim0_1d"),
         )
     ),
     # ---- Loss functions --------------------------------------------------

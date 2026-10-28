@@ -116,6 +116,13 @@ for _prim in (
     ops.aten.expand.default,
     ops.aten.clone.default,
     ops.aten.as_strided.default,
+    # Transformer views: ``x[i]`` (``select``), ``x[a:b]`` (``slice``), fancy
+    # ``x[idx]`` (``index``; its ``indices: Tensor?[]`` list is forwarded as-is),
+    # and ``.to(dtype)`` (``_to_copy``; still linear with a dtype change).
+    ops.aten.select.int,
+    ops.aten.slice.Tensor,
+    ops.aten.index.Tensor,
+    ops.aten._to_copy.default,
     ops.aten._unsafe_view.default,
     ops.aten.unsqueeze.default,
     ops.aten.squeeze.dim,

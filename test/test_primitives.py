@@ -21,6 +21,7 @@ from torch import (
     manual_seed,
     ops,
     rand,
+    randint,
     randn,
     relu,
     rsqrt,
@@ -534,6 +535,21 @@ def _binop_case(name, op, sa, sb, variant: str) -> dict[str, Any]:
     return {"id": cid, "f": build, "args_fn": lambda js=jet_shape: (rand(*js),)}
 
 
+def _index_case(cid: str, index: Callable) -> dict[str, Any]:
+    """Fancy-indexing case ``x[index(idx)]`` on a ``rand(3, 4)`` input.
+
+    ``idx`` is a constant long index tensor drawn under ``manual_seed(3)`` on
+    the device; ``index`` turns it into the subscript (e.g. ``(slice(None), idx)``).
+    """
+
+    def build(device):
+        manual_seed(3)
+        idx = randint(0, 3, (2,), device=device)
+        return lambda x: x[index(idx)]
+
+    return {"id": cid, "f": build, "args_fn": lambda: (rand(3, 4),)}
+
+
 def _binop_cases() -> list[dict[str, Any]]:
     """Every (op, shape-pair, dispatch-branch) broadcasting case for add/sub/mul."""
     return [
@@ -1029,6 +1045,21 @@ PRIMITIVE_CASES = [
         "f": _stateless(lambda x: x.t().contiguous()),
         "args_fn": lambda: (rand(3, 4),),
     },
+    # Transformer views: ``x[0]``/``x[:, 1]`` -> ``select.int``, ``x[1:3]``/
+    # ``x[..., ::2]`` -> ``slice.Tensor``, ``x[idx]``/``x[:, idx]`` -> ``index.Tensor``,
+    # ``.to(dtype)`` -> ``_to_copy`` (a same-dtype ``.to``, as on MPS, is a no-op).
+    *(
+        {"id": sid, "f": _stateless(fn), "args_fn": lambda: (rand(3, 4),)}
+        for sid, fn in (
+            ("select_dim0", lambda x: x[0]),
+            ("select_dim1", lambda x: x[:, 1]),
+            ("slice_rows", lambda x: x[1:3]),
+            ("slice_step", lambda x: x[..., ::2]),
+            ("to_copy_f32", lambda x: x.to(float32)),
+        )
+    ),
+    _index_case("index_rows", lambda idx: idx),
+    _index_case("index_cols", lambda idx: (slice(None), idx)),
     # ``as_strided`` restrides a tensor over the same storage; here into the
     # channels_last strides of a ``[N, C, 1, 1]`` tensor. ``as_strided_`` is the
     # in-place variant that adaptive average pooling emits on a channels_last

@@ -70,8 +70,6 @@ RULES: dict = {
     ops.aten.add.Scalar: _defshared(primitives.jet_add),
     ops.aten.sub.Tensor: _defshared(primitives.jet_sub),
     ops.aten.mul.Tensor: _defshared(primitives.jet_mul),
-    # The math decomposition of sdpa (e.g. float64 on CUDA) scales by a scalar.
-    ops.aten.mul.Scalar: _defshared(primitives.jet_mul),
     ops.aten.mm.default: _defshared(primitives.jet_mm),
     # Batched matmul: the same bilinear rule (``matmul`` handles the batch dims).
     ops.aten.bmm.default: _defshared(primitives.jet_mm),

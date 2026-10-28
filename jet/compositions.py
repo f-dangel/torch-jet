@@ -496,15 +496,13 @@ def scaled_dot_product_attention(
 
     Raises:
         NotImplementedError: If ``dropout_p != 0`` (jets require eval mode,
-            ``model.eval()``) or both ``is_causal`` and ``attn_mask`` are set.
+            ``model.eval()``).
     """
     if dropout_p != 0:
         raise NotImplementedError(
             "Taylor-mode scaled_dot_product_attention requires dropout_p == 0; "
             "jets require eval mode (call model.eval())."
         )
-    if is_causal and attn_mask is not None:
-        raise NotImplementedError("is_causal and attn_mask are mutually exclusive.")
     collapsed = _collapsed_of(query, key, value)
     mul = _rule(ops.aten.mul.Tensor, collapsed)
     bmm = _rule(ops.aten.bmm.default, collapsed)

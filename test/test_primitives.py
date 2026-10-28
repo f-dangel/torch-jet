@@ -7,7 +7,7 @@ registered with :class:`JetInterpreter`.
 from functools import partial
 from itertools import product
 from typing import Any, Callable
-from warnings import catch_warnings, simplefilter
+from warnings import catch_warnings, filterwarnings
 
 from pytest import mark, raises, warns
 from torch import (
@@ -59,7 +59,6 @@ from torch.testing import assert_close
 from jet import compositions, jet, primitives
 from jet.compositions import native_batch_norm
 from jet.primitives import JetTuple, jet_nll_loss_forward
-from jet.utils import JetSemanticsWarning
 from test.utils import (
     _stateless,
     assert_jet_matches_oracle,
@@ -1249,10 +1248,10 @@ def test_embedding_padding_idx_warns(collapsed: bool, device: str):
         f, args = setup_case(case, device)
         jet(f, args, collapsed=collapsed)(*make_jet_args(args, 2, collapsed))
 
-    with warns(JetSemanticsWarning, match="padding_idx"):
+    with warns(UserWarning, match="padding_idx"):
         run(_embedding_case("padding_idx", (2, 3), padding_idx=0))
     with catch_warnings():
-        simplefilter("error", JetSemanticsWarning)
+        filterwarnings("error", message="padding_idx")
         run(_embedding_case("1d", (5,)))
 
 

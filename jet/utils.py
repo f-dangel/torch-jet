@@ -28,15 +28,6 @@ type PyTree[Leaf] = (
 )
 
 
-class JetSemanticsWarning(UserWarning):
-    """Jet semantics knowingly differ from autograd's.
-
-    Emitted by a rule whose true derivative deviates from what reverse-mode
-    autograd computes (e.g. ``embedding``'s ``padding_idx`` gradient mask).
-    Silence with ``warnings.filterwarnings("ignore", category=JetSemanticsWarning)``.
-    """
-
-
 def _is_jet_leaf(x: Any) -> bool:
     """``True`` iff ``x`` is a jet tuple: a ``tuple`` of one or more tensors."""
     return (

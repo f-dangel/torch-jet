@@ -41,7 +41,7 @@ from torch.func import vmap
 from torch.nn.functional import hardtanh
 from torch.utils._pytree import register_pytree_node
 
-from jet.utils import JetSemanticsWarning, integer_partitions, multiplicity
+from jet.utils import integer_partitions, multiplicity
 
 
 class JetTuple(tuple):
@@ -1091,7 +1091,7 @@ def jet_embedding(
     ``scale_grad_by_freq`` and ``sparse`` only shape autograd's backward and are
     forwarded unchanged. In particular autograd zeroes the gradient of the
     ``padding_idx`` row while the jet, like forward-mode ``jvp``, propagates the
-    true derivative through it; a :class:`JetSemanticsWarning` says so.
+    true derivative through it; a ``UserWarning`` says so.
 
     Args:
         weight: The embedding table and its Taylor coefficients.
@@ -1104,7 +1104,7 @@ def jet_embedding(
     """
     if padding_idx >= 0 and isinstance(weight, JetTuple):
         warn(
-            JetSemanticsWarning(
+            UserWarning(
                 "padding_idx only masks autograd's reverse-mode gradient of that "
                 "row; forward mode (jvp) and jets propagate the true derivative "
                 "through it. Derivatives that involve the padding row therefore "

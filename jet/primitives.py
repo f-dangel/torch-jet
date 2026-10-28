@@ -830,12 +830,7 @@ def jet_div(
     Mode-agnostic. A constant divisor is linear in the numerator (coefficient-wise
     ``c / other``). A jet divisor ``b`` uses the division recurrence: ``q = a / b``
     solves ``b * q = a``, whose Leibniz expansion gives
-    ``q_k = (a_k - sum_{j=1}^{k} C(k, j) b_j q_{k-j}) / b_0``. Composing
-    ``mul(a, pow(b, -1))`` instead builds reciprocal coefficients of magnitude
-    ~1e2 that cancel against the numerator's and lose float32 accuracy: for
-    ``softmax(2 x)`` at order 5 the jet error drops from 3e-4 to 2e-5. Broadcasts
-    like ``mul``; in collapsed mode the ``K``-th slot sums its batched products
-    over ``R`` like :func:`_leibniz`.
+    ``q_k = (a_k - sum_{j=1}^{k} C(k, j) b_j q_{k-j}) / b_0``.
 
     Args:
         self: The numerator and its Taylor coefficients, or a constant.

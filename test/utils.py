@@ -81,10 +81,11 @@ def _sdpa(
     scores = (q * (q.shape[-1] ** -0.5 if scale is None else scale)) @ k.mT
     if is_causal:
         attn_mask = ones(q.shape[-2], k.shape[-2], device=q.device).tril().bool()
-    if attn_mask is not None and attn_mask.is_floating_point():
-        scores = scores + attn_mask
-    elif attn_mask is not None:
-        scores = scores.masked_fill(~attn_mask, -float("inf"))
+    if attn_mask is not None:
+        if attn_mask.is_floating_point():
+            scores = scores + attn_mask
+        else:
+            scores = scores.masked_fill(~attn_mask, -float("inf"))
     return softmax(scores, -1) @ v
 
 

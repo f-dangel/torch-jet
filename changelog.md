@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Support scaled dot-product attention in Taylor mode (both standard and
+  collapsed modes): a composition for `F.scaled_dot_product_attention` with
+  default arguments (eval mode, `dropout_p == 0`) and an adapter for the fused
+  CPU op ([PR](https://github.com/f-dangel/torch-jet/pull/226)).
 - Support `aten._fused_rms_norm.default` in Taylor mode (both standard and
   collapsed modes), the op `torch.nn.RMSNorm` lowers to on CUDA/MPS
   ([PR](https://github.com/f-dangel/torch-jet/pull/214)).

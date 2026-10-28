@@ -11,8 +11,8 @@ algebraic identity (e.g. ``addmm == add(self, mm(mat1, mat2))``).
 from math import pi, sqrt
 from typing import Callable
 
+from torch import Tensor, contiguous_format, ones, ops, uint8
 from torch import bool as bool_dtype
-from torch import contiguous_format, ones, ops, uint8
 
 import jet._rules
 from jet.primitives import (
@@ -530,16 +530,16 @@ def _scaled_dot_product_flash_attention_for_cpu(
 
 
 def _scaled_dot_product_attention_math_for_mps(
-    query,
-    key,
-    value,
-    attn_mask=None,
-    dropout_p=0.0,
-    is_causal=False,
-    dropout_mask=None,
+    query: object,
+    key: object,
+    value: object,
+    attn_mask: Tensor | None = None,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    dropout_mask: Tensor | None = None,
     *,
-    scale=None,
-    enable_gqa=False,
+    scale: float | None = None,
+    enable_gqa: bool = False,
 ) -> tuple:
     """Adapter for the fused MPS op ``F.scaled_dot_product_attention`` lowers to.
 

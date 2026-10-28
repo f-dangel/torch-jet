@@ -13,6 +13,7 @@ from typing import Callable
 
 from torch import Tensor, contiguous_format, finfo, ones, ops, uint8
 from torch import bool as bool_dtype
+from torch import dtype as torch_dtype
 
 import jet._rules
 from jet.primitives import (
@@ -255,6 +256,29 @@ def softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTuple:
     shift = self[0].amax(dim, keepdim=True)
     exp_jet = exp(sub(self, shift))
     return div(exp_jet, sum(exp_jet, dim, keepdim=True))
+
+
+def safe_softmax(
+    self: JetTuple, dim: int, dtype: torch_dtype | None = None
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten._safe_softmax(self, dim, dtype)``.
+
+    The ``softmax`` of sdpa's math fallback (e.g. float64 on CUDA): a fully
+    masked row (all ``-inf``) gives ``0`` instead of ``NaN``, so every
+    coefficient of such a row is zeroed.
+
+    Args:
+        self: The logits and their Taylor coefficients.
+        dim: The dimension along which to normalize.
+        dtype: An optional dtype to cast the input to first.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    if dtype is not None:
+        self = _apply_linear(self, lambda c: c.to(dtype))
+    masked = self[0].isneginf().all(dim, keepdim=True)
+    return _apply_linear(softmax(self, dim), lambda c: c.masked_fill(masked, 0.0))
 
 
 def gelu(self: JetTuple, approximate: str = "none") -> JetTuple:

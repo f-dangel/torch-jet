@@ -834,6 +834,12 @@ PRIMITIVE_CASES = [
         }
         for sid, dims in _UNARY_SHAPES.items()
     ),
+    # ---- mul.Scalar (called directly: ``x * 2.0`` traces to ``mul.Tensor``) --
+    {
+        "id": "mul_scalar",
+        "f": _stateless(lambda x: ops.aten.mul.Scalar(x, 2.0)),
+        "args_fn": lambda: (rand(3, 4),),
+    },
     # ---- Binary sub (non-commutative) ------------------------------------
     {
         "id": "sub_JJ",

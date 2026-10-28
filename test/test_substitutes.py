@@ -110,12 +110,13 @@ def test_scaled_dot_product_attention_double_backward(device: str):
     Its substitute has one on every device, and agrees with the fused MPS op.
     """
     manual_seed(0)
-    x = randn(1, 2, 3, 4, requires_grad=True, **device_kw(device))
+    # leading dim unpacks into distinct query, key, and value
+    x = randn(3, 1, 2, 3, 4, requires_grad=True, **device_kw(device))
     substitute = DifferentiableSubstitutes.SUBSTITUTES[scaled_dot_product_attention]
-    expected = _second_derivative(lambda x: substitute(x, x, x), x)
+    expected = _second_derivative(lambda x: substitute(*x), x)
     if device == "mps":
-        actual = _second_derivative(lambda x: scaled_dot_product_attention(x, x, x), x)
+        actual = _second_derivative(lambda x: scaled_dot_product_attention(*x), x)
         assert_close(actual, expected)
     else:
         with raises(RuntimeError, match="is not implemented"):
-            _second_derivative(lambda x: scaled_dot_product_attention(x, x, x), x)
+            _second_derivative(lambda x: scaled_dot_product_attention(*x), x)

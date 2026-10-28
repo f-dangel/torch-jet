@@ -85,7 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - End-to-end model tests for `nn.TransformerEncoder` (post-norm, pre-norm,
   GELU) and torchvision's `vit_b_16`
-  ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
+  ([PR](https://github.com/f-dangel/torch-jet/pull/231)).
 - The test oracle's substitutes also apply inside PyTorch's Python composites
   such as `F.multi_head_attention_forward`, which run with the torch-function
   mode popped ([PR](https://github.com/f-dangel/torch-jet/pull/230)).

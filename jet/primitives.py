@@ -1107,9 +1107,10 @@ def jet_embedding(
             JetSemanticsWarning(
                 "padding_idx only masks autograd's gradient of that row; jets "
                 "propagate the true derivative through it (like forward-mode jvp). "
-                "Hessian-vector products and Hutchinson trace estimates thus differ "
-                "from reverse-mode autograd when the direction's padding row is "
-                "nonzero or pad positions influence the loss; zero that row to match."
+                "Any derivative quantity that involves the padding row (its entries "
+                "of a Hessian-vector product, or v^T H v / Hutchinson trace estimates "
+                "for a direction v with a nonzero padding row) thus differs from "
+                "reverse-mode autograd; zero that row of v to match."
             ),
             stacklevel=2,
         )

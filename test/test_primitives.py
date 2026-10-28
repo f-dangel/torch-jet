@@ -15,6 +15,7 @@ from torch import (
     cos,
     erf,
     exp,
+    float16,
     float32,
     log,
     manual_seed,
@@ -48,10 +49,11 @@ from torch.nn.functional import (
     nll_loss,
     relu6,
     silu,
+    softmax,
 )
 from torch.testing import assert_close
 
-from jet import jet, primitives
+from jet import compositions, jet, primitives
 from jet.compositions import native_batch_norm
 from jet.primitives import JetTuple, jet_nll_loss_forward
 from test.utils import (
@@ -67,7 +69,8 @@ from test.utils import (
 def _consts(device: str) -> dict[str, Any]:
     """Build frozen constants on ``device``.
 
-    Keys: ``L`` (3, 4), ``R`` (4, 5) -- mm/addmm operands; ``B`` (3, 5) --
+    Keys: ``L`` (3, 4), ``R`` (4, 5) -- mm/addmm operands; ``L3`` (2, 3, 4),
+    ``R3`` (2, 4, 5) -- their batched (bmm) counterparts; ``B`` (3, 5) --
     addmm bias; ``SUB`` -- scalar tensor for ``tensor - jet`` (which lowers
     to ``aten.sub.Tensor`` rather than the unregistered ``aten.rsub.Scalar``).
     """
@@ -76,6 +79,8 @@ def _consts(device: str) -> dict[str, Any]:
     return {
         "L": rand(3, 4, **kw),
         "R": rand(4, 5, **kw),
+        "L3": rand(2, 3, 4, **kw),
+        "R3": rand(2, 4, 5, **kw),
         "B": rand(3, 5, **kw),
         "SUB": tensor(2.0, **kw),
     }
@@ -107,7 +112,9 @@ def _const_over_jet(device):
 _BIAS_SHAPES = {"full": (3, 5), "bcast": (5,)}
 
 
-def _matmul_case(bias: str, mat1: str, mat2: str, bias_shape: str) -> dict[str, Any]:
+def _matmul_case(
+    bias: str, mat1: str, mat2: str, bias_shape: str, batched: bool = False
+) -> dict[str, Any]:
     """Build one ``{id, f, args_fn}`` case for a ``(bias, mat1, mat2)`` combo.
 
     Each operand code is ``"C"`` (constant) or ``"J"`` (jet); ``bias`` may also
@@ -116,9 +123,13 @@ def _matmul_case(bias: str, mat1: str, mat2: str, bias_shape: str) -> dict[str, 
     coefficients to them; constants are frozen via :func:`_consts`. A jet bias
     uses ``bias_shape`` -- ``"full"`` ``(3, 5)`` or row-broadcast ``"bcast"``
     ``(5,)``. The id signature is ``<op>_<bias?><mat1><mat2>`` (the absent-bias
-    letter is dropped, so plain ``mm`` reads ``mm_JC`` etc.).
+    letter is dropped, so plain ``mm`` reads ``mm_JC`` etc.). ``batched`` uses
+    the 3-D operands instead (bias must be ``"N"``); ``m1 @ m2`` then lowers to
+    ``bmm`` and the id prefix is ``bmm``.
     """
     mat1_jet, mat2_jet = mat1 == "J", mat2 == "J"
+    L, R = ("L3", "R3") if batched else ("L", "R")
+    shapes = ((2, 3, 4), (2, 4, 5)) if batched else ((3, 4), (4, 5))
 
     def builder(device):
         cs = _consts(device)
@@ -126,8 +137,8 @@ def _matmul_case(bias: str, mat1: str, mat2: str, bias_shape: str) -> dict[str, 
         def f(*args: Any):
             it = iter(args)
             b = next(it) if bias == "J" else (cs["B"] if bias == "C" else None)
-            m1 = next(it) if mat1_jet else cs["L"]
-            m2 = next(it) if mat2_jet else cs["R"]
+            m1 = next(it) if mat1_jet else cs[L]
+            m2 = next(it) if mat2_jet else cs[R]
             return m1 @ m2 if b is None else addmm(b, m1, m2)
 
         return f
@@ -137,12 +148,12 @@ def _matmul_case(bias: str, mat1: str, mat2: str, bias_shape: str) -> dict[str, 
         if bias == "J":
             out.append(rand(*_BIAS_SHAPES[bias_shape]))
         if mat1_jet:
-            out.append(rand(3, 4))
+            out.append(rand(*shapes[0]))
         if mat2_jet:
-            out.append(rand(4, 5))
+            out.append(rand(*shapes[1]))
         return tuple(out)
 
-    op = "mm" if bias == "N" else "addmm"
+    op = ("bmm" if batched else "mm") if bias == "N" else "addmm"
     sig = f"{mat1}{mat2}" if bias == "N" else f"{bias}{mat1}{mat2}"
     suffix = "_bcast" if bias_shape == "bcast" else ""
     return {"id": f"{op}_{sig}{suffix}", "f": builder, "args_fn": args_fn}
@@ -156,7 +167,8 @@ def _matmul_cases() -> list[dict[str, Any]]:
     (``N`` -> plain ``mm``), constant (``C``), or a jet (``J``). Combos with no
     jet operand are skipped (nothing to differentiate). A jet bias is tested
     both full-shape and row-broadcast 1D -- it is the only operand whose own
-    coefficients must broadcast over the product's rows.
+    coefficients must broadcast over the product's rows. The three bias-free
+    combos are repeated on 3-D operands, where ``@`` lowers to ``bmm``.
     """
     cases = []
     for bias, mat1, mat2 in product("NCJ", "CJ", "CJ"):
@@ -164,6 +176,8 @@ def _matmul_cases() -> list[dict[str, Any]]:
             continue  # no jet operand -> nothing to differentiate
         for shape in ["full", "bcast"] if bias == "J" else ["full"]:
             cases.append(_matmul_case(bias, mat1, mat2, shape))
+    for mat1, mat2 in ["CJ", "JC", "JJ"]:
+        cases.append(_matmul_case("N", mat1, mat2, "full", batched=True))
     return cases
 
 
@@ -868,19 +882,20 @@ PRIMITIVE_CASES = [
     # ``layer_norm`` couples elements over the normalized dims via the sample
     # statistics; full jet / constant / absent matrix over input, weight, bias.
     *_norm_cases("layer_norm", _ln_variant, _LN_GRID),
-    # ``log_softmax`` couples elements along ``dim`` via logsumexp; the rule
-    # composes elementwise exp/log with a linear sum and a broadcast sub.
-    # Cover a positive dim, a negative dim, and a 1d (dim-0) case.
+    # ``log_softmax``/``softmax`` couple elements along ``dim`` via the
+    # normalizer; the rules compose exp with a linear sum and a broadcast
+    # sub/div. Inputs are scaled so the max-shift matters.
     *(
         {
-            "id": sid,
-            "f": _stateless(lambda x, d=dim: log_softmax(x, dim=d)),
-            "args_fn": lambda shape=shape: (rand(*shape),),
+            "id": f"{name}_{sid}",
+            "f": _stateless(lambda x, f=f, d=dim: f(x, dim=d)),
+            "args_fn": lambda shape=shape: (4 * randn(*shape),),
         }
-        for sid, dim, shape in (
-            ("log_softmax_dim1", 1, (3, 4)),
-            ("log_softmax_dim_neg1", -1, (3, 4)),
-            ("log_softmax_dim0_1d", 0, (4,)),
+        for name, f in (("log_softmax", log_softmax), ("softmax", softmax))
+        for dim, shape, sid in (
+            (1, (3, 4), "dim1"),
+            (-1, (3, 4), "dim_neg1"),
+            (0, (4,), "dim0_1d"),
         )
     ),
     # ---- Loss functions --------------------------------------------------
@@ -1185,3 +1200,26 @@ def test_max_pool2d_matches_with_indices(collapsed: bool, device: str):
     assert len(fused) == len(expected)
     for got, want in zip(fused, expected):
         assert_close(got, want, **tolerances_for(device))
+
+
+@mark.parametrize(
+    "rule",
+    [compositions.softmax, compositions.log_softmax],
+    ids=["softmax", "log_softmax"],
+)
+def test_softmax_half_to_float(rule: Callable, collapsed: bool, device: str):
+    """``half_to_float=True`` promotes a half jet to float32, like the ATen op.
+
+    ATen rejects the flag for float input on CPU, so the rule is tested directly.
+    """
+    K = 3
+    (x,) = make_jet_args((rand(3, 4, device=device),), K, collapsed=collapsed)
+    x = JetTuple(x, collapsed=collapsed)
+    x_half = JetTuple(tuple(c.to(float16) for c in x), collapsed=collapsed)
+
+    got = rule(x_half, -1, True)
+    want = rule(x, -1, False)
+
+    for g, w in zip(got, want):
+        assert g.dtype == float32
+        assert_close(g, w, rtol=1e-3, atol=1e-3)

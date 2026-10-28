@@ -10,8 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added/New
 
 - Support the view/indexing ops `aten.select.int`, `aten.slice.Tensor`,
-  `aten._to_copy.default`, and `aten.index.Tensor` in Taylor mode (both standard and collapsed modes)
+  `aten._to_copy.default`, and `aten.index.Tensor` in Taylor mode (both
+  standard and collapsed modes)
   ([PR](https://github.com/f-dangel/torch-jet/pull/218)).
+- Support `aten._softmax.default` in Taylor mode (both standard and collapsed
+  modes) ([PR](https://github.com/f-dangel/torch-jet/pull/215)).
+  - Both it and `_log_softmax` honour `half_to_float` (promote to float32 like
+    the ATen op) ([PR](https://github.com/f-dangel/torch-jet/pull/220)).
+- Support `aten.bmm.default` in Taylor mode (both standard and collapsed
+  modes), the op batched `matmul` lowers to
+  ([PR](https://github.com/f-dangel/torch-jet/pull/216)).
 - Support `aten.rsqrt.default` and `aten.add.Scalar` in Taylor mode (both
   standard and collapsed modes)
   ([PR](https://github.com/f-dangel/torch-jet/pull/211)).

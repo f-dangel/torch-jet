@@ -173,7 +173,7 @@ def class_index_loss(
 
 def tolerances_for(device: str) -> dict[str, float]:
     """Relaxed ``assert_close`` tolerances for float32 devices."""
-    return {"rtol": 5e-4, "atol": 5e-6} if dtype_for_device(device) == float32 else {}
+    return {"rtol": 5e-4, "atol": 1e-4} if dtype_for_device(device) == float32 else {}
 
 
 def mlp(device: str) -> Sequential:

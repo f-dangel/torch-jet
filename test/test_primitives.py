@@ -1355,9 +1355,9 @@ def test_fused_rms_norm_matches_traced(collapsed: bool, device: str):
 def test_div_self_is_exact(collapsed: bool, device: str):
     """The order-1..K coefficients of ``x / x`` are exactly zero.
 
-    The division recurrence yields ``q_1 = (x_1 - x_1) / x_0 = 0`` and so on;
-    composing ``mul(a, pow(b, -1))`` instead left roundoff of 7e-4 (standard)
-    and 3e-2 (collapsed) at ``K = 5`` in float32.
+    The division recurrence yields ``q_1 = (x_1 - x_1) / x_0 = 0`` and so on,
+    whereas the composition ``x * x**-1`` (the previous rule) accumulates
+    float32 roundoff of at least 1e-3 at order ``K = 5``.
     """
     manual_seed(0)
     x = 0.1 + rand(3, 4, dtype=float32, device=device)
@@ -1366,3 +1366,5 @@ def test_div_self_is_exact(collapsed: bool, device: str):
     coeffs = jet(lambda x: x / x, (x,), collapsed=collapsed)(*jet_args)
     for c in coeffs[1:]:
         assert_close(c, zeros_like(c), atol=1e-6, rtol=0)
+    composed = jet(lambda x: x * x**-1, (x,), collapsed=collapsed)(*jet_args)
+    assert composed[K].abs().max() > 1e-4

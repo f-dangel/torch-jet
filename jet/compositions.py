@@ -80,28 +80,6 @@ def addmm(self: object, mat1: object, mat2: object) -> JetTuple:
     return add(self, mm(mat1, mat2))
 
 
-def div(self: object, other: object) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.div.Tensor(self, other)``.
-
-    ``a / b == a * b**(-1)``, so the rule composes the reciprocal (``pow`` with
-    exponent ``-1``) with the product rule. Any operand may be Taylor-expanded,
-    including the divisor: the ``pow`` rule reciprocates ``other`` whether it is
-    a jet (the same reciprocal series ``log`` already relies on) or a constant.
-    Because ``mul`` broadcasts a lower-rank operand, division broadcasts too.
-
-    Args:
-        self: The numerator; a jet or a constant ``Tensor``.
-        other: The divisor; a jet, a constant ``Tensor``, or a Python scalar.
-
-    Returns:
-        The value and its Taylor coefficients.
-    """
-    collapsed = _collapsed_of(self, other)
-    mul = _rule(ops.aten.mul.Tensor, collapsed)
-    reciprocal = _rule(ops.aten.pow.Tensor_Scalar, collapsed)
-    return mul(self, reciprocal(other, -1))
-
-
 def stack(tensors: list[object], dim: int = 0) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.stack(tensors, dim)``.
 
@@ -424,6 +402,38 @@ def native_layer_norm(
         clone = _rule(ops.aten.clone.default, collapsed)
         out = clone(out, memory_format=contiguous_format)
     return out, mu, rstd
+
+
+def _fused_rms_norm(
+    input: object, normalized_shape: list[int], weight: object, eps: float | None
+) -> tuple:
+    """Taylor-mode arithmetic for ``aten._fused_rms_norm``.
+
+    On CUDA / MPS, ``nn.RMSNorm`` lowers to this fused op; on CPU, to ``pow`` /
+    ``mean`` / ``add`` / ``rsqrt`` / ``mul``, which have rules of their own and
+    which this rule mirrors. It rescales each sample by its root mean square
+    over the trailing ``normalized_shape`` dims,
+    ``input * rsqrt(mean(input**2) + eps)``, then applies the optional
+    ``weight`` (:func:`_affine`); ``input`` / ``weight`` may each be a jet or a
+    constant. ``eps=None`` is the op's default, ``finfo(input.dtype).eps``.
+
+    Returns:
+        The ATen op's ``(output, rstd)`` pair as a plain tuple of jets (``rstd``
+        keeps the normalized dims as size 1, like the op on CPU / CUDA; on MPS
+        the op returns ``None`` there), so a downstream ``getitem`` falls
+        through to the native op.
+    """
+    collapsed = _collapsed_of(input, weight)
+    mul = _rule(ops.aten.mul.Tensor, collapsed)
+    add = _rule(ops.aten.add.Tensor, collapsed)
+    pow = _rule(ops.aten.pow.Tensor_Scalar, collapsed)
+    mean = _rule(ops.aten.mean.dim, collapsed)
+    rsqrt = _rule(ops.aten.rsqrt.default, collapsed)
+    if eps is None:
+        eps = finfo((input[0] if isinstance(input, JetTuple) else input).dtype).eps
+    dims = list(range(-len(normalized_shape), 0))
+    rstd = rsqrt(add(mean(pow(input, 2), dims, keepdim=True), eps))
+    return _affine(mul(input, rstd), weight, None, collapsed), rstd
 
 
 def cudnn_batch_norm(

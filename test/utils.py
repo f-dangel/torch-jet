@@ -19,7 +19,7 @@ from torch import (
     where,
     zeros_like,
 )
-from torch.nn import Linear, Sequential, Tanh
+from torch.nn import Linear, Sequential, Tanh, functional
 from torch.nn.functional import (
     embedding,
     hardsigmoid,
@@ -100,6 +100,9 @@ class DifferentiableSubstitutes(TorchFunctionMode):
 
     Intercepts the Python-level call (``F.max_pool2d``, which ``nn.MaxPool2d``
     also goes through), so the substitute's ops are what autograd records.
+    PyTorch's own Python composites (``F.multi_head_attention_forward``) run
+    with the mode popped, so it also rebinds each op's ``torch.nn.functional``
+    attribute, which such composites look up at call time, while active.
     """
 
     SUBSTITUTES: dict[Callable, Callable] = {
@@ -120,6 +123,18 @@ class DifferentiableSubstitutes(TorchFunctionMode):
         # double backward.
         scaled_dot_product_attention: _sdpa,
     }
+
+    def __enter__(self) -> "DifferentiableSubstitutes":
+        """Activate the mode and rebind the substituted ``functional`` attributes."""
+        for func, substitute in self.SUBSTITUTES.items():
+            setattr(functional, func.__name__, substitute)
+        return super().__enter__()
+
+    def __exit__(self, *exc: Any) -> None:
+        """Deactivate the mode and restore the ``functional`` attributes."""
+        super().__exit__(*exc)
+        for func in self.SUBSTITUTES:
+            setattr(functional, func.__name__, func)
 
     def __torch_function__(self, func, types, args=(), kwargs=None):
         """Dispatch ``func`` to its substitute if it has one."""

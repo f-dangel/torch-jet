@@ -16,8 +16,10 @@ from torch import (
     cos,
     erf,
     exp,
+    finfo,
     float16,
     float32,
+    linspace,
     log,
     manual_seed,
     ops,
@@ -51,6 +53,7 @@ from torch.nn.functional import (
     mse_loss,
     nll_loss,
     relu6,
+    rms_norm,
     scaled_dot_product_attention,
     silu,
     softmax,
@@ -416,6 +419,24 @@ def _ln_variant(shape: tuple[int, ...], nd: int) -> dict[str, Any]:
     }
 
 
+def _rms_variant(
+    shape: tuple[int, ...], nd: int, eps: float | None = 1e-5
+) -> dict[str, Any]:
+    """RMS norm over the last ``nd`` dims of ``shape`` (see :func:`_norm_cases`).
+
+    On CUDA / MPS, ``rms_norm`` lowers to the fused ``_fused_rms_norm`` (its own
+    rule); on CPU, to ``pow`` / ``mean`` / ``add`` / ``rsqrt`` / ``mul``.
+    ``eps=None`` is the op's default (``finfo(dtype).eps``); there is no bias.
+    """
+    normalized = shape[-nd:]
+    return {
+        "call": lambda x, w, b: rms_norm(x, normalized, w, eps),
+        "shape": shape,
+        "param_shape": normalized,
+        "suffix": f"_{nd}d" + ("_default_eps" if eps is None else ""),
+    }
+
+
 _BN_RANKS = ({"shape": (4, 3, 7)}, {"shape": (4, 3, 2, 3, 3)}, {"shape": (4, 3)})
 # ``nn.BatchNorm`` creates weight and bias together (``affine``), so only the
 # both-present and both-absent pairs occur. The non-4D ranks also run with jet
@@ -447,6 +468,16 @@ _LN_GRID = (
         ({"shape": (2, 8), "nd": 1},),
     ),
     (("J",), (("J", "J"), ("C", "C")), ({"shape": (2, 4, 3, 3), "nd": 2},)),
+)
+# ``nn.RMSNorm`` has a weight but no bias. Normalizing over two dims also runs
+# with jet weight; one case leaves ``eps`` at the op's default.
+_RMS_GRID = (
+    (("J", "C"), (("N", "N"), ("J", "N"), ("C", "N")), ({"shape": (2, 8), "nd": 1},)),
+    (
+        ("J",),
+        (("J", "N"),),
+        ({"shape": (2, 4, 2, 2), "nd": 2}, {"shape": (2, 8), "nd": 1, "eps": None}),
+    ),
 )
 
 
@@ -616,13 +647,13 @@ def _where_case(
 
 
 def _sdpa_case(
-    cid: str, jets: str = "JJJ", S: int = 3, mask: str | None = None, **kw
+    cid: str, jets: str = "JJJ", S: int = 5, mask: str | None = None, **kw
 ) -> dict[str, Any]:
     """``scaled_dot_product_attention(q, k, v, **kw)`` with ``q`` of shape (2, 2, 3, 4).
 
-    ``jets`` marks which of ``q`` / ``k`` / ``v`` (batch, heads, L=3 or ``S``,
-    E=4) are jets, the rest are frozen constants; ``mask`` adds a ``"bool"``
-    (no fully masked row) or additive ``"float"`` mask. Drawn under
+    ``jets`` marks which of ``q`` / ``k`` / ``v`` (batch, heads, L=3 / S=5, E=4)
+    are jets, the rest are frozen constants; ``mask`` adds a ``"bool"`` (no
+    fully masked row) or additive ``"float"`` mask. Drawn under
     ``manual_seed(3)``.
     """
     shapes = ((2, 2, 3, 4), (2, 2, S, 4), (2, 2, S, 4))
@@ -974,6 +1005,8 @@ PRIMITIVE_CASES = [
     # ``layer_norm`` couples elements over the normalized dims via the sample
     # statistics; full jet / constant / absent matrix over input, weight, bias.
     *_norm_cases("layer_norm", _ln_variant, _LN_GRID),
+    # ``rms_norm`` couples elements via the root mean square (no centering).
+    *_norm_cases("rms_norm", _rms_variant, _RMS_GRID),
     # ``log_softmax``/``softmax`` couple elements along ``dim`` via the
     # normalizer; the rules compose exp with a linear sum and a broadcast
     # sub/div. Inputs are scaled so the max-shift matters.
@@ -995,18 +1028,17 @@ PRIMITIVE_CASES = [
     _embedding_case("2d", (2, 3)),
     _embedding_case("padding_idx", (2, 3), padding_idx=0),
     # ``scaled_dot_product_attention`` composes scaled ``bmm``s, masking, and
-    # ``softmax``; each of q/k/v may be a jet, and ``S != L`` catches
-    # transposition bugs.
+    # ``softmax``; every pattern of jet (J) / constant (C) query, key, value
+    # meets every option.
     *(
-        _sdpa_case(f"sdpa_{sid}", **kw)
-        for sid, kw in (
-            ("JJJ", {}),
-            ("JCC", {"jets": "JCC"}),
-            ("causal", {"is_causal": True}),
-            ("bool_mask", {"mask": "bool"}),
-            ("float_mask", {"mask": "float"}),
-            ("scale", {"scale": 0.3}),
-            ("kv_longer", {"S": 5}),
+        _sdpa_case(f"sdpa_{jets}{oid}", jets=jets, **kw)
+        for jets in ("JJJ", "JCC", "CJJ", "CJC", "JCJ", "JJC")
+        for oid, kw in (
+            ("", {}),
+            ("_causal", {"is_causal": True}),
+            ("_bool_mask", {"mask": "bool"}),
+            ("_float_mask", {"mask": "float"}),
+            ("_scale", {"scale": 0.3}),
         )
     ),
     # ---- Loss functions --------------------------------------------------
@@ -1348,3 +1380,41 @@ def test_softmax_half_to_float(rule: Callable, collapsed: bool, device: str):
     for g, w in zip(got, want):
         assert g.dtype == float32
         assert_close(g, w, rtol=1e-3, atol=1e-3)
+
+
+def test_fused_rms_norm_matches_traced(collapsed: bool, device: str):
+    """The fused rule equals the jet of the CPU decomposition (CI only traces the latter)."""
+    K = 3
+    x, w = make_jet_args(
+        (rand(2, 8, device=device), rand(8, device=device)), K, collapsed
+    )
+    x, w = JetTuple(x, collapsed=collapsed), JetTuple(w, collapsed=collapsed)
+
+    out, rstd = compositions._fused_rms_norm(x, [8], w, None)
+    want = jet(lambda x, w: rms_norm(x, (8,), w), (x[0], w[0]), collapsed=collapsed)(
+        x, w
+    )
+
+    tol = tolerances_for(device)
+    for got, exp_ in zip(out, want):
+        assert_close(got, exp_, **tol)
+    want_rstd = ((x[0] ** 2).mean(-1, keepdim=True) + finfo(float32).eps).rsqrt()
+    assert_close(rstd[0], want_rstd, **tol)
+
+
+def test_div_self_is_exact(collapsed: bool, device: str):
+    """The order-1..K coefficients of ``x / x`` are exactly zero.
+
+    The division recurrence yields ``q_1 = (x_1 - x_1) / x_0 = 0`` and so on,
+    whereas the composition ``x * x**-1`` (the previous rule) accumulates
+    float32 roundoff.
+    """
+    manual_seed(0)
+    x = linspace(0.5, 1.5, 12, dtype=float32, device=device).reshape(3, 4)
+    K = 5
+    jet_args = make_jet_args((x,), K, collapsed=collapsed)
+    coeffs = jet(lambda x: x / x, (x,), collapsed=collapsed)(*jet_args)
+    for c in coeffs[1:]:
+        assert_close(c, zeros_like(c), atol=0, rtol=0)
+    composed = jet(lambda x: x * x**-1, (x,), collapsed=collapsed)(*jet_args)
+    assert 1e-3 > composed[K].abs().max() > 1e-5

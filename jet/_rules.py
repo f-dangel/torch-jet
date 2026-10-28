@@ -85,12 +85,11 @@ RULES: dict = {
     ops.aten.nll_loss_forward.default: _defshared(primitives.jet_nll_loss_forward),
     # Token embedding lookup: linear in the weight, integer indices stay constant.
     ops.aten.embedding.default: _defshared(primitives.jet_embedding),
+    # Current torch lowers all scalar division (``x / 2.0``) to this overload;
+    # a Taylor-expanded divisor uses the division recurrence.
+    ops.aten.div.Tensor: _defshared(primitives.jet_div),
     # Composites -- one mode-agnostic body that pulls its sub-rules from this
     # registry (see :mod:`jet.compositions`).
-    # ``a / b == a * b**(-1)``; current torch lowers all scalar division
-    # (``x / 2.0``) to this overload. The composite also handles a
-    # Taylor-expanded divisor (reciprocal via the ``pow`` rule).
-    ops.aten.div.Tensor: _defshared(compositions.div),
     ops.aten.addmm.default: _defshared(compositions.addmm),
     # ``stack(tensors, dim) == cat([unsqueeze(t, dim) for t in tensors], dim)``;
     # decomposed into the registered ``unsqueeze`` and ``cat`` rules.
@@ -102,15 +101,14 @@ RULES: dict = {
     ops.aten.gelu.default: _defshared(compositions.gelu),
     ops.aten.native_batch_norm.default: _defshared(compositions.native_batch_norm),
     ops.aten.native_layer_norm.default: _defshared(compositions.native_layer_norm),
+    # CUDA / MPS lower ``nn.RMSNorm`` to this fused op (CPU traces its primitives).
+    ops.aten._fused_rms_norm.default: _defshared(compositions._fused_rms_norm),
     # CUDA lowers eval-mode batch norm to the cuDNN overload (same map, one
     # extra output).
     ops.aten.cudnn_batch_norm.default: _defshared(compositions.cudnn_batch_norm),
-    # ``F.scaled_dot_product_attention`` lowers to a per-device fused op (CPU, MPS here).
+    # ``F.scaled_dot_product_attention`` lowers to a per-device fused op (CPU here).
     ops.aten._scaled_dot_product_flash_attention_for_cpu.default: _defshared(
         compositions._scaled_dot_product_flash_attention_for_cpu
-    ),
-    ops.aten._scaled_dot_product_attention_math_for_mps.default: _defshared(
-        compositions._scaled_dot_product_attention_math_for_mps
     ),
 }
 

@@ -11,8 +11,8 @@ algebraic identity (e.g. ``addmm == add(self, mm(mat1, mat2))``).
 from math import pi, sqrt
 from typing import Callable
 
-from torch import Tensor, contiguous_format, ones, ops, uint8
 from torch import bool as bool_dtype
+from torch import contiguous_format, finfo, ones, ops, uint8
 
 import jet._rules
 from jet.primitives import (
@@ -78,28 +78,6 @@ def addmm(self: object, mat1: object, mat2: object) -> JetTuple:
     add = _rule(ops.aten.add.Tensor, collapsed)
     mm = _rule(ops.aten.mm.default, collapsed)
     return add(self, mm(mat1, mat2))
-
-
-def div(self: object, other: object) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.div.Tensor(self, other)``.
-
-    ``a / b == a * b**(-1)``, so the rule composes the reciprocal (``pow`` with
-    exponent ``-1``) with the product rule. Any operand may be Taylor-expanded,
-    including the divisor: the ``pow`` rule reciprocates ``other`` whether it is
-    a jet (the same reciprocal series ``log`` already relies on) or a constant.
-    Because ``mul`` broadcasts a lower-rank operand, division broadcasts too.
-
-    Args:
-        self: The numerator; a jet or a constant ``Tensor``.
-        other: The divisor; a jet, a constant ``Tensor``, or a Python scalar.
-
-    Returns:
-        The value and its Taylor coefficients.
-    """
-    collapsed = _collapsed_of(self, other)
-    mul = _rule(ops.aten.mul.Tensor, collapsed)
-    reciprocal = _rule(ops.aten.pow.Tensor_Scalar, collapsed)
-    return mul(self, reciprocal(other, -1))
 
 
 def stack(tensors: list[object], dim: int = 0) -> JetTuple:
@@ -426,6 +404,38 @@ def native_layer_norm(
     return out, mu, rstd
 
 
+def _fused_rms_norm(
+    input: object, normalized_shape: list[int], weight: object, eps: float | None
+) -> tuple:
+    """Taylor-mode arithmetic for ``aten._fused_rms_norm``.
+
+    On CUDA / MPS, ``nn.RMSNorm`` lowers to this fused op; on CPU, to ``pow`` /
+    ``mean`` / ``add`` / ``rsqrt`` / ``mul``, which have rules of their own and
+    which this rule mirrors. It rescales each sample by its root mean square
+    over the trailing ``normalized_shape`` dims,
+    ``input * rsqrt(mean(input**2) + eps)``, then applies the optional
+    ``weight`` (:func:`_affine`); ``input`` / ``weight`` may each be a jet or a
+    constant. ``eps=None`` is the op's default, ``finfo(input.dtype).eps``.
+
+    Returns:
+        The ATen op's ``(output, rstd)`` pair as a plain tuple of jets (``rstd``
+        keeps the normalized dims as size 1, like the op on CPU / CUDA; on MPS
+        the op returns ``None`` there), so a downstream ``getitem`` falls
+        through to the native op.
+    """
+    collapsed = _collapsed_of(input, weight)
+    mul = _rule(ops.aten.mul.Tensor, collapsed)
+    add = _rule(ops.aten.add.Tensor, collapsed)
+    pow = _rule(ops.aten.pow.Tensor_Scalar, collapsed)
+    mean = _rule(ops.aten.mean.dim, collapsed)
+    rsqrt = _rule(ops.aten.rsqrt.default, collapsed)
+    if eps is None:
+        eps = finfo((input[0] if isinstance(input, JetTuple) else input).dtype).eps
+    dims = list(range(-len(normalized_shape), 0))
+    rstd = rsqrt(add(mean(pow(input, 2), dims, keepdim=True), eps))
+    return _affine(mul(input, rstd), weight, None, collapsed), rstd
+
+
 def cudnn_batch_norm(
     input: object,
     weight: object,
@@ -486,15 +496,13 @@ def scaled_dot_product_attention(
 
     Raises:
         NotImplementedError: If ``dropout_p != 0`` (jets require eval mode,
-            ``model.eval()``) or both ``is_causal`` and ``attn_mask`` are set.
+            ``model.eval()``).
     """
     if dropout_p != 0:
         raise NotImplementedError(
             "Taylor-mode scaled_dot_product_attention requires dropout_p == 0; "
             "jets require eval mode (call model.eval())."
         )
-    if is_causal and attn_mask is not None:
-        raise NotImplementedError("is_causal and attn_mask are mutually exclusive.")
     collapsed = _collapsed_of(query, key, value)
     mul = _rule(ops.aten.mul.Tensor, collapsed)
     bmm = _rule(ops.aten.bmm.default, collapsed)
@@ -503,52 +511,36 @@ def scaled_dot_product_attention(
     scale = q.shape[-1] ** -0.5 if scale is None else scale
     scores = bmm(mul(query, scale), transpose(key, -2, -1))
     if is_causal:
-        attn_mask = ones(q.shape[-2], k.shape[-2], dtype=bool_dtype, device=q.device)
-        attn_mask = attn_mask.tril()
-    if attn_mask is not None and attn_mask.dtype == bool_dtype:
-        masked_fill = _rule(ops.aten.masked_fill.Scalar, collapsed)
-        scores = masked_fill(scores, ~attn_mask, -float("inf"))
-    elif attn_mask is not None:
-        scores = _rule(ops.aten.add.Tensor, collapsed)(scores, attn_mask)
-    attn = _rule(ops.aten._softmax.default, collapsed)(scores, -1, False)
+        attn_mask = ones(
+            q.shape[-2], k.shape[-2], dtype=bool_dtype, device=q.device
+        ).tril()
+    if attn_mask is not None:
+        if attn_mask.dtype == bool_dtype:
+            masked_fill = _rule(ops.aten.masked_fill.Scalar, collapsed)
+            scores = masked_fill(scores, ~attn_mask, -float("inf"))
+        else:
+            scores = _rule(ops.aten.add.Tensor, collapsed)(scores, attn_mask)
+    attn = _rule(ops.aten._softmax.default, collapsed)(
+        scores, dim=-1, half_to_float=False
+    )
     return bmm(attn, value)
 
 
 def _sdpa_pair(query, key, value, attn_mask, dropout_p, is_causal, scale) -> tuple:
-    """``(output, empty)`` for the fused two-output sdpa ops (only ``output`` is used)."""
+    """``(output, None)`` for the fused two-output sdpa ops.
+
+    Only ``output`` is read in the forward trace; the backward-only second output
+    is ``None`` so that any consumer (e.g. a future backward rule for nesting)
+    fails loudly.
+    """
     out = scaled_dot_product_attention(
         query, key, value, attn_mask, dropout_p, is_causal, scale
     )
-    return out, out[0].new_empty(0)
+    return out, None
 
 
 def _scaled_dot_product_flash_attention_for_cpu(
     query, key, value, dropout_p=0.0, is_causal=False, *, attn_mask=None, scale=None
 ) -> tuple:
     """Adapter for the fused CPU op ``F.scaled_dot_product_attention`` lowers to."""
-    return _sdpa_pair(query, key, value, attn_mask, dropout_p, is_causal, scale)
-
-
-def _scaled_dot_product_attention_math_for_mps(
-    query: object,
-    key: object,
-    value: object,
-    attn_mask: Tensor | None = None,
-    dropout_p: float = 0.0,
-    is_causal: bool = False,
-    dropout_mask: Tensor | None = None,
-    *,
-    scale: float | None = None,
-    enable_gqa: bool = False,
-) -> tuple:
-    """Adapter for the fused MPS op ``F.scaled_dot_product_attention`` lowers to.
-
-    Raises:
-        NotImplementedError: If ``dropout_mask`` is given or ``enable_gqa``.
-    """
-    if dropout_mask is not None or enable_gqa:
-        raise NotImplementedError(
-            "Taylor-mode scaled_dot_product_attention supports neither "
-            "dropout_mask nor enable_gqa."
-        )
     return _sdpa_pair(query, key, value, attn_mask, dropout_p, is_causal, scale)

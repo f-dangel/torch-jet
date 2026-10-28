@@ -430,13 +430,13 @@ def _fused_rms_norm(
 ) -> tuple:
     """Taylor-mode arithmetic for ``aten._fused_rms_norm``.
 
-    On CUDA / MPS, ``nn.RMSNorm`` lowers to this fused op (on CPU, to ``pow`` /
-    ``mean`` / ``add`` / ``rsqrt`` / ``mul``, which have rules of their own). It
-    rescales each sample by its root mean square over the trailing
-    ``normalized_shape`` dims, ``input * (mean(input**2) + eps)**-0.5``, then
-    applies the optional ``weight`` (:func:`_affine`); ``input`` / ``weight``
-    may each be a jet or a constant. ``eps=None`` is the op's default,
-    ``finfo(input.dtype).eps``.
+    On CUDA / MPS, ``nn.RMSNorm`` lowers to this fused op; on CPU, to ``pow`` /
+    ``mean`` / ``add`` / ``rsqrt`` / ``mul``, which have rules of their own and
+    which this rule mirrors. It rescales each sample by its root mean square
+    over the trailing ``normalized_shape`` dims,
+    ``input * rsqrt(mean(input**2) + eps)``, then applies the optional
+    ``weight`` (:func:`_affine`); ``input`` / ``weight`` may each be a jet or a
+    constant. ``eps=None`` is the op's default, ``finfo(input.dtype).eps``.
 
     Returns:
         The ATen op's ``(output, rstd)`` pair as a plain tuple of jets (``rstd``
@@ -449,10 +449,11 @@ def _fused_rms_norm(
     add = _rule(ops.aten.add.Tensor, collapsed)
     pow = _rule(ops.aten.pow.Tensor_Scalar, collapsed)
     mean = _rule(ops.aten.mean.dim, collapsed)
+    rsqrt = _rule(ops.aten.rsqrt.default, collapsed)
     if eps is None:
         eps = finfo((input[0] if isinstance(input, JetTuple) else input).dtype).eps
     dims = list(range(-len(normalized_shape), 0))
-    rstd = pow(add(mean(pow(input, 2), dims, keepdim=True), eps), -0.5)
+    rstd = rsqrt(add(mean(pow(input, 2), dims, keepdim=True), eps))
     return _affine(mul(input, rstd), weight, None, collapsed), rstd
 
 

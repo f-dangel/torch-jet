@@ -1027,7 +1027,7 @@ PRIMITIVE_CASES = [
     _embedding_case("1d", (5,)),
     _embedding_case("2d", (2, 3)),
     _embedding_case("padding_idx", (2, 3), padding_idx=0),
-    # ``scaled_dot_product_attention`` composes scaled ``bmm``s, masking, and
+    # ``scaled_dot_product_attention`` composes scaled ``matmul``s, masking, and
     # ``softmax``; every pattern of jet (J) / constant (C) query, key, value
     # meets every option.
     *(

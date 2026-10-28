@@ -11,7 +11,8 @@ algebraic identity (e.g. ``addmm == add(self, mm(mat1, mat2))``).
 from math import pi, sqrt
 from typing import Callable
 
-from torch import contiguous_format, ops, uint8
+from torch import bool as bool_dtype
+from torch import contiguous_format, ones, ops, uint8
 
 import jet._rules
 from jet.primitives import (
@@ -457,3 +458,72 @@ def cudnn_batch_norm(
         epsilon,
     )
     return out, empty, empty, empty.new_empty(0, dtype=uint8)
+
+
+def scaled_dot_product_attention(
+    query: object,
+    key: object,
+    value: object,
+    attn_mask: object = None,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    scale: float | None = None,
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.scaled_dot_product_attention`` (eval mode).
+
+    ``softmax(scale * query @ key^T + mask, -1) @ value`` (``scale = 1/sqrt(E)``
+    by default), composed from the ``mul`` / ``transpose`` / ``bmm`` /
+    ``masked_fill`` / ``add`` / ``_softmax`` rules (``bmm`` matmuls over any
+    leading batch dims). A causal or bool ``attn_mask`` (``True`` = attend)
+    fills the blocked scores with ``-inf``, a float one is added. The
+    ``_softmax`` rule's max-shift keeps the whole jet stable; a fully masked
+    row gives ``NaN`` like the ATen math path. Any of ``query`` ``(..., L, E)``
+    / ``key`` ``(..., S, E)`` / ``value`` ``(..., S, Ev)`` may be a jet or a
+    constant; ``attn_mask`` is a constant broadcastable to ``(..., L, S)``.
+
+    Returns:
+        The value and its Taylor coefficients, shape ``(..., L, Ev)``.
+
+    Raises:
+        NotImplementedError: If ``dropout_p != 0`` (jets require eval mode,
+            ``model.eval()``) or both ``is_causal`` and ``attn_mask`` are set.
+    """
+    if dropout_p != 0:
+        raise NotImplementedError(
+            "Taylor-mode scaled_dot_product_attention requires dropout_p == 0; "
+            "jets require eval mode (call model.eval())."
+        )
+    if is_causal and attn_mask is not None:
+        raise NotImplementedError("is_causal and attn_mask are mutually exclusive.")
+    collapsed = _collapsed_of(query, key, value)
+    mul = _rule(ops.aten.mul.Tensor, collapsed)
+    bmm = _rule(ops.aten.bmm.default, collapsed)
+    transpose = _rule(ops.aten.transpose.int, collapsed)
+    q, k = (x[0] if isinstance(x, JetTuple) else x for x in (query, key))
+    scale = q.shape[-1] ** -0.5 if scale is None else scale
+    scores = bmm(mul(query, scale), transpose(key, -2, -1))
+    if is_causal:
+        attn_mask = ones(q.shape[-2], k.shape[-2], dtype=bool_dtype, device=q.device)
+        attn_mask = attn_mask.tril()
+    if attn_mask is not None and attn_mask.dtype == bool_dtype:
+        masked_fill = _rule(ops.aten.masked_fill.Scalar, collapsed)
+        scores = masked_fill(scores, ~attn_mask, -float("inf"))
+    elif attn_mask is not None:
+        scores = _rule(ops.aten.add.Tensor, collapsed)(scores, attn_mask)
+    attn = _rule(ops.aten._softmax.default, collapsed)(scores, -1, False)
+    return bmm(attn, value)
+
+
+def _sdpa_pair(query, key, value, attn_mask, dropout_p, is_causal, scale) -> tuple:
+    """``(output, empty)`` for the fused two-output sdpa ops (only ``output`` is used)."""
+    out = scaled_dot_product_attention(
+        query, key, value, attn_mask, dropout_p, is_causal, scale
+    )
+    return out, out[0].new_empty(0)
+
+
+def _scaled_dot_product_flash_attention_for_cpu(
+    query, key, value, dropout_p=0.0, is_causal=False, *, attn_mask=None, scale=None
+) -> tuple:
+    """Adapter for the fused CPU op ``F.scaled_dot_product_attention`` lowers to."""
+    return _sdpa_pair(query, key, value, attn_mask, dropout_p, is_causal, scale)

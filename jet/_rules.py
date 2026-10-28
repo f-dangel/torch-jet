@@ -105,6 +105,10 @@ RULES: dict = {
     # CUDA lowers eval-mode batch norm to the cuDNN overload (same map, one
     # extra output).
     ops.aten.cudnn_batch_norm.default: _defshared(compositions.cudnn_batch_norm),
+    # ``F.scaled_dot_product_attention`` lowers to a per-device fused op (CPU here).
+    ops.aten._scaled_dot_product_flash_attention_for_cpu.default: _defshared(
+        compositions._scaled_dot_product_flash_attention_for_cpu
+    ),
 }
 
 # Linear ops (pointwise-linear, shape-only, reductions): one mode-agnostic

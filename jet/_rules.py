@@ -85,12 +85,11 @@ RULES: dict = {
     ops.aten.nll_loss_forward.default: _defshared(primitives.jet_nll_loss_forward),
     # Token embedding lookup: linear in the weight, integer indices stay constant.
     ops.aten.embedding.default: _defshared(primitives.jet_embedding),
+    # Current torch lowers all scalar division (``x / 2.0``) to this overload;
+    # a Taylor-expanded divisor uses the division recurrence.
+    ops.aten.div.Tensor: _defshared(primitives.jet_div),
     # Composites -- one mode-agnostic body that pulls its sub-rules from this
     # registry (see :mod:`jet.compositions`).
-    # ``a / b == a * b**(-1)``; current torch lowers all scalar division
-    # (``x / 2.0``) to this overload. The composite also handles a
-    # Taylor-expanded divisor (reciprocal via the ``pow`` rule).
-    ops.aten.div.Tensor: _defshared(compositions.div),
     ops.aten.addmm.default: _defshared(compositions.addmm),
     # ``stack(tensors, dim) == cat([unsqueeze(t, dim) for t in tensors], dim)``;
     # decomposed into the registered ``unsqueeze`` and ``cat`` rules.

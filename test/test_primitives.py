@@ -62,11 +62,13 @@ from jet import compositions, jet, primitives
 from jet.compositions import native_batch_norm
 from jet.primitives import JetTuple, jet_nll_loss_forward
 from test.utils import (
+    _rev_jet,
     _stateless,
     assert_jet_matches_oracle,
     class_index_loss,
     device_kw,
     make_jet_args,
+    rev_collapsed_jet,
     setup_case,
     tolerances_for,
 )
@@ -1350,3 +1352,18 @@ def test_fused_rms_norm_matches_traced(collapsed: bool, device: str):
         assert_close(got, exp_, **tol)
     want_rstd = ((x[0] ** 2).mean(-1, keepdim=True) + finfo(float32).eps).rsqrt()
     assert_close(rstd[0], want_rstd, **tol)
+
+
+def test_div_keeps_softmax_float32_accurate(collapsed: bool, device: str):
+    """``softmax(2 x)``'s order-5 jet meets the float32 tolerances in both modes.
+
+    The division recurrence in ``jet_div`` keeps the jet within ``3e-5`` of the
+    oracle; composing ``mul(a, pow(b, -1))`` instead gave ``3e-4`` (``K = 5``).
+    """
+    manual_seed(0)
+    x = rand(2, 2, 3, 3, dtype=float32, device=device)
+    f = _stateless(lambda x: softmax(2 * x, -1))(device)
+    jet_args = make_jet_args((x,), 5, collapsed=collapsed)
+    oracle = rev_collapsed_jet(f) if collapsed else _rev_jet(f)
+    actual = jet(f, (x,), collapsed=collapsed)(*jet_args)
+    assert_close(actual, oracle(*jet_args), **tolerances_for("mps"))

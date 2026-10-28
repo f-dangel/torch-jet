@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support scaled dot-product attention in Taylor mode (both standard and
   collapsed modes): a composition for `F.scaled_dot_product_attention` (eval
   mode, `dropout_p == 0`) with an adapter for the fused CPU op
-  ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
+  ([PR](https://github.com/f-dangel/torch-jet/pull/223)).
 - Support `aten.embedding.default` in Taylor mode (both standard and collapsed
   modes); a warning flags `padding_idx`, which only masks autograd's gradient
   while jets propagate the true derivative

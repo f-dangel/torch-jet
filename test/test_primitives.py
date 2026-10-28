@@ -16,6 +16,7 @@ from torch import (
     cos,
     erf,
     exp,
+    finfo,
     float16,
     float32,
     log,
@@ -51,6 +52,7 @@ from torch.nn.functional import (
     mse_loss,
     nll_loss,
     relu6,
+    rms_norm,
     silu,
     softmax,
 )
@@ -415,6 +417,24 @@ def _ln_variant(shape: tuple[int, ...], nd: int) -> dict[str, Any]:
     }
 
 
+def _rms_variant(
+    shape: tuple[int, ...], nd: int, eps: float | None = 1e-5
+) -> dict[str, Any]:
+    """RMS norm over the last ``nd`` dims of ``shape`` (see :func:`_norm_cases`).
+
+    On CUDA / MPS, ``rms_norm`` lowers to the fused ``_fused_rms_norm`` (its own
+    rule); on CPU, to ``pow`` / ``mean`` / ``add`` / ``rsqrt`` / ``mul``.
+    ``eps=None`` is the op's default (``finfo(dtype).eps``); there is no bias.
+    """
+    normalized = shape[-nd:]
+    return {
+        "call": lambda x, w, b: rms_norm(x, normalized, w, eps),
+        "shape": shape,
+        "param_shape": normalized,
+        "suffix": f"_{nd}d" + ("_default_eps" if eps is None else ""),
+    }
+
+
 _BN_RANKS = ({"shape": (4, 3, 7)}, {"shape": (4, 3, 2, 3, 3)}, {"shape": (4, 3)})
 # ``nn.BatchNorm`` creates weight and bias together (``affine``), so only the
 # both-present and both-absent pairs occur. The non-4D ranks also run with jet
@@ -446,6 +466,16 @@ _LN_GRID = (
         ({"shape": (2, 8), "nd": 1},),
     ),
     (("J",), (("J", "J"), ("C", "C")), ({"shape": (2, 4, 3, 3), "nd": 2},)),
+)
+# ``nn.RMSNorm`` has a weight but no bias. Normalizing over two dims also runs
+# with jet weight; one case leaves ``eps`` at the op's default.
+_RMS_GRID = (
+    (("J", "C"), (("N", "N"), ("J", "N"), ("C", "N")), ({"shape": (2, 8), "nd": 1},)),
+    (
+        ("J",),
+        (("J", "N"),),
+        ({"shape": (2, 4, 2, 2), "nd": 2}, {"shape": (2, 8), "nd": 1, "eps": None}),
+    ),
 )
 
 
@@ -939,6 +969,8 @@ PRIMITIVE_CASES = [
     # ``layer_norm`` couples elements over the normalized dims via the sample
     # statistics; full jet / constant / absent matrix over input, weight, bias.
     *_norm_cases("layer_norm", _ln_variant, _LN_GRID),
+    # ``rms_norm`` couples elements via the root mean square (no centering).
+    *_norm_cases("rms_norm", _rms_variant, _RMS_GRID),
     # ``log_softmax``/``softmax`` couple elements along ``dim`` via the
     # normalizer; the rules compose exp with a linear sum and a broadcast
     # sub/div. Inputs are scaled so the max-shift matters.
@@ -1298,3 +1330,23 @@ def test_softmax_half_to_float(rule: Callable, collapsed: bool, device: str):
     for g, w in zip(got, want):
         assert g.dtype == float32
         assert_close(g, w, rtol=1e-3, atol=1e-3)
+
+
+def test_fused_rms_norm_matches_traced(collapsed: bool, device: str):
+    """The fused rule equals the jet of the CPU decomposition (CI only traces the latter)."""
+    K = 3
+    x, w = make_jet_args(
+        (rand(2, 8, device=device), rand(8, device=device)), K, collapsed
+    )
+    x, w = JetTuple(x, collapsed=collapsed), JetTuple(w, collapsed=collapsed)
+
+    out, rstd = compositions._fused_rms_norm(x, [8], w, None)
+    want = jet(lambda x, w: rms_norm(x, (8,), w), (x[0], w[0]), collapsed=collapsed)(
+        x, w
+    )
+
+    tol = tolerances_for(device)
+    for got, exp_ in zip(out, want):
+        assert_close(got, exp_, **tol)
+    want_rstd = ((x[0] ** 2).mean(-1, keepdim=True) + finfo(float32).eps).rsqrt()
+    assert_close(rstd[0], want_rstd, **tol)

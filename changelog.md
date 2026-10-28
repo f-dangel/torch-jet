@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Support `aten._fused_rms_norm.default` in Taylor mode (both standard and
+  collapsed modes), the op `torch.nn.RMSNorm` lowers to on CUDA/MPS
+  ([PR](https://github.com/f-dangel/torch-jet/pull/214)).
 - Support `aten.embedding.default` in Taylor mode (both standard and collapsed
   modes); a warning flags `padding_idx`, which only masks autograd's gradient
   while jets propagate the true derivative

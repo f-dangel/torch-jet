@@ -1032,7 +1032,8 @@ PRIMITIVE_CASES = [
     # meets every option, and ``S != L`` catches transposition bugs.
     *(
         _sdpa_case(f"sdpa_{jets}{oid}", jets=jets, **kw)
-        for jets in ("JJJ", "JCC", "CJJ", "CJC", "JCJ", "JJC")
+        # ``CCJ``: only ``value`` is a jet, so the attention weights are constants
+        for jets in ("JJJ", "JCC", "CCJ", "CJJ", "CJC", "JCJ", "JJC")
         for oid, kw in (
             ("", {}),
             ("_causal", {"is_causal": True}),

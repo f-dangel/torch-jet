@@ -10,6 +10,7 @@ from typing import Callable
 from pytest import raises
 from torch import Tensor, full, manual_seed, rand, randn, tensor, zeros, zeros_like
 from torch.autograd import grad
+from torch.nn import MultiheadAttention
 from torch.nn.functional import (
     embedding,
     hardsigmoid,
@@ -120,3 +121,26 @@ def test_scaled_dot_product_attention_double_backward(device: str):
     else:
         with raises(RuntimeError, match="is not implemented"):
             _second_derivative(lambda x: scaled_dot_product_attention(*x), x)
+
+
+def test_substitutes_reach_nested_torch_functions(device: str):
+    """The substitutes apply inside PyTorch's Python composites, too.
+
+    ``nn.MultiheadAttention`` calls ``scaled_dot_product_attention`` from
+    ``F.multi_head_attention_forward``, which runs with the mode popped; only
+    the rebound ``functional`` attribute makes the block twice differentiable.
+    """
+    manual_seed(0)
+    kw = device_kw(device)
+    mha = MultiheadAttention(8, 2, batch_first=True).eval().requires_grad_(False)
+    mha = mha.to(**kw)
+    x = randn(2, 3, 8, requires_grad=True, **kw)
+
+    def block(x: Tensor) -> Tensor:
+        return mha(x, x, x, need_weights=False)[0]
+
+    if device != "mps":
+        with raises(RuntimeError, match="is not implemented"):
+            _second_derivative(block, x)
+    with DifferentiableSubstitutes():
+        _second_derivative(block, x)

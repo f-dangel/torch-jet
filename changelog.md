@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added/New
 
 - Honour `half_to_float` in the `_softmax` / `_log_softmax` rules (promote to
-  float32 like the ATen op) ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
+  float32 like the ATen op) ([PR](https://github.com/f-dangel/torch-jet/pull/220)).
 - Support `aten._softmax.default` in Taylor mode (both standard and collapsed
   modes) ([PR](https://github.com/f-dangel/torch-jet/pull/215)).
 - Support `aten.bmm.default` in Taylor mode (both standard and collapsed

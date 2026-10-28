@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Composed sub-rules fall through to the native op on constant inputs, so
     attention with only a jet `value` works
     ([PR](https://github.com/f-dangel/torch-jet/pull/227)).
+  - An adapter for the fused MPS op
+    ([PR](https://github.com/f-dangel/torch-jet/pull/224)).
   - `attn_mask`, `is_causal`, and `scale`
     ([PR](https://github.com/f-dangel/torch-jet/pull/223)).
 - Support `aten._fused_rms_norm.default` in Taylor mode (both standard and

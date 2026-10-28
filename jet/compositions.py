@@ -11,8 +11,8 @@ algebraic identity (e.g. ``addmm == add(self, mm(mat1, mat2))``).
 from math import pi, sqrt
 from typing import Callable
 
+from torch import Tensor, contiguous_format, finfo, ones, ops, uint8
 from torch import bool as bool_dtype
-from torch import contiguous_format, finfo, ones, ops, uint8
 
 import jet._rules
 from jet.primitives import (
@@ -554,4 +554,29 @@ def _scaled_dot_product_flash_attention_for_cpu(
     query, key, value, dropout_p=0.0, is_causal=False, *, attn_mask=None, scale=None
 ) -> tuple:
     """Adapter for the fused CPU op ``F.scaled_dot_product_attention`` lowers to."""
+    return _sdpa_pair(query, key, value, attn_mask, dropout_p, is_causal, scale)
+
+
+def _scaled_dot_product_attention_math_for_mps(
+    query: object,
+    key: object,
+    value: object,
+    attn_mask: Tensor | None = None,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    dropout_mask: Tensor | None = None,
+    *,
+    scale: float | None = None,
+    enable_gqa: bool = False,
+) -> tuple:
+    """Adapter for the fused MPS op ``F.scaled_dot_product_attention`` lowers to.
+
+    Raises:
+        NotImplementedError: If ``dropout_mask`` is given or ``enable_gqa``.
+    """
+    if dropout_mask is not None or enable_gqa:
+        raise NotImplementedError(
+            "Taylor-mode scaled_dot_product_attention supports neither "
+            "dropout_mask nor enable_gqa."
+        )
     return _sdpa_pair(query, key, value, attn_mask, dropout_p, is_causal, scale)

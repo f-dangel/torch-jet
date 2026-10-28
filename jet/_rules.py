@@ -77,6 +77,8 @@ RULES: dict = {
     ops.aten.where.self: _defshared(primitives.jet_where),
     ops.aten.masked_fill.Scalar: _defshared(primitives.jet_masked_fill),
     ops.aten.masked_fill.Tensor: _defshared(primitives.jet_masked_fill),
+    # ``F.pad(mode="constant")``: affine (the fill value only pads the primal).
+    ops.aten.constant_pad_nd.default: _defshared(primitives.jet_constant_pad_nd),
     ops.aten.max_pool2d_with_indices.default: _defshared(
         primitives.jet_max_pool2d_with_indices
     ),

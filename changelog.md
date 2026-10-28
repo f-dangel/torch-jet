@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Support `aten.constant_pad_nd.default` (`F.pad` with `mode="constant"`,
+  including cropping via negative padding) in Taylor mode (both standard and
+  collapsed modes) ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
 - Support scaled dot-product attention in Taylor mode (both standard and
   collapsed modes): a composition for `F.scaled_dot_product_attention` with
   default arguments (eval mode, `dropout_p == 0`) and an adapter for the fused

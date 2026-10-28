@@ -1181,7 +1181,8 @@ def test_softmax_half_to_float(rule: Callable, collapsed: bool, device: str):
 
     ATen rejects the flag for float input on CPU, so the rule is tested directly.
     """
-    (x,) = make_jet_args((rand(3, 4, device=device),), 3, collapsed=collapsed)
+    K = 3
+    (x,) = make_jet_args((rand(3, 4, device=device),), K, collapsed=collapsed)
     x = JetTuple(x, collapsed=collapsed)
     x_half = JetTuple(tuple(c.to(float16) for c in x), collapsed=collapsed)
 
@@ -1190,4 +1191,4 @@ def test_softmax_half_to_float(rule: Callable, collapsed: bool, device: str):
 
     for g, w in zip(got, want):
         assert g.dtype == float32
-        assert_close(g, w, rtol=1e-3, atol=1e-3)  # half rounds the input to ~2e-4
+        assert_close(g, w, rtol=1e-3, atol=1e-3)

@@ -511,8 +511,9 @@ def scaled_dot_product_attention(
     scale = q.shape[-1] ** -0.5 if scale is None else scale
     scores = bmm(mul(query, scale), transpose(key, -2, -1))
     if is_causal:
-        attn_mask = ones(q.shape[-2], k.shape[-2], dtype=bool_dtype, device=q.device)
-        attn_mask = attn_mask.tril()
+        attn_mask = ones(
+            q.shape[-2], k.shape[-2], dtype=bool_dtype, device=q.device
+        ).tril()
     if attn_mask is not None:
         if attn_mask.dtype == bool_dtype:
             masked_fill = _rule(ops.aten.masked_fill.Scalar, collapsed)

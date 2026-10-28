@@ -11,7 +11,8 @@ algebraic identity (e.g. ``addmm == add(self, mm(mat1, mat2))``).
 from math import pi, sqrt
 from typing import Callable
 
-from torch import contiguous_format, finfo, ops, uint8
+from torch import bool as bool_dtype
+from torch import contiguous_format, finfo, ones, ops, uint8
 
 import jet._rules
 from jet.primitives import (
@@ -491,35 +492,45 @@ def scaled_dot_product_attention(
 ) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.scaled_dot_product_attention`` (eval mode).
 
-    ``softmax(query @ key^T / sqrt(E), -1) @ value``, composed from the ``mul`` /
-    ``transpose`` / ``matmul`` / ``_softmax`` rules (``matmul`` broadcasts over
-    the leading batch dims). Any of ``query`` ``(..., L, E)`` / ``key`` ``(..., S,
-    E)`` / ``value`` ``(..., S, Ev)`` may be a jet or a constant.
+    ``softmax(scale * query @ key^T + mask, -1) @ value`` (``scale = 1/sqrt(E)``
+    by default), composed from the ``mul`` / ``transpose`` / ``matmul`` /
+    ``masked_fill`` / ``add`` / ``_softmax`` rules (``matmul`` broadcasts over
+    the leading batch dims). A causal or bool ``attn_mask`` (``True`` = attend)
+    fills the blocked scores with ``-inf``, a float one is added. The
+    ``_softmax`` rule's max-shift keeps the whole jet stable; a fully masked
+    row gives ``NaN`` like the ATen math path. Any of ``query`` ``(..., L, E)``
+    / ``key`` ``(..., S, E)`` / ``value`` ``(..., S, Ev)`` may be a jet or a
+    constant; ``attn_mask`` is a constant broadcastable to ``(..., L, S)``.
 
     Returns:
         The value and its Taylor coefficients, shape ``(..., L, Ev)``.
 
     Raises:
         NotImplementedError: If ``dropout_p != 0`` (jets require eval mode,
-            ``model.eval()``), or if ``attn_mask``, ``is_causal``, or ``scale``
-            is set.
+            ``model.eval()``).
     """
     if dropout_p != 0:
         raise NotImplementedError(
             "Taylor-mode scaled_dot_product_attention requires dropout_p == 0; "
             "jets require eval mode (call model.eval())."
         )
-    if attn_mask is not None or is_causal or scale is not None:
-        raise NotImplementedError(
-            "Taylor-mode scaled_dot_product_attention supports only the default "
-            "attn_mask, is_causal, and scale."
-        )
     collapsed = _collapsed_of(query, key, value)
     mul = _rule(ops.aten.mul.Tensor, collapsed)
     matmul = _rule(ops.aten.matmul.default, collapsed)
     transpose = _rule(ops.aten.transpose.int, collapsed)
-    q = query[0] if isinstance(query, JetTuple) else query
-    scores = matmul(mul(query, q.shape[-1] ** -0.5), transpose(key, -2, -1))
+    q, k = (x[0] if isinstance(x, JetTuple) else x for x in (query, key))
+    scale = q.shape[-1] ** -0.5 if scale is None else scale
+    scores = matmul(mul(query, scale), transpose(key, -2, -1))
+    if is_causal:
+        attn_mask = ones(
+            q.shape[-2], k.shape[-2], dtype=bool_dtype, device=q.device
+        ).tril()
+    if attn_mask is not None:
+        if attn_mask.dtype == bool_dtype:
+            masked_fill = _rule(ops.aten.masked_fill.Scalar, collapsed)
+            scores = masked_fill(scores, ~attn_mask, -float("inf"))
+        else:
+            scores = _rule(ops.aten.add.Tensor, collapsed)(scores, attn_mask)
     attn = _rule(ops.aten._softmax.default, collapsed)(
         scores, dim=-1, half_to_float=False
     )

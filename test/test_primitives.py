@@ -7,8 +7,9 @@ registered with :class:`JetInterpreter`.
 from functools import partial
 from itertools import product
 from typing import Any, Callable
+from warnings import catch_warnings, simplefilter
 
-from pytest import mark, raises
+from pytest import mark, raises, warns
 from torch import (
     addmm,
     cat,
@@ -57,13 +58,15 @@ from torch.testing import assert_close
 
 from jet import compositions, jet, primitives
 from jet.compositions import native_batch_norm
-from jet.primitives import JetTuple, jet_embedding, jet_nll_loss_forward
+from jet.primitives import JetTuple, jet_nll_loss_forward
+from jet.utils import JetSemanticsWarning
 from test.utils import (
     _stateless,
     assert_jet_matches_oracle,
     class_index_loss,
     device_kw,
     make_jet_args,
+    setup_case,
     tolerances_for,
 )
 
@@ -540,8 +543,7 @@ def _binop_case(name, op, sa, sb, variant: str) -> dict[str, Any]:
 def _embedding_case(name: str, shape: tuple[int, ...], **kw) -> dict[str, Any]:
     """``embedding(indices, weight, **kw)`` with a jet weight ``(7, 4)``.
 
-    The constant long ``indices`` of ``shape`` (values in ``[0, 7)``) are
-    drawn under ``manual_seed(3)`` on the device.
+    The constant long ``indices`` of ``shape`` are drawn under ``manual_seed(3)``.
     """
 
     def build(device):
@@ -1240,14 +1242,18 @@ def test_nll_loss_taylor_expanded_target_raises(collapsed: bool, device: str):
         jet_nll_loss_forward(logits, target, None, 1, -100)
 
 
-def test_embedding_taylor_expanded_indices_raises(collapsed: bool, device: str):
-    """Taylor-expanded embedding indices are rejected (they must be constant)."""
-    kw = device_kw(device)
-    tup = partial(JetTuple, collapsed=collapsed)
-    weight = tup((rand(7, 4, **kw), rand(7, 4, **kw)))
-    indices = tup((rand(5, **kw), rand(5, **kw)))  # a Taylor-expanded index
-    with raises(NotImplementedError, match="Taylor-expanded indices"):
-        jet_embedding(weight, indices, -1, False, False)
+def test_embedding_padding_idx_warns(collapsed: bool, device: str):
+    """``padding_idx >= 0`` on a jet weight warns (autograd would mask that row)."""
+
+    def run(case):
+        f, args = setup_case(case, device)
+        jet(f, args, collapsed=collapsed)(*make_jet_args(args, 2, collapsed))
+
+    with warns(JetSemanticsWarning, match="padding_idx"):
+        run(_embedding_case("padding_idx", (2, 3), padding_idx=0))
+    with catch_warnings():
+        simplefilter("error", JetSemanticsWarning)
+        run(_embedding_case("1d", (5,)))
 
 
 def test_max_pool2d_matches_with_indices(collapsed: bool, device: str):

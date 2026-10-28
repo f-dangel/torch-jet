@@ -30,6 +30,7 @@ from torch import (
     stack,
     tanh,
     tensor,
+    where,
     zeros_like,
 )
 from torch.nn.functional import (
@@ -560,6 +561,39 @@ def _binop_cases() -> list[dict[str, Any]]:
     ]
 
 
+_WHERE_SHAPE = (3, 4)
+
+
+def _where_case(
+    name: str, mask_shape: tuple[int, ...] = _WHERE_SHAPE
+) -> dict[str, Any]:
+    """``where`` over a frozen bool mask of ``mask_shape``.
+
+    ``JJ`` takes two jets, ``JC``/``CJ`` a jet and a frozen constant (either
+    side), ``scalar`` a Python-scalar branch. Mask and constants are drawn
+    under ``manual_seed(3)``.
+    """
+
+    def build(device):
+        manual_seed(3)
+        m = rand(*mask_shape, **device_kw(device)) > 0.5
+        c = rand(*_WHERE_SHAPE, **device_kw(device))
+        return {
+            "where_JJ": lambda x, y: where(m, x, y),
+            "where_JC": lambda x: where(m, x, c),
+            "where_CJ": lambda x: where(m, c, x),
+            "where_scalar": lambda x: where(m, x, -1.0),
+        }[name]
+
+    n = 2 if name == "where_JJ" else 1
+    cid = name if mask_shape == _WHERE_SHAPE else f"{name}_bcast"
+    return {
+        "id": cid,
+        "f": build,
+        "args_fn": lambda: tuple(rand(*_WHERE_SHAPE) for _ in range(n)),
+    }
+
+
 PRIMITIVE_CASES = [
     # ---- Unary pointwise (cross-product over shapes) ---------------------
     *(
@@ -748,6 +782,8 @@ PRIMITIVE_CASES = [
     # ---- Broadcasting stress matrix (add/sub/mul; JJ/JC/CJ branches) ------
     # See ``_binop_cases`` / ``_BROADCAST_PAIRS`` / ``_BROADCAST_BINOPS``.
     *_binop_cases(),
+    *(_where_case(n) for n in ("where_JJ", "where_JC", "where_CJ", "where_scalar")),
+    _where_case("where_JJ", (1, 4)),
     # ---- Matrix multiply / addmm -----------------------------------------
     # Exhaustive (bias, mat1, mat2) dispatch matrix: bias in {absent -> mm,
     # const, jet}; mat1, mat2 in {const, jet}. Covers every Taylor-expanded-

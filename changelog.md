@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Support `aten.masked_fill.Scalar` and `aten.masked_fill.Tensor` in Taylor mode
+  (both standard and collapsed modes)
+  ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
 - Support `aten.where.self` in Taylor mode (both standard and collapsed modes)
   ([PR](https://github.com/f-dangel/torch-jet/pull/219)).
 - Support `aten._softmax.default` in Taylor mode (both standard and collapsed

@@ -823,11 +823,12 @@ def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
 
 
 def jet_mm(self: Tensor | JetTuple, mat2: Tensor | JetTuple) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.mm(self, mat2)``.
+    """Taylor-mode arithmetic for ``aten.mm`` / ``aten.bmm`` (``self @ mat2``).
 
     Mode-agnostic. Uses ``matmul`` rather than ``mm`` as the bilinear op: it
-    agrees with ``mm`` on the 2-D coefficients standard mode passes, and is the
-    form collapsed mode needs (:func:`_leibniz` vmaps it over the direction
+    agrees with ``mm`` on the 2-D coefficients standard mode passes (and with
+    ``bmm`` on 3-D ones, since ``matmul`` broadcasts over batch dims), and is
+    the form collapsed mode needs (:func:`_leibniz` vmaps it over the direction
     dim ``R``).
 
     Args:

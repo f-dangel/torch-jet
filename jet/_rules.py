@@ -71,6 +71,8 @@ RULES: dict = {
     ops.aten.sub.Tensor: _defshared(primitives.jet_sub),
     ops.aten.mul.Tensor: _defshared(primitives.jet_mul),
     ops.aten.mm.default: _defshared(primitives.jet_mm),
+    # Batched matmul: the same bilinear rule (``matmul`` handles the batch dims).
+    ops.aten.bmm.default: _defshared(primitives.jet_mm),
     ops.aten.cat.default: _defshared(primitives.jet_cat),
     ops.aten.max_pool2d_with_indices.default: _defshared(
         primitives.jet_max_pool2d_with_indices

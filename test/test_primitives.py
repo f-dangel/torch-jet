@@ -1029,7 +1029,7 @@ PRIMITIVE_CASES = [
     _embedding_case("padding_idx", (2, 3), padding_idx=0),
     # ``scaled_dot_product_attention`` composes scaled ``bmm``s, masking, and
     # ``softmax``; every pattern of jet (J) / constant (C) query, key, value
-    # meets every option, and ``S != L`` catches transposition bugs.
+    # meets every option.
     *(
         _sdpa_case(f"sdpa_{jets}{oid}", jets=jets, **kw)
         # ``CCJ``: only ``value`` is a jet, so the attention weights are constants

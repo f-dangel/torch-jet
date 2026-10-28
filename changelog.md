@@ -13,9 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   collapsed modes): a composition for `F.scaled_dot_product_attention` with
   default arguments (eval mode, `dropout_p == 0`) and an adapter for the fused
   CPU op ([PR](https://github.com/f-dangel/torch-jet/pull/226)).
-  - The CPU adapter lays its output out like `empty_like(query)`, as the
-    kernel does, so the `view` that follows `nn.MultiheadAttention`'s
-    trace-elided `.contiguous()` succeeds
+  - The CPU adapter returns its output in the same memory layout as the
+    fused kernel, so `nn.MultiheadAttention` works
     ([PR](https://github.com/f-dangel/torch-jet/pull/229)).
   - An adapter for the fused MPS op
     ([PR](https://github.com/f-dangel/torch-jet/pull/224)).

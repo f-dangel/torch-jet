@@ -107,7 +107,7 @@ RULES: dict = {
     # extra output).
     ops.aten.cudnn_batch_norm.default: _defshared(compositions.cudnn_batch_norm),
     # ``F.scaled_dot_product_attention`` lowers to a per-device fused op (CPU,
-    # CUDA here).
+    # MPS, CUDA here).
     ops.aten._scaled_dot_product_flash_attention_for_cpu.default: _defshared(
         compositions._scaled_dot_product_flash_attention_for_cpu
     ),
@@ -116,6 +116,9 @@ RULES: dict = {
     ),
     ops.aten._scaled_dot_product_flash_attention.default: _defshared(
         compositions._scaled_dot_product_flash_attention
+    ),
+    ops.aten._scaled_dot_product_attention_math_for_mps.default: _defshared(
+        compositions._scaled_dot_product_attention_math_for_mps
     ),
 }
 

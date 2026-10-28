@@ -9,16 +9,24 @@ from torch import (
     float32,
     float64,
     manual_seed,
+    ones,
     rand,
     rand_like,
     randint,
     sigmoid,
+    softmax,
     stack,
     where,
     zeros_like,
 )
 from torch.nn import Linear, Sequential, Tanh
-from torch.nn.functional import embedding, hardsigmoid, layer_norm, max_pool2d
+from torch.nn.functional import (
+    embedding,
+    hardsigmoid,
+    layer_norm,
+    max_pool2d,
+    scaled_dot_product_attention,
+)
 from torch.overrides import TorchFunctionMode
 from torch.testing import assert_close
 from torch.utils._pytree import tree_flatten, tree_map
@@ -60,6 +68,18 @@ def _layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5) -> Te
     return out if bias is None else out + bias
 
 
+def _sdpa(q, k, v, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None):
+    """``scaled_dot_product_attention`` from its definition (``dropout_p == 0``)."""
+    scores = (q * (q.shape[-1] ** -0.5 if scale is None else scale)) @ k.mT
+    if is_causal:
+        attn_mask = ones(q.shape[-2], k.shape[-2], device=q.device).tril().bool()
+    if attn_mask is not None and attn_mask.is_floating_point():
+        scores = scores + attn_mask
+    elif attn_mask is not None:
+        scores = scores.masked_fill(~attn_mask, -float("inf"))
+    return softmax(scores, -1) @ v
+
+
 class DifferentiableSubstitutes(TorchFunctionMode):
     """Swap ops PyTorch cannot differentiate (correctly) to high order for equivalent calls it can.
 
@@ -87,6 +107,9 @@ class DifferentiableSubstitutes(TorchFunctionMode):
         # ``embedding``'s backward zeroes the ``padding_idx`` row; the true
         # derivative of ``weight[input]`` does not depend on that flag.
         embedding: lambda input, weight, *args, **kwargs: weight[input],
+        # The fused CPU/CUDA ``scaled_dot_product_attention`` kernels have no
+        # double backward.
+        scaled_dot_product_attention: _sdpa,
     }
 
     def __torch_function__(self, func, types, args=(), kwargs=None):

@@ -10,7 +10,13 @@ from typing import Callable
 from pytest import raises
 from torch import Tensor, full, manual_seed, rand, randn, tensor, zeros, zeros_like
 from torch.autograd import grad
-from torch.nn.functional import embedding, hardsigmoid, layer_norm, max_pool2d
+from torch.nn.functional import (
+    embedding,
+    hardsigmoid,
+    layer_norm,
+    max_pool2d,
+    scaled_dot_product_attention,
+)
 from torch.testing import assert_close
 
 from test.utils import DifferentiableSubstitutes, device_kw
@@ -96,3 +102,20 @@ def test_embedding_padding_idx_gradient(device: str):
     substitute = DifferentiableSubstitutes.SUBSTITUTES[embedding]
     (g,) = grad(substitute(idx, w, padding_idx=0).sum(), w)
     assert_close(g[0], full((4,), 2.0, **kw))
+
+
+def test_scaled_dot_product_attention_double_backward(device: str):
+    """The fused CPU/CUDA ``scaled_dot_product_attention`` has no double backward.
+
+    Its substitute has one on every device, and agrees with the fused MPS op.
+    """
+    manual_seed(0)
+    x = randn(1, 2, 3, 4, requires_grad=True, **device_kw(device))
+    substitute = DifferentiableSubstitutes.SUBSTITUTES[scaled_dot_product_attention]
+    expected = _second_derivative(lambda x: substitute(x, x, x), x)
+    if device == "mps":
+        actual = _second_derivative(lambda x: scaled_dot_product_attention(x, x, x), x)
+        assert_close(actual, expected)
+    else:
+        with raises(RuntimeError, match="is not implemented"):
+            _second_derivative(lambda x: scaled_dot_product_attention(x, x, x), x)

@@ -16,6 +16,7 @@ from torch import (
     cos,
     erf,
     exp,
+    finfo,
     float16,
     float32,
     log,
@@ -473,7 +474,7 @@ _RMS_GRID = (
     (
         ("J",),
         (("J", "N"),),
-        ({"shape": (2, 4, 3, 3), "nd": 2}, {"shape": (2, 8), "nd": 1, "eps": None}),
+        ({"shape": (2, 4, 2, 2), "nd": 2}, {"shape": (2, 8), "nd": 1, "eps": None}),
     ),
 )
 
@@ -1329,3 +1330,23 @@ def test_softmax_half_to_float(rule: Callable, collapsed: bool, device: str):
     for g, w in zip(got, want):
         assert g.dtype == float32
         assert_close(g, w, rtol=1e-3, atol=1e-3)
+
+
+def test_fused_rms_norm_matches_traced(collapsed: bool, device: str):
+    """The fused rule equals the jet of the CPU decomposition (CI only traces the latter)."""
+    K = 3
+    x, w = make_jet_args(
+        (rand(2, 8, device=device), rand(8, device=device)), K, collapsed
+    )
+    x, w = JetTuple(x, collapsed=collapsed), JetTuple(w, collapsed=collapsed)
+
+    out, rstd = compositions._fused_rms_norm(x, [8], w, None)
+    want = jet(lambda x, w: rms_norm(x, (8,), w), (x[0], w[0]), collapsed=collapsed)(
+        x, w
+    )
+
+    tol = tolerances_for(device)
+    for got, exp_ in zip(out, want):
+        assert_close(got, exp_, **tol)
+    want_rstd = ((x[0] ** 2).mean(-1, keepdim=True) + finfo(float32).eps).rsqrt()
+    assert_close(rstd[0], want_rstd, **tol)

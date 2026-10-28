@@ -14,6 +14,7 @@ At each nonlinear collapsed op, the K-th output coefficient is computed as
 """
 
 from collections.abc import Sequence
+from functools import partial
 from math import pi
 from operator import add, sub
 from typing import Callable, Self
@@ -32,6 +33,7 @@ from torch import (
     sigmoid,
     sin,
     tanh,
+    where,
     zeros_like,
 )
 from torch.func import vmap
@@ -823,11 +825,12 @@ def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
 
 
 def jet_mm(self: Tensor | JetTuple, mat2: Tensor | JetTuple) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.mm(self, mat2)``.
+    """Taylor-mode arithmetic for ``aten.mm`` / ``aten.bmm`` (``self @ mat2``).
 
     Mode-agnostic. Uses ``matmul`` rather than ``mm`` as the bilinear op: it
-    agrees with ``mm`` on the 2-D coefficients standard mode passes, and is the
-    form collapsed mode needs (:func:`_leibniz` vmaps it over the direction
+    agrees with ``mm`` on the 2-D coefficients standard mode passes (and with
+    ``bmm`` on 3-D ones, since ``matmul`` broadcasts over batch dims), and is
+    the form collapsed mode needs (:func:`_leibniz` vmaps it over the direction
     dim ``R``).
 
     Args:
@@ -954,6 +957,52 @@ def jet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
         d = dim + 1 if (batched and dim >= 0) else dim
         out.append(cat([part(t, k, batched) for t in tensors], d))
     return JetTuple(tuple(out), collapsed=collapsed)
+
+
+def jet_where(
+    condition: Tensor,
+    self: Tensor | JetTuple | float | int,
+    other: Tensor | JetTuple | float | int,
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.where(condition, self, other)``.
+
+    ``where(c, a, b) == where(c, a, 0) + where(c, 0, b)`` and each term is
+    linear in its single operand, so a jet term maps coefficient-wise via
+    :func:`_apply_linear` (a constant term stays plain) and :func:`jet_add`
+    sums the two, validating ``K`` and broadcasting mode-aware.
+
+    Args:
+        condition: A constant boolean mask; a jet raises ``NotImplementedError``.
+        self: The operand taken where ``condition`` holds, or a constant.
+        other: The operand taken elsewhere, or a constant.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    if isinstance(condition, JetTuple):
+        raise NotImplementedError("jet_where: a jet-valued condition is not supported")
+
+    def keep(t, cond):  # ``where(cond, t, 0)``: linear in ``t``
+        f = partial(where, cond, other=0.0)
+        return _apply_linear(t, f) if isinstance(t, JetTuple) else f(t)
+
+    return jet_add(keep(self, condition), keep(other, ~condition))
+
+
+def jet_masked_fill(
+    self: Tensor | JetTuple, mask: Tensor, value: Tensor | JetTuple | float | int
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.masked_fill(self, mask, value)``.
+
+    Args:
+        self: The tensor to fill and its Taylor coefficients, or a constant.
+        mask: A constant boolean mask (a jet mask raises in :func:`jet_where`).
+        value: The fill value: a scalar, a 0-d constant tensor, or a jet.
+
+    Returns:
+        ``where(mask, value, self)`` and its Taylor coefficients.
+    """
+    return jet_where(mask, value, self)
 
 
 # --- Loss functions ---

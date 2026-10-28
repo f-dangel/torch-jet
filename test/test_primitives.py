@@ -15,7 +15,6 @@ from torch import (
     bfloat16,
     cat,
     cos,
-    dtype as dtype_t,
     erf,
     exp,
     finfo,
@@ -37,6 +36,9 @@ from torch import (
     tensor,
     where,
     zeros_like,
+)
+from torch import (
+    dtype as dtype_t,
 )
 from torch.nn.functional import (
     adaptive_avg_pool2d,

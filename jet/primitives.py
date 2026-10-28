@@ -989,6 +989,22 @@ def jet_where(
     return jet_add(keep(self, condition), keep(other, ~condition))
 
 
+def jet_masked_fill(
+    self: Tensor | JetTuple, mask: Tensor, value: Tensor | JetTuple | float | int
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.masked_fill(self, mask, value)``.
+
+    Args:
+        self: The tensor to fill and its Taylor coefficients, or a constant.
+        mask: A constant boolean mask (a jet mask raises in :func:`jet_where`).
+        value: The fill value: a scalar, a 0-d constant tensor, or a jet.
+
+    Returns:
+        ``where(mask, value, self)`` and its Taylor coefficients.
+    """
+    return jet_where(mask, value, self)
+
+
 # --- Loss functions ---
 
 

@@ -567,22 +567,25 @@ _WHERE_SHAPE = (3, 4)
 def _where_case(
     name: str, mask_shape: tuple[int, ...] = _WHERE_SHAPE
 ) -> dict[str, Any]:
-    """``where`` over a frozen bool mask of ``mask_shape``.
+    """``where``/``masked_fill`` over a frozen bool mask of ``mask_shape``.
 
     ``JJ`` takes two jets, ``JC``/``CJ`` a jet and a frozen constant (either
-    side), ``scalar`` a Python-scalar branch. Mask and constants are drawn
-    under ``manual_seed(3)``.
+    side), ``scalar`` a Python-scalar branch, ``masked_fill_tensor`` a 0-d
+    constant fill. Mask and constants are drawn under ``manual_seed(3)``.
     """
 
     def build(device):
         manual_seed(3)
         m = rand(*mask_shape, **device_kw(device)) > 0.5
         c = rand(*_WHERE_SHAPE, **device_kw(device))
+        v = tensor(-1.0, **device_kw(device))
         return {
             "where_JJ": lambda x, y: where(m, x, y),
             "where_JC": lambda x: where(m, x, c),
             "where_CJ": lambda x: where(m, c, x),
             "where_scalar": lambda x: where(m, x, -1.0),
+            "masked_fill_scalar": lambda x: x.masked_fill(m, -1.0),
+            "masked_fill_tensor": lambda x: x.masked_fill(m, v),
         }[name]
 
     n = 2 if name == "where_JJ" else 1
@@ -783,6 +786,7 @@ PRIMITIVE_CASES = [
     # See ``_binop_cases`` / ``_BROADCAST_PAIRS`` / ``_BROADCAST_BINOPS``.
     *_binop_cases(),
     *(_where_case(n) for n in ("where_JJ", "where_JC", "where_CJ", "where_scalar")),
+    *(_where_case(n) for n in ("masked_fill_scalar", "masked_fill_tensor")),
     _where_case("where_JJ", (1, 4)),
     # ---- Matrix multiply / addmm -----------------------------------------
     # Exhaustive (bias, mat1, mat2) dispatch matrix: bias in {absent -> mm,

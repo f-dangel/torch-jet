@@ -646,22 +646,30 @@ def _where_case(
     }
 
 
-def _sdpa_case(cid: str, jets: str = "JJJ", S: int = 5) -> dict[str, Any]:
-    """``scaled_dot_product_attention(q, k, v)`` with ``q`` of shape (2, 2, 3, 4).
+def _sdpa_case(
+    cid: str, jets: str = "JJJ", S: int = 5, mask: str | None = None, **kw
+) -> dict[str, Any]:
+    """``scaled_dot_product_attention(q, k, v, **kw)`` with ``q`` of shape (2, 2, 3, 4).
 
     ``jets`` marks which of ``q`` / ``k`` / ``v`` (batch, heads, L=3 / S=5, E=4)
-    are jets, the rest are frozen constants. Drawn under ``manual_seed(3)``.
+    are jets, the rest are frozen constants; ``mask`` adds a ``"bool"`` (no
+    fully masked row) or additive ``"float"`` mask. Drawn under
+    ``manual_seed(3)``.
     """
     shapes = ((2, 2, 3, 4), (2, 2, S, 4), (2, 2, S, 4))
 
     def build(device):
         manual_seed(3)
         consts = [rand(*shape, **device_kw(device)) for shape in shapes]
+        m = None if mask is None else rand(3, S, **device_kw(device))
+        if mask == "bool":
+            m = m > 0.5
+            m[:, 0] = True
 
         def f(*args):
             it = iter(args)
             qkv = [next(it) if j == "J" else c for j, c in zip(jets, consts)]
-            return scaled_dot_product_attention(*qkv)
+            return scaled_dot_product_attention(*qkv, attn_mask=m, **kw)
 
         return f
 
@@ -1020,13 +1028,17 @@ PRIMITIVE_CASES = [
     _embedding_case("2d", (2, 3)),
     _embedding_case("padding_idx", (2, 3), padding_idx=0),
     # ``scaled_dot_product_attention`` composes scaled ``bmm``s, masking, and
-    # ``softmax``; each of q/k/v may be a jet, and ``S != L`` in every case
-    # catches transposition bugs.
+    # ``softmax``; every pattern of jet (J) / constant (C) query, key, value
+    # meets every option.
     *(
-        _sdpa_case(f"sdpa_{sid}", **kw)
-        for sid, kw in (
-            ("JJJ", {}),
-            ("JCC", {"jets": "JCC"}),
+        _sdpa_case(f"sdpa_{jets}{oid}", jets=jets, **kw)
+        for jets in ("JJJ", "JCC", "CJJ", "CJC", "JCJ", "JJC")
+        for oid, kw in (
+            ("", {}),
+            ("_causal", {"is_causal": True}),
+            ("_bool_mask", {"mask": "bool"}),
+            ("_float_mask", {"mask": "float"}),
+            ("_scale", {"scale": 0.3}),
         )
     ),
     # ---- Loss functions --------------------------------------------------

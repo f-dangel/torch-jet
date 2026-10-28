@@ -67,7 +67,8 @@ from test.utils import (
 def _consts(device: str) -> dict[str, Any]:
     """Build frozen constants on ``device``.
 
-    Keys: ``L`` (3, 4), ``R`` (4, 5) -- mm/addmm operands; ``B`` (3, 5) --
+    Keys: ``L`` (3, 4), ``R`` (4, 5) -- mm/addmm operands; ``L3`` (2, 3, 4),
+    ``R3`` (2, 4, 5) -- their batched (bmm) counterparts; ``B`` (3, 5) --
     addmm bias; ``SUB`` -- scalar tensor for ``tensor - jet`` (which lowers
     to ``aten.sub.Tensor`` rather than the unregistered ``aten.rsub.Scalar``).
     """
@@ -76,6 +77,8 @@ def _consts(device: str) -> dict[str, Any]:
     return {
         "L": rand(3, 4, **kw),
         "R": rand(4, 5, **kw),
+        "L3": rand(2, 3, 4, **kw),
+        "R3": rand(2, 4, 5, **kw),
         "B": rand(3, 5, **kw),
         "SUB": tensor(2.0, **kw),
     }
@@ -107,7 +110,9 @@ def _const_over_jet(device):
 _BIAS_SHAPES = {"full": (3, 5), "bcast": (5,)}
 
 
-def _matmul_case(bias: str, mat1: str, mat2: str, bias_shape: str) -> dict[str, Any]:
+def _matmul_case(
+    bias: str, mat1: str, mat2: str, bias_shape: str, batched: bool = False
+) -> dict[str, Any]:
     """Build one ``{id, f, args_fn}`` case for a ``(bias, mat1, mat2)`` combo.
 
     Each operand code is ``"C"`` (constant) or ``"J"`` (jet); ``bias`` may also
@@ -116,9 +121,13 @@ def _matmul_case(bias: str, mat1: str, mat2: str, bias_shape: str) -> dict[str, 
     coefficients to them; constants are frozen via :func:`_consts`. A jet bias
     uses ``bias_shape`` -- ``"full"`` ``(3, 5)`` or row-broadcast ``"bcast"``
     ``(5,)``. The id signature is ``<op>_<bias?><mat1><mat2>`` (the absent-bias
-    letter is dropped, so plain ``mm`` reads ``mm_JC`` etc.).
+    letter is dropped, so plain ``mm`` reads ``mm_JC`` etc.). ``batched`` uses
+    the 3-D operands instead (bias must be ``"N"``); ``m1 @ m2`` then lowers to
+    ``bmm`` and the id prefix is ``bmm``.
     """
     mat1_jet, mat2_jet = mat1 == "J", mat2 == "J"
+    L, R = ("L3", "R3") if batched else ("L", "R")
+    shapes = ((2, 3, 4), (2, 4, 5)) if batched else ((3, 4), (4, 5))
 
     def builder(device):
         cs = _consts(device)
@@ -126,8 +135,8 @@ def _matmul_case(bias: str, mat1: str, mat2: str, bias_shape: str) -> dict[str, 
         def f(*args: Any):
             it = iter(args)
             b = next(it) if bias == "J" else (cs["B"] if bias == "C" else None)
-            m1 = next(it) if mat1_jet else cs["L"]
-            m2 = next(it) if mat2_jet else cs["R"]
+            m1 = next(it) if mat1_jet else cs[L]
+            m2 = next(it) if mat2_jet else cs[R]
             return m1 @ m2 if b is None else addmm(b, m1, m2)
 
         return f
@@ -137,12 +146,12 @@ def _matmul_case(bias: str, mat1: str, mat2: str, bias_shape: str) -> dict[str, 
         if bias == "J":
             out.append(rand(*_BIAS_SHAPES[bias_shape]))
         if mat1_jet:
-            out.append(rand(3, 4))
+            out.append(rand(*shapes[0]))
         if mat2_jet:
-            out.append(rand(4, 5))
+            out.append(rand(*shapes[1]))
         return tuple(out)
 
-    op = "mm" if bias == "N" else "addmm"
+    op = ("bmm" if batched else "mm") if bias == "N" else "addmm"
     sig = f"{mat1}{mat2}" if bias == "N" else f"{bias}{mat1}{mat2}"
     suffix = "_bcast" if bias_shape == "bcast" else ""
     return {"id": f"{op}_{sig}{suffix}", "f": builder, "args_fn": args_fn}
@@ -156,7 +165,8 @@ def _matmul_cases() -> list[dict[str, Any]]:
     (``N`` -> plain ``mm``), constant (``C``), or a jet (``J``). Combos with no
     jet operand are skipped (nothing to differentiate). A jet bias is tested
     both full-shape and row-broadcast 1D -- it is the only operand whose own
-    coefficients must broadcast over the product's rows.
+    coefficients must broadcast over the product's rows. The three bias-free
+    combos are repeated on 3-D operands, where ``@`` lowers to ``bmm``.
     """
     cases = []
     for bias, mat1, mat2 in product("NCJ", "CJ", "CJ"):
@@ -164,6 +174,8 @@ def _matmul_cases() -> list[dict[str, Any]]:
             continue  # no jet operand -> nothing to differentiate
         for shape in ["full", "bcast"] if bias == "J" else ["full"]:
             cases.append(_matmul_case(bias, mat1, mat2, shape))
+    for mat1, mat2 in ["CJ", "JC", "JJ"]:
+        cases.append(_matmul_case("N", mat1, mat2, "full", batched=True))
     return cases
 
 

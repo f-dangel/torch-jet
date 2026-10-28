@@ -1367,3 +1367,19 @@ def test_div_keeps_softmax_float32_accurate(collapsed: bool, device: str):
     oracle = rev_collapsed_jet(f) if collapsed else _rev_jet(f)
     actual = jet(f, (x,), collapsed=collapsed)(*jet_args)
     assert_close(actual, oracle(*jet_args), **tolerances_for("mps"))
+
+
+def test_div_self_is_exact(collapsed: bool, device: str):
+    """The order-1..K coefficients of ``x / x`` are exactly zero.
+
+    The division recurrence yields ``q_1 = (x_1 - x_1) / x_0 = 0`` and so on;
+    composing ``mul(a, pow(b, -1))`` instead left roundoff of 7e-4 (standard)
+    and 3e-2 (collapsed) at ``K = 5`` in float32.
+    """
+    manual_seed(0)
+    x = 0.1 + rand(3, 4, dtype=float32, device=device)
+    K = 5
+    jet_args = make_jet_args((x,), K, collapsed=collapsed)
+    coeffs = jet(lambda x: x / x, (x,), collapsed=collapsed)(*jet_args)
+    for c in coeffs[1:]:
+        assert_close(c, zeros_like(c), atol=1e-6, rtol=0)

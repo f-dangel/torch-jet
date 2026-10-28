@@ -11,8 +11,8 @@ algebraic identity (e.g. ``addmm == add(self, mm(mat1, mat2))``).
 from math import pi, sqrt
 from typing import Callable
 
+from torch import Tensor, contiguous_format, finfo, ones, ops, uint8
 from torch import bool as bool_dtype
-from torch import contiguous_format, finfo, ones, ops, uint8
 
 import jet._rules
 from jet.primitives import (
@@ -526,21 +526,55 @@ def scaled_dot_product_attention(
     return bmm(attn, value)
 
 
-def _sdpa_pair(query, key, value, attn_mask, dropout_p, is_causal, scale) -> tuple:
-    """``(output, None)`` for the fused two-output sdpa ops.
+def _sdpa_fused(
+    query, key, value, attn_mask, dropout_p, is_causal, scale, n_extra: int
+) -> tuple:
+    """``(output, None, ...)`` for the fused sdpa ops with ``n_extra`` extra outputs.
 
-    Only ``output`` is read in the forward trace; the backward-only second output
-    is ``None`` so that any consumer (e.g. a future backward rule for nesting)
-    fails loudly.
+    Only ``output`` is read in the forward trace; the backward-only extra
+    outputs are ``None`` so that any consumer (e.g. a future backward rule for
+    nesting) fails loudly.
     """
     out = scaled_dot_product_attention(
         query, key, value, attn_mask, dropout_p, is_causal, scale
     )
-    return out, None
+    return out, *(n_extra * [None])
 
 
 def _scaled_dot_product_flash_attention_for_cpu(
     query, key, value, dropout_p=0.0, is_causal=False, *, attn_mask=None, scale=None
 ) -> tuple:
     """Adapter for the fused CPU op ``F.scaled_dot_product_attention`` lowers to."""
-    return _sdpa_pair(query, key, value, attn_mask, dropout_p, is_causal, scale)
+    return _sdpa_fused(query, key, value, attn_mask, dropout_p, is_causal, scale, 1)
+
+
+def _scaled_dot_product_efficient_attention(
+    query: object,
+    key: object,
+    value: object,
+    attn_bias: Tensor | None,
+    compute_log_sumexp: bool,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    *,
+    scale: float | None = None,
+) -> tuple:
+    """Adapter for the memory-efficient CUDA op (float32, or any explicit mask).
+
+    ``attn_bias`` is additive: the trace converts a bool mask before the op.
+    """
+    return _sdpa_fused(query, key, value, attn_bias, dropout_p, is_causal, scale, 3)
+
+
+def _scaled_dot_product_flash_attention(
+    query: object,
+    key: object,
+    value: object,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    return_debug_mask: bool = False,
+    *,
+    scale: float | None = None,
+) -> tuple:
+    """Adapter for the flash CUDA op (half precision without an explicit mask)."""
+    return _sdpa_fused(query, key, value, None, dropout_p, is_causal, scale, 8)

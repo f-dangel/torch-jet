@@ -18,6 +18,7 @@ from functools import partial
 from math import pi
 from operator import add, sub
 from typing import Callable, Self
+from warnings import warn
 
 from scipy.special import comb, factorial, stirling2
 from torch import (
@@ -40,7 +41,7 @@ from torch.func import vmap
 from torch.nn.functional import hardtanh
 from torch.utils._pytree import register_pytree_node
 
-from jet.utils import integer_partitions, multiplicity
+from jet.utils import JetSemanticsWarning, integer_partitions, multiplicity
 
 
 class JetTuple(tuple):
@@ -1081,43 +1082,38 @@ def _bn_channel_view(primal: Tensor) -> tuple[int, ...]:
 
 
 def jet_embedding(
-    weight: Tensor | JetTuple, indices: Tensor | JetTuple, *args
+    weight: Tensor | JetTuple, indices: Tensor, padding_idx: int = -1, *args
 ) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.embedding(weight, indices, ...)``.
+    """Taylor-mode arithmetic for ``aten.embedding(weight, indices, padding_idx, ...)``.
 
-    ``weight[indices]`` is linear in ``weight`` once the (integer) ``indices``
-    are fixed, so the ATen op is applied to every coefficient via
-    :func:`_apply_linear`. The row at ``padding_idx`` is a frozen constant
-    (autograd excludes it from the gradient), so the coefficients at positions
-    that look it up are zeroed, matching nested reverse-mode AD; the remaining
-    ATen args only affect the backward and are forwarded unchanged.
+    ``weight[indices]`` is linear in ``weight`` for constant integer ``indices``,
+    so the ATen op is applied coefficient-wise. ``padding_idx``,
+    ``scale_grad_by_freq`` and ``sparse`` only shape autograd's backward and are
+    forwarded unchanged. In particular autograd zeroes the gradient of the
+    ``padding_idx`` row while the jet, like forward-mode ``jvp``, propagates the
+    true derivative through it; a :class:`JetSemanticsWarning` says so.
 
     Args:
         weight: The embedding table and its Taylor coefficients.
         indices: The (constant) integer token indices.
-        *args: ``padding_idx`` (``-1``: none) and the remaining ATen args.
+        padding_idx: Row whose gradient autograd zeroes (``-1``: none).
+        *args: The remaining ATen args (``scale_grad_by_freq``, ``sparse``).
 
     Returns:
         The looked-up rows and their Taylor coefficients.
-
-    Raises:
-        NotImplementedError: If ``indices`` is Taylor-expanded; token indices are
-            integers, so only the weight can carry a jet.
     """
-    if isinstance(indices, JetTuple):
-        raise NotImplementedError(
-            "jet_embedding does not support Taylor-expanded indices; only the "
-            "embedding weight can be a jet (token indices are integers)."
+    if padding_idx >= 0 and isinstance(weight, JetTuple):
+        warn(
+            JetSemanticsWarning(
+                "padding_idx only masks autograd's gradient of that row; jets "
+                "propagate the true derivative through it (like forward-mode jvp). "
+                "Hessian-vector products and Hutchinson trace estimates thus differ "
+                "from reverse-mode autograd when the direction's padding row is "
+                "nonzero or pad positions influence the loss; zero that row to match."
+            ),
+            stacklevel=2,
         )
-    op = ops.aten.embedding.default
-    if not isinstance(weight, JetTuple):
-        return op(weight, indices, *args)
-    out = _apply_linear(weight, lambda c: op(c, indices, *args))
-    padding_idx = args[0] if args else -1
-    if padding_idx < 0:
-        return out
-    keep = (indices != padding_idx).unsqueeze(-1)
-    return JetTuple((out[0], *(c * keep for c in out[1:])), collapsed=out.collapsed)
+    return _deflinear(ops.aten.embedding.default)(weight, indices, padding_idx, *args)
 
 
 def _deflinear(prim: Callable) -> Callable:

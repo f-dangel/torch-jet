@@ -1038,11 +1038,10 @@ def jet_embedding(
 
     ``weight[indices]`` is linear in ``weight`` once the (integer) ``indices``
     are fixed, so the ATen op is applied to every coefficient via
-    :func:`_apply_linear`.
-    The row at ``padding_idx`` is a frozen constant (autograd excludes it from
-    the gradient), so the coefficients at positions that look it up are zeroed,
-    matching nested reverse-mode AD; the remaining ATen args only affect the
-    backward and are forwarded unchanged.
+    :func:`_apply_linear`. The row at ``padding_idx`` is a frozen constant
+    (autograd excludes it from the gradient), so the coefficients at positions
+    that look it up are zeroed, matching nested reverse-mode AD; the remaining
+    ATen args only affect the backward and are forwarded unchanged.
 
     Args:
         weight: The embedding table and its Taylor coefficients.

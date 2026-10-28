@@ -19,6 +19,7 @@ from torch import (
     finfo,
     float16,
     float32,
+    linspace,
     log,
     manual_seed,
     ops,
@@ -1350,3 +1351,21 @@ def test_fused_rms_norm_matches_traced(collapsed: bool, device: str):
         assert_close(got, exp_, **tol)
     want_rstd = ((x[0] ** 2).mean(-1, keepdim=True) + finfo(float32).eps).rsqrt()
     assert_close(rstd[0], want_rstd, **tol)
+
+
+def test_div_self_is_exact(collapsed: bool, device: str):
+    """The order-1..K coefficients of ``x / x`` are exactly zero.
+
+    The division recurrence yields ``q_1 = (x_1 - x_1) / x_0 = 0`` and so on,
+    whereas the composition ``x * x**-1`` (the previous rule) accumulates
+    float32 roundoff.
+    """
+    manual_seed(0)
+    x = linspace(0.5, 1.5, 12, dtype=float32, device=device).reshape(3, 4)
+    K = 5
+    jet_args = make_jet_args((x,), K, collapsed=collapsed)
+    coeffs = jet(lambda x: x / x, (x,), collapsed=collapsed)(*jet_args)
+    for c in coeffs[1:]:
+        assert_close(c, zeros_like(c), atol=0, rtol=0)
+    composed = jet(lambda x: x * x**-1, (x,), collapsed=collapsed)(*jet_args)
+    assert 1e-3 > composed[K].abs().max() > 1e-5

@@ -822,6 +822,47 @@ def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
     return _apply_bilinear(lambda a, b: a * b, self, other)
 
 
+def jet_div(
+    self: Tensor | JetTuple | float | int, other: Tensor | JetTuple | float | int
+) -> Tensor | JetTuple:
+    """Taylor-mode arithmetic for ``aten.div.Tensor(self, other)``.
+
+    Mode-agnostic. A constant divisor is linear in the numerator (coefficient-wise
+    ``c / other``). A jet divisor ``b`` uses the division recurrence: ``q = a / b``
+    solves ``b * q = a``, whose Leibniz expansion gives
+    ``q_k = (a_k - sum_{j=1}^{k} C(k, j) b_j q_{k-j}) / b_0``.
+
+    Args:
+        self: The numerator and its Taylor coefficients, or a constant.
+        other: The divisor and its Taylor coefficients, or a constant.
+
+    Returns:
+        The value and its Taylor coefficients, or a plain constant when both
+        operands are constants.
+    """
+    if not isinstance(other, JetTuple):
+        if not isinstance(self, JetTuple):
+            return self / other
+        return _apply_linear(self, lambda c: c / other)
+    self_is_jet = isinstance(self, JetTuple)
+    if self_is_jet:
+        _jet_order(self, other)  # validates K-consistency, raises on mismatch
+    K, collapsed = len(other) - 1, other.collapsed
+    primal = (self[0] if self_is_jet else self) / other[0]
+    a = _broadcast_coeffs(self, primal) if self_is_jet else [None] * K
+    b = _broadcast_coeffs(other, primal)
+    q = [primal]
+    for k in range(1, K + 1):
+        acc = a[k - 1]
+        for j in range(1, k + 1):
+            term = comb(k, j, exact=True) * b[j - 1] * q[k - j]
+            if k == K and _is_batched(j, K, collapsed):
+                term = term.sum(0)
+            acc = -term if acc is None else acc - term
+        q.append(acc / other[0])
+    return JetTuple(q, collapsed=collapsed)
+
+
 # --- Linear decomposition ---
 
 

@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mode, `dropout_p == 0`) with an adapter for the fused CPU op
   ([PR](https://github.com/f-dangel/torch-jet/pull/223)).
   - An adapter for the fused MPS op
-    ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
+    ([PR](https://github.com/f-dangel/torch-jet/pull/224)).
 - Support `aten.embedding.default` in Taylor mode (both standard and collapsed
   modes); a warning flags `padding_idx`, which only masks autograd's gradient
   while jets propagate the true derivative

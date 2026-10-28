@@ -1368,5 +1368,4 @@ def test_div_self_is_exact(collapsed: bool, device: str):
     for c in coeffs[1:]:
         assert_close(c, zeros_like(c), atol=0, rtol=0)
     composed = jet(lambda x: x * x**-1, (x,), collapsed=collapsed)(*jet_args)
-    assert_close(composed[K], zeros_like(composed[K]), atol=1e-3, rtol=0)
-    assert composed[K].abs().max() > 1e-5
+    assert 1e-3 > composed[K].abs().max() > 1e-5

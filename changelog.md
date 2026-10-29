@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     fused kernels, so views the trace bases on that layout work (e.g.
     `nn.MultiheadAttention` in half precision, and `sdpa(...).transpose(1,
     2).reshape(...)` blocks in float32)
-    ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
+    ([PR](https://github.com/f-dangel/torch-jet/pull/235)).
   - Adapters for the fused CUDA ops (flash and memory-efficient), and
     `aten._safe_softmax.default` for the math fallback (e.g. float64 on CUDA)
     ([PR](https://github.com/f-dangel/torch-jet/pull/228)).

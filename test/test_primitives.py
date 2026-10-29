@@ -12,6 +12,7 @@ from warnings import catch_warnings, filterwarnings
 from pytest import mark, raises, warns
 from torch import (
     addmm,
+    bfloat16,
     cat,
     cos,
     erf,
@@ -36,6 +37,9 @@ from torch import (
     where,
     zeros_like,
 )
+from torch import (
+    dtype as dtype_t,
+)
 from torch.nn.functional import (
     adaptive_avg_pool2d,
     avg_pool2d,
@@ -52,6 +56,7 @@ from torch.nn.functional import (
     max_pool2d,
     mse_loss,
     nll_loss,
+    pad,
     relu6,
     rms_norm,
     scaled_dot_product_attention,
@@ -847,6 +852,26 @@ PRIMITIVE_CASES = [
         }
         for sid, dims in _UNARY_SHAPES.items()
     ),
+    # ---- Constant padding (``F.pad``; a nonzero fill, cropping via negative
+    # padding, and padding two dims) --------------------------------------
+    *(
+        {
+            "id": f"pad_{pid}",
+            "f": _stateless(f),
+            "args_fn": lambda dims=dims: (rand(*dims),),
+        }
+        for pid, f, dims in (
+            ("value", lambda x: pad(x, (1, 2), value=1.5), (2, 3)),
+            ("crop", lambda x: pad(x, (-1, 1)), (2, 3)),
+            ("2d", lambda x: pad(x, (1, 0, 0, 2), value=-1.0), (2, 3, 4)),
+        )
+    ),
+    # ---- mul.Scalar (called directly: ``x * 2.0`` traces to ``mul.Tensor``) --
+    {
+        "id": "mul_scalar",
+        "f": _stateless(lambda x: ops.aten.mul.Scalar(x, 2.0)),
+        "args_fn": lambda: (rand(3, 4),),
+    },
     # ---- Binary sub (non-commutative) ------------------------------------
     {
         "id": "sub_JJ",
@@ -1399,6 +1424,22 @@ def test_softmax_half_to_float(rule: Callable, collapsed: bool, device: str):
     for g, w in zip(got, want):
         assert g.dtype == float32
         assert_close(g, w, rtol=1e-3, atol=1e-3)
+
+
+@mark.parametrize("dtype", [float16, bfloat16], ids=["float16", "bfloat16"])
+def test_where_scalar_keeps_dtype(dtype: dtype_t, collapsed: bool, device: str):
+    """A scalar operand of ``where``/``masked_fill`` does not upcast a half jet."""
+    K = 2
+    mask = tensor([[True, False, True, False]] * 3, device=device)
+    (x,) = make_jet_args((rand(3, 4, device=device, dtype=dtype),), K, collapsed)
+    x = JetTuple(x, collapsed=collapsed)
+
+    for out in (
+        primitives.jet_where(mask, x, 0.5),
+        primitives.jet_where(mask, -float("inf"), x),
+        primitives.jet_masked_fill(x, mask, -float("inf")),
+    ):
+        assert all(c.dtype == dtype for c in out)
 
 
 def test_fused_rms_norm_matches_traced(collapsed: bool, device: str):

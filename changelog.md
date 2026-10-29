@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Support `aten.constant_pad_nd.default` (`F.pad` with `mode="constant"`,
+  including cropping via negative padding) in Taylor mode (both standard and
+  collapsed modes) ([PR](https://github.com/f-dangel/torch-jet/pull/233)).
+- Support `aten.mul.Scalar` in Taylor mode (both standard and collapsed modes),
+  the overload decompositions such as the sdpa math path call
+  ([PR](https://github.com/f-dangel/torch-jet/pull/232)).
 - Support scaled dot-product attention in Taylor mode (both standard and
   collapsed modes): a composition for `F.scaled_dot_product_attention` with
   default arguments (eval mode, `dropout_p == 0`) and an adapter for the fused
@@ -84,6 +90,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     ([PR](https://github.com/f-dangel/torch-jet/pull/209)).
   - ConvNeXt-Tiny in the end-to-end tests, completing the list above
     ([PR](https://github.com/f-dangel/torch-jet/pull/212)).
+
+### Fixed/Removed
+
+- `aten.where.self` / `aten.masked_fill` with a Python scalar operand no longer
+  upcast a half-precision jet to float32 (e.g. the causal mask of
+  `scaled_dot_product_attention` in bfloat16)
+  ([PR](https://github.com/f-dangel/torch-jet/pull/234)).
 
 ### Internal
 

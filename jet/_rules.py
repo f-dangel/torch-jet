@@ -70,6 +70,9 @@ RULES: dict = {
     ops.aten.add.Scalar: _defshared(primitives.jet_add),
     ops.aten.sub.Tensor: _defshared(primitives.jet_sub),
     ops.aten.mul.Tensor: _defshared(primitives.jet_mul),
+    # ``x * 2.0`` traces to ``mul.Tensor``; decompositions (e.g. the sdpa math
+    # path's ``q * sqrt(scale)``) call the scalar overload directly.
+    ops.aten.mul.Scalar: _defshared(primitives.jet_mul),
     ops.aten.mm.default: _defshared(primitives.jet_mm),
     # Batched matmul: the same bilinear rule (``matmul`` handles the batch dims).
     ops.aten.bmm.default: _defshared(primitives.jet_mm),
@@ -80,6 +83,8 @@ RULES: dict = {
     ops.aten.where.self: _defshared(primitives.jet_where),
     ops.aten.masked_fill.Scalar: _defshared(primitives.jet_masked_fill),
     ops.aten.masked_fill.Tensor: _defshared(primitives.jet_masked_fill),
+    # ``F.pad(mode="constant")``: affine (the fill value only pads the primal).
+    ops.aten.constant_pad_nd.default: _defshared(primitives.jet_constant_pad_nd),
     ops.aten.max_pool2d_with_indices.default: _defshared(
         primitives.jet_max_pool2d_with_indices
     ),

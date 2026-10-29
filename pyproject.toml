@@ -65,6 +65,7 @@ test = [
     "pytest-cov",
     "pytest-xdist",
     "torchvision",
+    "transformers", # tiny GPT-2 / BERT for the end-to-end model tests
 ]
 # Dependencies needed for linting (semicolon/line-separated)
 lint = [

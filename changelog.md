@@ -109,6 +109,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- End-to-end model tests on tiny Hugging Face transformers (GPT-2 with and
+  without the language model head, BERT; `sdpa` and `eager` attention), built
+  from configs with random weights; `transformers` joins the `test` extra
+  ([PR](https://github.com/f-dangel/torch-jet/pull/239)).
 - End-to-end model tests for `nn.TransformerEncoder` (post-norm, pre-norm,
   GELU) and torchvision's `vit_b_16`
   ([PR](https://github.com/f-dangel/torch-jet/pull/231)).

@@ -1234,7 +1234,8 @@ PRIMITIVE_CASES = [
     },
     # Transformer views: ``x[0]``/``x[:, 1]`` -> ``select.int``, ``x[1:3]``/
     # ``x[..., ::2]`` -> ``slice.Tensor``, ``x[idx]``/``x[:, idx]`` -> ``index.Tensor``,
-    # ``.to(dtype)`` -> ``_to_copy`` (a same-dtype ``.to``, as on MPS, is a no-op).
+    # ``.to(dtype)`` -> ``_to_copy`` (a same-dtype ``.to``, as on MPS, is a no-op),
+    # ``x[:, 0:]`` -> ``alias`` (a full slice behind a leading ``:``).
     *(
         {"id": sid, "f": _stateless(fn), "args_fn": lambda: (rand(3, 4),)}
         for sid, fn in (
@@ -1243,6 +1244,7 @@ PRIMITIVE_CASES = [
             ("slice_rows", lambda x: x[1:3]),
             ("slice_step", lambda x: x[..., ::2]),
             ("to_copy_f32", lambda x: x.to(float32)),
+            ("alias", lambda x: x[:, 0:]),
         )
     ),
     _index_case("index_rows", lambda idx: idx),

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Support `aten.alias.default` (`x[:, 0:]`, the no-op view Hugging Face's
+  language model heads use to keep all logits) in Taylor mode (both standard
+  and collapsed modes) ([PR](https://github.com/f-dangel/torch-jet/pull/236)).
 - Support `aten.constant_pad_nd.default` (`F.pad` with `mode="constant"`,
   including cropping via negative padding) in Taylor mode (both standard and
   collapsed modes) ([PR](https://github.com/f-dangel/torch-jet/pull/233)).

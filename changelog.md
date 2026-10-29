@@ -91,6 +91,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - ConvNeXt-Tiny in the end-to-end tests, completing the list above
     ([PR](https://github.com/f-dangel/torch-jet/pull/212)).
 
+### Fixed/Removed
+
+- `aten.where.self` / `aten.masked_fill` with a Python scalar operand no longer
+  upcast a half-precision jet to float32 (e.g. the causal mask of
+  `scaled_dot_product_attention` in bfloat16)
+  ([PR](https://github.com/f-dangel/torch-jet/pull/234)).
+
 ### Internal
 
 - The test oracle's substitutes also reach calls made inside PyTorch functions

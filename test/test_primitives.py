@@ -12,6 +12,7 @@ from warnings import catch_warnings, filterwarnings
 from pytest import mark, raises, warns
 from torch import (
     addmm,
+    bfloat16,
     cat,
     cos,
     erf,
@@ -35,6 +36,9 @@ from torch import (
     tensor,
     where,
     zeros_like,
+)
+from torch import (
+    dtype as dtype_t,
 )
 from torch.nn.functional import (
     adaptive_avg_pool2d,
@@ -1420,6 +1424,22 @@ def test_softmax_half_to_float(rule: Callable, collapsed: bool, device: str):
     for g, w in zip(got, want):
         assert g.dtype == float32
         assert_close(g, w, rtol=1e-3, atol=1e-3)
+
+
+@mark.parametrize("dtype", [float16, bfloat16], ids=["float16", "bfloat16"])
+def test_where_scalar_keeps_dtype(dtype: dtype_t, collapsed: bool, device: str):
+    """A scalar operand of ``where``/``masked_fill`` does not upcast a half jet."""
+    K = 2
+    mask = tensor([[True, False, True, False]] * 3, device=device)
+    (x,) = make_jet_args((rand(3, 4, device=device, dtype=dtype),), K, collapsed)
+    x = JetTuple(x, collapsed=collapsed)
+
+    for out in (
+        primitives.jet_where(mask, x, 0.5),
+        primitives.jet_where(mask, -float("inf"), x),
+        primitives.jet_masked_fill(x, mask, -float("inf")),
+    ):
+        assert all(c.dtype == dtype for c in out)
 
 
 def test_fused_rms_norm_matches_traced(collapsed: bool, device: str):

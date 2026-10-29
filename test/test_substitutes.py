@@ -126,9 +126,10 @@ def test_scaled_dot_product_attention_double_backward(device: str):
 def test_substitutes_reach_nested_torch_functions(device: str):
     """The substitutes apply inside PyTorch's Python composites, too.
 
-    ``nn.MultiheadAttention`` calls ``scaled_dot_product_attention`` from
-    ``F.multi_head_attention_forward``, which runs with the mode popped; only
-    the rebound ``functional`` attribute makes the block twice differentiable.
+    ``nn.MultiheadAttention`` calls ``F.multi_head_attention_forward``, which
+    calls ``scaled_dot_product_attention``. The mode does not intercept that
+    inner call; only the substitute bound on ``torch.nn.functional`` makes the
+    block twice differentiable.
     """
     manual_seed(0)
     kw = device_kw(device)

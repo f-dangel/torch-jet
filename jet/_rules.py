@@ -73,6 +73,9 @@ RULES: dict = {
     ops.aten.mm.default: _defshared(primitives.jet_mm),
     # Batched matmul: the same bilinear rule (``matmul`` handles the batch dims).
     ops.aten.bmm.default: _defshared(primitives.jet_mm),
+    # Not produced by tracing (``matmul`` lowers to ``mm``/``bmm``); compositions
+    # call it on operands with leading batch dims, where native ``bmm`` fails.
+    ops.aten.matmul.default: _defshared(primitives.jet_mm),
     ops.aten.cat.default: _defshared(primitives.jet_cat),
     ops.aten.where.self: _defshared(primitives.jet_where),
     ops.aten.masked_fill.Scalar: _defshared(primitives.jet_masked_fill),

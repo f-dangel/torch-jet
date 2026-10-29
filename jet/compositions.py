@@ -30,6 +30,7 @@ from jet.primitives import (
     _apply_bilinear,
     _apply_linear,
     _bn_channel_view,
+    _has_jet_arg,
 )
 
 
@@ -62,8 +63,18 @@ def _rule(op: Callable, collapsed: bool) -> Callable:
     ``jet._rules`` imports this module to assemble ``RULES``, so the registry
     is reached through the module (``jet._rules.RULES``) and read at call time;
     binding the ``RULES`` name at import time would be circular.
+
+    Falls through to the native op when no argument is a jet, like the
+    interpreter, so compositions may feed all-constant intermediates to
+    sub-rules.
     """
-    return jet._rules.RULES[op][collapsed]
+
+    def dispatch(*args: object, **kwargs: object) -> object:
+        if _has_jet_arg((*args, *kwargs.values())):
+            return jet._rules.RULES[op][collapsed](*args, **kwargs)
+        return op(*args, **kwargs)
+
+    return dispatch
 
 
 def addmm(self: object, mat1: object, mat2: object) -> JetTuple:
@@ -491,9 +502,9 @@ def scaled_dot_product_attention(
     """Taylor-mode arithmetic for ``aten.scaled_dot_product_attention`` (eval mode).
 
     ``softmax(scale * query @ key^T + mask, -1) @ value`` (``scale = 1/sqrt(E)``
-    by default), composed from the ``mul`` / ``transpose`` / ``bmm`` /
-    ``masked_fill`` / ``add`` / ``_softmax`` rules (``bmm`` matmuls over any
-    leading batch dims). A causal or bool ``attn_mask`` (``True`` = attend)
+    by default), composed from the ``mul`` / ``transpose`` / ``matmul`` /
+    ``masked_fill`` / ``add`` / ``_softmax`` rules (``matmul`` broadcasts over
+    the leading batch dims). A causal or bool ``attn_mask`` (``True`` = attend)
     fills the blocked scores with ``-inf``, a float one is added. The
     ``_softmax`` rule's max-shift keeps the whole jet stable; a fully masked
     row gives ``NaN`` like the ATen math path. Any of ``query`` ``(..., L, E)``
@@ -514,11 +525,11 @@ def scaled_dot_product_attention(
         )
     collapsed = _collapsed_of(query, key, value)
     mul = _rule(ops.aten.mul.Tensor, collapsed)
-    bmm = _rule(ops.aten.bmm.default, collapsed)
+    matmul = _rule(ops.aten.matmul.default, collapsed)
     transpose = _rule(ops.aten.transpose.int, collapsed)
     q, k = (x[0] if isinstance(x, JetTuple) else x for x in (query, key))
     scale = q.shape[-1] ** -0.5 if scale is None else scale
-    scores = bmm(mul(query, scale), transpose(key, -2, -1))
+    scores = matmul(mul(query, scale), transpose(key, -2, -1))
     if is_causal:
         attn_mask = ones(
             q.shape[-2], k.shape[-2], dtype=bool_dtype, device=q.device
@@ -532,7 +543,7 @@ def scaled_dot_product_attention(
     attn = _rule(ops.aten._softmax.default, collapsed)(
         scores, dim=-1, half_to_float=False
     )
-    return bmm(attn, value)
+    return matmul(attn, value)
 
 
 def _sdpa_pair(query, key, value, attn_mask, dropout_p, is_causal, scale) -> tuple:

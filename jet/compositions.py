@@ -22,6 +22,7 @@ from torch import (
     uint8,
 )
 from torch import bool as bool_dtype
+from torch import dtype as torch_dtype
 
 import jet._rules
 from jet.primitives import (
@@ -275,6 +276,29 @@ def softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTuple:
     shift = self[0].amax(dim, keepdim=True)
     exp_jet = exp(sub(self, shift))
     return div(exp_jet, sum(exp_jet, dim, keepdim=True))
+
+
+def safe_softmax(
+    self: JetTuple, dim: int, dtype: torch_dtype | None = None
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten._safe_softmax(self, dim, dtype)``.
+
+    The ``softmax`` of sdpa's math fallback (e.g. float64 on CUDA): a fully
+    masked row (all ``-inf``) gives ``0`` instead of ``NaN``, so every
+    coefficient of such a row is zeroed.
+
+    Args:
+        self: The logits and their Taylor coefficients.
+        dim: The dimension along which to normalize.
+        dtype: An optional dtype to cast the input to first.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    if dtype is not None:
+        self = _apply_linear(self, lambda c: c.to(dtype))
+    masked = self[0].isneginf().all(dim, keepdim=True)
+    return _apply_linear(softmax(self, dim), lambda c: c.masked_fill(masked, 0.0))
 
 
 def gelu(self: JetTuple, approximate: str = "none") -> JetTuple:
@@ -546,17 +570,19 @@ def scaled_dot_product_attention(
     return matmul(attn, value)
 
 
-def _sdpa_pair(query, key, value, attn_mask, dropout_p, is_causal, scale) -> tuple:
-    """``(output, None)`` for the fused two-output sdpa ops.
+def _sdpa_fused(
+    query, key, value, attn_mask, dropout_p, is_causal, scale, n_extra: int
+) -> tuple:
+    """``(output, None, ...)`` for the fused sdpa ops with ``n_extra`` extra outputs.
 
-    Only ``output`` is read in the forward trace; the backward-only second output
-    is ``None`` so that any consumer (e.g. a future backward rule for nesting)
-    fails loudly.
+    Only ``output`` is read in the forward trace; the backward-only extra
+    outputs are ``None`` so that any consumer (e.g. a future backward rule for
+    nesting) fails loudly.
     """
     out = scaled_dot_product_attention(
         query, key, value, attn_mask, dropout_p, is_causal, scale
     )
-    return out, None
+    return out, *(n_extra * [None])
 
 
 def _laid_out_like(t: Tensor, ref: Tensor) -> Tensor:
@@ -583,9 +609,41 @@ def _scaled_dot_product_flash_attention_for_cpu(
     trace drops. The composition's output is laid out the same way so that
     ``view`` succeeds on the primal and every coefficient.
     """
-    out, lse = _sdpa_pair(query, key, value, attn_mask, dropout_p, is_causal, scale)
+    out, lse = _sdpa_fused(query, key, value, attn_mask, dropout_p, is_causal, scale, 1)
     q = query[0] if isinstance(query, JetTuple) else query
     return JetTuple((_laid_out_like(c, q) for c in out), collapsed=out.collapsed), lse
+
+
+def _scaled_dot_product_efficient_attention(
+    query: object,
+    key: object,
+    value: object,
+    attn_bias: Tensor | None,
+    compute_log_sumexp: bool,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    *,
+    scale: float | None = None,
+) -> tuple:
+    """Adapter for the memory-efficient CUDA op (float32, or any explicit mask).
+
+    ``attn_bias`` is additive: the trace converts a bool mask before the op.
+    """
+    return _sdpa_fused(query, key, value, attn_bias, dropout_p, is_causal, scale, 3)
+
+
+def _scaled_dot_product_flash_attention(
+    query: object,
+    key: object,
+    value: object,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    return_debug_mask: bool = False,
+    *,
+    scale: float | None = None,
+) -> tuple:
+    """Adapter for the flash CUDA op (half precision without an explicit mask)."""
+    return _sdpa_fused(query, key, value, None, dropout_p, is_causal, scale, 8)
 
 
 def _scaled_dot_product_attention_math_for_mps(
@@ -610,4 +668,4 @@ def _scaled_dot_product_attention_math_for_mps(
             "Taylor-mode scaled_dot_product_attention supports neither "
             "dropout_mask nor enable_gqa."
         )
-    return _sdpa_pair(query, key, value, attn_mask, dropout_p, is_causal, scale)
+    return _sdpa_fused(query, key, value, attn_mask, dropout_p, is_causal, scale, 1)

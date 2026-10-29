@@ -106,6 +106,7 @@ RULES: dict = {
     ops.aten.mse_loss.default: _defshared(compositions.mse_loss),
     ops.aten._log_softmax.default: _defshared(compositions.log_softmax),
     ops.aten._softmax.default: _defshared(compositions.softmax),
+    ops.aten._safe_softmax.default: _defshared(compositions.safe_softmax),
     ops.aten.gelu.default: _defshared(compositions.gelu),
     ops.aten.native_batch_norm.default: _defshared(compositions.native_batch_norm),
     ops.aten.native_layer_norm.default: _defshared(compositions.native_layer_norm),
@@ -114,9 +115,16 @@ RULES: dict = {
     # CUDA lowers eval-mode batch norm to the cuDNN overload (same map, one
     # extra output).
     ops.aten.cudnn_batch_norm.default: _defshared(compositions.cudnn_batch_norm),
-    # ``F.scaled_dot_product_attention`` lowers to a per-device fused op (CPU, MPS here).
+    # ``F.scaled_dot_product_attention`` lowers to a per-device fused op (CPU,
+    # MPS, CUDA here).
     ops.aten._scaled_dot_product_flash_attention_for_cpu.default: _defshared(
         compositions._scaled_dot_product_flash_attention_for_cpu
+    ),
+    ops.aten._scaled_dot_product_efficient_attention.default: _defshared(
+        compositions._scaled_dot_product_efficient_attention
+    ),
+    ops.aten._scaled_dot_product_flash_attention.default: _defshared(
+        compositions._scaled_dot_product_flash_attention
     ),
     ops.aten._scaled_dot_product_attention_math_for_mps.default: _defshared(
         compositions._scaled_dot_product_attention_math_for_mps

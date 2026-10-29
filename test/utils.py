@@ -215,6 +215,8 @@ def setup_case(
     - ``"f"``: a builder ``device -> Callable``.
     - ``"args_fn"``: a zero-arg closure returning the positional-args
       pytree (CPU tensors).
+    - ``"tolerances"`` (optional): ``assert_close`` tolerances overriding the
+      float64 defaults (see :func:`assert_jet_matches_oracle`).
 
     Returns:
         Tuple ``(f, args)`` where ``args`` is the migrated positional
@@ -339,8 +341,12 @@ def assert_jet_matches_oracle(
     plain = f(*mock_args)
     oracle = rev_collapsed_jet(f) if collapsed else _rev_jet(f)
     actual = jet(f, mock_args, collapsed=collapsed)(*jet_args)
+    # A case may relax the float64 tolerances (``"tolerances"``), e.g. a model
+    # that computes parts in float32 whatever its dtype; a float32 device's
+    # looser tolerances still win.
+    tol = {**config.get("tolerances", {}), **tolerances_for(device)}
     with DifferentiableSubstitutes():
         # The substitutes must not change the function the oracle differentiates.
-        assert_close(f(*mock_args), plain, **tolerances_for(device))
+        assert_close(f(*mock_args), plain, **tol)
         expected = oracle(*jet_args)
-    assert_close(actual, expected, **tolerances_for(device))
+    assert_close(actual, expected, **tol)

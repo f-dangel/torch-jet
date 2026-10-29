@@ -1,8 +1,9 @@
 """End-to-end Taylor-mode tests on tiny Hugging Face transformers (eval mode).
 
-GPT-2 (decoder, causal attention, with and without the language model head)
-and BERT (encoder), built from small configs with random weights, so nothing
-is downloaded. The models take the sequence of input embeddings as the
+GPT-2 (decoder, causal attention, with and without the language model head),
+BERT (encoder), and LLaMA (decoder with rotary position embeddings and
+grouped-query attention), built from small configs with random weights, so
+nothing is downloaded. The models take the sequence of input embeddings as the
 differentiated input. ``transformers`` is a ``test`` extra like torchvision;
 a missing install fails this module rather than skipping it.
 """
@@ -18,6 +19,8 @@ from transformers import (
     GPT2Config,
     GPT2LMHeadModel,
     GPT2Model,
+    LlamaConfig,
+    LlamaModel,
     PreTrainedModel,
 )
 
@@ -67,6 +70,21 @@ def _bert(**kw: Any) -> Callable:
     return lambda: _FromEmbeddings(BertModel(config))
 
 
+def _llama(**kw: Any) -> Callable:
+    """Two-layer LLaMA (four query heads over two key/value heads, feed-forward width 32)."""
+    config = LlamaConfig(
+        num_hidden_layers=2,
+        hidden_size=D,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        intermediate_size=32,
+        vocab_size=50,
+        max_position_embeddings=8,
+        **kw,
+    )
+    return lambda: _FromEmbeddings(LlamaModel(config))
+
+
 #: Models that trace end to end, with the shape of one input (no batch dim).
 #: The default attention implementation is ``sdpa`` (the fused op per device);
 #: ``eager`` spells attention out (``softmax``, ``where`` for the causal mask).
@@ -76,10 +94,19 @@ MODELS: dict[str, tuple[Callable, tuple[int, ...]]] = {
     "gpt2_lm_head": (_gpt2(head=True), (5, D)),
     "bert": (_bert(), (5, D)),
     "bert_eager": (_bert(attn_implementation="eager"), (5, D)),
+    "llama": (_llama(), (5, D)),
+    "llama_eager": (_llama(attn_implementation="eager"), (5, D)),
+}
+
+#: LLaMA runs its RMSNorm and (eager) softmax in float32 whatever the model
+#: dtype, so the jet and the oracle agree only to float32 precision.
+TOLERANCES: dict[str, dict[str, float]] = {
+    name: {"rtol": 1e-5, "atol": 1e-6} for name in ("llama", "llama_eager")
 }
 
 HUGGINGFACE_CASES = [
-    _model_case(name, ctor, shape) for name, (ctor, shape) in MODELS.items()
+    {**_model_case(name, ctor, shape), "tolerances": TOLERANCES.get(name, {})}
+    for name, (ctor, shape) in MODELS.items()
 ]
 
 

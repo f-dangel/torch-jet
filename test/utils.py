@@ -100,9 +100,12 @@ class DifferentiableSubstitutes(TorchFunctionMode):
 
     Intercepts the Python-level call (``F.max_pool2d``, which ``nn.MaxPool2d``
     also goes through), so the substitute's ops are what autograd records.
-    PyTorch's own Python composites (``F.multi_head_attention_forward``) run
-    with the mode popped, so it also rebinds each op's ``torch.nn.functional``
-    attribute, which such composites look up at call time, while active.
+    While the mode handles one call, PyTorch switches it off, so calls made
+    inside that call are not intercepted. ``F.multi_head_attention_forward``
+    is such a call: it runs with the mode off and would reach the original
+    ``scaled_dot_product_attention``. The mode therefore also points the names
+    on ``torch.nn.functional`` at the substitutes while it is active, so inner
+    calls find them by name.
     """
 
     SUBSTITUTES: dict[Callable, Callable] = {

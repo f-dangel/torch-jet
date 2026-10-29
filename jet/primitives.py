@@ -1006,7 +1006,10 @@ def jet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
     def part(t: object, k: int, batched: bool) -> Tensor:
         if isinstance(t, JetTuple):
             return t[k]
-        if k == 0:
+        if k == 0 or (t.dim() == 1 and t.numel() == 0):
+            # ``cat`` skips an empty 1-D operand whatever the others' rank
+            # (e.g. a Hugging Face KV cache's initial ``tensor([])``), so it
+            # stays as is in every coefficient.
             return t
         return t.new_zeros(R, *t.shape) if batched else zeros_like(t)
 

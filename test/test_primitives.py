@@ -311,6 +311,13 @@ def _cat_jet_const(device):
     return lambda x: cat([x, const], dim=1)
 
 
+def _cat_jet_empty_const(device):
+    # Concatenate an empty 1-D constant with a jet, as a Hugging Face KV cache
+    # does on the first forward (its ``tensor([])`` meets the first keys).
+    empty = tensor([], **device_kw(device))
+    return lambda x: cat([empty, x], dim=-2)
+
+
 def _stack_jet_const(device):
     # Stack a jet with a constant tensor of equal shape (new leading axis). Seed
     # first so the captured constant is deterministic (mirrors ``_cat_jet_const``).
@@ -1001,6 +1008,13 @@ PRIMITIVE_CASES = [
         "id": "cat_jet_const",
         "f": _cat_jet_const,
         "args_fn": lambda: (rand(1, 4, 6, 6),),
+    },
+    # ``cat`` skips an empty 1-D operand whatever the jet's rank; the collapsed
+    # zero padding must not turn it into a 2-D ``(R, 0)`` tensor.
+    {
+        "id": "cat_jet_empty_const",
+        "f": _cat_jet_empty_const,
+        "args_fn": lambda: (rand(2, 3, 4),),
     },
     # ---- Split (linear; a tuple of jets consumed via ``getitem``) ---------
     # Uneven split (``4 = 3 + 1``) along a negative dim, both pieces returned.

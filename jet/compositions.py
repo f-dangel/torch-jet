@@ -8,10 +8,19 @@ share one body. The primitives a composition wires together (``add``, ``mm``,
 algebraic identity (e.g. ``addmm == add(self, mm(mat1, mat2))``).
 """
 
-from math import pi, sqrt
+from math import pi, prod, sqrt
 from typing import Callable
 
-from torch import Tensor, contiguous_format, finfo, ones, ops, uint8
+from torch import (
+    Tensor,
+    contiguous_format,
+    empty_like,
+    empty_strided,
+    finfo,
+    ones,
+    ops,
+    uint8,
+)
 from torch import bool as bool_dtype
 
 import jet._rules
@@ -550,11 +559,33 @@ def _sdpa_pair(query, key, value, attn_mask, dropout_p, is_causal, scale) -> tup
     return out, None
 
 
+def _laid_out_like(t: Tensor, ref: Tensor) -> Tensor:
+    """Copy ``t`` into the memory layout ``empty_like(ref)`` has.
+
+    Leading dims of ``t`` beyond ``ref``'s (collapsed mode's ``R``) stay
+    outermost.
+    """
+    lead = t.shape[: t.dim() - ref.dim()]
+    strides = [ref.numel() * prod(lead[i + 1 :]) for i in range(len(lead))]
+    strides += empty_like(ref).stride()
+    return empty_strided(t.shape, strides, dtype=t.dtype, device=t.device).copy_(t)
+
+
 def _scaled_dot_product_flash_attention_for_cpu(
     query, key, value, dropout_p=0.0, is_causal=False, *, attn_mask=None, scale=None
 ) -> tuple:
-    """Adapter for the fused CPU op ``F.scaled_dot_product_attention`` lowers to."""
-    return _sdpa_pair(query, key, value, attn_mask, dropout_p, is_causal, scale)
+    """Adapter for the fused CPU op ``F.scaled_dot_product_attention`` lowers to.
+
+    The kernel (and its meta) allocates the output with ``empty_like(query)``,
+    and the fake-mode trace bakes that layout into later views: with
+    ``nn.MultiheadAttention``'s ``(L, B, H, E)``-ordered query, its
+    ``.contiguous()`` before the ``(L * B, H * E)`` view is a no-op that the
+    trace drops. The composition's output is laid out the same way so that
+    ``view`` succeeds on the primal and every coefficient.
+    """
+    out, lse = _sdpa_pair(query, key, value, attn_mask, dropout_p, is_causal, scale)
+    q = query[0] if isinstance(query, JetTuple) else query
+    return JetTuple((_laid_out_like(c, q) for c in out), collapsed=out.collapsed), lse
 
 
 def _scaled_dot_product_attention_math_for_mps(

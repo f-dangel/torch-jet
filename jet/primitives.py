@@ -1064,6 +1064,30 @@ def jet_masked_fill(
     return jet_where(mask, value, self)
 
 
+def jet_constant_pad_nd(
+    self: Tensor | JetTuple, pad: list[int], value: float = 0.0
+) -> Tensor | JetTuple:
+    """Taylor-mode arithmetic for ``aten.constant_pad_nd(self, pad, value)``.
+
+    Affine in ``self``: the primal is padded with ``value``, every coefficient
+    with ``0`` (the padding is constant, so its derivatives vanish). Negative
+    entries of ``pad`` crop. Mode-agnostic via :func:`_apply_linear_coeffs`.
+
+    Args:
+        self: The tensor to pad and its Taylor coefficients, or a constant.
+        pad: Padding per side, from the last dim backwards (``F.pad`` order).
+        value: The constant fill value of the primal.
+
+    Returns:
+        The padded value and its Taylor coefficients.
+    """
+    prim = ops.aten.constant_pad_nd.default
+    if not isinstance(self, JetTuple):
+        return prim(self, pad, value)
+    coeffs = _apply_linear_coeffs(self, lambda c: prim(c, pad, 0.0))
+    return JetTuple((prim(self[0], pad, value), *coeffs), collapsed=self.collapsed)
+
+
 # --- Loss functions ---
 
 

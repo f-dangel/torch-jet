@@ -52,6 +52,7 @@ from torch.nn.functional import (
     max_pool2d,
     mse_loss,
     nll_loss,
+    pad,
     relu6,
     rms_norm,
     scaled_dot_product_attention,
@@ -846,6 +847,20 @@ PRIMITIVE_CASES = [
             "args_fn": lambda dims=dims: (rand(*dims),),
         }
         for sid, dims in _UNARY_SHAPES.items()
+    ),
+    # ---- Constant padding (``F.pad``; a nonzero fill, cropping via negative
+    # padding, and padding two dims) --------------------------------------
+    *(
+        {
+            "id": f"pad_{pid}",
+            "f": _stateless(f),
+            "args_fn": lambda dims=dims: (rand(*dims),),
+        }
+        for pid, f, dims in (
+            ("value", lambda x: pad(x, (1, 2), value=1.5), (2, 3)),
+            ("crop", lambda x: pad(x, (-1, 1)), (2, 3)),
+            ("2d", lambda x: pad(x, (1, 0, 0, 2), value=-1.0), (2, 3, 4)),
+        )
     ),
     # ---- mul.Scalar (called directly: ``x * 2.0`` traces to ``mul.Tensor``) --
     {

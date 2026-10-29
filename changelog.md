@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Adapters for the fused CUDA ops (flash and memory-efficient), and
     `aten._safe_softmax.default` for the math fallback (e.g. float64 on CUDA)
     ([PR](https://github.com/f-dangel/torch-jet/pull/228)).
+  - The CPU adapter returns its output in the same memory layout as the
+    fused kernel, so `nn.MultiheadAttention` works
+    ([PR](https://github.com/f-dangel/torch-jet/pull/229)).
+  - Composed sub-rules fall through to the native op on constant inputs, so
+    attention with only a jet `value` works
+    ([PR](https://github.com/f-dangel/torch-jet/pull/227)).
   - An adapter for the fused MPS op
     ([PR](https://github.com/f-dangel/torch-jet/pull/224)).
   - `attn_mask`, `is_causal`, and `scale`

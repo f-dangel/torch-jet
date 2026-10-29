@@ -680,6 +680,19 @@ def _sdpa_case(
     }
 
 
+def _mha_sdpa(x):
+    """``nn.MultiheadAttention``'s attention block, ``(L, B, H*E)`` in, ``(L*B, H*E)`` out.
+
+    The fused CPU kernel lays its output out like its ``(L, B, H, E)``-ordered
+    query, so the ``.contiguous()`` is a no-op the fake-mode trace drops; the
+    following ``view`` then relies on the rule reproducing that layout.
+    """
+    L, B, HE = x.shape
+    q = x.view(L, B * 2, HE // 2).transpose(0, 1).view(B, 2, L, HE // 2)
+    out = scaled_dot_product_attention(q, q, q)
+    return out.permute(2, 0, 1, 3).contiguous().view(L * B, HE)
+
+
 PRIMITIVE_CASES = [
     # ---- Unary pointwise (cross-product over shapes) ---------------------
     *(
@@ -1027,12 +1040,13 @@ PRIMITIVE_CASES = [
     _embedding_case("1d", (5,)),
     _embedding_case("2d", (2, 3)),
     _embedding_case("padding_idx", (2, 3), padding_idx=0),
-    # ``scaled_dot_product_attention`` composes scaled ``bmm``s, masking, and
+    # ``scaled_dot_product_attention`` composes scaled ``matmul``s, masking, and
     # ``softmax``; every pattern of jet (J) / constant (C) query, key, value
     # meets every option.
     *(
         _sdpa_case(f"sdpa_{jets}{oid}", jets=jets, **kw)
-        for jets in ("JJJ", "JCC", "CJJ", "CJC", "JCJ", "JJC")
+        # ``CCJ``: only ``value`` is a jet, so the attention weights are constants
+        for jets in ("JJJ", "JCC", "CCJ", "CJJ", "CJC", "JCJ", "JJC")
         for oid, kw in (
             ("", {}),
             ("_causal", {"is_causal": True}),
@@ -1041,6 +1055,11 @@ PRIMITIVE_CASES = [
             ("_scale", {"scale": 0.3}),
         )
     ),
+    {
+        "id": "sdpa_mha_layout",
+        "f": _stateless(_mha_sdpa),
+        "args_fn": lambda: (rand(3, 2, 8),),
+    },
     # ---- Loss functions --------------------------------------------------
     # ``nll_loss`` is linear in the (log-prob) input given a frozen integer
     # target, so the same op applies to every coefficient. It returns

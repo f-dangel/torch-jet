@@ -1002,6 +1002,13 @@ PRIMITIVE_CASES = [
         "f": _cat_jet_const,
         "args_fn": lambda: (rand(1, 4, 6, 6),),
     },
+    # ``cat`` skips a 1-D empty operand of any other rank (legacy behaviour);
+    # transformers' empty key/value cache is one, ``cat([tensor([]), key], -2)``.
+    {
+        "id": "cat_jet_empty_const",
+        "f": _stateless(lambda x: cat([tensor([]).to(x), x], dim=-2)),
+        "args_fn": lambda: (rand(2, 3, 4),),
+    },
     # ---- Split (linear; a tuple of jets consumed via ``getitem``) ---------
     # Uneven split (``4 = 3 + 1``) along a negative dim, both pieces returned.
     {

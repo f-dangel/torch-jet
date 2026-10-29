@@ -69,6 +69,23 @@ register_pytree_node(
 )
 
 
+def _has_jet_arg(args: Sequence[object]) -> bool:
+    """Return whether any arg is a ``JetTuple``, at top level or inside a ``list``.
+
+    The interpreter and the composition rules share this test to decide whether
+    an op gets its jet rule or runs natively. Jets may appear at the top level or
+    nested one level inside a ``list`` arg (e.g. ``aten.cat([j1, j2], dim)``).
+    Only ``list`` args are scanned, not ``tuple``: multi-output ops (e.g.
+    ``max_pool2d_with_indices``) return a ``tuple`` whose element 0 is a jet,
+    and the following ``getitem`` must fall through to the default op.
+    """
+    return any(
+        isinstance(a, JetTuple)
+        or (isinstance(a, list) and any(isinstance(e, JetTuple) for e in a))
+        for a in args
+    )
+
+
 def _jet_order(*args: Tensor) -> int:
     """Infer the Taylor-expansion order ``K`` from the ``JetTuple`` positional args.
 

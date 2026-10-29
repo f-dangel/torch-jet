@@ -12,10 +12,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support `aten.constant_pad_nd.default` (`F.pad` with `mode="constant"`,
   including cropping via negative padding) in Taylor mode (both standard and
   collapsed modes) ([PR](https://github.com/f-dangel/torch-jet/pull/233)).
+- Support `aten.mul.Scalar` in Taylor mode (both standard and collapsed modes),
+  the overload decompositions such as the sdpa math path call
+  ([PR](https://github.com/f-dangel/torch-jet/pull/232)).
 - Support scaled dot-product attention in Taylor mode (both standard and
   collapsed modes): a composition for `F.scaled_dot_product_attention` with
   default arguments (eval mode, `dropout_p == 0`) and an adapter for the fused
   CPU op ([PR](https://github.com/f-dangel/torch-jet/pull/226)).
+  - The CPU adapter returns its output in the same memory layout as the
+    fused kernel, so `nn.MultiheadAttention` works
+    ([PR](https://github.com/f-dangel/torch-jet/pull/229)).
+  - Composed sub-rules fall through to the native op on constant inputs, so
+    attention with only a jet `value` works
+    ([PR](https://github.com/f-dangel/torch-jet/pull/227)).
   - An adapter for the fused MPS op
     ([PR](https://github.com/f-dangel/torch-jet/pull/224)).
   - `attn_mask`, `is_causal`, and `scale`
@@ -84,6 +93,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- The test oracle's substitutes also reach calls made inside PyTorch functions
+  such as `F.multi_head_attention_forward`, which the torch-function mode does
+  not intercept ([PR](https://github.com/f-dangel/torch-jet/pull/230)).
 - The test oracle substitutes a plain-torch `scaled_dot_product_attention`,
   since the fused CPU kernel has no double backward
   ([PR](https://github.com/f-dangel/torch-jet/pull/222)).

@@ -8,10 +8,19 @@ share one body. The primitives a composition wires together (``add``, ``mm``,
 algebraic identity (e.g. ``addmm == add(self, mm(mat1, mat2))``).
 """
 
-from math import pi, sqrt
+from math import pi, prod, sqrt
 from typing import Callable
 
-from torch import Tensor, contiguous_format, finfo, ones, ops, uint8
+from torch import (
+    Tensor,
+    contiguous_format,
+    empty_like,
+    empty_strided,
+    finfo,
+    ones,
+    ops,
+    uint8,
+)
 from torch import bool as bool_dtype
 
 import jet._rules
@@ -21,6 +30,7 @@ from jet.primitives import (
     _apply_bilinear,
     _apply_linear,
     _bn_channel_view,
+    _has_jet_arg,
 )
 
 
@@ -53,8 +63,18 @@ def _rule(op: Callable, collapsed: bool) -> Callable:
     ``jet._rules`` imports this module to assemble ``RULES``, so the registry
     is reached through the module (``jet._rules.RULES``) and read at call time;
     binding the ``RULES`` name at import time would be circular.
+
+    Falls through to the native op when no argument is a jet, like the
+    interpreter, so compositions may feed all-constant intermediates to
+    sub-rules.
     """
-    return jet._rules.RULES[op][collapsed]
+
+    def dispatch(*args: object, **kwargs: object) -> object:
+        if _has_jet_arg((*args, *kwargs.values())):
+            return jet._rules.RULES[op][collapsed](*args, **kwargs)
+        return op(*args, **kwargs)
+
+    return dispatch
 
 
 def addmm(self: object, mat1: object, mat2: object) -> JetTuple:
@@ -482,9 +502,9 @@ def scaled_dot_product_attention(
     """Taylor-mode arithmetic for ``aten.scaled_dot_product_attention`` (eval mode).
 
     ``softmax(scale * query @ key^T + mask, -1) @ value`` (``scale = 1/sqrt(E)``
-    by default), composed from the ``mul`` / ``transpose`` / ``bmm`` /
-    ``masked_fill`` / ``add`` / ``_softmax`` rules (``bmm`` matmuls over any
-    leading batch dims). A causal or bool ``attn_mask`` (``True`` = attend)
+    by default), composed from the ``mul`` / ``transpose`` / ``matmul`` /
+    ``masked_fill`` / ``add`` / ``_softmax`` rules (``matmul`` broadcasts over
+    the leading batch dims). A causal or bool ``attn_mask`` (``True`` = attend)
     fills the blocked scores with ``-inf``, a float one is added. The
     ``_softmax`` rule's max-shift keeps the whole jet stable; a fully masked
     row gives ``NaN`` like the ATen math path. Any of ``query`` ``(..., L, E)``
@@ -505,11 +525,11 @@ def scaled_dot_product_attention(
         )
     collapsed = _collapsed_of(query, key, value)
     mul = _rule(ops.aten.mul.Tensor, collapsed)
-    bmm = _rule(ops.aten.bmm.default, collapsed)
+    matmul = _rule(ops.aten.matmul.default, collapsed)
     transpose = _rule(ops.aten.transpose.int, collapsed)
     q, k = (x[0] if isinstance(x, JetTuple) else x for x in (query, key))
     scale = q.shape[-1] ** -0.5 if scale is None else scale
-    scores = bmm(mul(query, scale), transpose(key, -2, -1))
+    scores = matmul(mul(query, scale), transpose(key, -2, -1))
     if is_causal:
         attn_mask = ones(
             q.shape[-2], k.shape[-2], dtype=bool_dtype, device=q.device
@@ -523,7 +543,7 @@ def scaled_dot_product_attention(
     attn = _rule(ops.aten._softmax.default, collapsed)(
         scores, dim=-1, half_to_float=False
     )
-    return bmm(attn, value)
+    return matmul(attn, value)
 
 
 def _sdpa_pair(query, key, value, attn_mask, dropout_p, is_causal, scale) -> tuple:
@@ -539,11 +559,33 @@ def _sdpa_pair(query, key, value, attn_mask, dropout_p, is_causal, scale) -> tup
     return out, None
 
 
+def _laid_out_like(t: Tensor, ref: Tensor) -> Tensor:
+    """Copy ``t`` into the memory layout ``empty_like(ref)`` has.
+
+    Leading dims of ``t`` beyond ``ref``'s (collapsed mode's ``R``) stay
+    outermost.
+    """
+    lead = t.shape[: t.dim() - ref.dim()]
+    strides = [ref.numel() * prod(lead[i + 1 :]) for i in range(len(lead))]
+    strides += empty_like(ref).stride()
+    return empty_strided(t.shape, strides, dtype=t.dtype, device=t.device).copy_(t)
+
+
 def _scaled_dot_product_flash_attention_for_cpu(
     query, key, value, dropout_p=0.0, is_causal=False, *, attn_mask=None, scale=None
 ) -> tuple:
-    """Adapter for the fused CPU op ``F.scaled_dot_product_attention`` lowers to."""
-    return _sdpa_pair(query, key, value, attn_mask, dropout_p, is_causal, scale)
+    """Adapter for the fused CPU op ``F.scaled_dot_product_attention`` lowers to.
+
+    The kernel (and its meta) allocates the output with ``empty_like(query)``,
+    and the fake-mode trace bakes that layout into later views: with
+    ``nn.MultiheadAttention``'s ``(L, B, H, E)``-ordered query, its
+    ``.contiguous()`` before the ``(L * B, H * E)`` view is a no-op that the
+    trace drops. The composition's output is laid out the same way so that
+    ``view`` succeeds on the primal and every coefficient.
+    """
+    out, lse = _sdpa_pair(query, key, value, attn_mask, dropout_p, is_causal, scale)
+    q = query[0] if isinstance(query, JetTuple) else query
+    return JetTuple((_laid_out_like(c, q) for c in out), collapsed=out.collapsed), lse
 
 
 def _scaled_dot_product_attention_math_for_mps(

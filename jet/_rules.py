@@ -152,6 +152,8 @@ for _prim in (
     ops.aten.slice.Tensor,
     ops.aten.index.Tensor,
     ops.aten._to_copy.default,
+    # ``x[:, 0:]`` (e.g. a language model head keeping all logits): a no-op view.
+    ops.aten.alias.default,
     ops.aten._unsafe_view.default,
     ops.aten.unsqueeze.default,
     ops.aten.squeeze.dim,

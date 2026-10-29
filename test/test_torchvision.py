@@ -49,7 +49,7 @@ MODELS: dict[str, tuple[Callable, int]] = {
         ),
         32,
     ),
-    "vit_b_16": (lambda: models.vit_b_16(weights=None, image_size=64), 64),
+    "vit_b_16": (lambda: models.vit_b_16(weights=None, image_size=32), 32),
 }
 
 

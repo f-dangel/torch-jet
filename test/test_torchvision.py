@@ -1,4 +1,4 @@
-"""End-to-end Taylor-mode tests on torchvision CNNs (eval mode).
+"""End-to-end Taylor-mode tests on torchvision models (eval mode).
 
 torchvision pins torch exactly, so it is a ``test`` extra, not a dependency.
 A missing torchvision fails this module rather than skipping it, so a broken
@@ -49,6 +49,7 @@ MODELS: dict[str, tuple[Callable, int]] = {
         ),
         32,
     ),
+    "vit_b_16": (lambda: models.vit_b_16(weights=None, image_size=64), 64),
 }
 
 

@@ -87,6 +87,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- The test oracle's substitutes also reach calls made inside PyTorch functions
+  such as `F.multi_head_attention_forward`, which the torch-function mode does
+  not intercept ([PR](https://github.com/f-dangel/torch-jet/pull/230)).
 - The test oracle substitutes a plain-torch `scaled_dot_product_attention`,
   since the fused CPU kernel has no double backward
   ([PR](https://github.com/f-dangel/torch-jet/pull/222)).

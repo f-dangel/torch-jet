@@ -96,6 +96,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
+- `aten.cat.default` in collapsed mode no longer fails on a 1-D empty constant
+  operand, which `cat` skips (Hugging Face's empty key/value cache, e.g. GPT-2)
+  ([PR](https://github.com/f-dangel/torch-jet/pull/237)).
 - `aten.where.self` / `aten.masked_fill` with a Python scalar operand no longer
   upcast a half-precision jet to float32 (e.g. the causal mask of
   `scaled_dot_product_attention` in bfloat16)

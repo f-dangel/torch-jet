@@ -143,6 +143,8 @@ for _prim in (
     ops.aten.transpose.int,
     ops.aten.permute.default,
     ops.aten.expand.default,
+    # Grouped-query attention repeats each key/value head for its query heads.
+    ops.aten.repeat_interleave.self_int,
     ops.aten.clone.default,
     ops.aten.as_strided.default,
     # Transformer views: ``x[i]`` (``select``), ``x[a:b]`` (``slice``), fancy

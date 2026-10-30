@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- Support grouped-query attention (`F.scaled_dot_product_attention` with
+  `enable_gqa=True`, e.g. LLaMA) in Taylor mode (both standard and collapsed
+  modes): the composition repeats each key/value head for its query heads
+  through a new linear rule for `aten.repeat_interleave.self_int`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/240)).
 - Support `aten.alias.default` (`x[:, 0:]`, the no-op view Hugging Face's
   language model heads use to keep all logits) in Taylor mode (both standard
   and collapsed modes) ([PR](https://github.com/f-dangel/torch-jet/pull/236)).

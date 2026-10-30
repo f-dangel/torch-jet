@@ -109,6 +109,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
+- `capture_graph` rewrites `aten.view` to `aten.reshape`, so a captured graph
+  compiles with inductor even when it lays out a tensor in another stride
+  order than the trace assumed (e.g. the key/value cache in GPT-2)
+  ([PR](https://github.com/f-dangel/torch-jet/pull/246)).
 - `aten.cat.default` in collapsed mode no longer fails on a 1-D empty constant
   operand, which `cat` skips (Hugging Face's empty key/value cache, e.g. GPT-2)
   ([PR](https://github.com/f-dangel/torch-jet/pull/237)).

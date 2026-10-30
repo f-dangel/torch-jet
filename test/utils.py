@@ -346,8 +346,7 @@ def assert_jet_matches_oracle(
     oracle = rev_collapsed_jet(f) if collapsed else _rev_jet(f)
     actual = jet(f, mock_args, collapsed=collapsed)(*jet_args)
     # A case may relax the float64 tolerances (``"tolerances"``), e.g. a model
-    # that computes parts in float32 whatever its dtype; a float32 device's
-    # looser tolerances still win.
+    # that computes parts in float32 whatever its dtype.
     tol = {**config.get("tolerances", {}), **tolerances_for(device)}
     with DifferentiableSubstitutes():
         # The substitutes must not change the function the oracle differentiates.

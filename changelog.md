@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- `jet.freeze(f, args)` traces a function (e.g. a jet function) once for
+  fixed arguments and returns a callable on the same pytree, which
+  `torch.compile` can handle; the order, direction count, shapes, dtypes,
+  and devices are fixed, unlike the plain jet callable
+  ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
 - Support transformer architectures in Taylor mode (`nn.TransformerEncoder`,
   torchvision's ViT, and Hugging Face's GPT-2, BERT, and LLaMA; see
   `test/test_transformer_encoder.py` and `test/test_huggingface.py`) by adding

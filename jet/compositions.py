@@ -534,6 +534,8 @@ def scaled_dot_product_attention(
     row gives ``NaN`` like the ATen math path. Any of ``query`` ``(..., L, E)``
     / ``key`` ``(..., S, E)`` / ``value`` ``(..., S, Ev)`` may be a jet or a
     constant; ``attn_mask`` is a constant broadcastable to ``(..., L, S)``.
+    Grouped-query attention (``enable_gqa``: fewer key/value heads than query
+    heads along dim ``-3``) repeats each key/value head for its query heads.
 
     Returns:
         The value and its Taylor coefficients, shape ``(..., L, Ev)``.
@@ -552,6 +554,10 @@ def scaled_dot_product_attention(
     matmul = _rule(ops.aten.matmul.default, collapsed)
     transpose = _rule(ops.aten.transpose.int, collapsed)
     q, k = (x[0] if isinstance(x, JetTuple) else x for x in (query, key))
+    if q.shape[-3] != k.shape[-3]:
+        repeat = _rule(ops.aten.repeat_interleave.self_int, collapsed)
+        groups = q.shape[-3] // k.shape[-3]
+        key, value = (repeat(x, groups, -3) for x in (key, value))
     scale = q.shape[-1] ** -0.5 if scale is None else scale
     scores = matmul(mul(query, scale), transpose(key, -2, -1))
     if is_causal:
@@ -682,12 +688,14 @@ def _scaled_dot_product_attention_math_for_mps(
 ) -> tuple:
     """Adapter for the fused MPS op ``F.scaled_dot_product_attention`` lowers to.
 
+    ``enable_gqa`` is implied by the head counts, so the composition needs no
+    flag.
+
     Raises:
-        NotImplementedError: If ``dropout_mask`` is given or ``enable_gqa``.
+        NotImplementedError: If ``dropout_mask`` is given.
     """
-    if dropout_mask is not None or enable_gqa:
+    if dropout_mask is not None:
         raise NotImplementedError(
-            "Taylor-mode scaled_dot_product_attention supports neither "
-            "dropout_mask nor enable_gqa."
+            "Taylor-mode scaled_dot_product_attention does not support dropout_mask."
         )
     return _sdpa_fused(query, key, value, attn_mask, dropout_p, is_causal, scale, 1)

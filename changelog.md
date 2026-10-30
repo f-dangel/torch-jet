@@ -9,8 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
-- `aten.ones_like.default`, the constant autograd seeds its backward pass with
-  (first step towards jets of gradients) ([PR](https://github.com/f-dangel/torch-jet/pull/251)).
+- `jet.freeze(f, args)` traces a function (e.g. a jet function) once for
+  fixed arguments and returns a callable on the same pytree, which
+  `torch.compile` can handle; the order, direction count, shapes, dtypes,
+  and devices are fixed, unlike the plain jet callable
+  ([PR](https://github.com/f-dangel/torch-jet/pull/252)).
 - Support transformer architectures in Taylor mode (`nn.TransformerEncoder`,
   torchvision's ViT, and Hugging Face's GPT-2, BERT, and LLaMA; see
   `test/test_transformer_encoder.py` and `test/test_huggingface.py`) by adding
@@ -131,6 +134,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Tests that PyTorch's function transforms apply to a jet
+  (`test/test_transforms.py`): `vmap` over the input coefficients; replaces
+  the sdpa-adapter-only `vmap` test
+  ([PR](https://github.com/f-dangel/torch-jet/pull/248)).
 - Collapsed-mode `embedding` indexes the batched table instead of vmapping the
   op, which no longer copies the whole `(R, V, D)` table and lowers peak
   memory ([PR](https://github.com/f-dangel/torch-jet/pull/244)).

@@ -123,6 +123,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`test/test_transforms.py`): `vmap` over the input coefficients; replaces
   the sdpa-adapter-only `vmap` test
   ([PR](https://github.com/f-dangel/torch-jet/pull/248)).
+  - `grad` and `vjp` w.r.t. primals and coefficients
+    ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
 - Collapsed-mode `embedding` indexes the batched table instead of vmapping the
   op, which no longer copies the whole `(R, V, D)` table and lowers peak
   memory ([PR](https://github.com/f-dangel/torch-jet/pull/244)).

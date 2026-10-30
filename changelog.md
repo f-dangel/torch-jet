@@ -9,72 +9,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
-- Support grouped-query attention (`F.scaled_dot_product_attention` with
-  `enable_gqa=True`, e.g. LLaMA) in Taylor mode (both standard and collapsed
-  modes): the composition repeats each key/value head for its query heads
-  through a new linear rule for `aten.repeat_interleave.self_int`
-  ([PR](https://github.com/f-dangel/torch-jet/pull/240)).
-- Support `aten.alias.default` (`x[:, 0:]`, the no-op view Hugging Face's
-  language model heads use to keep all logits) in Taylor mode (both standard
-  and collapsed modes) ([PR](https://github.com/f-dangel/torch-jet/pull/236)).
-- Support `aten.constant_pad_nd.default` (`F.pad` with `mode="constant"`,
-  including cropping via negative padding) in Taylor mode (both standard and
-  collapsed modes) ([PR](https://github.com/f-dangel/torch-jet/pull/233)).
-- Support `aten.mul.Scalar` in Taylor mode (both standard and collapsed modes),
-  the overload decompositions such as the sdpa math path call
-  ([PR](https://github.com/f-dangel/torch-jet/pull/232)).
-- Support scaled dot-product attention in Taylor mode (both standard and
-  collapsed modes): a composition for `F.scaled_dot_product_attention` with
-  default arguments (eval mode, `dropout_p == 0`) and an adapter for the fused
-  CPU op ([PR](https://github.com/f-dangel/torch-jet/pull/226)).
-  - The sdpa adapters lay out their output out of place, so a jet can be
-    batched over directions with `vmap` when the trace hits a fused
-    attention kernel
-    ([PR](https://github.com/f-dangel/torch-jet/pull/242)).
-  - The CUDA adapters return their output in the same memory layout as the
-    fused kernels, so views the trace bases on that layout work (e.g.
-    `nn.MultiheadAttention` in half precision, and `sdpa(...).transpose(1,
-    2).reshape(...)` blocks in float32)
-    ([PR](https://github.com/f-dangel/torch-jet/pull/235)).
-  - Adapters for the fused CUDA ops (flash and memory-efficient), and
-    `aten._safe_softmax.default` for the math fallback (e.g. float64 on CUDA)
-    ([PR](https://github.com/f-dangel/torch-jet/pull/228)).
-  - The CPU adapter returns its output in the same memory layout as the
-    fused kernel, so `nn.MultiheadAttention` works
-    ([PR](https://github.com/f-dangel/torch-jet/pull/229)).
-  - Composed sub-rules fall through to the native op on constant inputs, so
-    attention with only a jet `value` works
-    ([PR](https://github.com/f-dangel/torch-jet/pull/227)).
-  - An adapter for the fused MPS op
-    ([PR](https://github.com/f-dangel/torch-jet/pull/224)).
-  - `attn_mask`, `is_causal`, and `scale`
-    ([PR](https://github.com/f-dangel/torch-jet/pull/223)).
-- Support `aten._fused_rms_norm.default` in Taylor mode (both standard and
-  collapsed modes), the op `torch.nn.RMSNorm` lowers to on CUDA/MPS
-  ([PR](https://github.com/f-dangel/torch-jet/pull/214)).
-- Support `aten.embedding.default` in Taylor mode (both standard and collapsed
-  modes); a warning flags `padding_idx`, which only masks autograd's gradient
-  while jets propagate the true derivative
-  ([PR](https://github.com/f-dangel/torch-jet/pull/217)).
-- Support `aten.masked_fill.Scalar` and `aten.masked_fill.Tensor` in Taylor mode
-  (both standard and collapsed modes)
-  ([PR](https://github.com/f-dangel/torch-jet/pull/221)).
-- Support `aten.where.self` in Taylor mode (both standard and collapsed modes)
-  ([PR](https://github.com/f-dangel/torch-jet/pull/219)).
-- Support the view/indexing ops `aten.select.int`, `aten.slice.Tensor`,
-  `aten._to_copy.default`, and `aten.index.Tensor` in Taylor mode (both
-  standard and collapsed modes)
-  ([PR](https://github.com/f-dangel/torch-jet/pull/218)).
-- Support `aten._softmax.default` in Taylor mode (both standard and collapsed
-  modes) ([PR](https://github.com/f-dangel/torch-jet/pull/215)).
-  - Both it and `_log_softmax` honour `half_to_float` (promote to float32 like
-    the ATen op) ([PR](https://github.com/f-dangel/torch-jet/pull/220)).
-- Support `aten.bmm.default` in Taylor mode (both standard and collapsed
-  modes), the op batched `matmul` lowers to
-  ([PR](https://github.com/f-dangel/torch-jet/pull/216)).
-- Support `aten.rsqrt.default` and `aten.add.Scalar` in Taylor mode (both
-  standard and collapsed modes)
-  ([PR](https://github.com/f-dangel/torch-jet/pull/211)).
+- Support transformer architectures in Taylor mode (`nn.TransformerEncoder`,
+  torchvision's ViT, and Hugging Face's GPT-2, BERT, and LLaMA; see
+  `test/test_transformer_encoder.py` and `test/test_huggingface.py`) by adding
+  jet rules for the ATen ops they need:
+  - Grouped-query attention (`F.scaled_dot_product_attention` with
+    `enable_gqa=True`, e.g. LLaMA): the composition repeats each key/value head
+    for its query heads through a new linear rule for
+    `aten.repeat_interleave.self_int` ([PR](https://github.com/f-dangel/torch-jet/pull/240)).
+  - End-to-end tests on tiny Hugging Face transformers (GPT-2 with and without
+    the language model head, BERT; `sdpa` and `eager` attention), built from
+    configs with random weights; `transformers` joins the `test` extra
+    ([PR](https://github.com/f-dangel/torch-jet/pull/239)).
+    - LLaMA (rotary position embeddings, grouped-query attention); a test case
+      may carry its own `assert_close` tolerances, since LLaMA runs its RMSNorm
+      and eager softmax in float32 whatever the model dtype
+      ([PR](https://github.com/f-dangel/torch-jet/pull/241)).
+  - `aten.alias.default` (`x[:, 0:]`, the no-op view Hugging Face's language
+    model heads use to keep all logits) ([PR](https://github.com/f-dangel/torch-jet/pull/236)).
+  - `aten.constant_pad_nd.default` (`F.pad` with `mode="constant"`, including
+    cropping via negative padding) ([PR](https://github.com/f-dangel/torch-jet/pull/233)).
+  - `aten.mul.Scalar`, the overload decompositions such as the sdpa math path
+    call ([PR](https://github.com/f-dangel/torch-jet/pull/232)).
+  - End-to-end tests for `nn.TransformerEncoder` (post-norm, pre-norm, GELU)
+    and torchvision's `vit_b_16` ([PR](https://github.com/f-dangel/torch-jet/pull/231)).
+  - Scaled dot-product attention: a composition for
+    `F.scaled_dot_product_attention` with default arguments (eval mode,
+    `dropout_p == 0`) and an adapter for the fused CPU op ([PR](https://github.com/f-dangel/torch-jet/pull/226)).
+    - The sdpa adapters lay out their output out of place, so a jet can be
+      batched over directions with `vmap` when the trace hits a fused
+      attention kernel
+      ([PR](https://github.com/f-dangel/torch-jet/pull/242)).
+    - The CUDA adapters return their output in the same memory layout as the
+      fused kernels, so views the trace bases on that layout work (e.g.
+      `nn.MultiheadAttention` in half precision, and `sdpa(...).transpose(1,
+      2).reshape(...)` blocks in float32)
+      ([PR](https://github.com/f-dangel/torch-jet/pull/235)).
+    - Adapters for the fused CUDA ops (flash and memory-efficient), and
+      `aten._safe_softmax.default` for the math fallback (e.g. float64 on CUDA)
+      ([PR](https://github.com/f-dangel/torch-jet/pull/228)).
+    - The CPU adapter returns its output in the same memory layout as the
+      fused kernel, so `nn.MultiheadAttention` works
+      ([PR](https://github.com/f-dangel/torch-jet/pull/229)).
+    - Composed sub-rules fall through to the native op on constant inputs, so
+      attention with only a jet `value` works
+      ([PR](https://github.com/f-dangel/torch-jet/pull/227)).
+    - An adapter for the fused MPS op
+      ([PR](https://github.com/f-dangel/torch-jet/pull/224)).
+    - `attn_mask`, `is_causal`, and `scale`
+      ([PR](https://github.com/f-dangel/torch-jet/pull/223)).
+  - `aten._fused_rms_norm.default`, the op `torch.nn.RMSNorm` lowers to on
+    CUDA/MPS ([PR](https://github.com/f-dangel/torch-jet/pull/214)).
+  - `aten.embedding.default`; a warning flags `padding_idx`, which only masks
+    autograd's gradient while jets propagate the true derivative ([PR](https://github.com/f-dangel/torch-jet/pull/217)).
+  - `aten.masked_fill.Scalar` and `aten.masked_fill.Tensor` ([PR](https://github.com/f-dangel/torch-jet/pull/221)).
+  - `aten.where.self` ([PR](https://github.com/f-dangel/torch-jet/pull/219)).
+  - The view/indexing ops `aten.select.int`, `aten.slice.Tensor`,
+    `aten._to_copy.default`, and `aten.index.Tensor` ([PR](https://github.com/f-dangel/torch-jet/pull/218)).
+  - `aten._softmax.default` ([PR](https://github.com/f-dangel/torch-jet/pull/215)).
+    - Both it and `_log_softmax` honour `half_to_float` (promote to float32
+      like the ATen op) ([PR](https://github.com/f-dangel/torch-jet/pull/220)).
+  - `aten.bmm.default`, the op batched `matmul` lowers to ([PR](https://github.com/f-dangel/torch-jet/pull/216)).
+  - `aten.rsqrt.default` and `aten.add.Scalar` ([PR](https://github.com/f-dangel/torch-jet/pull/211)).
 - Support torchvision's CNN architectures in Taylor mode (AlexNet, VGG, ResNet,
   SqueezeNet, DenseNet, GoogLeNet, RegNet, MNASNet, MobileNet V2/V3,
   ShuffleNet V2, EfficientNet, ConvNeXt, and the FCN/DeepLabV3/LRASPP
@@ -123,23 +119,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
-- End-to-end model tests on tiny Hugging Face transformers (GPT-2 with and
-  without the language model head, BERT; `sdpa` and `eager` attention), built
-  from configs with random weights; `transformers` joins the `test` extra
-  ([PR](https://github.com/f-dangel/torch-jet/pull/239)).
-  - LLaMA (rotary position embeddings, grouped-query attention); a test case
-    may carry its own `assert_close` tolerances, since LLaMA runs its RMSNorm
-    and eager softmax in float32 whatever the model dtype
-    ([PR](https://github.com/f-dangel/torch-jet/pull/241)).
 - Collapsed-mode `embedding` indexes the batched table instead of vmapping the
   op, which no longer copies the whole `(R, V, D)` table and lowers peak
   memory ([PR](https://github.com/f-dangel/torch-jet/pull/244)).
 - `_leibniz` skips the multiply when the binomial factor is 1, which removes
   many trivial nodes from the jet graph and speeds up eager Taylor mode
   ([PR](https://github.com/f-dangel/torch-jet/pull/243)).
-- End-to-end model tests for `nn.TransformerEncoder` (post-norm, pre-norm,
-  GELU) and torchvision's `vit_b_16`
-  ([PR](https://github.com/f-dangel/torch-jet/pull/231)).
 - The test oracle's substitutes also reach calls made inside PyTorch functions
   such as `F.multi_head_attention_forward`, which the torch-function mode does
   not intercept ([PR](https://github.com/f-dangel/torch-jet/pull/230)).

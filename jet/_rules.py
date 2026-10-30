@@ -163,6 +163,7 @@ for _prim in (
     ops.aten.sum.default,
     ops.aten.sum.dim_IntList,
     ops.aten.view.default,
+    ops.aten.reshape.default,  # ``capture_graph`` rewrites ``view`` to this
     ops.aten._adaptive_avg_pool2d.default,
     ops.aten.avg_pool2d.default,
     # Bilinear upsampling (``F.interpolate(mode="bilinear")``, e.g. torchvision's

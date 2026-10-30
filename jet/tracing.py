@@ -46,6 +46,12 @@ def capture_graph(
     (single tensor, tuple, dict, arbitrary pytree), ``make_fx``'s pytree
     codegen reconstructs on each call.
 
+    Two small passes clean up the traced graph: in-place ops are replaced by
+    their out-of-place equivalents, and ``aten.view`` by ``aten.reshape``.
+    ``make_fx`` bakes the trace-time strides into every ``view``; a compiler
+    (e.g. inductor) may lay out an upstream tensor differently and then refuse
+    the ``view``, whereas ``reshape`` views where it can and copies otherwise.
+
     Args:
         f: Callable to trace (plain function, ``nn.Module``, ``GraphModule``,
             etc.). May accept pytrees of tensors as positional args.
@@ -84,6 +90,7 @@ def capture_graph(
 
     mod = _make_fx(functionalize(flat_f))(*flat_mocks)
     _replace_inplace_ops(mod)
+    _replace_views(mod)
     mod.graph.eliminate_dead_code()
     mod.recompile()
     return mod, in_spec
@@ -129,3 +136,14 @@ def _replace_inplace_ops(mod: GraphModule) -> None:
     for node in mod.graph.nodes:
         if node.op == "call_function" and node.target in _INPLACE_TO_FUNCTIONAL:
             node.target = _INPLACE_TO_FUNCTIONAL[node.target]
+
+
+def _replace_views(mod: GraphModule) -> None:
+    """Replace ``aten.view`` with ``aten.reshape`` (same result, never fails).
+
+    Args:
+        mod: The graph module to modify in place.
+    """
+    for node in mod.graph.nodes:
+        if node.op == "call_function" and node.target is ops.aten.view.default:
+            node.target = ops.aten.reshape.default

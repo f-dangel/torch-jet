@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   collapsed modes): a composition for `F.scaled_dot_product_attention` with
   default arguments (eval mode, `dropout_p == 0`) and an adapter for the fused
   CPU op ([PR](https://github.com/f-dangel/torch-jet/pull/226)).
+  - The sdpa adapters lay out their output out of place, so a jet can be
+    batched over directions with `vmap` when the trace hits a fused
+    attention kernel
+    ([PR](https://github.com/f-dangel/torch-jet/pull/242)).
   - The CUDA adapters return their output in the same memory layout as the
     fused kernels, so views the trace bases on that layout work (e.g.
     `nn.MultiheadAttention` in half precision, and `sdpa(...).transpose(1,

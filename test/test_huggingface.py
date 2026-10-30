@@ -3,8 +3,7 @@
 GPT-2 (decoder, causal attention, with and without the language model head)
 and BERT (encoder), built from small configs with random weights, so nothing
 is downloaded. The models take the sequence of input embeddings as the
-differentiated input. ``transformers`` is a ``test`` extra like torchvision;
-a missing install fails this module rather than skipping it.
+differentiated input. ``transformers`` is a ``test`` extra like torchvision.
 """
 
 from typing import Any, Callable

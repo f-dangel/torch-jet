@@ -111,6 +111,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
+- Collapsed Faà di Bruno terms sum the direction dim out of the product of
+  inner coefficients *before* multiplying by the outer derivative, so autograd
+  saves the summed product instead of the direction-batched one; restores the
+  eager differentiable peak memory of the collapsed Laplacian/Bi-Laplacian
+  benchmarks to the values measured before the interpreter rewrite
+  ([PR](https://github.com/f-dangel/torch-jet/pull/253)).
 - `capture_graph` rewrites `aten.view` to `aten.reshape`, so a captured graph
   compiles with inductor even when it lays out a tensor in another stride
   order than the trace assumed (e.g. the key/value cache in GPT-2)

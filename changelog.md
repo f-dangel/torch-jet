@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the language model head, BERT; `sdpa` and `eager` attention), built from
     configs with random weights; `transformers` joins the `test` extra
     ([PR](https://github.com/f-dangel/torch-jet/pull/239)).
+    - LLaMA (rotary position embeddings, grouped-query attention); a test case
+      may carry its own `assert_close` tolerances, since LLaMA runs its RMSNorm
+      and eager softmax in float32 whatever the model dtype
+      ([PR](https://github.com/f-dangel/torch-jet/pull/241)).
   - `aten.alias.default` (`x[:, 0:]`, the no-op view Hugging Face's language
     model heads use to keep all logits) ([PR](https://github.com/f-dangel/torch-jet/pull/236)).
   - `aten.constant_pad_nd.default` (`F.pad` with `mode="constant"`, including

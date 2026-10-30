@@ -10,10 +10,14 @@ upstream, the test will fail, signaling that ``_replace_inplace_ops`` in
 The second test verifies that ``capture_graph`` works around this limitation by
 explicitly replacing ``squeeze_.dim`` after tracing, ensuring the resulting
 graph is fully functional.
+
+Another test checks that ``capture_graph`` rewrites ``aten.view`` to
+``aten.reshape``: a ``view`` carries the trace-time strides, which a compiler
+such as inductor may not reproduce, whereas ``reshape`` copies when it must.
 """
 
 from pytest import mark, raises
-from torch import ops, rand, sin, zeros
+from torch import matmul, ops, rand, sin, zeros
 from torch.func import functionalize
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.nn import Linear
@@ -44,6 +48,16 @@ def test_capture_graph_replaces_squeeze_():
     x = rand(3)
     mod, _ = capture_graph(f, (x,))
     assert not _uses_squeeze_inplace(mod)
+
+
+def test_capture_graph_replaces_view():
+    """capture_graph rewrites view to reshape and the graph still matches f."""
+    f = matmul  # 3-d matmul decomposes to expand + view + bmm
+    x, y = rand(2, 3, 4), rand(2, 4, 5)
+    mod, _ = capture_graph(f, (x, y))
+    assert not any(n.target == ops.aten.view.default for n in mod.graph.nodes)
+    assert any(n.target == ops.aten.reshape.default for n in mod.graph.nodes)
+    assert_close(mod(x, y), f(x, y))
 
 
 def test_capture_graph_rejects_non_tuple_mock_args():

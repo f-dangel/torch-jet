@@ -4,7 +4,7 @@ from jet._bilaplacian import bilaplacian
 from jet._jet import jet
 from jet._laplacian import laplacian
 from jet._simplify import common_subexpression_elimination
-from jet.tracing import capture_graph
+from jet.tracing import capture_graph, freeze
 from jet.utils import visualize_graph
 
 __all__ = [
@@ -12,6 +12,7 @@ __all__ = [
     "laplacian",
     "bilaplacian",
     "capture_graph",
+    "freeze",
     "common_subexpression_elimination",
     "visualize_graph",
 ]

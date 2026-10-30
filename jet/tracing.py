@@ -96,6 +96,71 @@ def capture_graph(
     return mod, in_spec
 
 
+def freeze(
+    f: Callable[[*tuple[PyTree[Tensor], ...]], PyTree[Tensor]],
+    args: tuple[PyTree[Tensor], ...],
+) -> Callable[[*tuple[PyTree[Tensor], ...]], PyTree[Tensor]]:
+    """Trace ``f`` once on ``args`` and return a callable on the same pytree.
+
+    The callable returned by :func:`jet.jet` interprets the captured graph of
+    ``f`` node by node at call time, so the Taylor order, the number of
+    directions, and the leaf shapes may change between calls. Dynamo cannot
+    trace that interpreter, so ``torch.compile`` does not work on it. This
+    helper captures the graph of the jet computation for one fixed set of
+    arguments and wraps it in a callable that takes the same pytree, which
+    ``torch.compile`` handles.
+
+    Everything is fixed at trace time: the pytree structure of ``args`` (for
+    jet arguments: the order ``K``, the direction count ``R``, and collapsed
+    or not), and every leaf's shape, dtype, and device. Calling the frozen
+    function with different arguments raises. The plain jet callable stays
+    flexible.
+
+    Args:
+        f: Callable to trace (e.g. a jet function). May accept pytrees of
+            tensors as positional args.
+        args: Positional arguments (pytrees of tensors) to trace ``f`` on,
+            provided as a tuple.
+
+    Returns:
+        A callable that accepts arguments of the same pytree structure,
+        shapes, dtypes, and devices as ``args`` and runs the captured graph.
+
+    Raises:
+        ValueError: At call time, if the arguments differ from ``args`` in
+            pytree structure or in a leaf's shape, dtype, or device.
+
+    Examples:
+        >>> from torch import allclose, ones, sin, zeros
+        >>> from jet import freeze
+        >>> frozen = freeze(sin, (zeros(3),))
+        >>> allclose(frozen(ones(3)), sin(ones(3)))
+        True
+    """
+    mod, in_spec = capture_graph(f, args)
+    leaves = tree_flatten(args)[0]
+    signature = [(t.shape, t.dtype, t.device) for t in leaves]
+
+    def frozen(*new_args: PyTree[Tensor]) -> PyTree[Tensor]:
+        new_leaves, new_spec = tree_flatten(new_args)
+        if new_spec != in_spec:
+            raise ValueError(
+                f"frozen function expects {len(leaves)} tensor leaves with the "
+                f"trace-time pytree structure, got {len(new_leaves)} leaves with "
+                "a different structure (order, direction count, or nesting)."
+            )
+        for i, (t, (shape, dtype, device)) in enumerate(zip(new_leaves, signature)):
+            if (t.shape, t.dtype, t.device) != (shape, dtype, device):
+                raise ValueError(
+                    f"leaf {i} has shape {tuple(t.shape)}, dtype {t.dtype}, "
+                    f"device {t.device}; expected shape {tuple(shape)}, dtype "
+                    f"{dtype}, device {device}."
+                )
+        return mod(*new_leaves)
+
+    return frozen
+
+
 def _assert_traceable_signature(args: tuple[Any, ...]) -> None:
     """Reject the argument signature that ``make_fx`` mistraces.
 

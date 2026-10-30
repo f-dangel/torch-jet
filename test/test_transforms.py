@@ -81,8 +81,9 @@ def test_grad_vjp(config: dict[str, Any], K: int, collapsed: bool, device: str):
     """``grad`` and ``vjp`` of a jet w.r.t. primals and coefficients match the oracle.
 
     The scalar is a fixed random weighting of every output coefficient. The
-    oracle nests ``torch.autograd.grad``, which ``torch.func`` cannot wrap, so
-    the reference differentiates it with ``torch.autograd.grad``.
+    reference is the gradient of the oracle's output. Since the oracle calls
+    ``torch.autograd.grad`` internally, ``torch.func.grad`` cannot wrap it, so
+    the reference uses ``torch.autograd.grad`` as well.
     """
     f, jet_fn, jet_args = _jet_setup(config, K, collapsed, device)
     weights = tree_map(rand_like, jet_fn(*jet_args))

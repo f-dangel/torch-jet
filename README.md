@@ -4,6 +4,8 @@ This library provides a PyTorch implementation of Taylor mode automatic differen
 It is similar to JAX's Taylor mode ([`jax.experimental.jet`](https://docs.jax.dev/en/latest/jax.experimental.jet.html)).
 
 The repository also hosts the Python functionality+experiments and LaTeX source for our NeurIPS 2025 paper ["Collapsing Taylor Mode Automatic Differentiation"](https://openreview.net/forum?id=XgQVL1uP34), which allows to further accelerate Taylor mode for many practical differential operators.
+The paper's numbers come from the benchmark in `jet/exp/exp01_benchmark_laplacian` run at commit [`9eabf4e`](https://github.com/f-dangel/torch-jet/tree/9eabf4e).
+Check out that commit to reproduce the published figures exactly; later versions give the same picture but slightly different numbers.
 
 Operator coverage is still growing, so please help us improve the package by providing feedback, filing issues, and opening pull requests.
 

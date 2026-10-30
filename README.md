@@ -66,9 +66,8 @@ See the [documentation](https://torch-jet.readthedocs.io/en/latest/generated/gal
   ```
 
 - **A jet of a transform**, such as `jet(torch.func.grad(f), ...)`, works in
-  principle, since `grad(f)` traces to a graph of ordinary ATen ops. But the
-  ops that autograd's backward pass adds have no jet rules yet, so such a
-  trace currently stops at the first op without a rule.
+  principle. But the ops that autograd's backward pass adds have no jet rules
+  yet, so such a trace currently stops at the first op without a rule.
 
 ## Citing
 

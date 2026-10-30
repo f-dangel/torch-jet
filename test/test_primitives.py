@@ -24,6 +24,7 @@ from torch import (
     linspace,
     log,
     manual_seed,
+    ones_like,
     ops,
     rand,
     randint,
@@ -1331,6 +1332,8 @@ PRIMITIVE_CASES = [
         "f": _stateless(lambda x: zeros_like(x, dtype=float32)),
         "args_fn": lambda: (rand(3, 4),),
     },
+    # Autograd seeds its backward pass with ``ones_like(loss)``.
+    {"id": "ones_like", "f": _stateless(ones_like), "args_fn": lambda: (rand(3, 4),)},
 ]
 
 

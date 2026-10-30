@@ -51,7 +51,6 @@ See the [documentation](https://torch-jet.readthedocs.io/en/latest/generated/gal
 
 A jet function returned by `jet(...)` is an ordinary PyTorch function, so
 `torch.func.vmap`, `grad`, `vjp`, `jvp`, and `torch.compile` apply to it.
-These combinations are tested in `test/test_transforms.py`.
 
 The other direction, a jet *of* a transform such as `jet(torch.func.grad(f), ...)`,
 works in principle, since `grad(f)` traces to a graph of ordinary ATen ops.

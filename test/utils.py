@@ -281,6 +281,7 @@ def rev_collapsed_jet(f: Callable[..., Any], detach: bool = True) -> Callable[..
     combine: orders 1..K-1 stack across ``R``, order K sums. (``_rev_jet``
     uses :func:`torch.autograd.grad` which does not compose with
     :func:`torch.func.vmap`, hence the explicit Python loop over ``R``.)
+    ``detach`` is passed on to :func:`jet._rev_jet`.
     """
     std_jet = _rev_jet(f, detach)
 

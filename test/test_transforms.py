@@ -5,14 +5,15 @@ can wrap it. Each test transforms the jet of a case and compares with a
 reference.
 """
 
+from functools import partial
 from operator import itemgetter
 from typing import Any, Callable
 
 from pytest import mark
-from torch import rand_like, stack
-from torch.func import jvp, vmap
+from torch import Tensor, autograd, rand_like, stack
+from torch.func import grad, jvp, vjp, vmap
 from torch.testing import assert_close
-from torch.utils._pytree import tree_map
+from torch.utils._pytree import tree_flatten, tree_leaves, tree_map, tree_unflatten
 
 from jet import jet
 from jet._jet import _rev_jet
@@ -38,11 +39,11 @@ CASES = [SCALAR_OUTPUT_CASES[0], ENCODER_CASES[0]]
 
 def _jet_setup(
     config: dict[str, Any], K: int, collapsed: bool, device: str
-) -> tuple[Callable, tuple, tuple]:
-    """The jet function of a case, its mock args, and matching jet args."""
+) -> tuple[Callable, Callable, tuple]:
+    """The function of a case, its jet function, and matching jet args."""
     f, mock_args = setup_case(config, device)
     jet_fn = jet(f, mock_args, collapsed=collapsed)
-    return jet_fn, mock_args, make_jet_args(mock_args, K, collapsed)
+    return f, jet_fn, make_jet_args(mock_args, K, collapsed)
 
 
 def _map_coeffs(fn: Callable, jet_args: tuple) -> tuple:
@@ -61,12 +62,44 @@ def test_vmap(config: dict[str, Any], K: int, collapsed: bool, device: str):
     collapsed mode this batches sets of ``R`` directions, one set per lane.
     """
     R = 3
-    jet_fn, _, jet_args = _jet_setup(config, K, collapsed, device)
+    _, jet_fn, jet_args = _jet_setup(config, K, collapsed, device)
     batched = _map_coeffs(lambda c: stack([rand_like(c) for _ in range(R)]), jet_args)
     in_dims = tree_map(lambda _: (None, *K * (0,)), jet_args, is_leaf=_is_jet_leaf)
     outs = [jet_fn(*_map_coeffs(itemgetter(r), batched)) for r in range(R)]
     want = tree_map(lambda *o: stack(o), *outs)
     assert_close(vmap(jet_fn, in_dims)(*batched), want, **tolerances_for(device))
+
+
+def _weighted_sum(fn: Callable, weights: Any, args: tuple) -> Tensor:
+    """``fn(*args)`` with every output coefficient weighted and summed to a scalar.
+
+    ``weights`` has the pytree structure of ``fn``'s output.
+    """
+    outs, weights = tree_leaves(fn(*args)), tree_leaves(weights)
+    return sum((o * w).sum() for o, w in zip(outs, weights))
+
+
+@mark.parametrize("config", CASES, ids=lambda c: c["id"])
+@mark.parametrize("K, collapsed", ORDERS, ids=ORDER_IDS)
+def test_grad_vjp(config: dict[str, Any], K: int, collapsed: bool, device: str):
+    """``grad`` and ``vjp`` of a jet w.r.t. primals and coefficients match the oracle.
+
+    The scalar is a fixed random weighting of every output coefficient. The
+    reference is the gradient of the oracle's output. Since the oracle calls
+    ``torch.autograd.grad`` internally, ``torch.func.grad`` cannot wrap it, so
+    the reference uses ``torch.autograd.grad`` as well.
+    """
+    f, jet_fn, jet_args = _jet_setup(config, K, collapsed, device)
+    weights = tree_map(rand_like, jet_fn(*jet_args))
+    ref_args = tree_map(lambda t: t.detach().requires_grad_(), jet_args)
+    oracle = (rev_collapsed_jet if collapsed else _rev_jet)(f, detach=False)
+    with DifferentiableSubstitutes():
+        scalar = _weighted_sum(oracle, weights, ref_args)
+        leaves, spec = tree_flatten(ref_args)
+        want = tree_unflatten(autograd.grad(scalar, leaves), spec)
+    tol = tolerances_for(device)
+    assert_close(grad(partial(_weighted_sum, jet_fn, weights))(jet_args), want, **tol)
+    assert_close(vjp(jet_fn, *jet_args)[1](weights), want, **tol)
 
 
 @mark.parametrize("config", CASES, ids=lambda c: c["id"])
@@ -79,9 +112,8 @@ def test_jvp(config: dict[str, Any], K: int, collapsed: bool, device: str):
     through, and run under :class:`DifferentiableSubstitutes` like in
     :func:`assert_jet_matches_oracle`.
     """
-    jet_fn, _, jet_args = _jet_setup(config, K, collapsed, device)
+    f, jet_fn, jet_args = _jet_setup(config, K, collapsed, device)
     tangents = tree_map(rand_like, jet_args)
-    f, _ = setup_case(config, device)
     oracle = (rev_collapsed_jet if collapsed else _rev_jet)(f, detach=False)
     with DifferentiableSubstitutes():
         want = jvp(oracle, jet_args, tangents)

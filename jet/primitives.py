@@ -1212,7 +1212,22 @@ def jet_embedding(
             ),
             stacklevel=2,
         )
-    return _deflinear(ops.aten.embedding.default)(weight, indices, padding_idx, *args)
+    if not (isinstance(weight, JetTuple) and weight.collapsed):
+        return _deflinear(ops.aten.embedding.default)(
+            weight, indices, padding_idx, *args
+        )
+    # Index the batched (R, V, D) coefficients along dim 1 instead of vmapping
+    # the op: functorch's batching rule clones the whole table, indexing does not.
+    K = len(weight) - 1
+
+    def op(c: Tensor) -> Tensor:
+        return ops.aten.embedding.default(c, indices, padding_idx, *args)
+
+    coeffs = (
+        weight[k][:, indices] if _is_batched(k, K, True) else op(weight[k])
+        for k in range(1, K + 1)
+    )
+    return JetTuple((op(weight[0]), *coeffs), collapsed=True)
 
 
 def _deflinear(prim: Callable) -> Callable:

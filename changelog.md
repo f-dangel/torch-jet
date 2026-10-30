@@ -123,10 +123,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Collapsed-mode `embedding` indexes the batched table instead of vmapping the
+  op, which no longer copies the whole `(R, V, D)` table and lowers peak
+  memory ([PR](https://github.com/f-dangel/torch-jet/pull/244)).
 - `_leibniz` skips the multiply when the binomial factor is 1, which removes
-  about 8 % of the nodes of a K=2 jet graph and speeds up eager Taylor mode by
-  6-15 % on GPT-2, LLaMA and ViT-B/16 on an NVIDIA L40S; no change under
-  `torch.compile` ([PR](https://github.com/f-dangel/torch-jet/pull/243)).
+  many trivial nodes from the jet graph and speeds up eager Taylor mode
+  ([PR](https://github.com/f-dangel/torch-jet/pull/243)).
 - End-to-end model tests for `nn.TransformerEncoder` (post-norm, pre-norm,
   GELU) and torchvision's `vit_b_16`
   ([PR](https://github.com/f-dangel/torch-jet/pull/231)).

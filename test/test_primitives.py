@@ -1008,6 +1008,13 @@ PRIMITIVE_CASES = [
         "f": _cat_jet_const,
         "args_fn": lambda: (rand(1, 4, 6, 6),),
     },
+    # ``cat`` skips a 1-D empty operand of any other rank (legacy behaviour);
+    # transformers' empty key/value cache is one, ``cat([tensor([]), key], -2)``.
+    {
+        "id": "cat_jet_empty_const",
+        "f": _stateless(lambda x: cat([tensor([]).to(x), x], dim=-2)),
+        "args_fn": lambda: (rand(2, 3, 4),),
+    },
     # ---- Split (linear; a tuple of jets consumed via ``getitem``) ---------
     # Uneven split (``4 = 3 + 1``) along a negative dim, both pieces returned.
     {
@@ -1247,7 +1254,8 @@ PRIMITIVE_CASES = [
     },
     # Transformer views: ``x[0]``/``x[:, 1]`` -> ``select.int``, ``x[1:3]``/
     # ``x[..., ::2]`` -> ``slice.Tensor``, ``x[idx]``/``x[:, idx]`` -> ``index.Tensor``,
-    # ``.to(dtype)`` -> ``_to_copy`` (a same-dtype ``.to``, as on MPS, is a no-op).
+    # ``.to(dtype)`` -> ``_to_copy`` (a same-dtype ``.to``, as on MPS, is a no-op),
+    # ``x[:, 0:]`` -> ``alias`` (a full slice behind a leading ``:``).
     *(
         {"id": sid, "f": _stateless(fn), "args_fn": lambda: (rand(3, 4),)}
         for sid, fn in (
@@ -1256,6 +1264,7 @@ PRIMITIVE_CASES = [
             ("slice_rows", lambda x: x[1:3]),
             ("slice_step", lambda x: x[..., ::2]),
             ("to_copy_f32", lambda x: x.to(float32)),
+            ("alias", lambda x: x[:, 0:]),
         )
     ),
     _index_case("index_rows", lambda idx: idx),
@@ -1453,6 +1462,40 @@ def test_where_scalar_keeps_dtype(dtype: dtype_t, collapsed: bool, device: str):
         primitives.jet_masked_fill(x, mask, -float("inf")),
     ):
         assert all(c.dtype == dtype for c in out)
+
+
+@mark.parametrize(
+    "op, adapter, extra",
+    [
+        (
+            ops.aten._scaled_dot_product_efficient_attention.default,
+            compositions._scaled_dot_product_efficient_attention,
+            (None, False),
+        ),
+        (
+            ops.aten._scaled_dot_product_flash_attention.default,
+            compositions._scaled_dot_product_flash_attention,
+            (),
+        ),
+    ],
+    ids=["efficient", "flash"],
+)
+def test_cuda_sdpa_adapter_layout(
+    op: Callable, adapter: Callable, extra: tuple, collapsed: bool, device: str
+):
+    """A CUDA adapter's output has the strides of the kernel's meta (runs anywhere).
+
+    The query is ``nn.MultiheadAttention``'s ``(L, B, H, E)``-ordered one.
+    """
+    K, (L, B, H, E) = 2, (3, 2, 2, 4)
+    x = rand(L, B, H * E, device=device)
+    q = x.view(L, B * H, E).transpose(0, 1).view(B, H, L, E)
+    want = op(*3 * (q.to("meta"),), *extra)[0].stride()
+    jets = (
+        JetTuple(j, collapsed=collapsed) for j in make_jet_args(3 * (q,), K, collapsed)
+    )
+    for c in adapter(*jets, *extra)[0]:
+        assert c.stride()[-4:] == want
 
 
 def test_fused_rms_norm_matches_traced(collapsed: bool, device: str):

@@ -2,8 +2,8 @@
 
 A jet function is an ordinary PyTorch function, so ``torch.func`` transforms
 can wrap it. Each test transforms the jet of a case and compares with a
-reference. A jet *of* a transform (e.g. the jet of
-``grad``) is out of scope here.
+reference. A jet *of* a transform (e.g. the jet of ``grad``) is out of scope
+here.
 """
 
 from operator import itemgetter

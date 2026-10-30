@@ -998,6 +998,12 @@ def jet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
     Returns:
         The value and its Taylor coefficients.
     """
+    # ``cat`` skips a 1-D empty operand (legacy behaviour; e.g. a transformer's
+    # empty key/value cache, ``cat([tensor([]), key], -2)``). Drop such
+    # constants up front: their batched zero padding ``(R, 0)`` would not be.
+    tensors = [
+        t for t in tensors if isinstance(t, JetTuple) or t.ndim != 1 or t.numel() != 0
+    ]
     K = _jet_order(*tensors)
     first = next(t for t in tensors if isinstance(t, JetTuple))
     collapsed = first.collapsed

@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added/New
 
 - `aten.ones_like.default`, the constant autograd seeds its backward pass with
-  (first step towards jets of gradients) ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
+  (first step towards jets of gradients) ([PR](https://github.com/f-dangel/torch-jet/pull/251)).
 - Support transformer architectures in Taylor mode (`nn.TransformerEncoder`,
   torchvision's ViT, and Hugging Face's GPT-2, BERT, and LLaMA; see
   `test/test_transformer_encoder.py` and `test/test_huggingface.py`) by adding

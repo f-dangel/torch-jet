@@ -123,6 +123,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Collapsed-mode `embedding` indexes the batched table instead of vmapping the
+  op, which no longer clones the whole `(R, V, D)` table: a collapsed 2-jet of
+  GPT-2 with 32 directions now peaks at 25 GB instead of running out of memory
+  on a 48 GB NVIDIA L40S; time at R <= 16 is unchanged
+  ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
 - End-to-end model tests for `nn.TransformerEncoder` (post-norm, pre-norm,
   GELU) and torchvision's `vit_b_16`
   ([PR](https://github.com/f-dangel/torch-jet/pull/231)).

@@ -47,6 +47,17 @@ section of the introductory tutorial.
 
 See the [documentation](https://torch-jet.readthedocs.io/en/latest/generated/gallery/).
 
+### Composing with other transforms
+
+A jet function returned by `jet(...)` is an ordinary PyTorch function, so
+`torch.func.vmap`, `grad`, `vjp`, `jvp`, and `torch.compile` apply to it.
+These combinations are tested in `test/test_transforms.py`.
+
+The other direction, a jet *of* a transform such as `jet(torch.func.grad(f), ...)`,
+works in principle, since `grad(f)` traces to a graph of ordinary ATen ops.
+But the ops that autograd's backward pass adds have no jet rules yet, so such
+a trace currently stops at the first op without a rule. Adding them is a goal.
+
 ## Citing
 
 If you find the `jet` package useful for your research, consider citing

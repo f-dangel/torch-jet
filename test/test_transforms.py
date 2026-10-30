@@ -71,8 +71,12 @@ def test_vmap(config: dict[str, Any], K: int, collapsed: bool, device: str):
 
 
 def _weighted_sum(fn: Callable, weights: Any, args: tuple) -> Tensor:
-    """``fn(*args)`` with every output coefficient weighted and summed to a scalar."""
-    return sum((o * w).sum() for o, w in zip(tree_leaves(fn(*args)), weights))
+    """``fn(*args)`` with every output coefficient weighted and summed to a scalar.
+
+    ``weights`` has the pytree structure of ``fn``'s output.
+    """
+    outs, weights = tree_leaves(fn(*args)), tree_leaves(weights)
+    return sum((o * w).sum() for o, w in zip(outs, weights))
 
 
 @mark.parametrize("config", CASES, ids=lambda c: c["id"])
@@ -90,9 +94,9 @@ def test_grad_vjp(config: dict[str, Any], K: int, collapsed: bool, device: str):
     ref_args = tree_map(lambda t: t.detach().requires_grad_(), jet_args)
     oracle = (rev_collapsed_jet if collapsed else _rev_jet)(f, detach=False)
     with DifferentiableSubstitutes():
-        scalar = _weighted_sum(oracle, tree_leaves(weights), ref_args)
-        want = autograd.grad(scalar, tree_leaves(ref_args))
+        scalar = _weighted_sum(oracle, weights, ref_args)
+        want = list(autograd.grad(scalar, tree_leaves(ref_args)))
     tol = tolerances_for(device)
-    got = grad(partial(_weighted_sum, jet_fn, tree_leaves(weights)))(jet_args)
-    assert_close(tree_leaves(got), list(want), **tol)
-    assert_close(tree_leaves(vjp(jet_fn, *jet_args)[1](weights)), list(want), **tol)
+    got = grad(partial(_weighted_sum, jet_fn, weights))(jet_args)
+    assert_close(tree_leaves(got), want, **tol)
+    assert_close(tree_leaves(vjp(jet_fn, *jet_args)[1](weights)), want, **tol)

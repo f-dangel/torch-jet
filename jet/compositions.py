@@ -8,7 +8,7 @@ share one body. The primitives a composition wires together (``add``, ``mm``,
 algebraic identity (e.g. ``addmm == add(self, mm(mat1, mat2))``).
 """
 
-from math import pi, prod, sqrt
+from math import pi, sqrt
 from typing import Callable
 
 from torch import (
@@ -16,7 +16,6 @@ from torch import (
     contiguous_format,
     empty,
     empty_like,
-    empty_strided,
     finfo,
     ones,
     ops,
@@ -587,19 +586,22 @@ def _sdpa_fused(
 
 
 def _laid_out_like(out: JetTuple, ref: Tensor) -> JetTuple:
-    """Copy each tensor of ``out`` into the memory layout ``empty_like(ref)`` has.
+    """Lay out each tensor of ``out`` like ``empty_like(ref)`` (out of place).
 
-    Leading dims beyond ``ref``'s (collapsed mode's ``R``) stay outermost.
+    Out of place (permute to physical order, make contiguous, permute back), so
+    the adapters work under ``vmap``. Leading dims beyond ``ref``'s (collapsed
+    mode's ``R``) stay outermost.
     """
-    inner = empty_like(ref).stride()
+    stride = empty_like(ref).stride()
+    # Physical order of ``ref``'s dims, e.g. ``(0, 2, 1, 3)`` for the efficient
+    # kernel, which stores its ``(B, H, L, E)`` output as ``(B, L, H, E)``.
+    order = sorted(range(ref.dim()), key=lambda d: -stride[d])
 
     def relay(t: Tensor) -> Tensor:
-        lead = t.shape[: t.dim() - ref.dim()]
-        outer = [ref.numel() * prod(lead[i + 1 :]) for i in range(len(lead))]
-        strided = empty_strided(
-            t.shape, outer + list(inner), dtype=t.dtype, device=t.device
-        )
-        return strided.copy_(t)
+        lead = list(range(t.dim() - ref.dim()))
+        perm = lead + [len(lead) + d for d in order]
+        inverse = [perm.index(d) for d in range(t.dim())]
+        return t.permute(perm).contiguous().permute(inverse)
 
     return JetTuple((relay(t) for t in out), collapsed=out.collapsed)
 

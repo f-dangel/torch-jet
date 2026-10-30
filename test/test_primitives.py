@@ -11,6 +11,7 @@ from warnings import catch_warnings, filterwarnings
 
 from pytest import mark, raises, warns
 from torch import (
+    Tensor,
     addmm,
     bfloat16,
     cat,
@@ -40,6 +41,7 @@ from torch import (
 from torch import (
     dtype as dtype_t,
 )
+from torch.func import vmap
 from torch.nn.functional import (
     adaptive_avg_pool2d,
     avg_pool2d,
@@ -1483,6 +1485,33 @@ def test_cuda_sdpa_adapter_layout(
     )
     for c in adapter(*jets, *extra)[0]:
         assert c.stride()[-4:] == want
+
+
+@mark.parametrize(
+    "adapter, extra",
+    [
+        (compositions._scaled_dot_product_flash_attention_for_cpu, ()),
+        (compositions._scaled_dot_product_efficient_attention, (None, False)),
+        (compositions._scaled_dot_product_flash_attention, ()),
+    ],
+    ids=["cpu", "efficient", "flash"],
+)
+def test_sdpa_adapter_under_vmap(adapter: Callable, extra: tuple, device: str):
+    """An adapter's layout step is out of place, so it works under ``vmap``.
+
+    Batches the second coefficient over ``R`` directions (standard mode) and
+    compares with a Python loop.
+    """
+    R, (B, H, L, E) = 3, (2, 2, 3, 4)
+    manual_seed(0)
+    q, c = rand(B, H, L, E, device=device), rand(R, 2, B, H, L, E, device=device)
+
+    def second(c1: Tensor, c2: Tensor) -> Tensor:
+        j = JetTuple((q, c1, c2), collapsed=False)
+        return adapter(j, j, j, *extra)[0][2]
+
+    want = stack([second(*c[r]) for r in range(R)])
+    assert_close(vmap(second)(c[:, 0], c[:, 1]), want)
 
 
 def test_fused_rms_norm_matches_traced(collapsed: bool, device: str):

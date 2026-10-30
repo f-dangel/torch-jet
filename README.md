@@ -47,6 +47,29 @@ section of the introductory tutorial.
 
 See the [documentation](https://torch-jet.readthedocs.io/en/latest/generated/gallery/).
 
+### Composing with other transforms
+
+- **Transforms over a jet.** A jet function returned by `jet(...)` is an
+  ordinary PyTorch function, so `torch.func.vmap`, `grad`, `vjp`, and `jvp`
+  apply to it.
+
+- **`torch.compile`** needs one more step. The jet function interprets the
+  captured graph at call time, so the order and the number of directions can
+  change between calls; dynamo cannot trace that interpreter. `jet.freeze`
+  traces the jet computation once for fixed arguments and returns a callable
+  that `torch.compile` handles, at the price that order, direction count,
+  shapes, dtypes, and devices are then fixed:
+
+  ```python
+  jet_fn = jet(f, mock_args)
+  compiled = torch.compile(jet.freeze(jet_fn, jet_args))
+  ```
+
+- **A jet of a transform**, such as `jet(torch.func.grad(f), ...)`, works in
+  principle. But some of the ops that autograd's backward pass adds may not
+  have a jet rule yet, in which case the trace stops at the first op without
+  a rule.
+
 ## Citing
 
 If you find the `jet` package useful for your research, consider citing

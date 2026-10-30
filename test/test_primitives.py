@@ -652,16 +652,22 @@ def _where_case(
 
 
 def _sdpa_case(
-    cid: str, jets: str = "JJJ", S: int = 5, mask: str | None = None, **kw
+    cid: str,
+    jets: str = "JJJ",
+    S: int = 5,
+    mask: str | None = None,
+    kv_heads: int = 2,
+    **kw,
 ) -> dict[str, Any]:
     """``scaled_dot_product_attention(q, k, v, **kw)`` with ``q`` of shape (2, 2, 3, 4).
 
     ``jets`` marks which of ``q`` / ``k`` / ``v`` (batch, heads, L=3 / S=5, E=4)
     are jets, the rest are frozen constants; ``mask`` adds a ``"bool"`` (no
-    fully masked row) or additive ``"float"`` mask. Drawn under
-    ``manual_seed(3)``.
+    fully masked row) or additive ``"float"`` mask; ``kv_heads`` sets the
+    key/value heads (fewer than the two query heads for grouped-query
+    attention). Drawn under ``manual_seed(3)``.
     """
-    shapes = ((2, 2, 3, 4), (2, 2, S, 4), (2, 2, S, 4))
+    shapes = ((2, 2, 3, 4), (2, kv_heads, S, 4), (2, kv_heads, S, 4))
 
     def build(device):
         manual_seed(3)
@@ -1085,6 +1091,8 @@ PRIMITIVE_CASES = [
             ("_bool_mask", {"mask": "bool"}),
             ("_float_mask", {"mask": "float"}),
             ("_scale", {"scale": 0.3}),
+            # Grouped-query attention: one key/value head serves both query heads.
+            ("_gqa", {"kv_heads": 1, "enable_gqa": True}),
         )
     ),
     {
@@ -1228,6 +1236,11 @@ PRIMITIVE_CASES = [
         "id": "expand",
         "f": _stateless(lambda x: x.expand(2, 3, 4)),
         "args_fn": lambda: (rand(1, 4),),
+    },
+    {
+        "id": "repeat_interleave",
+        "f": _stateless(lambda x: x.repeat_interleave(2, dim=1)),
+        "args_fn": lambda: (rand(2, 3, 4),),
     },
     {
         "id": "clone",
@@ -1449,6 +1462,40 @@ def test_where_scalar_keeps_dtype(dtype: dtype_t, collapsed: bool, device: str):
         primitives.jet_masked_fill(x, mask, -float("inf")),
     ):
         assert all(c.dtype == dtype for c in out)
+
+
+@mark.parametrize(
+    "op, adapter, extra",
+    [
+        (
+            ops.aten._scaled_dot_product_efficient_attention.default,
+            compositions._scaled_dot_product_efficient_attention,
+            (None, False),
+        ),
+        (
+            ops.aten._scaled_dot_product_flash_attention.default,
+            compositions._scaled_dot_product_flash_attention,
+            (),
+        ),
+    ],
+    ids=["efficient", "flash"],
+)
+def test_cuda_sdpa_adapter_layout(
+    op: Callable, adapter: Callable, extra: tuple, collapsed: bool, device: str
+):
+    """A CUDA adapter's output has the strides of the kernel's meta (runs anywhere).
+
+    The query is ``nn.MultiheadAttention``'s ``(L, B, H, E)``-ordered one.
+    """
+    K, (L, B, H, E) = 2, (3, 2, 2, 4)
+    x = rand(L, B, H * E, device=device)
+    q = x.view(L, B * H, E).transpose(0, 1).view(B, H, L, E)
+    want = op(*3 * (q.to("meta"),), *extra)[0].stride()
+    jets = (
+        JetTuple(j, collapsed=collapsed) for j in make_jet_args(3 * (q,), K, collapsed)
+    )
+    for c in adapter(*jets, *extra)[0]:
+        assert c.stride()[-4:] == want
 
 
 def test_fused_rms_norm_matches_traced(collapsed: bool, device: str):

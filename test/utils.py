@@ -76,8 +76,12 @@ def _sdpa(
     dropout_p: float = 0.0,
     is_causal: bool = False,
     scale: float | None = None,
+    enable_gqa: bool = False,
 ) -> Tensor:
     """``scaled_dot_product_attention`` from its definition (``dropout_p == 0``)."""
+    if enable_gqa:
+        groups = q.shape[-3] // k.shape[-3]
+        k, v = (x.repeat_interleave(groups, dim=-3) for x in (k, v))
     scores = (q * (q.shape[-1] ** -0.5 if scale is None else scale)) @ k.mT
     if is_causal:
         attn_mask = ones(q.shape[-2], k.shape[-2], device=q.device).tril().bool()

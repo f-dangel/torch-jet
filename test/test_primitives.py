@@ -1451,6 +1451,40 @@ def test_where_scalar_keeps_dtype(dtype: dtype_t, collapsed: bool, device: str):
         assert all(c.dtype == dtype for c in out)
 
 
+@mark.parametrize(
+    "op, adapter, extra",
+    [
+        (
+            ops.aten._scaled_dot_product_efficient_attention.default,
+            compositions._scaled_dot_product_efficient_attention,
+            (None, False),
+        ),
+        (
+            ops.aten._scaled_dot_product_flash_attention.default,
+            compositions._scaled_dot_product_flash_attention,
+            (),
+        ),
+    ],
+    ids=["efficient", "flash"],
+)
+def test_cuda_sdpa_adapter_layout(
+    op: Callable, adapter: Callable, extra: tuple, collapsed: bool, device: str
+):
+    """A CUDA adapter's output has the strides of the kernel's meta (runs anywhere).
+
+    The query is ``nn.MultiheadAttention``'s ``(L, B, H, E)``-ordered one.
+    """
+    K, (L, B, H, E) = 2, (3, 2, 2, 4)
+    x = rand(L, B, H * E, device=device)
+    q = x.view(L, B * H, E).transpose(0, 1).view(B, H, L, E)
+    want = op(*3 * (q.to("meta"),), *extra)[0].stride()
+    jets = (
+        JetTuple(j, collapsed=collapsed) for j in make_jet_args(3 * (q,), K, collapsed)
+    )
+    for c in adapter(*jets, *extra)[0]:
+        assert c.stride()[-4:] == want
+
+
 def test_fused_rms_norm_matches_traced(collapsed: bool, device: str):
     """The fused rule equals the jet of the CPU decomposition (CI only traces the latter)."""
     K = 3

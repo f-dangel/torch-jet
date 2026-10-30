@@ -14,6 +14,7 @@ from typing import Callable
 from torch import (
     Tensor,
     contiguous_format,
+    empty,
     empty_like,
     empty_strided,
     finfo,
@@ -585,16 +586,22 @@ def _sdpa_fused(
     return out, *(n_extra * [None])
 
 
-def _laid_out_like(t: Tensor, ref: Tensor) -> Tensor:
-    """Copy ``t`` into the memory layout ``empty_like(ref)`` has.
+def _laid_out_like(out: JetTuple, ref: Tensor) -> JetTuple:
+    """Copy each tensor of ``out`` into the memory layout ``empty_like(ref)`` has.
 
-    Leading dims of ``t`` beyond ``ref``'s (collapsed mode's ``R``) stay
-    outermost.
+    Leading dims beyond ``ref``'s (collapsed mode's ``R``) stay outermost.
     """
-    lead = t.shape[: t.dim() - ref.dim()]
-    strides = [ref.numel() * prod(lead[i + 1 :]) for i in range(len(lead))]
-    strides += empty_like(ref).stride()
-    return empty_strided(t.shape, strides, dtype=t.dtype, device=t.device).copy_(t)
+    inner = empty_like(ref).stride()
+
+    def relay(t: Tensor) -> Tensor:
+        lead = t.shape[: t.dim() - ref.dim()]
+        outer = [ref.numel() * prod(lead[i + 1 :]) for i in range(len(lead))]
+        strided = empty_strided(
+            t.shape, outer + list(inner), dtype=t.dtype, device=t.device
+        )
+        return strided.copy_(t)
+
+    return JetTuple((relay(t) for t in out), collapsed=out.collapsed)
 
 
 def _scaled_dot_product_flash_attention_for_cpu(
@@ -611,7 +618,7 @@ def _scaled_dot_product_flash_attention_for_cpu(
     """
     out, lse = _sdpa_fused(query, key, value, attn_mask, dropout_p, is_causal, scale, 1)
     q = query[0] if isinstance(query, JetTuple) else query
-    return JetTuple((_laid_out_like(c, q) for c in out), collapsed=out.collapsed), lse
+    return _laid_out_like(out, q), lse
 
 
 def _scaled_dot_product_efficient_attention(
@@ -628,8 +635,16 @@ def _scaled_dot_product_efficient_attention(
     """Adapter for the memory-efficient CUDA op (float32, or any explicit mask).
 
     ``attn_bias`` is additive: the trace converts a bool mask before the op.
+    The kernel (and its meta) writes its ``(B, H, L, E)`` output into a
+    contiguous ``(B, L, H, E)`` buffer; the output is laid out the same way
+    (see the CPU adapter for why).
     """
-    return _sdpa_fused(query, key, value, attn_bias, dropout_p, is_causal, scale, 3)
+    out, *extra = _sdpa_fused(
+        query, key, value, attn_bias, dropout_p, is_causal, scale, 3
+    )
+    q = query[0] if isinstance(query, JetTuple) else query
+    ref = empty(q.transpose(1, 2).shape, device="meta").transpose(1, 2)
+    return _laid_out_like(out, ref), *extra
 
 
 def _scaled_dot_product_flash_attention(
@@ -642,8 +657,13 @@ def _scaled_dot_product_flash_attention(
     *,
     scale: float | None = None,
 ) -> tuple:
-    """Adapter for the flash CUDA op (half precision without an explicit mask)."""
-    return _sdpa_fused(query, key, value, None, dropout_p, is_causal, scale, 8)
+    """Adapter for the flash CUDA op (half precision without an explicit mask).
+
+    Like the CPU kernel, it allocates its output with ``empty_like(query)``.
+    """
+    out, *extra = _sdpa_fused(query, key, value, None, dropout_p, is_causal, scale, 8)
+    q = query[0] if isinstance(query, JetTuple) else query
+    return _laid_out_like(out, q), *extra
 
 
 def _scaled_dot_product_attention_math_for_mps(

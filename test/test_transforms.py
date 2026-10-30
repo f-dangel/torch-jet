@@ -13,7 +13,7 @@ from pytest import mark
 from torch import Tensor, autograd, rand_like, stack
 from torch.func import grad, vjp, vmap
 from torch.testing import assert_close
-from torch.utils._pytree import tree_leaves, tree_map
+from torch.utils._pytree import tree_flatten, tree_leaves, tree_map, tree_unflatten
 
 from jet import jet
 from jet._jet import _rev_jet
@@ -95,8 +95,8 @@ def test_grad_vjp(config: dict[str, Any], K: int, collapsed: bool, device: str):
     oracle = (rev_collapsed_jet if collapsed else _rev_jet)(f, detach=False)
     with DifferentiableSubstitutes():
         scalar = _weighted_sum(oracle, weights, ref_args)
-        want = list(autograd.grad(scalar, tree_leaves(ref_args)))
+        leaves, spec = tree_flatten(ref_args)
+        want = tree_unflatten(autograd.grad(scalar, leaves), spec)
     tol = tolerances_for(device)
-    got = grad(partial(_weighted_sum, jet_fn, weights))(jet_args)
-    assert_close(tree_leaves(got), want, **tol)
-    assert_close(tree_leaves(vjp(jet_fn, *jet_args)[1](weights)), want, **tol)
+    assert_close(grad(partial(_weighted_sum, jet_fn, weights))(jet_args), want, **tol)
+    assert_close(vjp(jet_fn, *jet_args)[1](weights), want, **tol)

@@ -11,15 +11,23 @@ from typing import Any, Callable
 
 from pytest import mark
 from torch import rand_like, stack
-from torch.func import vmap
+from torch.func import jvp, vmap
 from torch.testing import assert_close
 from torch.utils._pytree import tree_map
 
 from jet import jet
+from jet._jet import _rev_jet
 from jet.utils import _is_jet_leaf
 from test.test_torchvision import ORDER_IDS, ORDERS
 from test.test_transformer_encoder import ENCODER_CASES
-from test.utils import SCALAR_OUTPUT_CASES, make_jet_args, setup_case, tolerances_for
+from test.utils import (
+    SCALAR_OUTPUT_CASES,
+    DifferentiableSubstitutes,
+    make_jet_args,
+    rev_collapsed_jet,
+    setup_case,
+    tolerances_for,
+)
 
 #: The encoder case belongs in CI's ``-m models`` job; mark the whole module.
 pytestmark = mark.models
@@ -60,3 +68,22 @@ def test_vmap(config: dict[str, Any], K: int, collapsed: bool, device: str):
     outs = [jet_fn(*_map_coeffs(itemgetter(r), batched)) for r in range(R)]
     want = tree_map(lambda *o: stack(o), *outs)
     assert_close(vmap(jet_fn, in_dims)(*batched), want, **tolerances_for(device))
+
+
+@mark.parametrize("config", CASES, ids=lambda c: c["id"])
+@mark.parametrize("K, collapsed", ORDERS, ids=ORDER_IDS)
+def test_jvp(config: dict[str, Any], K: int, collapsed: bool, device: str):
+    """``jvp`` of a jet w.r.t. primals and coefficients matches the oracle's.
+
+    The reference is ``jvp`` of the nested reverse-mode oracle, built with
+    ``detach=False`` so that its outputs keep the graph ``jvp`` differentiates
+    through, and run under :class:`DifferentiableSubstitutes` like in
+    :func:`assert_jet_matches_oracle`.
+    """
+    jet_fn, _, jet_args = _jet_setup(config, K, collapsed, device)
+    tangents = tree_map(rand_like, jet_args)
+    f, _ = setup_case(config, device)
+    oracle = (rev_collapsed_jet if collapsed else _rev_jet)(f, detach=False)
+    with DifferentiableSubstitutes():
+        want = jvp(oracle, jet_args, tangents)
+    assert_close(jvp(jet_fn, jet_args, tangents), want, **tolerances_for(device))

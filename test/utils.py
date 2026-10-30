@@ -267,8 +267,10 @@ def make_jet_args(
     return tree_map(make_leaf, args)
 
 
-def rev_collapsed_jet(f: Callable[..., Any]) -> Callable[..., Any]:
+def rev_collapsed_jet(f: Callable[..., Any], detach: bool = True) -> Callable[..., Any]:
     """Reference implementation for collapsed Taylor mode via :func:`jet._rev_jet`.
+
+    ``detach`` is passed on to :func:`jet._rev_jet`.
 
     Built on :func:`jet._rev_jet` (nested reverse-mode AD), so independent of
     the FX-trace and interpreter machinery. See :func:`jet.jet` for the
@@ -280,7 +282,7 @@ def rev_collapsed_jet(f: Callable[..., Any]) -> Callable[..., Any]:
     uses :func:`torch.autograd.grad` which does not compose with
     :func:`torch.func.vmap`, hence the explicit Python loop over ``R``.)
     """
-    std_jet = _rev_jet(f)
+    std_jet = _rev_jet(f, detach)
 
     def cjet_f(*args: Any) -> Any:
         leaves, _ = tree_flatten(args, is_leaf=_is_jet_leaf)

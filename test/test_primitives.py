@@ -106,6 +106,21 @@ def _sub_cj(device):
     return lambda x: SUB - x
 
 
+def _tanh_backward_jc(device):
+    # Autograd's backward of ``tanh`` with a frozen ``output`` (seeded like
+    # ``_consts``); the gradient is the jet.
+    manual_seed(0)
+    out = tanh(rand(3, 4, **device_kw(device)))
+    return lambda g: ops.aten.tanh_backward.default(g, out)
+
+
+def _tanh_backward_cj(device):
+    # ... and with a frozen gradient; ``tanh``'s output is the jet.
+    manual_seed(0)
+    g = rand(3, 4, **device_kw(device))
+    return lambda out: ops.aten.tanh_backward.default(g, out)
+
+
 def _div_tensor_const(device):
     # Divide a jet by a frozen (broadcasting) constant tensor divisor; lowers to
     # ``aten.div.Tensor`` like ``x / scalar`` does.
@@ -911,6 +926,22 @@ PRIMITIVE_CASES = [
     },
     {"id": "mul_JC", "f": _stateless(lambda x: x * 3.0), "args_fn": lambda: (rand(4),)},
     {"id": "mul_CJ", "f": _stateless(lambda x: 3.0 * x), "args_fn": lambda: (rand(4),)},
+    # ---- tanh_backward (autograd's backward of ``tanh``; JJ/JC/CJ) --------
+    {
+        "id": "tanh_backward_JJ",
+        "f": _stateless(ops.aten.tanh_backward.default),
+        "args_fn": lambda: (rand(3, 4), rand(3, 4)),
+    },
+    {
+        "id": "tanh_backward_JC",
+        "f": _tanh_backward_jc,
+        "args_fn": lambda: (rand(3, 4),),
+    },
+    {
+        "id": "tanh_backward_CJ",
+        "f": _tanh_backward_cj,
+        "args_fn": lambda: (rand(3, 4),),
+    },
     # ---- Broadcasting stress matrix (add/sub/mul; JJ/JC/CJ branches) ------
     # See ``_binop_cases`` / ``_BROADCAST_PAIRS`` / ``_BROADCAST_BINOPS``.
     *_binop_cases(),

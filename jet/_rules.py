@@ -108,6 +108,8 @@ RULES: dict = {
     ops.aten._softmax.default: _defshared(compositions.softmax),
     ops.aten._safe_softmax.default: _defshared(compositions.safe_softmax),
     ops.aten.gelu.default: _defshared(compositions.gelu),
+    # Autograd's backward of ``tanh``: ``grad * (1 - out^2)``.
+    ops.aten.tanh_backward.default: _defshared(compositions.tanh_backward),
     ops.aten.native_batch_norm.default: _defshared(compositions.native_batch_norm),
     ops.aten.native_layer_norm.default: _defshared(compositions.native_layer_norm),
     # CUDA / MPS lower ``nn.RMSNorm`` to this fused op (CPU traces its primitives).

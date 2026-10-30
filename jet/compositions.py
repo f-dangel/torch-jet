@@ -699,3 +699,24 @@ def _scaled_dot_product_attention_math_for_mps(
             "Taylor-mode scaled_dot_product_attention does not support dropout_mask."
         )
     return _sdpa_fused(query, key, value, attn_mask, dropout_p, is_causal, scale, 1)
+
+
+def tanh_backward(grad_output: object, output: object) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.tanh_backward(grad_output, output)``.
+
+    Autograd's backward of ``tanh`` computes ``grad_output * (1 - output^2)``,
+    written here as ``grad_output - grad_output * output * output`` so every
+    sub-rule's all-constant fallback is a plain tensor op. Either operand may
+    be a jet (a jet of a gradient expands both).
+
+    Args:
+        grad_output: The incoming gradient; a jet or a constant ``Tensor``.
+        output: ``tanh``'s output; a jet or a constant ``Tensor``.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    collapsed = _collapsed_of(grad_output, output)
+    mul = _rule(ops.aten.mul.Tensor, collapsed)
+    sub = _rule(ops.aten.sub.Tensor, collapsed)
+    return sub(grad_output, mul(grad_output, mul(output, output)))

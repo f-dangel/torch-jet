@@ -297,7 +297,10 @@ def _leibniz(
     for k in range(1, K + 1):
         term = None
         for j in range(k + 1):
-            term_j = comb(k, j, exact=True) * product(j, k)
+            # Skip the multiply when the binomial factor is 1 (most terms, all
+            # but the middle one at K=2): fewer graph nodes, same values.
+            c = comb(k, j, exact=True)
+            term_j = product(j, k) if c == 1 else c * product(j, k)
             # The collapsed K-th coefficient carries no R, so reduce its batched
             # (R-carrying) terms over the direction dim; standard never enters.
             if k == K and _is_batched(j, K, collapsed):

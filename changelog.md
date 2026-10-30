@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- `aten.ones_like.default`, the constant autograd seeds its backward pass with
+  (first step towards jets of gradients) ([PR](https://github.com/f-dangel/torch-jet/pull/251)).
 - `jet.freeze(f, args)` traces a function (e.g. a jet function) once for
   fixed arguments and returns a callable on the same pytree, which
   `torch.compile` can handle; the order, direction count, shapes, dtypes,
@@ -134,6 +136,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Docs: a section on composing `jet` with PyTorch's function transforms,
+  and which direction is not implemented yet ([PR](https://github.com/f-dangel/torch-jet/pull/247)).
 - Tests that PyTorch's function transforms apply to a jet
   (`test/test_transforms.py`): `vmap` over the input coefficients; replaces
   the sdpa-adapter-only `vmap` test

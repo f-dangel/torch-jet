@@ -1,8 +1,8 @@
 """PyTorch's function transforms apply to a jet function.
 
 A jet function is an ordinary PyTorch function, so ``torch.func`` transforms
-(and ``torch.compile``) can wrap it. Each test transforms the jet of a case
-and compares with a reference. A jet *of* a transform (e.g. the jet of
+can wrap it. Each test transforms the jet of a case and compares with a
+reference. A jet *of* a transform (e.g. the jet of
 ``grad``) is out of scope here.
 """
 

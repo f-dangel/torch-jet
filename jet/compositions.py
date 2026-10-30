@@ -601,12 +601,12 @@ def _laid_out_like(out: JetTuple, ref: Tensor) -> JetTuple:
     stride = empty_like(ref).stride()
     # Physical order of ``ref``'s dims, e.g. ``(0, 2, 1, 3)`` for the efficient
     # kernel, which stores its ``(B, H, L, E)`` output as ``(B, L, H, E)``.
-    order = sorted(range(ref.dim()), key=lambda d: -stride[d])
+    order = sorted(range(ref.ndim), key=lambda d: -stride[d])
 
     def relay(t: Tensor) -> Tensor:
-        lead = list(range(t.dim() - ref.dim()))
+        lead = list(range(t.ndim - ref.ndim))
         perm = lead + [len(lead) + d for d in order]
-        inverse = [perm.index(d) for d in range(t.dim())]
+        inverse = [perm.index(d) for d in range(t.ndim)]
         return t.permute(perm).contiguous().permute(inverse)
 
     return JetTuple((relay(t) for t in out), collapsed=out.collapsed)

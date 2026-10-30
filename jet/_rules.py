@@ -176,6 +176,6 @@ for _prim in (
     RULES[_prim] = _deflinear(_prim)
 
 # Constant-output ops: primal carries the value, coefficients are zero.
-RULES[ops.aten.zeros_like.default] = _defzero(ops.aten.zeros_like.default)
 # Autograd seeds its backward pass with ``ones_like(loss)``.
-RULES[ops.aten.ones_like.default] = _defzero(ops.aten.ones_like.default)
+for op in (ops.aten.zeros_like.default, ops.aten.ones_like.default):
+    RULES[op] = _defzero(op)

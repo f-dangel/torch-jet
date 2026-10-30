@@ -65,6 +65,7 @@ test = [
     "pytest-cov",
     "pytest-xdist",
     "torchvision",
+    "transformers",
 ]
 # Dependencies needed for linting (semicolon/line-separated)
 lint = [

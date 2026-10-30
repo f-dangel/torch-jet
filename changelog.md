@@ -123,6 +123,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- End-to-end model tests on tiny Hugging Face transformers (GPT-2 with and
+  without the language model head, BERT; `sdpa` and `eager` attention), built
+  from configs with random weights; `transformers` joins the `test` extra
+  ([PR](https://github.com/f-dangel/torch-jet/pull/239)).
 - Collapsed-mode `embedding` indexes the batched table instead of vmapping the
   op, which no longer copies the whole `(R, V, D)` table and lowers peak
   memory ([PR](https://github.com/f-dangel/torch-jet/pull/244)).

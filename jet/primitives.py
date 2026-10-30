@@ -297,7 +297,10 @@ def _leibniz(
     for k in range(1, K + 1):
         term = None
         for j in range(k + 1):
-            term_j = comb(k, j, exact=True) * product(j, k)
+            # Skip the multiply when the binomial factor is 1 (most terms, all
+            # but the middle one at K=2): fewer graph nodes, same values.
+            c = comb(k, j, exact=True)
+            term_j = product(j, k) if c == 1 else c * product(j, k)
             # The collapsed K-th coefficient carries no R, so reduce its batched
             # (R-carrying) terms over the direction dim; standard never enters.
             if k == K and _is_batched(j, K, collapsed):
@@ -1209,7 +1212,22 @@ def jet_embedding(
             ),
             stacklevel=2,
         )
-    return _deflinear(ops.aten.embedding.default)(weight, indices, padding_idx, *args)
+    if not (isinstance(weight, JetTuple) and weight.collapsed):
+        return _deflinear(ops.aten.embedding.default)(
+            weight, indices, padding_idx, *args
+        )
+    # Index the batched (R, V, D) coefficients along dim 1 instead of vmapping
+    # the op: functorch's batching rule clones the whole table, indexing does not.
+    K = len(weight) - 1
+
+    def op(c: Tensor) -> Tensor:
+        return ops.aten.embedding.default(c, indices, padding_idx, *args)
+
+    coeffs = (
+        weight[k][:, indices] if _is_batched(k, K, True) else op(weight[k])
+        for k in range(1, K + 1)
+    )
+    return JetTuple((op(weight[0]), *coeffs), collapsed=True)
 
 
 def _deflinear(prim: Callable) -> Callable:

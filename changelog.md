@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   collapsed modes): a composition for `F.scaled_dot_product_attention` with
   default arguments (eval mode, `dropout_p == 0`) and an adapter for the fused
   CPU op ([PR](https://github.com/f-dangel/torch-jet/pull/226)).
+  - The sdpa adapters lay out their output out of place, so a jet can be
+    batched over directions with `vmap` when the trace hits a fused
+    attention kernel
+    ([PR](https://github.com/f-dangel/torch-jet/pull/242)).
   - The CUDA adapters return their output in the same memory layout as the
     fused kernels, so views the trace bases on that layout work (e.g.
     `nn.MultiheadAttention` in half precision, and `sdpa(...).transpose(1,
@@ -127,6 +131,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     may carry its own `assert_close` tolerances, since LLaMA runs its RMSNorm
     and eager softmax in float32 whatever the model dtype
     ([PR](https://github.com/f-dangel/torch-jet/pull/241)).
+- Collapsed-mode `embedding` indexes the batched table instead of vmapping the
+  op, which no longer copies the whole `(R, V, D)` table and lowers peak
+  memory ([PR](https://github.com/f-dangel/torch-jet/pull/244)).
+- `_leibniz` skips the multiply when the binomial factor is 1, which removes
+  many trivial nodes from the jet graph and speeds up eager Taylor mode
+  ([PR](https://github.com/f-dangel/torch-jet/pull/243)).
 - End-to-end model tests for `nn.TransformerEncoder` (post-norm, pre-norm,
   GELU) and torchvision's `vit_b_16`
   ([PR](https://github.com/f-dangel/torch-jet/pull/231)).

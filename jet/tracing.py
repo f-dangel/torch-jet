@@ -108,13 +108,7 @@ def freeze(
     trace that interpreter, so ``torch.compile`` does not work on it. This
     helper captures the graph of the jet computation for one fixed set of
     arguments and wraps it in a callable that takes the same pytree, which
-    ``torch.compile`` handles:
-
-    ```python
-    jet_fn = jet(f, mock_args, collapsed=collapsed)
-    frozen = torch.compile(freeze(jet_fn, jet_args))
-    out = frozen(*jet_args)
-    ```
+    ``torch.compile`` handles.
 
     Everything is fixed at trace time: the pytree structure of ``args`` (for
     jet arguments: the order ``K``, the direction count ``R``, and collapsed

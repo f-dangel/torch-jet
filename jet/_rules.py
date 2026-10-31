@@ -43,7 +43,7 @@ def _defzero(prim: Callable) -> dict[bool, Rule]:
     """Build the constant-output rule for a ``prim``.
 
     The rule is mode-agnostic -- :func:`jet.primitives._defzero` zeros each
-    coefficient to its input slot's shape and follows ``self.collapsed``.
+    coefficient to the output's shape and follows ``self.collapsed``.
     """
     return _defshared(primitives._defzero(prim))
 
@@ -101,6 +101,8 @@ RULES: dict = {
     ops.aten.nll_loss_forward.default: _defshared(primitives.jet_nll_loss_forward),
     # Token embedding lookup: linear in the weight, integer indices stay constant.
     ops.aten.embedding.default: _defshared(primitives.jet_embedding),
+    # Backward of ``x[idx]``: scatters ``grad_output`` into ``new_zeros``.
+    ops.aten.index_put.default: _defshared(primitives.jet_index_put),
     # Current torch lowers all scalar division (``x / 2.0``) to this overload;
     # a Taylor-expanded divisor uses the division recurrence.
     ops.aten.div.Tensor: _defshared(primitives.jet_div),
@@ -206,5 +208,6 @@ for op in (
     ops.aten.ones_like.default,
     ops.aten.empty_like.default,
     ops.aten.fill.Scalar,
+    ops.aten.new_zeros.default,
 ):
     RULES[op] = _defzero(op)

@@ -1276,6 +1276,23 @@ def jet_embedding(
     return JetTuple((op(weight[0]), *coeffs), collapsed=True)
 
 
+def jet_index_put(
+    self: Tensor | JetTuple,
+    indices: list[Tensor | None],
+    values: Tensor | JetTuple,
+    accumulate: bool = False,
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.index_put(self, indices, values, accumulate)``.
+
+    Jointly linear in ``self`` and ``values`` for constant integer ``indices``
+    (autograd's backward of ``x[idx]`` scatters into ``new_zeros``), so
+    :func:`_pair_linear` applies the op coefficient-wise.
+    """
+    return _pair_linear(
+        lambda a, b: ops.aten.index_put.default(a, indices, b, accumulate)
+    )(self, values)
+
+
 def _deflinear(prim: Callable) -> Callable:
     """Build a linear jet rule (standard or collapsed).
 
@@ -1309,6 +1326,35 @@ def _deflinear_first(prim: Callable) -> Callable:
     return rule
 
 
+def _pair_linear(prim: Callable[[Tensor, Tensor], Tensor]) -> Callable:
+    """Build the jet rule of an op jointly linear in two tensor operands.
+
+    Each coefficient is ``prim(a_k, b_k)``; a constant operand enters the
+    primal and contributes zeros to every coefficient (``(R, *shape)`` in a
+    collapsed batched slot, which ``vmap``s ``prim`` over ``R``).
+    """
+
+    def rule(a: Tensor | JetTuple, b: Tensor | JetTuple) -> JetTuple:
+        K = _jet_order(a, b)
+        jet = a if isinstance(a, JetTuple) else b
+
+        def part(t: Tensor | JetTuple, k: int, batched: bool) -> Tensor:
+            if isinstance(t, JetTuple):
+                return t[k]
+            if k == 0:
+                return t
+            return t.new_zeros(jet[k].shape[0], *t.shape) if batched else zeros_like(t)
+
+        out = []
+        for k in range(K + 1):
+            batched = _is_batched(k, K, jet.collapsed)
+            op = vmap(prim) if batched else prim
+            out.append(op(part(a, k, batched), part(b, k, batched)))
+        return JetTuple(out, collapsed=jet.collapsed)
+
+    return rule
+
+
 def _defzero(prim: Callable) -> Callable:
     """Build a constant-output jet rule (output independent of the input).
 
@@ -1316,15 +1362,19 @@ def _defzero(prim: Callable) -> Callable:
     constant-output op has all coefficients zero, so only the primal carries
     information. ``prim`` is applied to the primal to produce the output value
     (which carries any ``dtype`` / ``device`` / ``layout`` kwargs the user
-    passed). Each zero coefficient matches its input slot's shape -- which
-    respects the collapsed per-slot contract (``(R, *S)`` for ``c_1..c_{K-1}``,
-    ``S`` for ``c_K``) and reduces to the primal's shape in standard mode -- and
-    inherits ``primal_out``'s metadata. The output mode follows ``self.collapsed``.
+    passed). Each zero coefficient has the output's shape behind its input
+    slot's leading direction dims -- ``(R, *out)`` for a collapsed
+    ``c_1..c_{K-1}``, ``out`` otherwise -- so ``new_zeros`` with a size
+    different from the input's works. The output mode follows ``self.collapsed``.
     """
 
     def rule(self: JetTuple, *args, **kwargs) -> JetTuple:
         primal_out = prim(self[0], *args, **kwargs)
-        coeffs = [primal_out.new_zeros(c.shape) for c in self[1:]]
+        lead = self[0].dim()
+        coeffs = [
+            primal_out.new_zeros((*c.shape[: c.dim() - lead], *primal_out.shape))
+            for c in self[1:]
+        ]
         return JetTuple([primal_out, *coeffs], collapsed=self.collapsed)
 
     return rule

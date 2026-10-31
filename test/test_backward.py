@@ -24,7 +24,6 @@ UNSUPPORTED = (
     "hardtanh",
     "relu",
     "gelu",
-    "index",
     "as_strided",
     "hardsigmoid",
     "hardswish",

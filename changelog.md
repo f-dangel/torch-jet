@@ -162,7 +162,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`sdpa_kernel(SDPBackend.MATH)`): a trace of `F.scaled_dot_product_attention`
   contains the math-path ops instead of a per-device fused op, so the fused
   adapters are no longer reached and jets of the attention VJP work on every
-  device ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
+  device ([PR](https://github.com/f-dangel/torch-jet/pull/272)).
 - Tests of jets of VJPs over every primitive case (`test/test_backward.py`), with
   the cases whose backward op lacks a rule marked as strict expected failures
   ([PR](https://github.com/f-dangel/torch-jet/pull/256)).

@@ -15,11 +15,32 @@ from test.utils import assert_jet_matches_oracle, vjp_case
 
 #: Prefixes of the case ids whose VJP needs a backward op without a jet rule.
 UNSUPPORTED = (
-    "sdpa", "batch_norm", "layer_norm", "conv", "nll_loss", "mse_loss", "hardtanh",
-    "relu", "gelu", "upsample", "index", "as_strided", "hardsigmoid", "hardswish",
-    "log_softmax", "softmax", "embedding", "sigmoid", "silu", "max_pool", "select",
-    "slice", "adaptive", "avg_pool", "tanh",
-)  # fmt: skip
+    "sdpa",
+    "batch_norm",
+    "layer_norm",
+    "conv",
+    "nll_loss",
+    "mse_loss",
+    "hardtanh",
+    "relu",
+    "gelu",
+    "upsample",
+    "index",
+    "as_strided",
+    "hardsigmoid",
+    "hardswish",
+    "log_softmax",
+    "softmax",
+    "embedding",
+    "sigmoid",
+    "silu",
+    "max_pool",
+    "select",
+    "slice",
+    "adaptive",
+    "avg_pool",
+    "tanh",
+)
 CASES = [vjp_case(c) for c in PRIMITIVE_CASES]
 SUPPORTED = [c for c in CASES if not c["id"].startswith(UNSUPPORTED)]
 XFAILED = [c for c in CASES if c["id"].startswith(UNSUPPORTED)]

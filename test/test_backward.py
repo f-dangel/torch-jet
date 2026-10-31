@@ -18,7 +18,6 @@ UNSUPPORTED = (
     "sdpa",
     "batch_norm",
     "layer_norm",
-    "conv",
     "nll_loss",
     "mse_loss",
     "hardtanh",

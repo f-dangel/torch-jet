@@ -30,6 +30,8 @@ DECOMPOSED = {
     for op in (
         ops.aten.native_layer_norm_backward.default,
         ops.aten.native_batch_norm_backward.default,
+        ops.aten._softmax_backward_data.default,
+        ops.aten._log_softmax_backward_data.default,
     )
 }
 

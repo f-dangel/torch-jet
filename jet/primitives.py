@@ -15,7 +15,7 @@ At each nonlinear collapsed op, the K-th output coefficient is computed as
 
 from collections.abc import Sequence
 from functools import partial
-from math import pi
+from math import pi, sqrt
 from operator import add, sub
 from typing import Callable, Self
 from warnings import warn
@@ -652,6 +652,68 @@ def _silu_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:
     for k in range(1, K + 1):
         d[k] = x0 * s[k] + (s[0] if k == 1 else k * s[k - 1])
     return d
+
+
+def _gelu_exact_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:
+    """Compute the exact ``gelu(x0) = x0 * Phi(x0)`` and its derivatives up to order *K*.
+
+    With ``Phi`` the standard normal CDF and ``phi`` its density,
+    ``gelu' = Phi + x phi`` and, since ``Phi^(n) = (-1)^(n-1) He_{n-1} phi``
+    with the probabilists' Hermite polynomials ``He_0 = 1``, ``He_1 = x``,
+    ``He_n = x He_{n-1} - (n-1) He_{n-2}``, the Leibniz rule on ``x Phi``
+    gives ``gelu^(n) = (-1)^(n-1) phi (He_n - He_{n-2})`` for ``n >= 2``
+    (e.g. ``gelu'' = phi (2 - x^2)``).
+    """
+    cdf = 0.5 * (1 + erf(x0 / sqrt(2)))
+    d = {0: x0 * cdf}
+    if K >= 1:
+        pdf = exp(-0.5 * x0**2) / sqrt(2 * pi)
+        d[1] = cdf + x0 * pdf
+        he_prev, he = 1.0, x0  # He_{n-2}, He_{n-1}
+        for n in range(2, K + 1):
+            he_next = x0 * he - (n - 1) * he_prev
+            d[n] = (-1) ** (n - 1) * (he_next - he_prev) * pdf
+            he_prev, he = he, he_next
+    return d
+
+
+def _gelu_tanh_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:
+    """Compute the tanh-approximated ``gelu`` and its derivatives up to order *K*.
+
+    ``gelu(x) = 0.5 x (1 + t(x))`` with ``t = tanh(u)`` and
+    ``u = sqrt(2 / pi) (x + 0.044715 x^3)``. No closed form exists, so the
+    derivatives of ``t`` come from Faà di Bruno's formula over ``tanh``'s
+    table at ``u`` and the three nonzero derivatives of ``u`` (a jet
+    coefficient is a derivative, so the formula applies as is). The Leibniz
+    rule then gives ``gelu^(n) = 0.5 (x t^(n) + n t^(n-1)) + [n == 1] 0.5``.
+    """
+    a, c = 0.044715, sqrt(2 / pi)
+    u = c * (x0 + a * x0**3)
+    dt = _tanh_derivatives(u, K)
+    d = {0: 0.5 * x0 * (1 + dt[0])}
+    if K >= 1:
+        du = (c * (1 + 3 * a * x0**2), 6 * c * a * x0, 6 * c * a)
+        vs = tuple(du[k] if k < 3 else zeros_like(x0) for k in range(K))
+        t = [dt[0], *_faa_di_bruno(vs, dt)]  # t and its derivatives in x
+        d[1] = 0.5 * (1 + t[0] + x0 * t[1])
+        for n in range(2, K + 1):
+            d[n] = 0.5 * (x0 * t[n] + n * t[n - 1])
+    return d
+
+
+def _gelu_derivatives(
+    x0: Tensor, K: int, approximate: str = "none"
+) -> dict[int, Tensor]:
+    """Dispatch to the exact or tanh ``gelu`` derivative table.
+
+    Raises:
+        NotImplementedError: If ``approximate`` is neither ``"none"`` nor ``"tanh"``.
+    """
+    if approximate == "none":
+        return _gelu_exact_derivatives(x0, K)
+    if approximate == "tanh":
+        return _gelu_tanh_derivatives(x0, K)
+    raise NotImplementedError(f"gelu: unsupported approximate={approximate!r}")
 
 
 def _exp_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:

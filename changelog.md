@@ -145,7 +145,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Internal
 
 - Primitive cases for a transposed and a dilated strided convolution; the
-  VJP sweep picks them up too ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
+  VJP sweep picks them up too ([PR](https://github.com/f-dangel/torch-jet/pull/266)).
 - Tests of jets of VJPs over every primitive case (`test/test_backward.py`), with
   the cases whose backward op lacks a rule marked as strict expected failures
   ([PR](https://github.com/f-dangel/torch-jet/pull/256)).

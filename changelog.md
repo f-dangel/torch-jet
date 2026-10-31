@@ -138,12 +138,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Docs: the README names the commit the paper's benchmark numbers come from
+  ([PR](https://github.com/f-dangel/torch-jet/pull/254)).
 - Docs: a section on composing `jet` with PyTorch's function transforms,
   and which direction is not implemented yet ([PR](https://github.com/f-dangel/torch-jet/pull/247)).
 - Tests that PyTorch's function transforms apply to a jet
   (`test/test_transforms.py`): `vmap` over the input coefficients; replaces
   the sdpa-adapter-only `vmap` test
   ([PR](https://github.com/f-dangel/torch-jet/pull/248)).
+  - `grad` and `vjp` w.r.t. primals and coefficients
+    ([PR](https://github.com/f-dangel/torch-jet/pull/249)).
+  - `jvp` w.r.t. primals and coefficients
+    ([PR](https://github.com/f-dangel/torch-jet/pull/250)).
 - Collapsed-mode `embedding` indexes the batched table instead of vmapping the
   op, which no longer copies the whole `(R, V, D)` table and lowers peak
   memory ([PR](https://github.com/f-dangel/torch-jet/pull/244)).

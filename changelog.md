@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   autograd's backward pass emits:
   - `aten.sigmoid_backward.default` through its ATen decomposition, which
     needs a new rule for `aten.rsub.Scalar` (`other - self`, a swapped `sub`)
-    ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
+    ([PR](https://github.com/f-dangel/torch-jet/pull/269)).
   - `aten.mse_loss_backward.default` through its ATen decomposition (one
     product), and `aten.nll_loss_backward.default` as a rule that is linear in
     `grad_output` (the target, class weights, and `total_weight` must be

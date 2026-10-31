@@ -138,6 +138,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Tests of jets of VJPs over every primitive case (`test/test_vjp.py`), with
+  the cases whose backward op lacks a rule marked as strict expected failures
+  ([PR](https://github.com/f-dangel/torch-jet/pull/255)).
 - Docs: the README names the commit the paper's benchmark numbers come from
   ([PR](https://github.com/f-dangel/torch-jet/pull/254)).
 - Docs: a section on composing `jet` with PyTorch's function transforms,

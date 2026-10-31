@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support jets of gradients (Taylor mode through a function that calls
   `torch.func.grad` or `torch.func.vjp`) by adding jet rules for the ATen ops
   autograd's backward pass emits:
+  - The VJP of `F.scaled_dot_product_attention` on every device: traces now
+    run attention through its math decomposition, whose backward ops all have
+    rules ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
   - `aten.sigmoid_backward.default` through its ATen decomposition, which
     needs a new rule for `aten.rsub.Scalar` (`other - self`, a swapped `sub`)
     ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
@@ -156,6 +159,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- `capture_graph` traces under the math attention backend
+  (`sdpa_kernel(SDPBackend.MATH)`): a trace of `F.scaled_dot_product_attention`
+  now contains the math-path ops instead of a per-device fused op, so the fused
+  adapters are no longer reached
+  ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
 - Tests of jets of VJPs over every primitive case (`test/test_backward.py`), with
   the cases whose backward op lacks a rule marked as strict expected failures
   ([PR](https://github.com/f-dangel/torch-jet/pull/256)).

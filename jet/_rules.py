@@ -109,8 +109,6 @@ RULES: dict = {
     ops.aten._safe_softmax.default: _defshared(compositions.safe_softmax),
     ops.aten.gelu.default: _defshared(compositions.gelu),
     ops.aten.tanh_backward.default: _defshared(compositions.tanh_backward),
-    # Backward ops of the activations with a derivative table (``relu`` lowers
-    # to ``threshold_backward(grad, x, 0)``).
     ops.aten.hardswish_backward.default: _defshared(
         compositions.elementwise_backward(primitives._hardswish_derivatives)
     ),
@@ -194,5 +192,10 @@ for _prim in (
     RULES[_prim] = _deflinear(_prim)
 
 # Constant-output ops: primal carries the value, coefficients are zero.
-for op in (ops.aten.zeros_like.default, ops.aten.ones_like.default):
+for op in (
+    ops.aten.zeros_like.default,
+    ops.aten.ones_like.default,
+    ops.aten.empty_like.default,
+    ops.aten.fill.Scalar,
+):
     RULES[op] = _defzero(op)

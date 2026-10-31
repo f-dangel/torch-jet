@@ -177,8 +177,6 @@ for _prim in (
     RULES[_prim] = _deflinear(_prim)
 
 # Constant-output ops: primal carries the value, coefficients are zero.
-# ``empty_like`` and ``fill.Scalar`` appear in autograd's backward of ``silu``
-# (``fill`` overwrites the uninitialized primal, so both are constant).
 for op in (
     ops.aten.zeros_like.default,
     ops.aten.ones_like.default,

@@ -159,8 +159,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Internal
 
 - Remove the adapters for the fused scaled-dot-product-attention ops (CPU,
-  MPS, CUDA flash and memory-efficient) and their layout helpers: traces run
-  attention through the math decomposition, so the fused ops no longer appear
+  MPS, CUDA flash and memory-efficient), their layout helpers and the attention
+  composition they called: traces run attention through the math
+  decomposition, so the fused ops no longer appear
   ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
 - `capture_graph` traces under the math attention backend
   (`sdpa_kernel(SDPBackend.MATH)`): a trace of `F.scaled_dot_product_attention`

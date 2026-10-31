@@ -4,6 +4,7 @@ from functools import partial
 from typing import Any, Callable
 
 from torch import Tensor, ops
+from torch._decomp import decomposition_table
 from torch.func import functionalize
 from torch.fx import GraphModule
 from torch.fx.experimental.proxy_tensor import make_fx
@@ -18,10 +19,29 @@ _INPLACE_TO_FUNCTIONAL = {
     ops.aten.add_.Scalar: ops.aten.add.Scalar,
 }
 
+#: Backward ops that are traced through their ATen decomposition instead of
+#: getting a jet rule. Each decomposition is the formula a hand-written rule
+#: would compute anyway, and every op in it has a rule. Only graphs that contain
+#: one of these ops change. The cudnn/miopen batch-norm backward variants are
+#: deliberately absent: their decomposition takes the training path, which
+#: reads batch statistics the forward rule does not provide.
+DECOMPOSED = {
+    op: decomposition_table[op]
+    for op in (
+        ops.aten.native_layer_norm_backward.default,
+        ops.aten.native_batch_norm_backward.default,
+    )
+}
+
 #: Fake-tensor mode skips kernel execution and just propagates shape/dtype,
 #: cutting trace time substantially on deep models. ``_allow_non_fake_inputs``
 #: is needed because callers' modules close over real ``nn.Parameter`` tensors.
-_make_fx = partial(make_fx, tracing_mode="fake", _allow_non_fake_inputs=True)
+_make_fx = partial(
+    make_fx,
+    tracing_mode="fake",
+    _allow_non_fake_inputs=True,
+    decomposition_table=DECOMPOSED,
+)
 
 
 def capture_graph(

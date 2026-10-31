@@ -15,11 +15,31 @@ from test.utils import assert_jet_matches_oracle, vjp_case
 
 #: Prefixes of the case ids whose VJP needs a backward op without a jet rule.
 UNSUPPORTED = (
-    "sdpa", "batch_norm", "layer_norm", "conv", "nll_loss", "mse_loss", "hardtanh",
-    "relu", "gelu", "upsample", "index", "as_strided", "hardsigmoid", "hardswish",
-    "log_softmax", "softmax", "embedding", "sigmoid", "silu", "max_pool", "select",
-    "slice", "adaptive", "avg_pool",
-)  # fmt: skip
+    "sdpa",
+    "batch_norm",
+    "layer_norm",
+    "conv",
+    "nll_loss",
+    "mse_loss",
+    "hardtanh",
+    "relu",
+    "gelu",
+    "upsample",
+    "index",
+    "as_strided",
+    "hardsigmoid",
+    "hardswish",
+    "log_softmax",
+    "softmax",
+    "embedding",
+    "sigmoid",
+    "silu",
+    "max_pool",
+    "select",
+    "slice",
+    "adaptive",
+    "avg_pool",
+)
 CASES = [vjp_case(c) for c in PRIMITIVE_CASES]
 SUPPORTED = [c for c in CASES if not c["id"].startswith(UNSUPPORTED)]
 XFAILED = [c for c in CASES if c["id"].startswith(UNSUPPORTED)]
@@ -29,13 +49,15 @@ SUPPORTED_ON = {"mps": {c["id"] for c in CASES if c["id"].startswith("sdpa_CCJ")
 
 
 @mark.parametrize("config", SUPPORTED, ids=lambda c: c["id"])
-def test_vjp(config: dict[str, Any], K: int, collapsed: bool, device: str):
+def test_backward(config: dict[str, Any], K: int, collapsed: bool, device: str):
     """``jet(vjp(primitive))`` matches its mode-specific oracle."""
     assert_jet_matches_oracle(config, K, collapsed, device)
 
 
 @mark.parametrize("config", XFAILED, ids=lambda c: c["id"])
-def test_vjp_unsupported(config: dict[str, Any], device: str, request: FixtureRequest):
+def test_backward_unsupported(
+    config: dict[str, Any], device: str, request: FixtureRequest
+):
     """A VJP whose backward op has no jet rule raises ``NotImplementedError``."""
     if config["id"] not in SUPPORTED_ON.get(device, ()):
         request.applymarker(

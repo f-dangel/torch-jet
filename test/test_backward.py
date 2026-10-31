@@ -32,9 +32,6 @@ UNSUPPORTED = (
     "softmax",
     "sigmoid",
     "silu",
-    "max_pool",
-    "adaptive",
-    "avg_pool",
 )
 CASES = [vjp_case(c) for c in PRIMITIVE_CASES]
 SUPPORTED = [c for c in CASES if not c["id"].startswith(UNSUPPORTED)]

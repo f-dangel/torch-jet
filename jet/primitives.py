@@ -993,6 +993,38 @@ def jet_max_pool2d(input: JetTuple, *pool_args: object) -> JetTuple:
     return jet
 
 
+def jet_max_pool2d_backward(
+    grad_output: Tensor | JetTuple, input: Tensor | JetTuple, *pool_args: object
+) -> Tensor | JetTuple:
+    """Taylor-mode arithmetic for ``aten.max_pool2d_backward(grad_output, input, ...)``.
+
+    The fused, indices-free backward some backends emit (e.g. MPS). Max pooling
+    is piecewise linear: its backward scatters ``grad_output`` to the arg-max
+    positions of ``input``, which depend on ``input``'s primal only (the forward
+    rule gathers at the same positions), so the rule is linear in
+    ``grad_output`` and ignores ``input``'s coefficients. It recomputes the
+    ``indices`` from the primal and scatters through
+    ``max_pool2d_with_indices_backward``, which, unlike the fused op, has a
+    vmap rule for collapsed mode.
+
+    Args:
+        grad_output: The incoming gradient and its Taylor coefficients.
+        input: The pooled input (its primal picks the arg-max positions).
+        *pool_args: ``kernel_size`` and the optional ``stride``, ``padding``,
+            ``dilation`` and ``ceil_mode`` of the op; omitted ones take the
+            op's defaults.
+
+    Returns:
+        The gradient w.r.t. ``input`` and its Taylor coefficients.
+    """
+    x0 = input[0] if isinstance(input, JetTuple) else input
+    pool_args = (*pool_args, *([], 0, 1, False)[len(pool_args) - 1 :])
+    _, indices = ops.aten.max_pool2d_with_indices.default(x0, *pool_args)
+    return _deflinear(ops.aten.max_pool2d_with_indices_backward.default)(
+        grad_output, x0, *pool_args, indices
+    )
+
+
 # --- Concatenation ---
 
 
@@ -1258,6 +1290,21 @@ def _deflinear(prim: Callable) -> Callable:
         if not isinstance(self, JetTuple):
             return prim(self, *args, **kwargs)
         return _apply_linear(self, lambda c: prim(c, *args, **kwargs))
+
+    return rule
+
+
+def _deflinear_first(prim: Callable) -> Callable:
+    """Build the jet rule of an op that is linear in its first tensor argument.
+
+    Like :func:`_deflinear`, but the later tensor arguments enter only through
+    their primal (e.g. the ``self`` of a pooling backward, which sets the
+    output's shape), so a jet among them is replaced by its primal.
+    """
+
+    def rule(self, *args, **kwargs):
+        args = tuple(a[0] if isinstance(a, JetTuple) else a for a in args)
+        return _deflinear(prim)(self, *args, **kwargs)
 
     return rule
 

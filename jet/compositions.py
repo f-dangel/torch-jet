@@ -705,9 +705,10 @@ def tanh_backward(grad_output: object, output: object) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.tanh_backward(grad_output, output)``.
 
     Autograd's backward of ``tanh`` computes ``grad_output * (1 - output^2)``,
-    written here as ``grad_output - grad_output * output * output`` so every
-    sub-rule's all-constant fallback is a plain tensor op. Either operand may
-    be a jet (a jet of a gradient expands both).
+    written here as ``grad_output - grad_output * output^2``. The square goes
+    through the ``pow`` rule, whose derivative table ends at order two, which
+    is about twice as fast as the product rule on ``output * output``. Either
+    operand may be a jet (a jet of a gradient expands both).
 
     Args:
         grad_output: The incoming gradient; a jet or a constant ``Tensor``.
@@ -718,5 +719,6 @@ def tanh_backward(grad_output: object, output: object) -> JetTuple:
     """
     collapsed = _collapsed_of(grad_output, output)
     mul = _rule(ops.aten.mul.Tensor, collapsed)
+    pow = _rule(ops.aten.pow.Tensor_Scalar, collapsed)
     sub = _rule(ops.aten.sub.Tensor, collapsed)
-    return sub(grad_output, mul(grad_output, mul(output, output)))
+    return sub(grad_output, mul(grad_output, pow(output, 2)))

@@ -17,8 +17,6 @@ from test.utils import assert_jet_matches_oracle, vjp_case
 UNSUPPORTED = (
     "sdpa",
     "conv",
-    "nll_loss",
-    "mse_loss",
     "hardtanh",
     "relu",
     "gelu",

@@ -34,6 +34,11 @@ def _deflinear(prim: Callable) -> dict[bool, Rule]:
     return _defshared(primitives._deflinear(prim))
 
 
+def _deflinear_first(prim: Callable) -> dict[bool, Rule]:
+    """Build the rule for an op linear in its first argument (later tensors by primal)."""
+    return _defshared(primitives._deflinear_first(prim))
+
+
 def _defzero(prim: Callable) -> dict[bool, Rule]:
     """Build the constant-output rule for a ``prim``.
 
@@ -90,6 +95,9 @@ RULES: dict = {
     ),
     # The fused, indices-free pooling op some backends emit (e.g. MPS).
     ops.aten.max_pool2d.default: _defshared(primitives.jet_max_pool2d),
+    ops.aten.max_pool2d_backward.default: _defshared(
+        primitives.jet_max_pool2d_backward
+    ),
     ops.aten.nll_loss_forward.default: _defshared(primitives.jet_nll_loss_forward),
     # Token embedding lookup: linear in the weight, integer indices stay constant.
     ops.aten.embedding.default: _defshared(primitives.jet_embedding),
@@ -182,6 +190,15 @@ for _prim in (
     ops.aten.embedding_dense_backward.default,
 ):
     RULES[_prim] = _deflinear(_prim)
+
+# Pooling backwards: linear in ``grad_output``; the pooled input only sets the
+# output's shape (and, for max pooling, the primal's arg-max ``indices``).
+for _prim in (
+    ops.aten.avg_pool2d_backward.default,
+    ops.aten._adaptive_avg_pool2d_backward.default,
+    ops.aten.max_pool2d_with_indices_backward.default,
+):
+    RULES[_prim] = _deflinear_first(_prim)
 
 # Constant-output ops: primal carries the value, coefficients are zero.
 for op in (

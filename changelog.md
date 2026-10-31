@@ -136,6 +136,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Docs: the README names the commit the paper's benchmark numbers come from
+  ([PR](https://github.com/f-dangel/torch-jet/pull/254)).
 - Docs: a section on composing `jet` with PyTorch's function transforms,
   and which direction is not implemented yet ([PR](https://github.com/f-dangel/torch-jet/pull/247)).
 - Tests that PyTorch's function transforms apply to a jet

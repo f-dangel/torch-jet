@@ -356,7 +356,10 @@ def _apply_bilinear(
 
 
 def _partition_term(
-    vs: tuple[Tensor, ...], sigma: tuple[int, ...], dn: dict[int, Tensor]
+    vs: tuple[Tensor, ...],
+    sigma: tuple[int, ...],
+    dn: dict[int, Tensor],
+    sum_directions: bool = False,
 ) -> Tensor | None:
     r"""Compute one term of the Faà di Bruno sum for a given partition.
 
@@ -377,6 +380,10 @@ def _partition_term(
             sizes (e.g. ``(2, 1, 1)`` for order 4 split into three blocks).
         dn: A dictionary mapping a degree to the outer function's derivative of
             that degree.
+        sum_directions: Whether the inner coefficients carry a leading direction
+            dim ``R`` (collapsed mode's ``c_1..c_{K-1}``) that is summed out of
+            their product before the multiply by the ``R``-free outer derivative.
+            Default: ``False``.
 
     Returns:
         The partition's contribution to the Faà di Bruno sum, or ``None`` when
@@ -392,6 +399,12 @@ def _partition_term(
     term = vs_contract[0]
     for v in vs_contract[1:]:
         term = term * v
+    if sum_directions:
+        # Sum the direction dim R out of the inner product *before* multiplying
+        # by the outer derivative, which carries no R: the multiply then runs on
+        # (and autograd saves for its backward) the summed ``S``-shaped product
+        # rather than the batched ``(R, *S)`` one.
+        term = term.sum(0)
     term = term * dn[len(sigma)]
     nu = multiplicity(sigma)
     return nu * term if nu != 1.0 else term
@@ -417,11 +430,12 @@ def _collapsed_highest_order(vs: tuple[Tensor, ...], dn: dict[int, Tensor]) -> T
     for sigma in integer_partitions(K):
         if sigma == (K,):
             continue
-        term = _partition_term(vs, sigma, dn)
+        # Every part of ``sigma`` is < K here, so its factors are all batched
+        # coefficients; the term is summed over R inside ``_partition_term`` so
+        # the accumulator (and the tensors flowing through the traced graph)
+        # stay small.
+        term = _partition_term(vs, sigma, dn, sum_directions=True)
         if term is not None:
-            # Sum out the direction dim R per term so the accumulator (and the
-            # tensors flowing through the traced graph) stay small.
-            term = term.sum(0)
             nonlinear_term = term if nonlinear_term is None else nonlinear_term + term
     if nonlinear_term is not None and linear_term is not None:
         return linear_term + nonlinear_term

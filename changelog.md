@@ -10,7 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added/New
 
 - `aten.tanh_backward.default`, which autograd's backward pass of `tanh`
-  emits (first step towards jets of gradients) ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
+  emits, for jets of gradients ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
+- `aten.ones_like.default`, the constant autograd seeds its backward pass with
+  (first step towards jets of gradients) ([PR](https://github.com/f-dangel/torch-jet/pull/251)).
+- `jet.freeze(f, args)` traces a function (e.g. a jet function) once for
+  fixed arguments and returns a callable on the same pytree, which
+  `torch.compile` can handle; the order, direction count, shapes, dtypes,
+  and devices are fixed, unlike the plain jet callable
+  ([PR](https://github.com/f-dangel/torch-jet/pull/252)).
 - Support transformer architectures in Taylor mode (`nn.TransformerEncoder`,
   torchvision's ViT, and Hugging Face's GPT-2, BERT, and LLaMA; see
   `test/test_transformer_encoder.py` and `test/test_huggingface.py`) by adding
@@ -111,6 +118,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
+- Collapsed Faà di Bruno terms sum the direction dim out of the product of
+  inner coefficients *before* multiplying by the outer derivative, so autograd
+  saves the summed product instead of the direction-batched one; restores the
+  eager differentiable peak memory of the collapsed Laplacian/Bi-Laplacian
+  benchmarks to the values measured before the interpreter rewrite
+  ([PR](https://github.com/f-dangel/torch-jet/pull/253)).
 - `capture_graph` rewrites `aten.view` to `aten.reshape`, so a captured graph
   compiles with inductor even when it lays out a tensor in another stride
   order than the trace assumed (e.g. the key/value cache in GPT-2)
@@ -125,6 +138,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Docs: a section on composing `jet` with PyTorch's function transforms,
+  and which direction is not implemented yet ([PR](https://github.com/f-dangel/torch-jet/pull/247)).
+- Tests that PyTorch's function transforms apply to a jet
+  (`test/test_transforms.py`): `vmap` over the input coefficients; replaces
+  the sdpa-adapter-only `vmap` test
+  ([PR](https://github.com/f-dangel/torch-jet/pull/248)).
 - Collapsed-mode `embedding` indexes the batched table instead of vmapping the
   op, which no longer copies the whole `(R, V, D)` table and lowers peak
   memory ([PR](https://github.com/f-dangel/torch-jet/pull/244)).

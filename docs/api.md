@@ -23,6 +23,8 @@ coefficients.
 
 ### ::: jet.capture_graph
 
+### ::: jet.freeze
+
 ### ::: jet.common_subexpression_elimination
 
 ### ::: jet.visualize_graph

@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `torch.func.grad` or `torch.func.vjp`) by adding jet rules for the ATen ops
   autograd's backward pass emits:
   - `aten.convolution_backward.default`, the backward of `convolution`
-    ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
+    ([PR](https://github.com/f-dangel/torch-jet/pull/261)).
   - `aten.tanh_backward.default`, the backward of `tanh` ([PR](https://github.com/f-dangel/torch-jet/pull/255)).
 - `aten.ones_like.default`, the constant autograd seeds its backward pass with
   (first step towards jets of gradients) ([PR](https://github.com/f-dangel/torch-jet/pull/251)).

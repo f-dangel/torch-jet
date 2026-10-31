@@ -4,6 +4,8 @@ This library provides a PyTorch implementation of Taylor mode automatic differen
 It is similar to JAX's Taylor mode ([`jax.experimental.jet`](https://docs.jax.dev/en/latest/jax.experimental.jet.html)).
 
 The repository also hosts the Python functionality+experiments and LaTeX source for our NeurIPS 2025 paper ["Collapsing Taylor Mode Automatic Differentiation"](https://openreview.net/forum?id=XgQVL1uP34), which allows to further accelerate Taylor mode for many practical differential operators.
+The paper's numbers come from the benchmark in `jet/exp/exp01_benchmark_laplacian` run at commit [`9eabf4e`](https://github.com/f-dangel/torch-jet/tree/9eabf4e).
+Check out that commit to reproduce the published figures exactly.
 
 Operator coverage is still growing, so please help us improve the package by providing feedback, filing issues, and opening pull requests.
 
@@ -46,6 +48,29 @@ section of the introductory tutorial.
 ### Examples
 
 See the [documentation](https://torch-jet.readthedocs.io/en/latest/generated/gallery/).
+
+### Composing with other transforms
+
+- **Transforms over a jet.** A jet function returned by `jet(...)` is an
+  ordinary PyTorch function, so `torch.func.vmap`, `grad`, `vjp`, and `jvp`
+  apply to it.
+
+- **`torch.compile`** needs one more step. The jet function interprets the
+  captured graph at call time, so the order and the number of directions can
+  change between calls; dynamo cannot trace that interpreter. `jet.freeze`
+  traces the jet computation once for fixed arguments and returns a callable
+  that `torch.compile` handles, at the price that order, direction count,
+  shapes, dtypes, and devices are then fixed:
+
+  ```python
+  jet_fn = jet(f, mock_args)
+  compiled = torch.compile(jet.freeze(jet_fn, jet_args))
+  ```
+
+- **A jet of a transform**, such as `jet(torch.func.grad(f), ...)`, works in
+  principle. But some of the ops that autograd's backward pass adds may not
+  have a jet rule yet, in which case the trace stops at the first op without
+  a rule.
 
 ## Citing
 

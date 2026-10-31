@@ -46,6 +46,7 @@ from torch.nn.functional import (
     avg_pool2d,
     batch_norm,
     conv2d,
+    conv_transpose2d,
     embedding,
     gelu,
     hardsigmoid,
@@ -223,7 +224,19 @@ _CONV_SHAPES = {
     "x_grouped": (1, _C_IN, 6, 6),  # input for the strided grouped conv
     "w": (_C_OUT, _C_IN, _K, _K),  # weight (C_out, C_in, kH, kW)
     "dw": (_C_OUT, _C_IN // _GROUPS, _K, _K),  # grouped weight
+    "wt": (_C_IN, _C_OUT, _K, _K),  # transposed weight (C_in, C_out, kH, kW)
     "b": (_C_OUT,),  # bias (C_out,)
+}
+
+
+# Conv variants: id suffix -> (functional, weight key, structural kwargs). The
+# plain conv is the default of ``_conv_case``; the others add one case each. A
+# transposed conv is only tested with ``output_padding=0``: PyTorch's double
+# backward raises for other values, so there is no oracle.
+_CONV_VARIANTS = {
+    "": (conv2d, "w", {"stride": 1, "padding": 1}),
+    "transposed": (conv_transpose2d, "wt", {"stride": 2, "padding": 1}),
+    "dilated": (conv2d, "w", {"stride": 2, "padding": 2, "dilation": 2}),
 }
 
 
@@ -234,17 +247,19 @@ def _conv_consts(device: str) -> dict[str, Any]:
     return {name: rand(*shape, **kw) for name, shape in _CONV_SHAPES.items()}
 
 
-def _conv_case(input: str, weight: str, bias: str) -> dict[str, Any]:
+def _conv_case(input: str, weight: str, bias: str, variant: str = "") -> dict[str, Any]:
     """Build one ``{id, f, args_fn}`` case for an ``(input, weight, bias)`` combo.
 
     Each operand code is ``"C"`` (constant) or ``"J"`` (jet); ``bias`` may also be
     ``"N"`` (absent). Jet operands are consumed positionally in the order
     ``input, weight, bias`` so the harness attaches Taylor coefficients to them;
-    constants are frozen via :func:`_conv_consts`. All combos use a plain
-    stride-1, padding-1 conv. The id signature is ``conv2d_<input><weight><bias>``
-    (the absent-bias letter is dropped, so a bias-free conv reads ``conv2d_JC``).
+    constants are frozen via :func:`_conv_consts`. ``variant`` picks the conv
+    from ``_CONV_VARIANTS`` (default: a plain stride-1, padding-1 conv). The id
+    is ``conv2d_<input><weight><bias>`` plus the variant (the absent-bias letter
+    is dropped, so a bias-free conv reads ``conv2d_JC``).
     """
     input_jet, weight_jet, bias_jet = input == "J", weight == "J", bias == "J"
+    conv, weight_key, kwargs = _CONV_VARIANTS[variant]
 
     def builder(device):
         c = _conv_consts(device)
@@ -252,9 +267,9 @@ def _conv_case(input: str, weight: str, bias: str) -> dict[str, Any]:
         def f(*args: Any):
             it = iter(args)
             x = next(it) if input_jet else c["x"]
-            w = next(it) if weight_jet else c["w"]
+            w = next(it) if weight_jet else c[weight_key]
             b = next(it) if bias_jet else (c["b"] if bias == "C" else None)
-            return conv2d(x, w, b, stride=1, padding=1)
+            return conv(x, w, b, **kwargs)
 
         return f
 
@@ -263,13 +278,14 @@ def _conv_case(input: str, weight: str, bias: str) -> dict[str, Any]:
         if input_jet:
             out.append(rand(*_CONV_SHAPES["x"]))
         if weight_jet:
-            out.append(rand(*_CONV_SHAPES["w"]))
+            out.append(rand(*_CONV_SHAPES[weight_key]))
         if bias_jet:
             out.append(rand(*_CONV_SHAPES["b"]))
         return tuple(out)
 
     sig = f"{input}{weight}" + ("" if bias == "N" else bias)
-    return {"id": f"conv2d_{sig}", "f": builder, "args_fn": args_fn}
+    id = f"conv2d_{sig}_{variant}".rstrip("_")
+    return {"id": id, "f": builder, "args_fn": args_fn}
 
 
 def _conv2d_grouped_jet(device):
@@ -286,13 +302,15 @@ def _conv_cases() -> list[dict[str, Any]]:
     absent (``N`` -> bias-free conv), constant (``C``), or a jet (``J``). Combos
     with no jet operand are skipped (nothing to differentiate). Plus one grouped
     (depthwise) conv -- a distinct weight shape, stride, and ``groups`` -- to
-    exercise the grouped dispatch path.
+    exercise the grouped dispatch path, and one all-jet case per non-default
+    ``_CONV_VARIANTS`` entry (transposed, dilated strided).
     """
     cases = [
         _conv_case(input, weight, bias)
         for input, weight, bias in product("CJ", "CJ", "NCJ")
         if "J" in (input, weight, bias)
     ]
+    cases += [_conv_case("J", "J", "J", v) for v in _CONV_VARIANTS if v]
     cases.append(
         {
             "id": "conv2d_grouped",

@@ -26,7 +26,6 @@ UNSUPPORTED = (
     "hardsigmoid",
     "hardswish",
     "embedding",
-    "sigmoid",
     "silu",
     "max_pool",
     "select",

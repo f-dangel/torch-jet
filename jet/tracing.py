@@ -33,6 +33,7 @@ DECOMPOSED = {
         ops.aten._softmax_backward_data.default,
         ops.aten._log_softmax_backward_data.default,
         ops.aten.mse_loss_backward.default,
+        ops.aten.sigmoid_backward.default,
     )
 }
 

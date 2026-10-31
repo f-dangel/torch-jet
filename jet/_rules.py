@@ -201,5 +201,10 @@ for _prim in (
     RULES[_prim] = _deflinear_first(_prim)
 
 # Constant-output ops: primal carries the value, coefficients are zero.
-for op in (ops.aten.zeros_like.default, ops.aten.ones_like.default):
+for op in (
+    ops.aten.zeros_like.default,
+    ops.aten.ones_like.default,
+    ops.aten.empty_like.default,
+    ops.aten.fill.Scalar,
+):
     RULES[op] = _defzero(op)

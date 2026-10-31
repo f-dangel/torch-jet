@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `aten.embedding_dense_backward.default`, the backwards of the `select`,
     `slice`, bilinear upsampling and embedding views (linear in the incoming
     gradient) ([PR](https://github.com/f-dangel/torch-jet/pull/260)).
+  - The constants `aten.empty_like.default` and `aten.fill.Scalar`, which
+    autograd's backward of `silu` emits ([PR](https://github.com/f-dangel/torch-jet/pull/259)).
   - `aten.tanh_backward.default`, the backward of `tanh` ([PR](https://github.com/f-dangel/torch-jet/pull/255)).
 - `aten.ones_like.default`, the constant autograd seeds its backward pass with
   (first step towards jets of gradients) ([PR](https://github.com/f-dangel/torch-jet/pull/251)).

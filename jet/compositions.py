@@ -731,20 +731,24 @@ def elementwise_backward(
     """Build the rule for the backward of an elementwise activation ``f``.
 
     Autograd's backward of ``f`` is ``grad_output * f'(self)`` (plus any
-    call-time args, e.g. ``hardtanh``'s bounds). The jet of ``f'`` reuses
-    ``f``'s derivative table shifted up by one order, and the product is the
-    bilinear ``mul`` rule, so either operand may be a jet or a constant.
+    call-time args, e.g. ``hardtanh``'s bounds, or keyword args, e.g.
+    ``gelu``'s ``approximate``). The jet of ``f'`` reuses ``f``'s derivative
+    table shifted up by one order, and the product is the bilinear ``mul``
+    rule, so either operand may be a jet or a constant.
 
     Args:
-        deriv_fn: ``f``'s derivative table, ``(x0, *args, K) -> {k: f^(k)(x0)}``.
+        deriv_fn: ``f``'s derivative table,
+            ``(x0, *args, K, **kwargs) -> {k: f^(k)(x0)}``.
 
     Returns:
-        The rule for ``aten.f_backward(grad_output, self, *args)``.
+        The rule for ``aten.f_backward(grad_output, self, *args, **kwargs)``.
     """
 
-    def rule(grad_output: object, self: object, *args: object) -> JetTuple:
+    def rule(
+        grad_output: object, self: object, *args: object, **kwargs: object
+    ) -> JetTuple:
         def shifted(x0: Tensor, K: int) -> dict[int, Tensor | None]:
-            d = deriv_fn(x0, *args, K + 1)
+            d = deriv_fn(x0, *args, K + 1, **kwargs)
             return {k: d[k + 1] for k in range(K + 1)}
 
         mul = _rule(ops.aten.mul.Tensor, _collapsed_of(grad_output, self))

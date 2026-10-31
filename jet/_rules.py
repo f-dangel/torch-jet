@@ -121,6 +121,9 @@ RULES: dict = {
     ops.aten.threshold_backward.default: _defshared(
         compositions.elementwise_backward(compositions._threshold_derivatives)
     ),
+    ops.aten.gelu_backward.default: _defshared(
+        compositions.elementwise_backward(primitives._gelu_derivatives)
+    ),
     ops.aten.native_batch_norm.default: _defshared(compositions.native_batch_norm),
     ops.aten.native_layer_norm.default: _defshared(compositions.native_layer_norm),
     # CUDA / MPS lower ``nn.RMSNorm`` to this fused op (CPU traces its primitives).

@@ -50,13 +50,15 @@ SUPPORTED_ON = {"mps": {c["id"] for c in CASES if c["id"].startswith("sdpa_CCJ")
 
 
 @mark.parametrize("config", SUPPORTED, ids=lambda c: c["id"])
-def test_vjp(config: dict[str, Any], K: int, collapsed: bool, device: str):
+def test_backward(config: dict[str, Any], K: int, collapsed: bool, device: str):
     """``jet(vjp(primitive))`` matches its mode-specific oracle."""
     assert_jet_matches_oracle(config, K, collapsed, device)
 
 
 @mark.parametrize("config", XFAILED, ids=lambda c: c["id"])
-def test_vjp_unsupported(config: dict[str, Any], device: str, request: FixtureRequest):
+def test_backward_unsupported(
+    config: dict[str, Any], device: str, request: FixtureRequest
+):
     """A VJP whose backward op has no jet rule raises ``NotImplementedError``."""
     if config["id"] not in SUPPORTED_ON.get(device, ()):
         request.applymarker(

@@ -19,6 +19,7 @@ from torch import (
     where,
     zeros_like,
 )
+from torch.func import vjp
 from torch.nn import Linear, Sequential, Tanh, functional
 from torch.nn.functional import (
     embedding,
@@ -29,7 +30,7 @@ from torch.nn.functional import (
 )
 from torch.overrides import TorchFunctionMode
 from torch.testing import assert_close
-from torch.utils._pytree import tree_flatten, tree_map
+from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
 
 from jet._jet import _rev_jet, jet
 from jet.utils import _is_jet_leaf
@@ -232,6 +233,39 @@ def setup_case(
     manual_seed(0)
     kw = device_kw(device)
     return f, tree_map(lambda t: t.to(**kw), config["args_fn"]())
+
+
+def vjp_case(config: dict[str, Any]) -> dict[str, Any]:
+    """Turn a case into the case of its vector-Jacobian product.
+
+    The new function takes ``(*args, v)``, one cotangent per output, and returns
+    the gradients w.r.t. the floating tensor inputs (integer tensors stay
+    constants) via ``torch.func.vjp``: ``autograd.grad`` cannot run under the
+    ``functionalize`` transform that :func:`jet.jet` traces with.
+    """
+
+    def build(device: str) -> Callable:
+        f = config["f"](device)
+
+        def vjp_f(*args_v: Any) -> tuple[Tensor, ...]:
+            *args, v = args_v
+            leaves, spec = tree_flatten(args)
+            idx = [i for i, x in enumerate(leaves) if x.is_floating_point()]
+
+            def f_floats(*floats: Tensor) -> Any:
+                merged = dict(enumerate(leaves)) | dict(zip(idx, floats))
+                return f(*tree_unflatten(list(merged.values()), spec))
+
+            return vjp(f_floats, *(leaves[i] for i in idx))[1](v)
+
+        return vjp_f
+
+    def args_fn() -> tuple[Any, ...]:
+        f, args = setup_case(config)
+        manual_seed(1)
+        return (*args, tree_map(rand_like, f(*args)))
+
+    return {**config, "f": build, "args_fn": args_fn}
 
 
 def make_jet_args(

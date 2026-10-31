@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support jets of gradients (Taylor mode through a function that calls
   `torch.func.grad` or `torch.func.vjp`) by adding jet rules for the ATen ops
   autograd's backward pass emits:
+  - `aten._softmax_backward_data.default` and
+    `aten._log_softmax_backward_data.default`, the backward ops of `softmax`
+    and `log_softmax`, through their ATen decomposition; on MPS and CUDA this
+    also covers the VJP of `F.scaled_dot_product_attention`, which takes the
+    math path there ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
   - `aten.native_layer_norm_backward.default` and
     `aten.native_batch_norm_backward.default` (eval mode) are traced through
     their ATen decomposition, whose ops all have rules; `jet.tracing.DECOMPOSED`

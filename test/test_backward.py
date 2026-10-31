@@ -27,8 +27,6 @@ UNSUPPORTED = (
     "as_strided",
     "hardsigmoid",
     "hardswish",
-    "log_softmax",
-    "softmax",
     "embedding",
     "sigmoid",
     "silu",
@@ -41,9 +39,12 @@ UNSUPPORTED = (
 CASES = [vjp_case(c) for c in PRIMITIVE_CASES]
 SUPPORTED = [c for c in CASES if not c["id"].startswith(UNSUPPORTED)]
 XFAILED = [c for c in CASES if c["id"].startswith(UNSUPPORTED)]
-#: MPS has no fused attention kernel, so ``sdpa`` with constant query and key
-#: differentiates through ``softmax(scores) @ value``, which needs no new rule.
-SUPPORTED_ON = {"mps": {c["id"] for c in CASES if c["id"].startswith("sdpa_CCJ")}}
+#: On MPS and CUDA the fused attention op has no autograd formula, so the VJP
+#: of ``sdpa`` takes the math path, whose ops all have rules.
+SUPPORTED_ON = {
+    device: {c["id"] for c in CASES if c["id"].startswith("sdpa")}
+    for device in ("mps", "cuda")
+}
 
 
 @mark.parametrize("config", SUPPORTED, ids=lambda c: c["id"])

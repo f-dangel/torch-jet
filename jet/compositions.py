@@ -705,11 +705,9 @@ def tanh_backward(grad_output: object, output: object) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.tanh_backward(grad_output, output)``.
 
     Autograd's backward of ``tanh`` computes ``grad_output * (1 - output^2)``,
-    composed in that order. The square goes through the ``pow`` rule, whose
-    derivative table ends at order two, which is about twice as fast as the
-    product rule on ``output * output``. Either operand may be a jet (a jet of
-    a gradient expands both); a constant ``output`` makes ``1 - output^2`` a
-    plain tensor and the final product a linear rule.
+    composed in that order. Either operand may be a jet (a jet of a gradient
+    expands both); a constant ``output`` makes ``1 - output^2`` a plain tensor
+    and the final product a linear rule.
 
     Args:
         grad_output: The incoming gradient; a jet or a constant ``Tensor``.

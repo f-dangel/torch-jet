@@ -12,11 +12,14 @@ from math import pi, sqrt
 from typing import Callable
 
 from torch import (
+    Tensor,
     contiguous_format,
     finfo,
+    ones,
     ops,
     uint8,
 )
+from torch import bool as bool_dtype
 from torch import dtype as torch_dtype
 
 import jet._rules
@@ -278,7 +281,7 @@ def safe_softmax(
 ) -> JetTuple:
     """Taylor-mode arithmetic for ``aten._safe_softmax(self, dim, dtype)``.
 
-    The ``softmax`` of attention's math path: a fully
+    The ``softmax`` of sdpa's math fallback (e.g. float64 on CUDA): a fully
     masked row (all ``-inf``) gives ``0`` instead of ``NaN``, so every
     coefficient of such a row is zeroed.
 
@@ -507,6 +510,99 @@ def cudnn_batch_norm(
         epsilon,
     )
     return out, empty, empty, empty.new_empty(0, dtype=uint8)
+
+
+def scaled_dot_product_attention(
+    query: object,
+    key: object,
+    value: object,
+    attn_mask: object = None,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    scale: float | None = None,
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.scaled_dot_product_attention`` (eval mode).
+
+    ``softmax(scale * query @ key^T + mask, -1) @ value`` (``scale = 1/sqrt(E)``
+    by default), composed from the ``mul`` / ``transpose`` / ``matmul`` /
+    ``masked_fill`` / ``add`` / ``_softmax`` rules (``matmul`` broadcasts over
+    the leading batch dims). A causal or bool ``attn_mask`` (``True`` = attend)
+    fills the blocked scores with ``-inf``, a float one is added. The
+    ``_softmax`` rule's max-shift keeps the whole jet stable; a fully masked
+    row gives ``NaN`` like the ATen math path. Any of ``query`` ``(..., L, E)``
+    / ``key`` ``(..., S, E)`` / ``value`` ``(..., S, Ev)`` may be a jet or a
+    constant; ``attn_mask`` is a constant broadcastable to ``(..., L, S)``.
+    Grouped-query attention (``enable_gqa``: fewer key/value heads than query
+    heads along dim ``-3``) repeats each key/value head for its query heads.
+
+    Returns:
+        The value and its Taylor coefficients, shape ``(..., L, Ev)``.
+
+    Raises:
+        NotImplementedError: If ``dropout_p != 0`` (jets require eval mode,
+            ``model.eval()``).
+    """
+    if dropout_p != 0:
+        raise NotImplementedError(
+            "Taylor-mode scaled_dot_product_attention requires dropout_p == 0; "
+            "jets require eval mode (call model.eval())."
+        )
+    collapsed = _collapsed_of(query, key, value)
+    mul = _rule(ops.aten.mul.Tensor, collapsed)
+    matmul = _rule(ops.aten.matmul.default, collapsed)
+    transpose = _rule(ops.aten.transpose.int, collapsed)
+    q, k = (x[0] if isinstance(x, JetTuple) else x for x in (query, key))
+    if q.shape[-3] != k.shape[-3]:
+        repeat = _rule(ops.aten.repeat_interleave.self_int, collapsed)
+        groups = q.shape[-3] // k.shape[-3]
+        key, value = (repeat(x, groups, -3) for x in (key, value))
+    scale = q.shape[-1] ** -0.5 if scale is None else scale
+    scores = matmul(mul(query, scale), transpose(key, -2, -1))
+    if is_causal:
+        attn_mask = ones(
+            q.shape[-2], k.shape[-2], dtype=bool_dtype, device=q.device
+        ).tril()
+    if attn_mask is not None:
+        if attn_mask.dtype == bool_dtype:
+            masked_fill = _rule(ops.aten.masked_fill.Scalar, collapsed)
+            scores = masked_fill(scores, ~attn_mask, -float("inf"))
+        else:
+            scores = _rule(ops.aten.add.Tensor, collapsed)(scores, attn_mask)
+    attn = _rule(ops.aten._softmax.default, collapsed)(
+        scores, dim=-1, half_to_float=False
+    )
+    return matmul(attn, value)
+
+
+def _scaled_dot_product_attention_math_for_mps(
+    query: object,
+    key: object,
+    value: object,
+    attn_mask: Tensor | None = None,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    dropout_mask: Tensor | None = None,
+    *,
+    scale: float | None = None,
+    enable_gqa: bool = False,
+) -> tuple:
+    """Adapter for the MPS math kernel ``F.scaled_dot_product_attention`` lowers to.
+
+    ``enable_gqa`` is implied by the head counts, so the composition needs no
+    flag. The second, backward-only output is ``None`` so that any consumer
+    (e.g. a future backward rule for nesting) fails loudly.
+
+    Raises:
+        NotImplementedError: If ``dropout_mask`` is given.
+    """
+    if dropout_mask is not None:
+        raise NotImplementedError(
+            "Taylor-mode scaled_dot_product_attention does not support dropout_mask."
+        )
+    out = scaled_dot_product_attention(
+        query, key, value, attn_mask, dropout_p, is_causal, scale
+    )
+    return out, None
 
 
 def tanh_backward(grad_output: object, output: object) -> JetTuple:

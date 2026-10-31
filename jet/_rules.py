@@ -120,6 +120,11 @@ RULES: dict = {
     # CUDA lowers eval-mode batch norm to the cuDNN overload (same map, one
     # extra output).
     ops.aten.cudnn_batch_norm.default: _defshared(compositions.cudnn_batch_norm),
+    # On MPS the math attention backend is one kernel (CPU and CUDA trace the
+    # math-path ops).
+    ops.aten._scaled_dot_product_attention_math_for_mps.default: _defshared(
+        compositions._scaled_dot_product_attention_math_for_mps
+    ),
 }
 
 # Linear ops (pointwise-linear, shape-only, reductions): one mode-agnostic

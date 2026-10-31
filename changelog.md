@@ -20,9 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `aten.hardswish_backward.default`, `aten.hardsigmoid_backward.default`,
     `aten.hardtanh_backward.default` and `aten.threshold_backward.default`
     (the backward of `relu`), all through one generic rule that reuses each
-    activation's derivative table shifted by one order; and the constants
-    `aten.empty_like.default` and `aten.fill.Scalar`, which autograd's
-    backward of `silu` emits ([PR](https://github.com/f-dangel/torch-jet/pull/257)).
+    activation's derivative table shifted by one order ([PR](https://github.com/f-dangel/torch-jet/pull/257)).
   - `aten.tanh_backward.default`, the backward of `tanh` ([PR](https://github.com/f-dangel/torch-jet/pull/255)).
 - `aten.ones_like.default`, the constant autograd seeds its backward pass with
   (first step towards jets of gradients) ([PR](https://github.com/f-dangel/torch-jet/pull/251)).

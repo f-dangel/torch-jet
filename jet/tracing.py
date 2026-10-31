@@ -8,6 +8,7 @@ from torch._decomp import decomposition_table
 from torch.func import functionalize
 from torch.fx import GraphModule
 from torch.fx.experimental.proxy_tensor import make_fx
+from torch.nn.attention import SDPBackend, sdpa_kernel
 from torch.utils._pytree import TreeSpec, tree_flatten, tree_unflatten
 
 from jet.utils import PyTree
@@ -112,7 +113,13 @@ def capture_graph(
     def flat_f(*flat_tensors: Tensor) -> PyTree[Tensor]:
         return f(*tree_unflatten(list(flat_tensors), in_spec))
 
-    mod = _make_fx(functionalize(flat_f))(*flat_mocks)
+    # Attention is traced under the MATH backend: the jet rules compute
+    # attention through the math decomposition anyway, so the traced graph
+    # contains those ops directly on every device, and the fused backward
+    # kernels (which have no jet rule) never appear in VJP traces. Dropout
+    # stays loud: the math path draws its mask with ops that have no rule.
+    with sdpa_kernel(SDPBackend.MATH):
+        mod = _make_fx(functionalize(flat_f))(*flat_mocks)
     _replace_inplace_ops(mod)
     _replace_views(mod)
     mod.graph.eliminate_dead_code()

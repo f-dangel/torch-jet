@@ -8,14 +8,13 @@ grid; once it passes, its prefix must leave ``UNSUPPORTED``.
 
 from typing import Any
 
-from pytest import FixtureRequest, mark
+from pytest import mark
 
 from test.test_primitives import PRIMITIVE_CASES
 from test.utils import assert_jet_matches_oracle, vjp_case
 
 #: Prefixes of the case ids whose VJP needs a backward op without a jet rule.
 UNSUPPORTED = (
-    "sdpa",
     "conv",
     "hardtanh",
     "relu",
@@ -36,12 +35,6 @@ UNSUPPORTED = (
 CASES = [vjp_case(c) for c in PRIMITIVE_CASES]
 SUPPORTED = [c for c in CASES if not c["id"].startswith(UNSUPPORTED)]
 XFAILED = [c for c in CASES if c["id"].startswith(UNSUPPORTED)]
-#: On MPS and CUDA the fused attention op has no autograd formula, so the VJP
-#: of ``sdpa`` takes the math path, whose ops all have rules.
-SUPPORTED_ON = {
-    device: {c["id"] for c in CASES if c["id"].startswith("sdpa")}
-    for device in ("mps", "cuda")
-}
 
 
 @mark.parametrize("config", SUPPORTED, ids=lambda c: c["id"])
@@ -51,12 +44,7 @@ def test_backward(config: dict[str, Any], K: int, collapsed: bool, device: str):
 
 
 @mark.parametrize("config", XFAILED, ids=lambda c: c["id"])
-def test_backward_unsupported(
-    config: dict[str, Any], device: str, request: FixtureRequest
-):
+@mark.xfail(strict=True, raises=NotImplementedError, reason="no jet rule")
+def test_backward_unsupported(config: dict[str, Any], device: str):
     """A VJP whose backward op has no jet rule raises ``NotImplementedError``."""
-    if config["id"] not in SUPPORTED_ON.get(device, ()):
-        request.applymarker(
-            mark.xfail(strict=True, raises=NotImplementedError, reason="no jet rule")
-        )
     assert_jet_matches_oracle(config, K=1, collapsed=False, device=device)

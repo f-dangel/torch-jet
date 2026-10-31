@@ -109,6 +109,23 @@ RULES: dict = {
     ops.aten._safe_softmax.default: _defshared(compositions.safe_softmax),
     ops.aten.gelu.default: _defshared(compositions.gelu),
     ops.aten.tanh_backward.default: _defshared(compositions.tanh_backward),
+    # Backward ops of the activations with a derivative table (``relu`` lowers
+    # to ``threshold_backward(grad, x, 0)``).
+    ops.aten.silu_backward.default: _defshared(
+        compositions.elementwise_backward(primitives._silu_derivatives)
+    ),
+    ops.aten.hardswish_backward.default: _defshared(
+        compositions.elementwise_backward(primitives._hardswish_derivatives)
+    ),
+    ops.aten.hardsigmoid_backward.default: _defshared(
+        compositions.elementwise_backward(primitives._hardsigmoid_derivatives)
+    ),
+    ops.aten.hardtanh_backward.default: _defshared(
+        compositions.elementwise_backward(primitives._hardtanh_derivatives)
+    ),
+    ops.aten.threshold_backward.default: _defshared(
+        compositions.elementwise_backward(compositions._threshold_derivatives)
+    ),
     ops.aten.native_batch_norm.default: _defshared(compositions.native_batch_norm),
     ops.aten.native_layer_norm.default: _defshared(compositions.native_layer_norm),
     # CUDA / MPS lower ``nn.RMSNorm`` to this fused op (CPU traces its primitives).

@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   autograd's backward pass emits:
   - `aten.copy.default` and `aten.as_strided_scatter.default`, the backward of
     `as_strided` (linear in the copied source, jointly linear in the tensor
-    being written and the source) ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
+    being written and the source) ([PR](https://github.com/f-dangel/torch-jet/pull/271)).
   - `aten.index_put.default` and `aten.new_zeros.default`, the backward of
     fancy indexing `x[idx]` (jointly linear in the tensor being written and
     the values; the zeros it scatters into are a constant)

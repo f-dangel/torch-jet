@@ -30,7 +30,6 @@ from torch import (
     log,
     matmul,
     ops,
-    relu,
     sigmoid,
     sin,
     tanh,
@@ -574,23 +573,30 @@ def _sigmoid_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:
     return d
 
 
-def _relu_derivatives(x0: Tensor, K: int) -> dict[int, Tensor | None]:
-    """Compute ``relu(x0)`` and its derivatives up to order *K*.
+def _threshold_derivatives(
+    x0: Tensor, threshold: float, value: float, K: int
+) -> dict[int, Tensor | None]:
+    """Compute ``threshold(x0, threshold, value)`` and its derivatives up to order *K*.
 
-    ReLU is piecewise linear, so its first derivative is the indicator
-    ``x0 > 0`` and every higher derivative vanishes (we adopt the subgradient
-    convention ``relu'(0) = 0``, matching PyTorch's autograd). Returning
-    ``None`` for orders ``>= 2`` lets Faà di Bruno skip those structurally-zero
-    terms; the only surviving order-``k`` term is the linear one,
-    ``(x0 > 0) * c_k``.
+    ``threshold`` keeps ``x0`` where ``x0 > threshold`` and replaces it by
+    ``value`` elsewhere, so it is piecewise linear: its first derivative is the
+    indicator ``x0 > threshold`` (strict, so the kink gets subgradient ``0``,
+    matching PyTorch's autograd) and every higher derivative vanishes.
+    Returning ``None`` for orders ``>= 2`` lets Faà di Bruno skip those
+    structurally-zero terms; the only surviving order-``k`` term is the linear
+    one, ``(x0 > threshold) * c_k``. ``relu`` is the special case ``(0, 0)``.
     """
-    relu_x0 = relu(x0)
-    d: dict[int, Tensor | None] = {0: relu_x0}
+    d: dict[int, Tensor | None] = {0: ops.aten.threshold.default(x0, threshold, value)}
     if K >= 1:
-        d[1] = (x0 > 0).to(x0.dtype)
+        d[1] = (x0 > threshold).to(x0.dtype)
     for k in range(2, K + 1):
         d[k] = None
     return d
+
+
+def _relu_derivatives(x0: Tensor, K: int) -> dict[int, Tensor | None]:
+    """Compute ``relu(x0) = threshold(x0, 0, 0)`` and its derivatives up to order *K*."""
+    return _threshold_derivatives(x0, 0.0, 0.0, K)
 
 
 def _hardtanh_derivatives(
@@ -601,7 +607,7 @@ def _hardtanh_derivatives(
     Hardtanh clamps to ``[min_val, max_val]`` and is piecewise linear, so its
     first derivative is the indicator ``min_val < x0 < max_val`` (strict, as in
     PyTorch's autograd, so both kinks get subgradient ``0``) and every higher
-    derivative vanishes (``None``, see :func:`_relu_derivatives`). ``relu6`` is
+    derivative vanishes (``None``, see :func:`_threshold_derivatives`). ``relu6`` is
     the special case ``(0, 6)``.
     """
     d: dict[int, Tensor | None] = {0: hardtanh(x0, min_val, max_val)}
@@ -628,7 +634,7 @@ def _hardswish_derivatives(x0: Tensor, K: int) -> dict[int, Tensor | None]:
     By the Leibniz rule, ``hardswish^(k) = x0 * hardsigmoid^(k) + k *
     hardsigmoid^(k-1)``, so orders 1 and 2 come from
     :func:`_hardsigmoid_derivatives` and every higher order vanishes (``None``,
-    see :func:`_relu_derivatives`).
+    see :func:`_threshold_derivatives`).
     """
     h = _hardsigmoid_derivatives(x0, K)
     d: dict[int, Tensor | None] = {0: x0 * h[0]}
@@ -769,6 +775,27 @@ def jet_hardtanh(
     """
     return _elementwise(
         self, lambda x, k: _hardtanh_derivatives(x, min_val, max_val, k)
+    )
+
+
+# --- Threshold ---
+
+
+def jet_threshold(
+    self: Tensor | JetTuple, threshold: float, value: float
+) -> Tensor | JetTuple:
+    """Taylor-mode arithmetic for ``aten.threshold(self, threshold, value)``.
+
+    Args:
+        self: The primal and its Taylor coefficients.
+        threshold: Entries at or below it are replaced.
+        value: The replacement.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    return _elementwise(
+        self, lambda x, k: _threshold_derivatives(x, threshold, value, k)
     )
 
 

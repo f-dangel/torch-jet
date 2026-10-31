@@ -31,7 +31,6 @@ UNSUPPORTED = (
     "log_softmax",
     "softmax",
     "sigmoid",
-    "silu",
     "max_pool",
     "adaptive",
     "avg_pool",

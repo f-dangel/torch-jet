@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support jets of gradients (Taylor mode through a function that calls
   `torch.func.grad` or `torch.func.vjp`) by adding jet rules for the ATen ops
   autograd's backward pass emits:
+  - `aten.select_backward.default`, `aten.slice_backward.default`,
+    `aten.upsample_bilinear2d_backward.default` and
+    `aten.embedding_dense_backward.default`, the backwards of the `select`,
+    `slice`, bilinear upsampling and embedding views (linear in the incoming
+    gradient) ([PR](https://github.com/f-dangel/torch-jet/pull/260)).
   - The constants `aten.empty_like.default` and `aten.fill.Scalar`, which
     autograd's backward of `silu` emits ([PR](https://github.com/f-dangel/torch-jet/pull/259)).
   - `aten.tanh_backward.default`, the backward of `tanh` ([PR](https://github.com/f-dangel/torch-jet/pull/255)).

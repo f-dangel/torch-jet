@@ -103,6 +103,10 @@ RULES: dict = {
     ops.aten.embedding.default: _defshared(primitives.jet_embedding),
     # Backward of ``x[idx]``: scatters ``grad_output`` into ``new_zeros``.
     ops.aten.index_put.default: _defshared(primitives.jet_index_put),
+    # Backward of ``as_strided``: copies ``grad_output`` into the strided view
+    # of ``new_zeros`` and scatters it back.
+    ops.aten.copy.default: _defshared(primitives.jet_copy),
+    ops.aten.as_strided_scatter.default: _defshared(primitives.jet_as_strided_scatter),
     # Current torch lowers all scalar division (``x / 2.0``) to this overload;
     # a Taylor-expanded divisor uses the division recurrence.
     ops.aten.div.Tensor: _defshared(primitives.jet_div),

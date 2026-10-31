@@ -24,7 +24,6 @@ UNSUPPORTED = (
     "hardtanh",
     "relu",
     "gelu",
-    "as_strided",
     "hardsigmoid",
     "hardswish",
     "log_softmax",

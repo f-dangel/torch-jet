@@ -113,8 +113,9 @@ def capture_graph(
     def flat_f(*flat_tensors: Tensor) -> PyTree[Tensor]:
         return f(*tree_unflatten(list(flat_tensors), in_spec))
 
-    # The MATH backend traces attention as its math-path ops on every device,
-    # so no fused forward or backward kernel (no jet rule) appears in the graph.
+    # Under the MATH backend attention traces to its math-path ops (on MPS to
+    # the math kernel, which has a rule), so no fused kernel without a jet rule
+    # appears in the forward or backward graph.
     with sdpa_kernel(SDPBackend.MATH):
         mod = _make_fx(functionalize(flat_f))(*flat_mocks)
     _replace_inplace_ops(mod)

@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `aten.index_put.default` and `aten.new_zeros.default`, the backward of
     fancy indexing `x[idx]` (jointly linear in the tensor being written and
     the values; the zeros it scatters into are a constant)
-    ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
+    ([PR](https://github.com/f-dangel/torch-jet/pull/270)).
   - `aten.avg_pool2d_backward.default`, `aten._adaptive_avg_pool2d_backward.default`,
     `aten.max_pool2d_with_indices_backward.default` and the fused
     `aten.max_pool2d_backward.default` (MPS), the backwards of the pooling ops
@@ -139,7 +139,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Constant-output rules (`zeros_like`, `ones_like`, `empty_like`, `fill`,
   `new_zeros`) zero their coefficients to the *output's* shape instead of the
   input's; the two differ for `new_zeros` with an explicit size
-  ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
+  ([PR](https://github.com/f-dangel/torch-jet/pull/270)).
 - Collapsed Faà di Bruno terms sum the direction dim out of the product of
   inner coefficients *before* multiplying by the outer derivative, so autograd
   saves the summed product instead of the direction-batched one; restores the

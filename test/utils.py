@@ -19,7 +19,6 @@ from torch import (
     where,
     zeros_like,
 )
-from torch.func import vjp
 from torch.nn import Linear, Sequential, Tanh, functional
 from torch.nn.functional import (
     embedding,
@@ -30,7 +29,7 @@ from torch.nn.functional import (
 )
 from torch.overrides import TorchFunctionMode
 from torch.testing import assert_close
-from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
+from torch.utils._pytree import tree_flatten, tree_map
 
 from jet._jet import _rev_jet, jet
 from jet.utils import _is_jet_leaf
@@ -233,43 +232,6 @@ def setup_case(
     manual_seed(0)
     kw = device_kw(device)
     return f, tree_map(lambda t: t.to(**kw), config["args_fn"]())
-
-
-def vjp_case(config: dict[str, Any]) -> dict[str, Any]:
-    """Turn a case into the case of its vector-Jacobian product.
-
-    The new function takes the case's args plus a cotangent ``v`` (one tensor
-    per output of ``f``) and returns the gradients of ``f`` w.r.t. its floating
-    tensor inputs; integer tensors (e.g. class indices) stay constants. It uses
-    ``torch.func.vjp`` because ``autograd.grad`` cannot run under the
-    ``functionalize`` transform that :func:`jet.jet` traces with. The test
-    puts jets on all inputs and on ``v``.
-    """
-
-    def build(device: str) -> Callable:
-        f = config["f"](device)
-
-        def vjp_f(*args_v: Any) -> tuple[Tensor, ...]:
-            *args, v = args_v
-            leaves, spec = tree_flatten(args)
-            idx = [i for i, x in enumerate(leaves) if x.is_floating_point()]
-
-            def f_floats(*floats: Tensor) -> Any:
-                merged = list(leaves)
-                for i, x in zip(idx, floats):
-                    merged[i] = x
-                return f(*tree_unflatten(merged, spec))
-
-            return vjp(f_floats, *(leaves[i] for i in idx))[1](v)
-
-        return vjp_f
-
-    def args_fn() -> tuple[Any, ...]:
-        f, args = setup_case(config)
-        manual_seed(1)
-        return (*args, tree_map(rand_like, f(*args)))
-
-    return {**config, "f": build, "args_fn": args_fn}
 
 
 def make_jet_args(

@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     through the generic rule and new derivative tables: the exact one in
     closed form via Hermite polynomials, the `"tanh"` one by composing
     `tanh`'s table with the cubic inside
-    ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
+    ([PR](https://github.com/f-dangel/torch-jet/pull/258)).
   - `aten.hardswish_backward.default`, `aten.hardsigmoid_backward.default`,
     `aten.hardtanh_backward.default` and `aten.threshold_backward.default`
     (the backward of `relu`), all through one generic rule that reuses each

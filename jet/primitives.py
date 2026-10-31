@@ -1174,6 +1174,60 @@ def jet_nll_loss_forward(
     return JetTuple((output, *coeffs), collapsed=self.collapsed), total_weight
 
 
+def jet_nll_loss_backward(
+    grad_output: Tensor | JetTuple,
+    self: Tensor | JetTuple,
+    target: Tensor,
+    weight: Tensor | None,
+    reduction: int,
+    ignore_index: int,
+    total_weight: Tensor,
+) -> Tensor | JetTuple:
+    """Taylor-mode arithmetic for ``aten.nll_loss_backward``.
+
+    Autograd's backward of ``nll_loss`` writes ``-grad_output`` (times the class
+    weight, divided by ``total_weight`` for the mean) into the target column of
+    a zero tensor shaped like ``self``. It is linear in ``grad_output`` and reads
+    ``self`` only for its shape, so the ATen op is applied to every coefficient
+    of ``grad_output`` with the primal of ``self``. A constant ``grad_output``
+    gives a constant output.
+
+    Args:
+        grad_output: The incoming gradient and its Taylor coefficients, or a
+            constant.
+        self: The log-probabilities (or their jet); only the shape is used.
+        target: The (constant) class-index targets.
+        weight: Optional (constant) per-class weights, or ``None``.
+        reduction: The ATen reduction enum -- ``0`` (none), ``1`` (mean),
+            ``2`` (sum).
+        ignore_index: Target value to ignore.
+        total_weight: The (constant) ``total_weight`` the forward returned.
+
+    Returns:
+        The value and its Taylor coefficients, or a plain tensor when
+        ``grad_output`` is a constant.
+
+    Raises:
+        NotImplementedError: If ``target``, ``weight``, or ``total_weight`` is
+            Taylor-expanded; all three must be constant tensors.
+    """
+    if any(isinstance(t, JetTuple) for t in (target, weight, total_weight)):
+        raise NotImplementedError(
+            "jet_nll_loss_backward does not support a Taylor-expanded target, "
+            "weight, or total_weight; all three must be constant tensors."
+        )
+    primal = self[0] if isinstance(self, JetTuple) else self
+
+    def op(g: Tensor) -> Tensor:
+        return ops.aten.nll_loss_backward.default(
+            g, primal, target, weight, reduction, ignore_index, total_weight
+        )
+
+    if not isinstance(grad_output, JetTuple):
+        return op(grad_output)
+    return _apply_linear(grad_output, op)
+
+
 # --- Batch norm ---
 
 

@@ -113,11 +113,8 @@ def capture_graph(
     def flat_f(*flat_tensors: Tensor) -> PyTree[Tensor]:
         return f(*tree_unflatten(list(flat_tensors), in_spec))
 
-    # Attention is traced under the MATH backend: the jet rules compute
-    # attention through the math decomposition anyway, so the traced graph
-    # contains those ops directly on every device, and the fused backward
-    # kernels (which have no jet rule) never appear in VJP traces. Dropout
-    # stays loud: the math path draws its mask with ops that have no rule.
+    # The MATH backend traces attention as its math-path ops on every device,
+    # so no fused forward or backward kernel (no jet rule) appears in the graph.
     with sdpa_kernel(SDPBackend.MATH):
         mod = _make_fx(functionalize(flat_f))(*flat_mocks)
     _replace_inplace_ops(mod)

@@ -152,10 +152,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Internal
 
 - The exact `gelu` forward rule is one elementwise rule over the closed-form
-  derivative table from the gelu-backward PR instead of a composition of
+  derivative table from PR 258 instead of a composition of
   `erf` / `mul` / `add` rules (one Faà di Bruno pass, no products of jets);
   the `"tanh"` variant stays a composition
-  ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
+  ([PR](https://github.com/f-dangel/torch-jet/pull/268)).
 - Tests of jets of VJPs over every primitive case (`test/test_backward.py`), with
   the cases whose backward op lacks a rule marked as strict expected failures
   ([PR](https://github.com/f-dangel/torch-jet/pull/256)).

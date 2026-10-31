@@ -31,7 +31,9 @@ from jet.primitives import (
     _apply_bilinear,
     _apply_linear,
     _bn_channel_view,
+    _elementwise,
     _has_jet_arg,
+    _relu_derivatives,
 )
 
 
@@ -721,3 +723,46 @@ def tanh_backward(grad_output: object, output: object) -> JetTuple:
     pow = _rule(ops.aten.pow.Tensor_Scalar, collapsed)
     sub = _rule(ops.aten.sub.Tensor, collapsed)
     return mul(grad_output, sub(1, pow(output, 2)))
+
+
+def elementwise_backward(
+    deriv_fn: Callable[..., dict[int, Tensor | None]],
+) -> Callable[..., JetTuple]:
+    """Build the rule for the backward of an elementwise activation ``f``.
+
+    Autograd's backward of ``f`` is ``grad_output * f'(self)`` (plus any
+    call-time args, e.g. ``hardtanh``'s bounds). The jet of ``f'`` reuses
+    ``f``'s derivative table shifted up by one order, and the product is the
+    bilinear ``mul`` rule, so either operand may be a jet or a constant.
+
+    Args:
+        deriv_fn: ``f``'s derivative table, ``(x0, *args, K) -> {k: f^(k)(x0)}``.
+
+    Returns:
+        The rule for ``aten.f_backward(grad_output, self, *args)``.
+    """
+
+    def rule(grad_output: object, self: object, *args: object) -> JetTuple:
+        def shifted(x0: Tensor, K: int) -> dict[int, Tensor | None]:
+            d = deriv_fn(x0, *args, K + 1)
+            return {k: d[k + 1] for k in range(K + 1)}
+
+        mul = _rule(ops.aten.mul.Tensor, _collapsed_of(grad_output, self))
+        return mul(grad_output, _elementwise(self, shifted))
+
+    return rule
+
+
+def _threshold_derivatives(
+    x0: Tensor, threshold: float, K: int
+) -> dict[int, Tensor | None]:
+    """``relu``'s table for ``aten.threshold_backward``; only ``threshold == 0`` (``relu``) is supported.
+
+    Raises:
+        NotImplementedError: If ``threshold != 0``.
+    """
+    if threshold != 0:
+        raise NotImplementedError(
+            f"Taylor-mode threshold_backward only supports threshold == 0 (relu), got {threshold}."
+        )
+    return _relu_derivatives(x0, K)

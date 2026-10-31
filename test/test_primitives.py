@@ -86,7 +86,7 @@ def _consts(device: str) -> dict[str, Any]:
     Keys: ``L`` (3, 4), ``R`` (4, 5) -- mm/addmm operands; ``L3`` (2, 3, 4),
     ``R3`` (2, 4, 5) -- their batched (bmm) counterparts; ``B`` (3, 5) --
     addmm bias; ``SUB`` -- scalar tensor for ``tensor - jet`` (which lowers
-    to ``aten.sub.Tensor`` rather than the unregistered ``aten.rsub.Scalar``).
+    to ``aten.sub.Tensor`` rather than ``aten.rsub.Scalar``).
     """
     manual_seed(0)
     kw = device_kw(device)

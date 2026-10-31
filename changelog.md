@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `aten.mse_loss_backward.default` through its ATen decomposition (one
     product), and `aten.nll_loss_backward.default` as a rule that is linear in
     `grad_output` (the target, class weights, and `total_weight` must be
-    constants) ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
+    constants) ([PR](https://github.com/f-dangel/torch-jet/pull/267)).
   - `aten._softmax_backward_data.default` and
     `aten._log_softmax_backward_data.default`, the backward ops of `softmax`
     and `log_softmax`, through their ATen decomposition; on MPS and CUDA this

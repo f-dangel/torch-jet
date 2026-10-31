@@ -11,7 +11,7 @@ from typing import Any, Callable
 
 from pytest import mark
 from torch import Tensor, autograd, rand_like, stack
-from torch.func import grad, vjp, vmap
+from torch.func import grad, jvp, vjp, vmap
 from torch.testing import assert_close
 from torch.utils._pytree import tree_flatten, tree_leaves, tree_map, tree_unflatten
 
@@ -100,3 +100,21 @@ def test_grad_vjp(config: dict[str, Any], K: int, collapsed: bool, device: str):
     tol = tolerances_for(device)
     assert_close(grad(partial(_weighted_sum, jet_fn, weights))(jet_args), want, **tol)
     assert_close(vjp(jet_fn, *jet_args)[1](weights), want, **tol)
+
+
+@mark.parametrize("config", CASES, ids=lambda c: c["id"])
+@mark.parametrize("K, collapsed", ORDERS, ids=ORDER_IDS)
+def test_jvp(config: dict[str, Any], K: int, collapsed: bool, device: str):
+    """``jvp`` of a jet w.r.t. primals and coefficients matches the oracle's.
+
+    The reference is ``jvp`` of the nested reverse-mode oracle, built with
+    ``detach=False`` so that its outputs keep the graph ``jvp`` differentiates
+    through, and run under :class:`DifferentiableSubstitutes` like in
+    :func:`assert_jet_matches_oracle`.
+    """
+    f, jet_fn, jet_args = _jet_setup(config, K, collapsed, device)
+    tangents = tree_map(rand_like, jet_args)
+    oracle = (rev_collapsed_jet if collapsed else _rev_jet)(f, detach=False)
+    with DifferentiableSubstitutes():
+        want = jvp(oracle, jet_args, tangents)
+    assert_close(jvp(jet_fn, jet_args, tangents), want, **tolerances_for(device))

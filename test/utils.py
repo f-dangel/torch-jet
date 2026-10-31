@@ -270,6 +270,8 @@ def make_jet_args(
 def rev_collapsed_jet(f: Callable[..., Any], detach: bool = True) -> Callable[..., Any]:
     """Reference implementation for collapsed Taylor mode via :func:`jet._rev_jet`.
 
+    ``detach`` is passed on to :func:`jet._rev_jet`.
+
     Built on :func:`jet._rev_jet` (nested reverse-mode AD), so independent of
     the FX-trace and interpreter machinery. See :func:`jet.jet` for the
     collapsed-mode shape contract.

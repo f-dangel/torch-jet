@@ -20,11 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `aten._log_softmax_backward_data.default`, the backward ops of `softmax`
     and `log_softmax`, through their ATen decomposition; on MPS and CUDA this
     also covers the VJP of `F.scaled_dot_product_attention`, which takes the
-    math path there ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
+    math path there ([PR](https://github.com/f-dangel/torch-jet/pull/265)).
   - `aten.native_layer_norm_backward.default` and
     `aten.native_batch_norm_backward.default` (eval mode) are traced through
     their ATen decomposition, whose ops all have rules; `jet.tracing.DECOMPOSED`
     lists the backward ops handled this way ([PR](https://github.com/f-dangel/torch-jet/pull/262)).
+  - The constants `aten.empty_like.default` and `aten.fill.Scalar`, which
+    autograd's backward of `silu` emits ([PR](https://github.com/f-dangel/torch-jet/pull/259)).
   - `aten.tanh_backward.default`, the backward of `tanh` ([PR](https://github.com/f-dangel/torch-jet/pull/255)).
 - `aten.ones_like.default`, the constant autograd seeds its backward pass with
   (first step towards jets of gradients) ([PR](https://github.com/f-dangel/torch-jet/pull/251)).

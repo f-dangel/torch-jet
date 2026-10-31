@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added/New
 
 - `aten.tanh_backward.default`, which autograd's backward pass of `tanh`
-  emits, for jets of gradients ([PR](https://github.com/f-dangel/torch-jet/pull/N)).
+  emits, for jets of gradients ([PR](https://github.com/f-dangel/torch-jet/pull/255)).
 - `aten.ones_like.default`, the constant autograd seeds its backward pass with
   (first step towards jets of gradients) ([PR](https://github.com/f-dangel/torch-jet/pull/251)).
 - `jet.freeze(f, args)` traces a function (e.g. a jet function) once for

@@ -29,6 +29,7 @@ UNSUPPORTED = (
     "softmax",
     "embedding",
     "sigmoid",
+    "silu",
     "max_pool",
     "select",
     "slice",

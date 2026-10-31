@@ -63,6 +63,9 @@ RULES: dict = {
     # Hardtanh likewise takes its clamp bounds at call time (``relu6`` lowers
     # to ``hardtanh(x, 0, 6)``).
     ops.aten.hardtanh.default: _defshared(primitives.jet_hardtanh),
+    # Threshold takes its cut and replacement value at call time (``relu`` is
+    # ``threshold(x, 0, 0)``).
+    ops.aten.threshold.default: _defshared(primitives.jet_threshold),
     # Hardsigmoid's bounds are fixed, so it is an ordinary elementwise table.
     ops.aten.hardsigmoid.default: _defelementwise(primitives._hardsigmoid_derivatives),
     # Mode-agnostic primitives (one body reading ``self.collapsed``)
@@ -118,8 +121,14 @@ RULES: dict = {
     ops.aten.hardtanh_backward.default: _defshared(
         compositions.elementwise_backward(primitives._hardtanh_derivatives)
     ),
+    # The backward never sees ``value`` and the shifted table drops order 0, so
+    # any ``value`` works; pass 0.
     ops.aten.threshold_backward.default: _defshared(
-        compositions.elementwise_backward(compositions._threshold_derivatives)
+        compositions.elementwise_backward(
+            lambda x0, threshold, K: primitives._threshold_derivatives(
+                x0, threshold, 0.0, K
+            )
+        )
     ),
     ops.aten.native_batch_norm.default: _defshared(compositions.native_batch_norm),
     ops.aten.native_layer_norm.default: _defshared(compositions.native_layer_norm),

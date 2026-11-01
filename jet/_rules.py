@@ -198,8 +198,6 @@ for _prim in (
     ops.aten.select_backward.default,
     ops.aten.slice_backward.default,
     ops.aten.upsample_bilinear2d_backward.default,
-    # ``embedding``'s backward: linear in ``grad_output``, the integer
-    # ``indices`` and the padding row are constants.
     ops.aten.embedding_dense_backward.default,
 ):
     RULES[_prim] = _deflinear(_prim)

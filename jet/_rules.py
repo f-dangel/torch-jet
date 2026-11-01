@@ -63,8 +63,6 @@ RULES: dict = {
     # Hardtanh likewise takes its clamp bounds at call time (``relu6`` lowers
     # to ``hardtanh(x, 0, 6)``).
     ops.aten.hardtanh.default: _defshared(primitives.jet_hardtanh),
-    # Threshold takes its cut and replacement value at call time (``relu`` is
-    # ``threshold(x, 0, 0)``).
     ops.aten.threshold.default: _defshared(primitives.jet_threshold),
     # Hardsigmoid's bounds are fixed, so it is an ordinary elementwise table.
     ops.aten.hardsigmoid.default: _defelementwise(primitives._hardsigmoid_derivatives),

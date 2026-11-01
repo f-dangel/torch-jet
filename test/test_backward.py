@@ -22,8 +22,6 @@ UNSUPPORTED = (
     "nll_loss",
     "mse_loss",
     "gelu",
-    "hardsigmoid",
-    "hardswish",
     "as_strided",
     "log_softmax",
     "softmax",

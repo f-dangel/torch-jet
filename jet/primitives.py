@@ -1437,6 +1437,23 @@ def jet_embedding(
     )
 
 
+def jet_index_put(
+    self: Tensor | JetTuple,
+    indices: list[Tensor | None],
+    values: Tensor | JetTuple,
+    accumulate: bool = False,
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.index_put(self, indices, values, accumulate)``.
+
+    Jointly linear in ``self`` and ``values`` for constant integer ``indices``
+    (autograd's backward of ``x[idx]`` scatters into ``new_zeros``), so
+    :func:`_pair_linear` applies the op coefficient-wise.
+    """
+    return _pair_linear(
+        lambda a, b: ops.aten.index_put.default(a, indices, b, accumulate)
+    )(self, values)
+
+
 def _deflinear(prim: Callable) -> Callable:
     """Build a linear jet rule (standard or collapsed).
 
@@ -1471,6 +1488,35 @@ def _deflinear_first(prim: Callable) -> Callable:
     def rule(self, *args, **kwargs):
         args = tuple(a[0] if isinstance(a, JetTuple) else a for a in args)
         return _deflinear(prim)(self, *args, **kwargs)
+
+    return rule
+
+
+def _pair_linear(prim: Callable[[Tensor, Tensor], Tensor]) -> Callable:
+    """Build the jet rule of an op jointly linear in two tensor operands.
+
+    Each coefficient is ``prim(a_k, b_k)``; a constant operand enters the
+    primal and contributes zeros to every coefficient (``(R, *shape)`` in a
+    collapsed batched slot, which ``vmap``s ``prim`` over ``R``).
+    """
+
+    def rule(a: Tensor | JetTuple, b: Tensor | JetTuple) -> JetTuple:
+        K = _jet_order(a, b)
+        jet = a if isinstance(a, JetTuple) else b
+
+        def part(t: Tensor | JetTuple, k: int, batched: bool) -> Tensor:
+            if isinstance(t, JetTuple):
+                return t[k]
+            if k == 0:
+                return t
+            return t.new_zeros(jet[k].shape[0], *t.shape) if batched else zeros_like(t)
+
+        out = []
+        for k in range(K + 1):
+            batched = _is_batched(k, K, jet.collapsed)
+            op = vmap(prim) if batched else prim
+            out.append(op(part(a, k, batched), part(b, k, batched)))
+        return JetTuple(out, collapsed=jet.collapsed)
 
     return rule
 

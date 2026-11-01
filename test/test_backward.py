@@ -23,7 +23,6 @@ from test.utils import assert_jet_matches_oracle, device_kw, make_jet_args, vjp_
 UNSUPPORTED = (
     "sdpa",
     "conv",
-    "index",
     "as_strided",
 )
 CASES = [vjp_case(c) for c in PRIMITIVE_CASES]

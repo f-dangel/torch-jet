@@ -70,7 +70,6 @@ RULES: dict = {
     ops.aten.add.Tensor: _defshared(primitives.jet_add),
     ops.aten.add.Scalar: _defshared(primitives.jet_add),
     ops.aten.sub.Tensor: _defshared(primitives.jet_sub),
-    # ``1 - y`` in a decomposition (e.g. of ``sigmoid_backward``): swapped ``sub``.
     ops.aten.rsub.Scalar: _defshared(primitives.jet_rsub),
     ops.aten.mul.Tensor: _defshared(primitives.jet_mul),
     # ``x * 2.0`` traces to ``mul.Tensor``; decompositions (e.g. the sdpa math
@@ -94,7 +93,6 @@ RULES: dict = {
     # The fused, indices-free pooling op some backends emit (e.g. MPS).
     ops.aten.max_pool2d.default: _defshared(primitives.jet_max_pool2d),
     ops.aten.nll_loss_forward.default: _defshared(primitives.jet_nll_loss_forward),
-    # Its backward is linear in ``grad_output``; ``self`` only sets the shape.
     ops.aten.nll_loss_backward.default: _defshared(primitives.jet_nll_loss_backward),
     # Token embedding lookup: linear in the weight, integer indices stay constant.
     ops.aten.embedding.default: _defshared(primitives.jet_embedding),
@@ -190,6 +188,10 @@ for _prim in (
     ops.aten.mean.default,
     ops.aten.mean.dim,
     ops.aten.split.Tensor,  # ``Tensor[]`` output: one jet per piece
+    ops.aten.select_backward.default,
+    ops.aten.slice_backward.default,
+    ops.aten.upsample_bilinear2d_backward.default,
+    ops.aten.embedding_dense_backward.default,
 ):
     RULES[_prim] = _deflinear(_prim)
 

@@ -1112,16 +1112,22 @@ PRIMITIVE_CASES = [
     # ``nll_loss`` is linear in the (log-prob) input given a frozen integer
     # target, so the same op applies to every coefficient. It returns
     # ``(output, total_weight)``; cover all three reductions and the
-    # ``getitem`` that selects ``output``, both with and without per-class
-    # weights (the weighted ``mean`` exercises the ``total_weight`` divisor).
+    # ``getitem`` that selects ``output``, with and without per-class weights
+    # (the weighted ``mean`` exercises the ``total_weight`` divisor) and with
+    # and without an ignored target.
     *(
         {
-            "id": f"nll_loss_{reduction}" + ("_weighted" if weighted else ""),
-            "f": class_index_loss(nll_loss, reduction, 8, 5, weighted=weighted),
+            "id": f"nll_loss_{reduction}"
+            + ("_weighted" if weighted else "")
+            + ("_ignore_index" if ignore_index != -100 else ""),
+            "f": class_index_loss(
+                nll_loss, reduction, 8, 5, weighted=weighted, ignore_index=ignore_index
+            ),
             "args_fn": lambda: (rand(8, 5),),
         }
         for reduction in ("none", "mean", "sum")
         for weighted in (False, True)
+        for ignore_index in (-100, 2)
     ),
     # ---- Reduction -------------------------------------------------------
     # ``sum()`` (no-dim) lowers to ``aten.sum.default``; the dim/keepdim

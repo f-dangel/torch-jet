@@ -1583,9 +1583,9 @@ def _defzero(prim: Callable) -> Callable:
 
     def rule(self: JetTuple, *args, **kwargs) -> JetTuple:
         primal_out = prim(self[0], *args, **kwargs)
-        lead = self[0].dim()
+        lead = self[0].ndim
         coeffs = [
-            primal_out.new_zeros((*c.shape[: c.dim() - lead], *primal_out.shape))
+            primal_out.new_zeros((*c.shape[: c.ndim - lead], *primal_out.shape))
             for c in self[1:]
         ]
         return JetTuple([primal_out, *coeffs], collapsed=self.collapsed)

@@ -95,6 +95,30 @@ def _sdpa(
     return softmax(scores, -1) @ v
 
 
+def _embedding(
+    input: Tensor,
+    weight: Tensor,
+    padding_idx: int | None = None,
+    max_norm: float | None = None,
+    norm_type: float = 2.0,
+    scale_grad_by_freq: bool = False,
+    sparse: bool = False,
+) -> Tensor:
+    """``weight[input]`` with the ``padding_idx`` row detached, like ``embedding``.
+
+    Autograd zeroes that row's gradient, and the jet zeroes its coefficients;
+    detaching the row gives an oracle with the same derivatives to all orders.
+    """
+    if max_norm is not None or scale_grad_by_freq or sparse:
+        raise NotImplementedError("Only padding_idx is supported by the substitute.")
+    if padding_idx is None:
+        return weight[input]
+    vocab_size = weight.shape[0]
+    rows = arange(vocab_size, device=weight.device)
+    keep = (rows != padding_idx % vocab_size).unsqueeze(-1)
+    return where(keep, weight, weight.detach())[input]
+
+
 class DifferentiableSubstitutes(TorchFunctionMode):
     """Swap ops PyTorch cannot differentiate (correctly) to high order for equivalent calls it can.
 
@@ -125,9 +149,8 @@ class DifferentiableSubstitutes(TorchFunctionMode):
         # ``native_layer_norm``'s third derivative is wrong on every device
         # (pytorch/pytorch#175754; the pending fix raises instead).
         layer_norm: _layer_norm,
-        # ``embedding``'s backward zeroes the ``padding_idx`` row; the true
-        # derivative of ``weight[input]`` does not depend on that flag.
-        embedding: lambda input, weight, *args, **kwargs: weight[input],
+        # Autograd cannot differentiate ``embedding`` twice w.r.t. ``weight``.
+        embedding: _embedding,
         # The fused CPU/CUDA ``scaled_dot_product_attention`` kernels have no
         # double backward.
         scaled_dot_product_attention: _sdpa,
@@ -153,57 +176,39 @@ class DifferentiableSubstitutes(TorchFunctionMode):
         return func(*args, **kwargs)
 
 
-def _embedding_vjp(
-    input: Tensor, weight: Tensor, padding_idx: int | None = None, *args, **kwargs
-) -> Tensor:
-    """``weight[input]`` whose gradient zeroes the ``padding_idx`` row, like ``embedding``'s.
-
-    Same value as the forward substitute, but the padding row is detached, so
-    reverse mode masks its gradient the way ``embedding``'s backward does. The
-    VJP is then the real one, and so are all its derivatives.
-    """
-    if padding_idx is None:
-        return weight[input]
-    rows = arange(weight.shape[0], device=weight.device)
-    keep = (rows != padding_idx % weight.shape[0])[:, None]
-    return where(keep, weight, weight.detach())[input]
-
-
-class VJPSubstitutes(DifferentiableSubstitutes):
-    """The substitutes for the oracle of a VJP (see :func:`vjp_case`).
-
-    A jet of a VJP differentiates autograd's backward ops, so the oracle must
-    reproduce their gradients: ``embedding``'s masks the ``padding_idx`` row
-    (the forward substitute's does not, which is what a jet of the forward
-    needs).
-    """
-
-    SUBSTITUTES = {**DifferentiableSubstitutes.SUBSTITUTES, embedding: _embedding_vjp}
-
-
 def _stateless(f: Callable) -> Callable[[str], Callable]:
     """Wrap a device-independent test function as a device-aware builder."""
     return lambda device: f
 
 
 def class_index_loss(
-    loss_fn: Callable, reduction: str, N: int, C: int, weighted: bool = False
+    loss_fn: Callable,
+    reduction: str,
+    N: int,
+    C: int,
+    weighted: bool = False,
+    ignore_index: int = -100,
 ) -> Callable[[str], Callable]:
-    """Build ``loss_fn(input, target, weight, reduction)`` against class indices.
+    """Build ``loss_fn(input, target, weight, reduction, ignore_index)`` against class indices.
 
     Shared by the ``nll_loss`` and ``cross_entropy`` test cases. The integer
     ``target`` (and, when ``weighted``, the positive per-class ``weight``) are
     drawn under ``manual_seed(1)`` (distinct from the ``setup_case`` input) and
     live on ``device``; ``setup_case`` migrates only the float input, not
     closed-over constants. ``weight`` exercises the per-class weighting and (for
-    ``mean``) the ``total_weight`` normalization.
+    ``mean``) the ``total_weight`` normalization. A non-default ``ignore_index``
+    (a class) is written into the first target so that one row is ignored.
     """
 
     def build(device: str) -> Callable:
         manual_seed(1)
         target = randint(0, C, (N,), device=device)
+        if ignore_index != -100:
+            target[0] = ignore_index
         weight = rand(C, **device_kw(device)) + 0.5 if weighted else None
-        return lambda x: loss_fn(x, target, weight=weight, reduction=reduction)
+        return lambda x: loss_fn(
+            x, target, weight=weight, reduction=reduction, ignore_index=ignore_index
+        )
 
     return build
 
@@ -294,7 +299,7 @@ def vjp_case(config: dict[str, Any]) -> dict[str, Any]:
         manual_seed(1)
         return (*args, tree_map(rand_like, f(*args)))
 
-    return {**config, "f": build, "args_fn": args_fn, "substitutes": VJPSubstitutes}
+    return {**config, "f": build, "args_fn": args_fn}
 
 
 def make_jet_args(
@@ -397,9 +402,8 @@ def assert_jet_matches_oracle(
     Collapsed mode requires ``K >= 2``; for the invalid ``collapsed and K < 2``
     cells, assert the jet call raises the documented guard and return early.
 
-    The oracle runs under :class:`DifferentiableSubstitutes` (or the case's
-    ``"substitutes"`` mode), so ``f`` may contain ops PyTorch cannot
-    differentiate (correctly) to high order.
+    The oracle runs under :class:`DifferentiableSubstitutes`, so ``f`` may
+    contain ops PyTorch cannot differentiate (correctly) to high order.
     """
     f, mock_args = setup_case(config, device)
     if collapsed and K < 2:
@@ -415,7 +419,7 @@ def assert_jet_matches_oracle(
     # A case may relax the float64 tolerances (``"tolerances"``), e.g. a model
     # that computes parts in float32 whatever its dtype.
     tol = {**config.get("tolerances", {}), **tolerances_for(device)}
-    with config.get("substitutes", DifferentiableSubstitutes)():
+    with DifferentiableSubstitutes():
         # The substitutes must not change the function the oracle differentiates.
         assert_close(f(*mock_args), plain, **tol)
         expected = oracle(*jet_args)

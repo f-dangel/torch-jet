@@ -22,6 +22,7 @@ UNSUPPORTED = (
     "nll_loss",
     "mse_loss",
     "gelu",
+    "index",
     "as_strided",
     "log_softmax",
     "softmax",

@@ -167,8 +167,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
-- The jet of the `embedding` VJP is also tested with `scale_grad_by_freq`
-  ([PR](https://github.com/f-dangel/torch-jet/pull/278)).
 - The exact `gelu` forward rule is one elementwise rule over the closed-form
   derivative table from PR 258 instead of a composition of
   `erf` / `mul` / `add` rules (one Faà di Bruno pass, no products of jets);

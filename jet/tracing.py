@@ -35,7 +35,7 @@ def _decomposed() -> dict:
     """
     try:
         from torch._decomp import get_decompositions
-    except ImportError:  # pragma: no cover
+    except ImportError:
         warn(
             "torch._decomp is unavailable; jets of norm backward ops will raise.",
             stacklevel=2,

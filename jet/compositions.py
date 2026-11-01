@@ -79,7 +79,9 @@ def _rule(op: Callable, collapsed: bool) -> Callable:
     return dispatch
 
 
-def addmm(self: object, mat1: object, mat2: object) -> JetTuple:
+def addmm(
+    self: Tensor | JetTuple, mat1: Tensor | JetTuple, mat2: Tensor | JetTuple
+) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.addmm(self, mat1, mat2)``.
 
     ``addmm(self, mat1, mat2) == self + mat1 @ mat2``, so the rule composes the
@@ -102,7 +104,7 @@ def addmm(self: object, mat1: object, mat2: object) -> JetTuple:
     return add(self, mm(mat1, mat2))
 
 
-def stack(tensors: list[object], dim: int = 0) -> JetTuple:
+def stack(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.stack(tensors, dim)``.
 
     ``stack(tensors, dim) == cat([unsqueeze(t, dim) for t in tensors], dim)``, so
@@ -127,7 +129,10 @@ def stack(tensors: list[object], dim: int = 0) -> JetTuple:
 
 
 def convolution(
-    input: object, weight: object, bias: object, *conv_args: object
+    input: Tensor | JetTuple,
+    weight: Tensor | JetTuple,
+    bias: Tensor | JetTuple | None,
+    *conv_args: object,
 ) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.convolution(input, weight, bias, ...)``.
 
@@ -151,7 +156,7 @@ def convolution(
     collapsed = _collapsed_of(input, weight, bias)
     add = _rule(ops.aten.add.Tensor, collapsed)
 
-    def cv(a: object, b: object) -> object:
+    def cv(a: Tensor, b: Tensor) -> Tensor:
         """Bias-free convolution -- the bilinear core of ``aten.convolution``."""
         return ops.aten.convolution.default(a, b, None, *conv_args)
 
@@ -191,7 +196,9 @@ def _reduce_loss(loss: JetTuple, reduction: int) -> JetTuple:
     raise ValueError(f"Unsupported reduction {reduction}; expected 0, 1, or 2.")
 
 
-def mse_loss(self: object, target: object, reduction: int = 1) -> JetTuple:
+def mse_loss(
+    self: Tensor | JetTuple, target: Tensor | JetTuple, reduction: int = 1
+) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.mse_loss(self, target, reduction)``.
 
     Computes ``reduce((self - target) ** 2)`` by composing the ``sub`` and
@@ -333,7 +340,9 @@ def gelu(self: JetTuple, approximate: str = "none") -> JetTuple:
     return mul(mul(self, 0.5), add(inner, 1.0))
 
 
-def _standardize(input: object, dims: list[int], eps: float, collapsed: bool) -> tuple:
+def _standardize(
+    input: Tensor | JetTuple, dims: list[int], eps: float, collapsed: bool
+) -> tuple:
     """Standardize ``input`` over ``dims`` with its own statistics.
 
     ``(input - mean) * (var + eps)**-0.5`` with biased ``var``, composed from
@@ -355,7 +364,12 @@ def _standardize(input: object, dims: list[int], eps: float, collapsed: bool) ->
     return mul(centered, rstd), mu, rstd
 
 
-def _affine(out: object, weight: object, bias: object, collapsed: bool) -> object:
+def _affine(
+    out: Tensor | JetTuple,
+    weight: Tensor | JetTuple | None,
+    bias: Tensor | JetTuple | None,
+    collapsed: bool,
+) -> Tensor | JetTuple:
     """``out * weight + bias`` for optional (``None`` = absent) broadcastable params."""
     if weight is not None:
         out = _rule(ops.aten.mul.Tensor, collapsed)(out, weight)
@@ -365,11 +379,11 @@ def _affine(out: object, weight: object, bias: object, collapsed: bool) -> objec
 
 
 def native_batch_norm(
-    input: object,
-    weight: object,
-    bias: object,
-    running_mean: object,
-    running_var: object,
+    input: Tensor | JetTuple,
+    weight: Tensor | JetTuple | None,
+    bias: Tensor | JetTuple | None,
+    running_mean: Tensor | None,
+    running_var: Tensor | None,
     training: bool,
     momentum: float,
     eps: float,
@@ -424,7 +438,11 @@ def native_batch_norm(
 
 
 def native_layer_norm(
-    input: object, normalized_shape: list[int], weight: object, bias: object, eps: float
+    input: Tensor | JetTuple,
+    normalized_shape: list[int],
+    weight: Tensor | JetTuple | None,
+    bias: Tensor | JetTuple | None,
+    eps: float,
 ) -> tuple:
     """Taylor-mode arithmetic for ``aten.native_layer_norm``.
 
@@ -450,7 +468,10 @@ def native_layer_norm(
 
 
 def _fused_rms_norm(
-    input: object, normalized_shape: list[int], weight: object, eps: float | None
+    input: Tensor | JetTuple,
+    normalized_shape: list[int],
+    weight: Tensor | JetTuple | None,
+    eps: float | None,
 ) -> tuple:
     """Taylor-mode arithmetic for ``aten._fused_rms_norm``.
 
@@ -482,11 +503,11 @@ def _fused_rms_norm(
 
 
 def cudnn_batch_norm(
-    input: object,
-    weight: object,
-    bias: object,
-    running_mean: object,
-    running_var: object,
+    input: Tensor | JetTuple,
+    weight: Tensor | JetTuple,
+    bias: Tensor | JetTuple | None,
+    running_mean: Tensor | None,
+    running_var: Tensor | None,
     training: bool,
     exponential_average_factor: float,
     epsilon: float,
@@ -516,10 +537,10 @@ def cudnn_batch_norm(
 
 
 def scaled_dot_product_attention(
-    query: object,
-    key: object,
-    value: object,
-    attn_mask: object = None,
+    query: Tensor | JetTuple,
+    key: Tensor | JetTuple,
+    value: Tensor | JetTuple,
+    attn_mask: Tensor | None = None,
     dropout_p: float = 0.0,
     is_causal: bool = False,
     scale: float | None = None,
@@ -578,7 +599,14 @@ def scaled_dot_product_attention(
 
 
 def _sdpa_fused(
-    query, key, value, attn_mask, dropout_p, is_causal, scale, n_extra: int
+    query: Tensor | JetTuple,
+    key: Tensor | JetTuple,
+    value: Tensor | JetTuple,
+    attn_mask: Tensor | None,
+    dropout_p: float,
+    is_causal: bool,
+    scale: float | None,
+    n_extra: int,
 ) -> tuple:
     """``(output, None, ...)`` for the fused sdpa ops with ``n_extra`` extra outputs.
 
@@ -614,7 +642,14 @@ def _laid_out_like(out: JetTuple, ref: Tensor) -> JetTuple:
 
 
 def _scaled_dot_product_flash_attention_for_cpu(
-    query, key, value, dropout_p=0.0, is_causal=False, *, attn_mask=None, scale=None
+    query: Tensor | JetTuple,
+    key: Tensor | JetTuple,
+    value: Tensor | JetTuple,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    *,
+    attn_mask: Tensor | None = None,
+    scale: float | None = None,
 ) -> tuple:
     """Adapter for the fused CPU op ``F.scaled_dot_product_attention`` lowers to.
 
@@ -631,9 +666,9 @@ def _scaled_dot_product_flash_attention_for_cpu(
 
 
 def _scaled_dot_product_efficient_attention(
-    query: object,
-    key: object,
-    value: object,
+    query: Tensor | JetTuple,
+    key: Tensor | JetTuple,
+    value: Tensor | JetTuple,
     attn_bias: Tensor | None,
     compute_log_sumexp: bool,
     dropout_p: float = 0.0,
@@ -657,9 +692,9 @@ def _scaled_dot_product_efficient_attention(
 
 
 def _scaled_dot_product_flash_attention(
-    query: object,
-    key: object,
-    value: object,
+    query: Tensor | JetTuple,
+    key: Tensor | JetTuple,
+    value: Tensor | JetTuple,
     dropout_p: float = 0.0,
     is_causal: bool = False,
     return_debug_mask: bool = False,
@@ -676,9 +711,9 @@ def _scaled_dot_product_flash_attention(
 
 
 def _scaled_dot_product_attention_math_for_mps(
-    query: object,
-    key: object,
-    value: object,
+    query: Tensor | JetTuple,
+    key: Tensor | JetTuple,
+    value: Tensor | JetTuple,
     attn_mask: Tensor | None = None,
     dropout_p: float = 0.0,
     is_causal: bool = False,
@@ -702,7 +737,9 @@ def _scaled_dot_product_attention_math_for_mps(
     return _sdpa_fused(query, key, value, attn_mask, dropout_p, is_causal, scale, 1)
 
 
-def tanh_backward(grad_output: object, output: object) -> JetTuple:
+def tanh_backward(
+    grad_output: Tensor | JetTuple, output: Tensor | JetTuple
+) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.tanh_backward(grad_output, output)``.
 
     Autograd's backward of ``tanh`` computes ``grad_output * (1 - output^2)``,
@@ -730,20 +767,27 @@ def elementwise_backward(
     """Build the rule for the backward of an elementwise activation ``f``.
 
     Autograd's backward of ``f`` is ``grad_output * f'(self)`` (plus any
-    call-time args, e.g. ``hardtanh``'s bounds). The jet of ``f'`` reuses
-    ``f``'s derivative table shifted up by one order, and the product is the
-    bilinear ``mul`` rule, so either operand may be a jet or a constant.
+    call-time args, e.g. ``hardtanh``'s bounds, or keyword args, e.g.
+    ``gelu``'s ``approximate``). The jet of ``f'`` reuses ``f``'s derivative
+    table shifted up by one order, and the product is the bilinear ``mul``
+    rule, so either operand may be a jet or a constant.
 
     Args:
-        deriv_fn: ``f``'s derivative table, ``(x0, *args, K) -> {k: f^(k)(x0)}``.
+        deriv_fn: ``f``'s derivative table,
+            ``(x0, *args, K, **kwargs) -> {k: f^(k)(x0)}``.
 
     Returns:
-        The rule for ``aten.f_backward(grad_output, self, *args)``.
+        The rule for ``aten.f_backward(grad_output, self, *args, **kwargs)``.
     """
 
-    def rule(grad_output: object, self: object, *args: object) -> JetTuple:
+    def rule(
+        grad_output: Tensor | JetTuple,
+        self: Tensor | JetTuple,
+        *args: object,
+        **kwargs: object,
+    ) -> JetTuple:
         def shifted(x0: Tensor, K: int) -> dict[int, Tensor | None]:
-            d = deriv_fn(x0, *args, K + 1)
+            d = deriv_fn(x0, *args, K + 1, **kwargs)
             return {k: d[k + 1] for k in range(K + 1)}
 
         mul = _rule(ops.aten.mul.Tensor, _collapsed_of(grad_output, self))

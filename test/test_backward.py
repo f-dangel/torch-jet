@@ -19,7 +19,6 @@ UNSUPPORTED = (
     "conv",
     "nll_loss",
     "mse_loss",
-    "gelu",
     "upsample",
     "index",
     "as_strided",

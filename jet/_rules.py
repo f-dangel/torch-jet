@@ -94,7 +94,6 @@ RULES: dict = {
     # The fused, indices-free pooling op some backends emit (e.g. MPS).
     ops.aten.max_pool2d.default: _defshared(primitives.jet_max_pool2d),
     ops.aten.nll_loss_forward.default: _defshared(primitives.jet_nll_loss_forward),
-    # Its backward is linear in ``grad_output``; ``self`` only sets the shape.
     ops.aten.nll_loss_backward.default: _defshared(primitives.jet_nll_loss_backward),
     # Token embedding lookup: linear in the weight, integer indices stay constant.
     ops.aten.embedding.default: _defshared(primitives.jet_embedding),
@@ -199,6 +198,9 @@ for _prim in (
     ops.aten.mean.default,
     ops.aten.mean.dim,
     ops.aten.split.Tensor,  # ``Tensor[]`` output: one jet per piece
+    ops.aten.select_backward.default,
+    ops.aten.slice_backward.default,
+    ops.aten.upsample_bilinear2d_backward.default,
 ):
     RULES[_prim] = _deflinear(_prim)
 

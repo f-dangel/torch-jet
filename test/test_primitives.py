@@ -63,6 +63,7 @@ from torch.nn.functional import (
     scaled_dot_product_attention,
     silu,
     softmax,
+    threshold,
 )
 from torch.testing import assert_close
 
@@ -743,6 +744,12 @@ PRIMITIVE_CASES = [
         "args_fn": lambda: (4 * randn(3, 4),),
     },
     {"id": "relu6", "f": _stateless(relu6), "args_fn": lambda: (4 * randn(3, 4),)},
+    # ---- Threshold (``relu`` with a shifted kink and a non-zero fill) --------
+    {
+        "id": "threshold",
+        "f": _stateless(lambda x: threshold(x, 0.1, -2.0)),
+        "args_fn": lambda: (randn(3, 4),),
+    },
     # ---- Hardsigmoid (``relu6(x + 3) / 6``; ``4 * randn`` straddles the kinks
     # at ``-3`` and ``3`` to exercise the inner slope and both clamped
     # branches) -----------------------------------------------------------

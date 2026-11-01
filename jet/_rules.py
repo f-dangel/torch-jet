@@ -104,7 +104,6 @@ RULES: dict = {
     ops.aten.nll_loss_backward.default: _defshared(primitives.jet_nll_loss_backward),
     # Token embedding lookup: linear in the weight, integer indices stay constant.
     ops.aten.embedding.default: _defshared(primitives.jet_embedding),
-    # Backward of ``x[idx]``: scatters ``grad_output`` into ``new_zeros``.
     ops.aten.index_put.default: _defshared(primitives.jet_index_put),
     # Current torch lowers all scalar division (``x / 2.0``) to this overload;
     # a Taylor-expanded divisor uses the division recurrence.

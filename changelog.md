@@ -13,8 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `torch.func.grad` or `torch.func.vjp`) by adding jet rules for the ATen ops
   autograd's backward pass emits:
   - `aten.embedding_dense_backward.default`, the backward of `embedding`
-    (linear in the incoming gradient; the VJP oracle of the tests masks the
-    `padding_idx` row like autograd does) ([PR](https://github.com/f-dangel/torch-jet/pull/275)).
+    (linear in the incoming gradient) ([PR](https://github.com/f-dangel/torch-jet/pull/275)).
   - `aten.select_backward.default`, `aten.slice_backward.default` and
     `aten.upsample_bilinear2d_backward.default`, the backwards of `select`,
     `slice` and bilinear upsampling (linear in the incoming gradient)

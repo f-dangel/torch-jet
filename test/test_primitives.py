@@ -1354,6 +1354,12 @@ PRIMITIVE_CASES = [
         "f": _stateless(lambda x: zeros_like(x, dtype=float32)),
         "args_fn": lambda: (rand(3, 4),),
     },
+    # ``new_zeros`` changes the shape: the coefficients take the output's.
+    {
+        "id": "new_zeros",
+        "f": _stateless(lambda x: x.new_zeros((2, 5))),
+        "args_fn": lambda: (rand(3, 4),),
+    },
     # Autograd seeds its backward pass with ``ones_like(loss)``.
     {"id": "ones_like", "f": _stateless(ones_like), "args_fn": lambda: (rand(3, 4),)},
 ]

@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   autograd's backward pass emits:
   - `aten.convolution_backward.default`, the backward of `convolution`
     ([PR](https://github.com/f-dangel/torch-jet/pull/261)).
+  - `aten.avg_pool2d_backward.default`, `aten._adaptive_avg_pool2d_backward.default`,
+    `aten.max_pool2d_with_indices_backward.default` and the fused
+    `aten.max_pool2d_backward.default` (MPS), the backwards of the pooling ops
+    (linear in the incoming gradient; max pooling scatters to the arg-max
+    positions of the primal input) ([PR](https://github.com/f-dangel/torch-jet/pull/264)).
   - `aten.sigmoid_backward.default` through its ATen decomposition, which
     needs a new rule for `aten.rsub.Scalar` (`other - alpha * self`)
     ([PR](https://github.com/f-dangel/torch-jet/pull/269)).

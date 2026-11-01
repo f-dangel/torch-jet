@@ -32,6 +32,7 @@ from jet.primitives import (
     _apply_linear,
     _bn_channel_view,
     _elementwise,
+    _gelu_exact_derivatives,
     _has_jet_arg,
 )
 
@@ -312,9 +313,12 @@ def safe_softmax(
 def gelu(self: JetTuple, approximate: str = "none") -> JetTuple:
     """Taylor-mode arithmetic for ``aten.gelu(self, approximate=...)``.
 
-    Composed from registered rules: the exact GELU ``0.5 x (1 + erf(x / sqrt(2)))``
-    from ``erf`` / ``mul`` / ``add``, the ``"tanh"`` approximation
-    ``0.5 x (1 + tanh(sqrt(2/pi) (x + 0.044715 x^3)))`` from ``tanh`` / ``pow`` as well.
+    The exact GELU is one elementwise rule over its closed-form derivative
+    table (one Faà di Bruno pass, no products of jets). The ``"tanh"``
+    approximation ``0.5 x (1 + tanh(sqrt(2/pi) (x + 0.044715 x^3)))`` stays
+    composed from the ``tanh`` / ``pow`` / ``mul`` / ``add`` rules: its table
+    composes ``tanh`` over the cubic at every order, which costs more than
+    the composition on large inputs.
 
     Args:
         self: The input and its Taylor coefficients.
@@ -326,12 +330,12 @@ def gelu(self: JetTuple, approximate: str = "none") -> JetTuple:
     Raises:
         NotImplementedError: If ``approximate`` is neither ``"none"`` nor ``"tanh"``.
     """
+    if approximate == "none":
+        return _elementwise(self, _gelu_exact_derivatives)
     collapsed = _collapsed_of(self)
     mul = _rule(ops.aten.mul.Tensor, collapsed)
     add = _rule(ops.aten.add.Tensor, collapsed)
-    if approximate == "none":
-        inner = _rule(ops.aten.erf.default, collapsed)(mul(self, 1 / sqrt(2)))
-    elif approximate == "tanh":
+    if approximate == "tanh":
         pow = _rule(ops.aten.pow.Tensor_Scalar, collapsed)
         cubic = add(self, mul(pow(self, 3), 0.044715))
         inner = _rule(ops.aten.tanh.default, collapsed)(mul(cubic, sqrt(2 / pi)))

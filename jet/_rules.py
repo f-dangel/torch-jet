@@ -75,6 +75,7 @@ RULES: dict = {
     ops.aten.add.Tensor: _defshared(primitives.jet_add),
     ops.aten.add.Scalar: _defshared(primitives.jet_add),
     ops.aten.sub.Tensor: _defshared(primitives.jet_sub),
+    ops.aten.rsub.Scalar: _defshared(primitives.jet_rsub),
     ops.aten.mul.Tensor: _defshared(primitives.jet_mul),
     # ``x * 2.0`` traces to ``mul.Tensor``; decompositions (e.g. the sdpa math
     # path's ``q * sqrt(scale)``) call the scalar overload directly.
@@ -100,6 +101,7 @@ RULES: dict = {
         primitives.jet_max_pool2d_backward
     ),
     ops.aten.nll_loss_forward.default: _defshared(primitives.jet_nll_loss_forward),
+    ops.aten.nll_loss_backward.default: _defshared(primitives.jet_nll_loss_backward),
     # Token embedding lookup: linear in the weight, integer indices stay constant.
     ops.aten.embedding.default: _defshared(primitives.jet_embedding),
     # Backward of ``x[idx]``: scatters ``grad_output`` into ``new_zeros``.
@@ -212,8 +214,6 @@ for _prim in (
 ):
     RULES[_prim] = _deflinear(_prim)
 
-# Pooling backwards: linear in ``grad_output``; the pooled input only sets the
-# output's shape (and, for max pooling, the primal's arg-max ``indices``).
 for _prim in (
     ops.aten.avg_pool2d_backward.default,
     ops.aten._adaptive_avg_pool2d_backward.default,

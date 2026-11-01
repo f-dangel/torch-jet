@@ -21,6 +21,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `aten.max_pool2d_backward.default` (MPS), the backwards of the pooling ops
     (linear in the incoming gradient; max pooling scatters to the arg-max
     positions of the primal input) ([PR](https://github.com/f-dangel/torch-jet/pull/264)).
+  - `aten.sigmoid_backward.default` through its ATen decomposition, which
+    needs a new rule for `aten.rsub.Scalar` (`other - alpha * self`)
+    ([PR](https://github.com/f-dangel/torch-jet/pull/269)).
+  - `aten.mse_loss_backward.default` through its ATen decomposition (one
+    product), and `aten.nll_loss_backward.default` as a rule that is linear in
+    `grad_output` (the target, class weights, and `total_weight` must be
+    constants) ([PR](https://github.com/f-dangel/torch-jet/pull/267)).
   - `aten.embedding_dense_backward.default`, the backward of `embedding`
     (linear in the incoming gradient) ([PR](https://github.com/f-dangel/torch-jet/pull/275)).
   - `aten._softmax_backward_data.default` and

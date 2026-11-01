@@ -5,6 +5,7 @@ from typing import Any, Callable
 from pytest import raises
 from torch import (
     Tensor,
+    arange,
     dtype,
     float32,
     float64,
@@ -152,6 +153,34 @@ class DifferentiableSubstitutes(TorchFunctionMode):
         return func(*args, **kwargs)
 
 
+def _embedding_vjp(
+    input: Tensor, weight: Tensor, padding_idx: int | None = None, *args, **kwargs
+) -> Tensor:
+    """``weight[input]`` whose gradient zeroes the ``padding_idx`` row, like ``embedding``'s.
+
+    Same value as the forward substitute, but the padding row is detached, so
+    reverse mode masks its gradient the way ``embedding``'s backward does. The
+    VJP is then the real one, and so are all its derivatives.
+    """
+    if padding_idx is None:
+        return weight[input]
+    rows = arange(weight.shape[0], device=weight.device)
+    keep = (rows != padding_idx % weight.shape[0])[:, None]
+    return where(keep, weight, weight.detach())[input]
+
+
+class VJPSubstitutes(DifferentiableSubstitutes):
+    """The substitutes for the oracle of a VJP (see :func:`vjp_case`).
+
+    A jet of a VJP differentiates autograd's backward ops, so the oracle must
+    reproduce their gradients: ``embedding``'s masks the ``padding_idx`` row
+    (the forward substitute's does not, which is what a jet of the forward
+    needs).
+    """
+
+    SUBSTITUTES = {**DifferentiableSubstitutes.SUBSTITUTES, embedding: _embedding_vjp}
+
+
 def _stateless(f: Callable) -> Callable[[str], Callable]:
     """Wrap a device-independent test function as a device-aware builder."""
     return lambda device: f
@@ -265,7 +294,7 @@ def vjp_case(config: dict[str, Any]) -> dict[str, Any]:
         manual_seed(1)
         return (*args, tree_map(rand_like, f(*args)))
 
-    return {**config, "f": build, "args_fn": args_fn}
+    return {**config, "f": build, "args_fn": args_fn, "substitutes": VJPSubstitutes}
 
 
 def make_jet_args(
@@ -368,8 +397,9 @@ def assert_jet_matches_oracle(
     Collapsed mode requires ``K >= 2``; for the invalid ``collapsed and K < 2``
     cells, assert the jet call raises the documented guard and return early.
 
-    The oracle runs under :class:`DifferentiableSubstitutes`, so ``f`` may
-    contain ops PyTorch cannot differentiate (correctly) to high order.
+    The oracle runs under :class:`DifferentiableSubstitutes` (or the case's
+    ``"substitutes"`` mode), so ``f`` may contain ops PyTorch cannot
+    differentiate (correctly) to high order.
     """
     f, mock_args = setup_case(config, device)
     if collapsed and K < 2:
@@ -385,7 +415,7 @@ def assert_jet_matches_oracle(
     # A case may relax the float64 tolerances (``"tolerances"``), e.g. a model
     # that computes parts in float32 whatever its dtype.
     tol = {**config.get("tolerances", {}), **tolerances_for(device)}
-    with DifferentiableSubstitutes():
+    with config.get("substitutes", DifferentiableSubstitutes)():
         # The substitutes must not change the function the oracle differentiates.
         assert_close(f(*mock_args), plain, **tol)
         expected = oracle(*jet_args)

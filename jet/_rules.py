@@ -210,8 +210,6 @@ for _prim in (
 ):
     RULES[_prim] = _deflinear(_prim)
 
-# Pooling backwards: linear in ``grad_output``; the pooled input only sets the
-# output's shape (and, for max pooling, the primal's arg-max ``indices``).
 for _prim in (
     ops.aten.avg_pool2d_backward.default,
     ops.aten._adaptive_avg_pool2d_backward.default,

@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support jets of gradients (Taylor mode through a function that calls
   `torch.func.grad` or `torch.func.vjp`) by adding jet rules for the ATen ops
   autograd's backward pass emits:
+  - `aten.mse_loss_backward.default` through its ATen decomposition (one
+    product), and `aten.nll_loss_backward.default` as a rule that is linear in
+    `grad_output` (the target, class weights, and `total_weight` must be
+    constants) ([PR](https://github.com/f-dangel/torch-jet/pull/267)).
   - `aten.embedding_dense_backward.default`, the backward of `embedding`
     (linear in the incoming gradient) ([PR](https://github.com/f-dangel/torch-jet/pull/275)).
   - `aten._softmax_backward_data.default` and

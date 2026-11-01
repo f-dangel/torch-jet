@@ -23,8 +23,6 @@ from test.utils import assert_jet_matches_oracle, device_kw, make_jet_args, vjp_
 UNSUPPORTED = (
     "sdpa",
     "conv",
-    "nll_loss",
-    "mse_loss",
     "index",
     "as_strided",
     "sigmoid",

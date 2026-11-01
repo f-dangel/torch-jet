@@ -92,6 +92,7 @@ RULES: dict = {
     # The fused, indices-free pooling op some backends emit (e.g. MPS).
     ops.aten.max_pool2d.default: _defshared(primitives.jet_max_pool2d),
     ops.aten.nll_loss_forward.default: _defshared(primitives.jet_nll_loss_forward),
+    ops.aten.nll_loss_backward.default: _defshared(primitives.jet_nll_loss_backward),
     # Token embedding lookup: linear in the weight, integer indices stay constant.
     ops.aten.embedding.default: _defshared(primitives.jet_embedding),
     # Current torch lowers all scalar division (``x / 2.0``) to this overload;

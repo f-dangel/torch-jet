@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     and `log_softmax`, through their ATen decomposition; on MPS and CUDA this
     also covers the VJP of `F.scaled_dot_product_attention`, which takes the
     math path there ([PR](https://github.com/f-dangel/torch-jet/pull/265)).
+  - `aten.select_backward.default`, `aten.slice_backward.default` and
+    `aten.upsample_bilinear2d_backward.default`, the backwards of `select`,
+    `slice` and bilinear upsampling (linear in the incoming gradient)
+    ([PR](https://github.com/f-dangel/torch-jet/pull/260)).
   - `aten.native_layer_norm_backward.default` and
     `aten.native_batch_norm_backward.default` (eval mode) are traced through
     their ATen decomposition, whose ops all have rules; `jet.tracing.DECOMPOSED`
@@ -142,6 +146,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
+- Jets of `embedding` treat the `padding_idx` row as a constant, like
+  autograd's gradient: the Taylor coefficients at its positions are zero. The
+  warning that reverse mode and jets disagree is gone
+  ([PR](https://github.com/f-dangel/torch-jet/pull/276)).
 - Collapsed Faà di Bruno terms sum the direction dim out of the product of
   inner coefficients *before* multiplying by the outer derivative, so autograd
   saves the summed product instead of the direction-batched one; restores the

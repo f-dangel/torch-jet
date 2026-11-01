@@ -8,7 +8,7 @@ PyTorch has caught up: drop the entry and the test.
 from typing import Callable
 
 from pytest import raises
-from torch import Tensor, full, manual_seed, rand, randn, tensor, zeros, zeros_like
+from torch import Tensor, manual_seed, rand, randn, tensor, zeros, zeros_like
 from torch.autograd import grad
 from torch.nn import MultiheadAttention
 from torch.nn.functional import (
@@ -91,18 +91,19 @@ def test_layer_norm_third_derivative(device: str):
 
 
 def test_embedding_padding_idx_gradient(device: str):
-    """``embedding`` masks the ``padding_idx`` row's gradient; its substitute does not.
+    """``embedding`` and its substitute zero the ``padding_idx`` row's gradient.
 
-    Jets compute the true derivative, so the oracle must not inherit the mask.
+    A negative ``padding_idx`` counts from the end, as in ``embedding``.
     """
     kw = device_kw(device)
-    idx = tensor([0, 2, 0], device=device)  # two lookups of row 0
+    idx = tensor([0, 2, 0], device=device)  # two lookups of row 0, one of row 2
     w = rand(3, 4, requires_grad=True, **kw)
-    (g,) = grad(embedding(idx, w, padding_idx=0).sum(), w)
-    assert_close(g[0], zeros(4, **kw))
+    expected = tensor([[0.0] * 4, [0.0] * 4, [1.0] * 4], **kw)
     substitute = DifferentiableSubstitutes.SUBSTITUTES[embedding]
-    (g,) = grad(substitute(idx, w, padding_idx=0).sum(), w)
-    assert_close(g[0], full((4,), 2.0, **kw))
+    for f in (embedding, substitute):
+        for padding_idx in (0, -3):
+            (g,) = grad(f(idx, w, padding_idx=padding_idx).sum(), w)
+            assert_close(g, expected)
 
 
 def test_scaled_dot_product_attention_double_backward(device: str):

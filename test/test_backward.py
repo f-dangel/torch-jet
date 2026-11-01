@@ -21,7 +21,6 @@ UNSUPPORTED = (
     "conv",
     "nll_loss",
     "mse_loss",
-    "upsample",
     "index",
     "as_strided",
     "log_softmax",

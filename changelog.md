@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `aten.embedding_dense_backward.default`, the backwards of the `select`,
     `slice`, bilinear upsampling and embedding views (linear in the incoming
     gradient) ([PR](https://github.com/f-dangel/torch-jet/pull/260)).
+  - `aten.native_layer_norm_backward.default` and
+    `aten.native_batch_norm_backward.default` (eval mode) are traced through
+    their ATen decomposition, whose ops all have rules; `jet.tracing.DECOMPOSED`
+    lists the backward ops handled this way ([PR](https://github.com/f-dangel/torch-jet/pull/262)).
   - `aten.gelu_backward.default`, the backward of `gelu` (exact and `"tanh"`),
     through the generic rule and new derivative tables: the exact one in
     closed form via Hermite polynomials, the `"tanh"` one by composing

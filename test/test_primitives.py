@@ -7,9 +7,8 @@ registered with :class:`JetInterpreter`.
 from functools import partial
 from itertools import product
 from typing import Any, Callable
-from warnings import catch_warnings, filterwarnings
 
-from pytest import mark, raises, warns
+from pytest import mark, raises
 from torch import (
     addmm,
     bfloat16,
@@ -30,6 +29,7 @@ from torch import (
     randn,
     relu,
     rsqrt,
+    rsub,
     sigmoid,
     sin,
     stack,
@@ -77,7 +77,6 @@ from test.utils import (
     class_index_loss,
     device_kw,
     make_jet_args,
-    setup_case,
     tolerances_for,
 )
 
@@ -88,7 +87,7 @@ def _consts(device: str) -> dict[str, Any]:
     Keys: ``L`` (3, 4), ``R`` (4, 5) -- mm/addmm operands; ``L3`` (2, 3, 4),
     ``R3`` (2, 4, 5) -- their batched (bmm) counterparts; ``B`` (3, 5) --
     addmm bias; ``SUB`` -- scalar tensor for ``tensor - jet`` (which lowers
-    to ``aten.sub.Tensor`` rather than the unregistered ``aten.rsub.Scalar``).
+    to ``aten.sub.Tensor`` rather than ``aten.rsub.Scalar``).
     """
     manual_seed(0)
     kw = device_kw(device)
@@ -912,6 +911,17 @@ PRIMITIVE_CASES = [
     },
     {"id": "sub_JC", "f": _stateless(lambda x: x - 2.0), "args_fn": lambda: (rand(4),)},
     {"id": "sub_CJ", "f": _sub_cj, "args_fn": lambda: (rand(4),)},
+    # ``scalar - jet`` lowers to ``aten.rsub.Scalar``; ``alpha`` scales the jet.
+    {
+        "id": "rsub_CJ",
+        "f": _stateless(lambda x: 2.0 - x),
+        "args_fn": lambda: (rand(4),),
+    },
+    {
+        "id": "rsub_CJ_alpha",
+        "f": _stateless(lambda x: rsub(x, 2.0, alpha=3.0)),
+        "args_fn": lambda: (rand(4),),
+    },
     # ---- Binary mul (3 dispatch branches + aliased ``x*x``) --------------
     {
         "id": "mul_JJ",
@@ -1104,6 +1114,7 @@ PRIMITIVE_CASES = [
     _embedding_case("1d", (5,)),
     _embedding_case("2d", (2, 3)),
     _embedding_case("padding_idx", (2, 3), padding_idx=0),
+    _embedding_case("padding_idx_neg", (2, 3), padding_idx=-1),
     # ``scaled_dot_product_attention`` composes scaled ``matmul``s, masking, and
     # ``softmax``; every pattern of jet (J) / constant (C) query, key, value
     # meets every option.
@@ -1130,16 +1141,22 @@ PRIMITIVE_CASES = [
     # ``nll_loss`` is linear in the (log-prob) input given a frozen integer
     # target, so the same op applies to every coefficient. It returns
     # ``(output, total_weight)``; cover all three reductions and the
-    # ``getitem`` that selects ``output``, both with and without per-class
-    # weights (the weighted ``mean`` exercises the ``total_weight`` divisor).
+    # ``getitem`` that selects ``output``, with and without per-class weights
+    # (the weighted ``mean`` exercises the ``total_weight`` divisor) and with
+    # and without an ignored target.
     *(
         {
-            "id": f"nll_loss_{reduction}" + ("_weighted" if weighted else ""),
-            "f": class_index_loss(nll_loss, reduction, 8, 5, weighted=weighted),
+            "id": f"nll_loss_{reduction}"
+            + ("_weighted" if weighted else "")
+            + ("_ignore_index" if ignore_index != -100 else ""),
+            "f": class_index_loss(
+                nll_loss, reduction, 8, 5, weighted=weighted, ignore_index=ignore_index
+            ),
             "args_fn": lambda: (rand(8, 5),),
         }
         for reduction in ("none", "mean", "sum")
         for weighted in (False, True)
+        for ignore_index in (-100, 2)
     ),
     # ---- Reduction -------------------------------------------------------
     # ``sum()`` (no-dim) lowers to ``aten.sum.default``; the dim/keepdim
@@ -1415,20 +1432,6 @@ def test_nll_loss_taylor_expanded_target_raises(collapsed: bool, device: str):
     target = tup((rand(8, **kw), rand(8, **kw)))  # a Taylor-expanded label
     with raises(NotImplementedError, match="Taylor-expanded target"):
         jet_nll_loss_forward(logits, target, None, 1, -100)
-
-
-def test_embedding_padding_idx_warns(collapsed: bool, device: str):
-    """``padding_idx >= 0`` on a jet weight warns (autograd would mask that row)."""
-
-    def run(case):
-        f, args = setup_case(case, device)
-        jet(f, args, collapsed=collapsed)(*make_jet_args(args, 2, collapsed))
-
-    with warns(UserWarning, match="padding_idx"):
-        run(_embedding_case("padding_idx", (2, 3), padding_idx=0))
-    with catch_warnings():
-        filterwarnings("error", message="padding_idx")
-        run(_embedding_case("1d", (5,)))
 
 
 def test_max_pool2d_matches_with_indices(collapsed: bool, device: str):

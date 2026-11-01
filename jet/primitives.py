@@ -18,7 +18,6 @@ from functools import partial
 from math import pi, sqrt
 from operator import add, sub
 from typing import Callable, Self
-from warnings import warn
 
 from scipy.special import comb, factorial, stirling2
 from torch import (
@@ -929,6 +928,26 @@ def jet_sub(
     return _addsub(self, other, sub, lambda c: -c)
 
 
+def jet_rsub(
+    self: Tensor | JetTuple,
+    other: Tensor | JetTuple | float | int,
+    alpha: float | int = 1,
+) -> Tensor | JetTuple:
+    """Taylor-mode arithmetic for ``aten.rsub.Scalar(self, other, alpha)``.
+
+    ``rsub`` computes ``other - alpha * self``.
+
+    Args:
+        self: The subtracted operand and its Taylor coefficients, or a constant.
+        other: The scalar (or tensor) it is subtracted from.
+        alpha: Multiplier of ``self``.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    return jet_sub(other, self if alpha == 1 else jet_mul(self, alpha))
+
+
 def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.mul(self, other)``.
 
@@ -1263,6 +1282,60 @@ def jet_nll_loss_forward(
     return JetTuple((output, *coeffs), collapsed=self.collapsed), total_weight
 
 
+def jet_nll_loss_backward(
+    grad_output: Tensor | JetTuple,
+    self: Tensor | JetTuple,
+    target: Tensor,
+    weight: Tensor | None,
+    reduction: int,
+    ignore_index: int,
+    total_weight: Tensor,
+) -> Tensor | JetTuple:
+    """Taylor-mode arithmetic for ``aten.nll_loss_backward``.
+
+    Autograd's backward of ``nll_loss`` writes ``-grad_output`` (times the class
+    weight, divided by ``total_weight`` for the mean) into the target column of
+    a zero tensor shaped like ``self``. It is linear in ``grad_output`` and reads
+    ``self`` only for its shape, so the ATen op is applied to every coefficient
+    of ``grad_output`` with the primal of ``self``. A constant ``grad_output``
+    gives a constant output.
+
+    Args:
+        grad_output: The incoming gradient and its Taylor coefficients, or a
+            constant.
+        self: The log-probabilities (or their jet); only the shape is used.
+        target: The (constant) class-index targets.
+        weight: Optional (constant) per-class weights, or ``None``.
+        reduction: The ATen reduction enum -- ``0`` (none), ``1`` (mean),
+            ``2`` (sum).
+        ignore_index: Target value to ignore.
+        total_weight: The (constant) ``total_weight`` the forward returned.
+
+    Returns:
+        The value and its Taylor coefficients, or a plain tensor when
+        ``grad_output`` is a constant.
+
+    Raises:
+        NotImplementedError: If ``target``, ``weight``, or ``total_weight`` is
+            Taylor-expanded; all three must be constant tensors.
+    """
+    if any(isinstance(t, JetTuple) for t in (target, weight, total_weight)):
+        raise NotImplementedError(
+            "jet_nll_loss_backward does not support a Taylor-expanded target, "
+            "weight, or total_weight; all three must be constant tensors."
+        )
+    primal = self[0] if isinstance(self, JetTuple) else self
+
+    def op(g: Tensor) -> Tensor:
+        return ops.aten.nll_loss_backward.default(
+            g, primal, target, weight, reduction, ignore_index, total_weight
+        )
+
+    if not isinstance(grad_output, JetTuple):
+        return op(grad_output)
+    return _apply_linear(grad_output, op)
+
+
 # --- Batch norm ---
 
 
@@ -1288,49 +1361,40 @@ def jet_embedding(
     """Taylor-mode arithmetic for ``aten.embedding(weight, indices, padding_idx, ...)``.
 
     ``weight[indices]`` is linear in ``weight`` for constant integer ``indices``,
-    so the ATen op is applied coefficient-wise. ``padding_idx``,
+    so the ATen op is applied coefficient-wise. The ``padding_idx`` row is a
+    constant whose gradient autograd zeroes, so the coefficients at the
+    positions that look it up are zero (the primal keeps the row's value).
     ``scale_grad_by_freq`` and ``sparse`` only shape autograd's backward and are
-    forwarded unchanged. In particular autograd zeroes the gradient of the
-    ``padding_idx`` row while the jet, like forward-mode ``jvp``, propagates the
-    true derivative through it; a ``UserWarning`` says so.
+    forwarded unchanged.
 
     Args:
         weight: The embedding table and its Taylor coefficients.
         indices: The (constant) integer token indices.
-        padding_idx: Row whose gradient autograd zeroes (``-1``: none).
+        padding_idx: Row treated as a constant (``-1``: none).
         *args: The remaining ATen args (``scale_grad_by_freq``, ``sparse``).
 
     Returns:
         The looked-up rows and their Taylor coefficients.
     """
-    if padding_idx >= 0 and isinstance(weight, JetTuple):
-        warn(
-            UserWarning(
-                "padding_idx only masks autograd's reverse-mode gradient of that "
-                "row; forward mode (jvp) and jets propagate the true derivative "
-                "through it. Derivatives that involve the padding row therefore "
-                "depend on the AD mode: results obtained via reverse mode (e.g. "
-                "Hessian-vector products by double backward) differ from jets. "
-                "Zero the padding row of the direction to make the modes agree."
-            ),
-            stacklevel=2,
-        )
-    if not (isinstance(weight, JetTuple) and weight.collapsed):
-        return _deflinear(ops.aten.embedding.default)(
-            weight, indices, padding_idx, *args
-        )
-    # Index the batched (R, V, D) coefficients along dim 1 instead of vmapping
-    # the op: functorch's batching rule clones the whole table, indexing does not.
-    K = len(weight) - 1
 
     def op(c: Tensor) -> Tensor:
         return ops.aten.embedding.default(c, indices, padding_idx, *args)
 
-    coeffs = (
-        weight[k][:, indices] if _is_batched(k, K, True) else op(weight[k])
-        for k in range(1, K + 1)
+    if not isinstance(weight, JetTuple):
+        return op(weight)
+    K, collapsed = len(weight) - 1, weight.collapsed
+    padded = (indices == padding_idx).unsqueeze(-1) if padding_idx >= 0 else None
+
+    def coeff(k: int) -> Tensor:
+        # Index the batched (R, V, D) coefficients along dim 1 instead of
+        # vmapping the op: functorch's batching rule clones the whole table.
+        w_k = weight[k]
+        c = w_k[:, indices] if _is_batched(k, K, collapsed) else op(w_k)
+        return c if padded is None else c.masked_fill(padded, 0)
+
+    return JetTuple(
+        (op(weight[0]), *(coeff(k) for k in range(1, K + 1))), collapsed=collapsed
     )
-    return JetTuple((op(weight[0]), *coeffs), collapsed=True)
 
 
 def _deflinear(prim: Callable) -> Callable:

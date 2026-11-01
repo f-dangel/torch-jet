@@ -23,8 +23,6 @@ UNSUPPORTED = (
     "upsample",
     "index",
     "as_strided",
-    "hardsigmoid",
-    "hardswish",
     "log_softmax",
     "softmax",
     "embedding",

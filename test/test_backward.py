@@ -84,6 +84,6 @@ def test_embedding_backward_scale_grad_by_freq(K: int, collapsed: bool, device: 
         )
         for scale in (True, False)
     )
-    counts = bincount(indices, minlength=4).clamp(min=1).unsqueeze(-1)
+    counts = bincount(indices, minlength=weight.shape[0]).clamp(min=1).unsqueeze(-1)
     for s, p in zip(scaled, plain):
         assert_close(s, p / counts)

@@ -43,7 +43,7 @@ def _defzero(prim: Callable) -> dict[bool, Rule]:
     """Build the constant-output rule for a ``prim``.
 
     The rule is mode-agnostic -- :func:`jet.primitives._defzero` zeros each
-    coefficient to its input slot's shape and follows ``self.collapsed``.
+    coefficient to the output's shape and follows ``self.collapsed``.
     """
     return _defshared(primitives._defzero(prim))
 
@@ -225,5 +225,6 @@ for op in (
     ops.aten.ones_like.default,
     ops.aten.empty_like.default,
     ops.aten.fill.Scalar,
+    ops.aten.new_zeros.default,
 ):
     RULES[op] = _defzero(op)

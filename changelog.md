@@ -160,6 +160,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
+- Constant-output rules (`zeros_like`, `ones_like`, `empty_like`, `fill`,
+  `new_zeros`) zero their coefficients to the *output's* shape instead of the
+  input's; the two differ for `new_zeros` with an explicit size
+  ([PR](https://github.com/f-dangel/torch-jet/pull/NNN)).
 - Jets of `embedding` treat the `padding_idx` row as a constant, like
   autograd's gradient: the Taylor coefficients at its positions are zero. The
   warning that reverse mode and jets disagree is gone

@@ -34,7 +34,6 @@ from jet.primitives import (
     _elementwise,
     _gelu_exact_derivatives,
     _has_jet_arg,
-    _relu_derivatives,
 )
 
 
@@ -759,18 +758,3 @@ def elementwise_backward(
         return mul(grad_output, _elementwise(self, shifted))
 
     return rule
-
-
-def _threshold_derivatives(
-    x0: Tensor, threshold: float, K: int
-) -> dict[int, Tensor | None]:
-    """``relu``'s table for ``aten.threshold_backward``; only ``threshold == 0`` (``relu``) is supported.
-
-    Raises:
-        NotImplementedError: If ``threshold != 0``.
-    """
-    if threshold != 0:
-        raise NotImplementedError(
-            f"Taylor-mode threshold_backward only supports threshold == 0 (relu), got {threshold}."
-        )
-    return _relu_derivatives(x0, K)

@@ -2,9 +2,9 @@
 
 from functools import partial
 from typing import Any, Callable
+from warnings import warn
 
 from torch import Tensor, ops
-from torch._decomp import decomposition_table
 from torch.func import functionalize
 from torch.fx import GraphModule
 from torch.fx.experimental.proxy_tensor import make_fx
@@ -19,22 +19,42 @@ _INPLACE_TO_FUNCTIONAL = {
     ops.aten.add_.Scalar: ops.aten.add.Scalar,
 }
 
-#: Backward ops that are traced through their ATen decomposition instead of
-#: getting a jet rule. Each decomposition is the formula a hand-written rule
-#: would compute anyway, and every op in it has a rule. Only graphs that contain
-#: one of these ops change. The cudnn/miopen batch-norm backward variants are
-#: deliberately absent: their decomposition takes the training path, which
-#: reads batch statistics the forward rule does not provide.
-DECOMPOSED = {
-    op: decomposition_table[op]
-    for op in (
-        ops.aten.native_layer_norm_backward.default,
-        ops.aten.native_batch_norm_backward.default,
-        ops.aten._softmax_backward_data.default,
-        ops.aten._log_softmax_backward_data.default,
-        ops.aten.mse_loss_backward.default,
+
+def _decomposed() -> dict:
+    """Collect the ATen decompositions of the backward ops traced through them.
+
+    Each decomposition is the formula a hand-written rule would compute anyway,
+    and every op in it has a rule. Only graphs that contain one of these ops
+    change. The cudnn/miopen batch-norm backward variants are deliberately
+    absent: their decomposition takes the training path, which reads batch
+    statistics the forward rule does not provide.
+
+    The table lives in the private ``torch._decomp`` module. If a torch release
+    moves it, the library stays importable and only a jet of a graph that
+    contains one of these ops raises (``NotImplementedError``, no jet rule).
+    """
+    try:
+        from torch._decomp import get_decompositions
+    except ImportError:
+        warn(
+            "torch._decomp is unavailable; jets of decomposed backward ops will raise.",
+            stacklevel=2,
+        )
+        return {}
+    return get_decompositions(
+        [
+            ops.aten.native_layer_norm_backward.default,
+            ops.aten.native_batch_norm_backward.default,
+            ops.aten._softmax_backward_data.default,
+            ops.aten._log_softmax_backward_data.default,
+            ops.aten.mse_loss_backward.default,
+        ]
     )
-}
+
+
+#: Backward ops that are traced through their ATen decomposition instead of
+#: getting a jet rule (see :func:`_decomposed`).
+DECOMPOSED = _decomposed()
 
 #: Fake-tensor mode skips kernel execution and just propagates shape/dtype,
 #: cutting trace time substantially on deep models. ``_allow_non_fake_inputs``

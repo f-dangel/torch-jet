@@ -137,6 +137,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
+- Jets of `embedding` treat the `padding_idx` row as a constant, like
+  autograd's gradient: the Taylor coefficients at its positions are zero. The
+  warning that reverse mode and jets disagree is gone
+  ([PR](https://github.com/f-dangel/torch-jet/pull/276)).
 - Collapsed Faà di Bruno terms sum the direction dim out of the product of
   inner coefficients *before* multiplying by the outer derivative, so autograd
   saves the summed product instead of the direction-batched one; restores the

@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `aten.native_batch_norm_backward.default` (eval mode) are traced through
     their ATen decomposition, whose ops all have rules; `jet.tracing.DECOMPOSED`
     lists the backward ops handled this way ([PR](https://github.com/f-dangel/torch-jet/pull/262)).
+  - `aten.gelu_backward.default`, the backward of `gelu` (exact and `"tanh"`),
+    through the generic rule and new derivative tables: the exact one in
+    closed form via Hermite polynomials, the `"tanh"` one by composing
+    `tanh`'s table with the cubic inside
+    ([PR](https://github.com/f-dangel/torch-jet/pull/258)).
   - `aten.threshold.default` (forward); `aten.threshold_backward.default` now
     supports any threshold through the shared table ([PR](https://github.com/f-dangel/torch-jet/pull/263)).
   - `aten.hardswish_backward.default`, `aten.hardsigmoid_backward.default`,
@@ -164,6 +169,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Type annotations of the composition rules in `jet/compositions.py` name
+  the accepted types (`Tensor | JetTuple`, `| None` where allowed) instead of
+  `object` ([PR](https://github.com/f-dangel/torch-jet/pull/274)).
 - Tests of jets of VJPs over every primitive case (`test/test_backward.py`), with
   the cases whose backward op lacks a rule marked as strict expected failures
   ([PR](https://github.com/f-dangel/torch-jet/pull/256)).

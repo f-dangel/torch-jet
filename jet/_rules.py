@@ -196,6 +196,9 @@ for _prim in (
     ops.aten.mean.default,
     ops.aten.mean.dim,
     ops.aten.split.Tensor,  # ``Tensor[]`` output: one jet per piece
+    ops.aten.select_backward.default,
+    ops.aten.slice_backward.default,
+    ops.aten.upsample_bilinear2d_backward.default,
 ):
     RULES[_prim] = _deflinear(_prim)
 

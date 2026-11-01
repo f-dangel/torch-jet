@@ -17,14 +17,11 @@ from test.utils import assert_jet_matches_oracle, vjp_case
 UNSUPPORTED = (
     "sdpa",
     "conv",
-    "upsample",
     "index",
     "as_strided",
     "embedding",
     "sigmoid",
     "max_pool",
-    "select",
-    "slice",
     "adaptive",
     "avg_pool",
 )

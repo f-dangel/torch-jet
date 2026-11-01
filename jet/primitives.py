@@ -940,17 +940,12 @@ def jet_rsub(
     Args:
         self: The subtracted operand and its Taylor coefficients, or a constant.
         other: The scalar (or tensor) it is subtracted from.
-        alpha: Multiplier of ``self``; only ``1`` is supported.
+        alpha: Multiplier of ``self``.
 
     Returns:
         The value and its Taylor coefficients.
-
-    Raises:
-        NotImplementedError: If ``alpha != 1``.
     """
-    if alpha != 1:
-        raise NotImplementedError(f"jet_rsub supports only alpha == 1, got {alpha}.")
-    return jet_sub(other, self)
+    return jet_sub(other, self if alpha == 1 else jet_mul(self, alpha))
 
 
 def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:

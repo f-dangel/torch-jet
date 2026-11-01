@@ -29,6 +29,7 @@ from torch import (
     randn,
     relu,
     rsqrt,
+    rsub,
     sigmoid,
     sin,
     stack,
@@ -892,6 +893,17 @@ PRIMITIVE_CASES = [
     },
     {"id": "sub_JC", "f": _stateless(lambda x: x - 2.0), "args_fn": lambda: (rand(4),)},
     {"id": "sub_CJ", "f": _sub_cj, "args_fn": lambda: (rand(4),)},
+    # ``scalar - jet`` lowers to ``aten.rsub.Scalar``; ``alpha`` scales the jet.
+    {
+        "id": "rsub_CJ",
+        "f": _stateless(lambda x: 2.0 - x),
+        "args_fn": lambda: (rand(4),),
+    },
+    {
+        "id": "rsub_CJ_alpha",
+        "f": _stateless(lambda x: rsub(x, 2.0, alpha=3.0)),
+        "args_fn": lambda: (rand(4),),
+    },
     # ---- Binary mul (3 dispatch branches + aliased ``x*x``) --------------
     {
         "id": "mul_JJ",

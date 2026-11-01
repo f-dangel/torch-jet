@@ -209,12 +209,14 @@ for _prim in (
     ops.aten.mean.default,
     ops.aten.mean.dim,
     ops.aten.split.Tensor,  # ``Tensor[]`` output: one jet per piece
-    # Backward ops autograd emits for the views, upsampling and embedding
-    # above: linear in ``grad_output``, their only tensor argument (sizes,
-    # dims and the integer ``indices`` are constants).
+    # Backward ops autograd emits for the views and upsampling above: linear
+    # in ``grad_output``, their only tensor argument (sizes and dims are
+    # constants).
     ops.aten.select_backward.default,
     ops.aten.slice_backward.default,
     ops.aten.upsample_bilinear2d_backward.default,
+    # ``embedding``'s backward: linear in ``grad_output``, the integer
+    # ``indices`` and the padding row are constants.
     ops.aten.embedding_dense_backward.default,
 ):
     RULES[_prim] = _deflinear(_prim)

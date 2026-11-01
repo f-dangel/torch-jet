@@ -169,6 +169,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- The exact `gelu` forward rule is one elementwise rule over the closed-form
+  derivative table from PR 258 instead of a composition of
+  `erf` / `mul` / `add` rules (one Faà di Bruno pass, no products of jets);
+  the `"tanh"` variant stays a composition
+  ([PR](https://github.com/f-dangel/torch-jet/pull/268)).
 - Type annotations of the composition rules in `jet/compositions.py` name
   the accepted types (`Tensor | JetTuple`, `| None` where allowed) instead of
   `object` ([PR](https://github.com/f-dangel/torch-jet/pull/274)).

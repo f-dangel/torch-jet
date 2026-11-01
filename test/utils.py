@@ -115,7 +115,7 @@ def _embedding(
         return weight[input]
     vocab_size = weight.shape[0]
     rows = arange(vocab_size, device=weight.device)
-    keep = (rows != padding_idx % vocab_size)[:, None]
+    keep = (rows != padding_idx % vocab_size).unsqueeze(-1)
     return where(keep, weight, weight.detach())[input]
 
 

@@ -177,6 +177,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- The `nll_loss` test cases also cover an ignored target (`ignore_index`)
+  ([PR](https://github.com/f-dangel/torch-jet/pull/277)).
 - The exact `gelu` forward rule is one elementwise rule over the closed-form
   derivative table from PR 258 instead of a composition of
   `erf` / `mul` / `add` rules (one Faà di Bruno pass, no products of jets);

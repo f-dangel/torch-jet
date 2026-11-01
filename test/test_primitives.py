@@ -7,9 +7,8 @@ registered with :class:`JetInterpreter`.
 from functools import partial
 from itertools import product
 from typing import Any, Callable
-from warnings import catch_warnings, filterwarnings
 
-from pytest import mark, raises, warns
+from pytest import mark, raises
 from torch import (
     addmm,
     bfloat16,
@@ -76,7 +75,6 @@ from test.utils import (
     class_index_loss,
     device_kw,
     make_jet_args,
-    setup_case,
     tolerances_for,
 )
 
@@ -1397,20 +1395,6 @@ def test_nll_loss_taylor_expanded_target_raises(collapsed: bool, device: str):
     target = tup((rand(8, **kw), rand(8, **kw)))  # a Taylor-expanded label
     with raises(NotImplementedError, match="Taylor-expanded target"):
         jet_nll_loss_forward(logits, target, None, 1, -100)
-
-
-def test_embedding_padding_idx_warns(collapsed: bool, device: str):
-    """``padding_idx >= 0`` on a jet weight warns (autograd would mask that row)."""
-
-    def run(case):
-        f, args = setup_case(case, device)
-        jet(f, args, collapsed=collapsed)(*make_jet_args(args, 2, collapsed))
-
-    with warns(UserWarning, match="padding_idx"):
-        run(_embedding_case("padding_idx", (2, 3), padding_idx=0))
-    with catch_warnings():
-        filterwarnings("error", message="padding_idx")
-        run(_embedding_case("1d", (5,)))
 
 
 def test_max_pool2d_matches_with_indices(collapsed: bool, device: str):

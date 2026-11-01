@@ -5,6 +5,7 @@ from typing import Any, Callable
 from pytest import raises
 from torch import (
     Tensor,
+    arange,
     dtype,
     float32,
     float64,
@@ -94,6 +95,29 @@ def _sdpa(
     return softmax(scores, -1) @ v
 
 
+def _embedding(
+    input: Tensor,
+    weight: Tensor,
+    padding_idx: int | None = None,
+    max_norm: float | None = None,
+    norm_type: float = 2.0,
+    scale_grad_by_freq: bool = False,
+    sparse: bool = False,
+) -> Tensor:
+    """``weight[input]`` with the ``padding_idx`` row detached, like ``embedding``.
+
+    Autograd zeroes that row's gradient, and the jet zeroes its coefficients;
+    detaching the row gives an oracle with the same derivatives to all orders.
+    """
+    if max_norm is not None or scale_grad_by_freq or sparse:
+        raise NotImplementedError("Only padding_idx is supported by the substitute.")
+    if padding_idx is None:
+        return weight[input]
+    rows = arange(weight.shape[0], device=weight.device)
+    keep = (rows != padding_idx % weight.shape[0])[:, None]
+    return where(keep, weight, weight.detach())[input]
+
+
 class DifferentiableSubstitutes(TorchFunctionMode):
     """Swap ops PyTorch cannot differentiate (correctly) to high order for equivalent calls it can.
 
@@ -124,9 +148,8 @@ class DifferentiableSubstitutes(TorchFunctionMode):
         # ``native_layer_norm``'s third derivative is wrong on every device
         # (pytorch/pytorch#175754; the pending fix raises instead).
         layer_norm: _layer_norm,
-        # ``embedding``'s backward zeroes the ``padding_idx`` row; the true
-        # derivative of ``weight[input]`` does not depend on that flag.
-        embedding: lambda input, weight, *args, **kwargs: weight[input],
+        # Autograd cannot differentiate ``embedding`` twice w.r.t. ``weight``.
+        embedding: _embedding,
         # The fused CPU/CUDA ``scaled_dot_product_attention`` kernels have no
         # double backward.
         scaled_dot_product_attention: _sdpa,

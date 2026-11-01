@@ -21,8 +21,6 @@ UNSUPPORTED = (
     "upsample",
     "index",
     "as_strided",
-    "log_softmax",
-    "softmax",
     "embedding",
     "sigmoid",
     "max_pool",

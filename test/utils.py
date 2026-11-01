@@ -113,8 +113,9 @@ def _embedding(
         raise NotImplementedError("Only padding_idx is supported by the substitute.")
     if padding_idx is None:
         return weight[input]
-    rows = arange(weight.shape[0], device=weight.device)
-    keep = (rows != padding_idx % weight.shape[0])[:, None]
+    vocab_size = weight.shape[0]
+    rows = arange(vocab_size, device=weight.device)
+    keep = (rows != padding_idx % vocab_size)[:, None]
     return where(keep, weight, weight.detach())[input]
 
 

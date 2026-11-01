@@ -1082,7 +1082,13 @@ def jet_max_pool2d(input: JetTuple, *pool_args: object) -> JetTuple:
 
 
 def jet_max_pool2d_backward(
-    grad_output: Tensor | JetTuple, input: Tensor | JetTuple, *pool_args: object
+    grad_output: Tensor | JetTuple,
+    input: Tensor | JetTuple,
+    kernel_size: list[int],
+    stride: list[int] = (),
+    padding: list[int] | int = 0,
+    dilation: list[int] | int = 1,
+    ceil_mode: bool = False,
 ) -> Tensor | JetTuple:
     """Taylor-mode arithmetic for ``aten.max_pool2d_backward(grad_output, input, ...)``.
 
@@ -1098,15 +1104,17 @@ def jet_max_pool2d_backward(
     Args:
         grad_output: The incoming gradient and its Taylor coefficients.
         input: The pooled input (its primal picks the arg-max positions).
-        *pool_args: ``kernel_size`` and the optional ``stride``, ``padding``,
-            ``dilation`` and ``ceil_mode`` of the op; omitted ones take the
-            op's defaults.
+        kernel_size: The pooling window.
+        stride: Its stride; empty for ``kernel_size``.
+        padding: Implicit negative-infinity padding on both sides.
+        dilation: Spacing between window elements.
+        ceil_mode: Whether to round the output size up instead of down.
 
     Returns:
         The gradient w.r.t. ``input`` and its Taylor coefficients.
     """
     x0 = input[0] if isinstance(input, JetTuple) else input
-    pool_args = (*pool_args, *([], 0, 1, False)[len(pool_args) - 1 :])
+    pool_args = (kernel_size, list(stride), padding, dilation, ceil_mode)
     _, indices = ops.aten.max_pool2d_with_indices.default(x0, *pool_args)
     return _deflinear(ops.aten.max_pool2d_with_indices_backward.default)(
         grad_output, x0, *pool_args, indices

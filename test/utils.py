@@ -182,23 +182,33 @@ def _stateless(f: Callable) -> Callable[[str], Callable]:
 
 
 def class_index_loss(
-    loss_fn: Callable, reduction: str, N: int, C: int, weighted: bool = False
+    loss_fn: Callable,
+    reduction: str,
+    N: int,
+    C: int,
+    weighted: bool = False,
+    ignore_index: int = -100,
 ) -> Callable[[str], Callable]:
-    """Build ``loss_fn(input, target, weight, reduction)`` against class indices.
+    """Build ``loss_fn(input, target, weight, reduction, ignore_index)`` against class indices.
 
     Shared by the ``nll_loss`` and ``cross_entropy`` test cases. The integer
     ``target`` (and, when ``weighted``, the positive per-class ``weight``) are
     drawn under ``manual_seed(1)`` (distinct from the ``setup_case`` input) and
     live on ``device``; ``setup_case`` migrates only the float input, not
     closed-over constants. ``weight`` exercises the per-class weighting and (for
-    ``mean``) the ``total_weight`` normalization.
+    ``mean``) the ``total_weight`` normalization. A non-default ``ignore_index``
+    (a class) is written into the first target so that one row is ignored.
     """
 
     def build(device: str) -> Callable:
         manual_seed(1)
         target = randint(0, C, (N,), device=device)
+        if ignore_index != -100:
+            target[0] = ignore_index
         weight = rand(C, **device_kw(device)) + 0.5 if weighted else None
-        return lambda x: loss_fn(x, target, weight=weight, reduction=reduction)
+        return lambda x: loss_fn(
+            x, target, weight=weight, reduction=reduction, ignore_index=ignore_index
+        )
 
     return build
 

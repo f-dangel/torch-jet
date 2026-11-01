@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   autograd's backward pass emits:
   - `aten.embedding_dense_backward.default`, the backward of `embedding`
     (linear in the incoming gradient) ([PR](https://github.com/f-dangel/torch-jet/pull/275)).
+  - `aten._softmax_backward_data.default` and
+    `aten._log_softmax_backward_data.default`, the backward ops of `softmax`
+    and `log_softmax`, through their ATen decomposition; on MPS and CUDA this
+    also covers the VJP of `F.scaled_dot_product_attention`, which takes the
+    math path there ([PR](https://github.com/f-dangel/torch-jet/pull/265)).
   - `aten.select_backward.default`, `aten.slice_backward.default` and
     `aten.upsample_bilinear2d_backward.default`, the backwards of `select`,
     `slice` and bilinear upsampling (linear in the incoming gradient)
@@ -167,6 +172,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- The `nll_loss` test cases also cover an ignored target (`ignore_index`)
+  ([PR](https://github.com/f-dangel/torch-jet/pull/277)).
 - The exact `gelu` forward rule is one elementwise rule over the closed-form
   derivative table from PR 258 instead of a composition of
   `erf` / `mul` / `add` rules (one Faà di Bruno pass, no products of jets);

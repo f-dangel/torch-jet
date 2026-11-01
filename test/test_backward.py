@@ -18,6 +18,8 @@ UNSUPPORTED = (
     "sdpa",
     "conv",
     "gelu",
+    "nll_loss",
+    "mse_loss",
     "upsample",
     "index",
     "as_strided",

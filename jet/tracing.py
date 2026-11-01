@@ -37,7 +37,7 @@ def _decomposed() -> dict:
         from torch._decomp import get_decompositions
     except ImportError:
         warn(
-            "torch._decomp is unavailable; jets of norm backward ops will raise.",
+            "torch._decomp is unavailable; jets of decomposed backward ops will raise.",
             stacklevel=2,
         )
         return {}
@@ -45,6 +45,10 @@ def _decomposed() -> dict:
         [
             ops.aten.native_layer_norm_backward.default,
             ops.aten.native_batch_norm_backward.default,
+            ops.aten._softmax_backward_data.default,
+            ops.aten._log_softmax_backward_data.default,
+            ops.aten.sigmoid_backward.default,
+            ops.aten.mse_loss_backward.default,
         ]
     )
 

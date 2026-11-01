@@ -1101,6 +1101,46 @@ def jet_max_pool2d(input: JetTuple, *pool_args: object) -> JetTuple:
     return jet
 
 
+def jet_max_pool2d_backward(
+    grad_output: Tensor | JetTuple,
+    input: Tensor | JetTuple,
+    kernel_size: list[int],
+    stride: list[int] = (),
+    padding: list[int] | int = 0,
+    dilation: list[int] | int = 1,
+    ceil_mode: bool = False,
+) -> Tensor | JetTuple:
+    """Taylor-mode arithmetic for ``aten.max_pool2d_backward(grad_output, input, ...)``.
+
+    The fused, indices-free backward some backends emit (e.g. MPS). Max pooling
+    is piecewise linear: its backward scatters ``grad_output`` to the arg-max
+    positions of ``input``, which depend on ``input``'s primal only (the forward
+    rule gathers at the same positions), so the rule is linear in
+    ``grad_output`` and ignores ``input``'s coefficients. It recomputes the
+    ``indices`` from the primal and scatters through
+    ``max_pool2d_with_indices_backward``, which, unlike the fused op, has a
+    vmap rule for collapsed mode.
+
+    Args:
+        grad_output: The incoming gradient and its Taylor coefficients.
+        input: The pooled input (its primal picks the arg-max positions).
+        kernel_size: The pooling window.
+        stride: Its stride; empty for ``kernel_size``.
+        padding: Implicit negative-infinity padding on both sides.
+        dilation: Spacing between window elements.
+        ceil_mode: Whether to round the output size up instead of down.
+
+    Returns:
+        The gradient w.r.t. ``input`` and its Taylor coefficients.
+    """
+    x0 = input[0] if isinstance(input, JetTuple) else input
+    pool_args = (kernel_size, list(stride), padding, dilation, ceil_mode)
+    _, indices = ops.aten.max_pool2d_with_indices.default(x0, *pool_args)
+    return _deflinear(ops.aten.max_pool2d_with_indices_backward.default)(
+        grad_output, x0, *pool_args, indices
+    )
+
+
 # --- Concatenation ---
 
 
@@ -1411,6 +1451,26 @@ def _deflinear(prim: Callable) -> Callable:
         if not isinstance(self, JetTuple):
             return prim(self, *args, **kwargs)
         return _apply_linear(self, lambda c: prim(c, *args, **kwargs))
+
+    return rule
+
+
+def _deflinear_first(prim: Callable) -> Callable:
+    """Build the jet rule of an op that is linear in its first tensor argument.
+
+    Like :func:`_deflinear`, but the later tensor arguments are read for their
+    shape or integer indices only, never for their values, so a jet among them
+    is replaced by its primal. E.g. ``avg_pool2d_backward(grad_output, self,
+    ...)`` spreads each entry of ``grad_output`` evenly over its window; ``self``
+    only sets the output's shape, so its coefficients cannot affect the result.
+    Contrast ``tanh_backward(grad_output, output) = grad_output * (1 -
+    output**2)``, where ``output``'s coefficients enter the product: not a
+    linear op but a composition.
+    """
+
+    def rule(self, *args, **kwargs):
+        args = tuple(a[0] if isinstance(a, JetTuple) else a for a in args)
+        return _deflinear(prim)(self, *args, **kwargs)
 
     return rule
 

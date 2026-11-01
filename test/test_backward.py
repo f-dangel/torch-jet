@@ -16,9 +16,6 @@ from test.utils import assert_jet_matches_oracle, vjp_case
 #: Prefixes of the case ids whose VJP needs a backward op without a jet rule.
 UNSUPPORTED = (
     "conv",
-    "gelu",
-    "nll_loss",
-    "mse_loss",
     "upsample",
     "index",
     "as_strided",

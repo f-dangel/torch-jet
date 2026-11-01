@@ -19,7 +19,6 @@ UNSUPPORTED = (
     "conv",
     "nll_loss",
     "mse_loss",
-    "upsample",
     "index",
     "as_strided",
     "log_softmax",
@@ -27,8 +26,6 @@ UNSUPPORTED = (
     "embedding",
     "sigmoid",
     "max_pool",
-    "select",
-    "slice",
     "adaptive",
     "avg_pool",
 )

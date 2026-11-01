@@ -25,7 +25,6 @@ UNSUPPORTED = (
     "conv",
     "index",
     "as_strided",
-    "sigmoid",
     "max_pool",
     "adaptive",
     "avg_pool",

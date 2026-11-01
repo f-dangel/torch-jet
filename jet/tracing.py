@@ -47,6 +47,7 @@ def _decomposed() -> dict:
             ops.aten.native_batch_norm_backward.default,
             ops.aten._softmax_backward_data.default,
             ops.aten._log_softmax_backward_data.default,
+            ops.aten.sigmoid_backward.default,
             ops.aten.mse_loss_backward.default,
         ]
     )

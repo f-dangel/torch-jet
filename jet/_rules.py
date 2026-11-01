@@ -70,6 +70,7 @@ RULES: dict = {
     ops.aten.add.Tensor: _defshared(primitives.jet_add),
     ops.aten.add.Scalar: _defshared(primitives.jet_add),
     ops.aten.sub.Tensor: _defshared(primitives.jet_sub),
+    ops.aten.rsub.Scalar: _defshared(primitives.jet_rsub),
     ops.aten.mul.Tensor: _defshared(primitives.jet_mul),
     # ``x * 2.0`` traces to ``mul.Tensor``; decompositions (e.g. the sdpa math
     # path's ``q * sqrt(scale)``) call the scalar overload directly.

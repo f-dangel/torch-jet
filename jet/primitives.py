@@ -928,6 +928,26 @@ def jet_sub(
     return _addsub(self, other, sub, lambda c: -c)
 
 
+def jet_rsub(
+    self: Tensor | JetTuple,
+    other: Tensor | JetTuple | float | int,
+    alpha: float | int = 1,
+) -> Tensor | JetTuple:
+    """Taylor-mode arithmetic for ``aten.rsub.Scalar(self, other, alpha)``.
+
+    ``rsub`` computes ``other - alpha * self``.
+
+    Args:
+        self: The subtracted operand and its Taylor coefficients, or a constant.
+        other: The scalar (or tensor) it is subtracted from.
+        alpha: Multiplier of ``self``.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    return jet_sub(other, self if alpha == 1 else jet_mul(self, alpha))
+
+
 def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.mul(self, other)``.
 

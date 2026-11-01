@@ -29,6 +29,7 @@ from torch import (
     randn,
     relu,
     rsqrt,
+    rsub,
     sigmoid,
     sin,
     stack,
@@ -85,7 +86,7 @@ def _consts(device: str) -> dict[str, Any]:
     Keys: ``L`` (3, 4), ``R`` (4, 5) -- mm/addmm operands; ``L3`` (2, 3, 4),
     ``R3`` (2, 4, 5) -- their batched (bmm) counterparts; ``B`` (3, 5) --
     addmm bias; ``SUB`` -- scalar tensor for ``tensor - jet`` (which lowers
-    to ``aten.sub.Tensor`` rather than the unregistered ``aten.rsub.Scalar``).
+    to ``aten.sub.Tensor`` rather than ``aten.rsub.Scalar``).
     """
     manual_seed(0)
     kw = device_kw(device)
@@ -892,6 +893,17 @@ PRIMITIVE_CASES = [
     },
     {"id": "sub_JC", "f": _stateless(lambda x: x - 2.0), "args_fn": lambda: (rand(4),)},
     {"id": "sub_CJ", "f": _sub_cj, "args_fn": lambda: (rand(4),)},
+    # ``scalar - jet`` lowers to ``aten.rsub.Scalar``; ``alpha`` scales the jet.
+    {
+        "id": "rsub_CJ",
+        "f": _stateless(lambda x: 2.0 - x),
+        "args_fn": lambda: (rand(4),),
+    },
+    {
+        "id": "rsub_CJ_alpha",
+        "f": _stateless(lambda x: rsub(x, 2.0, alpha=3.0)),
+        "args_fn": lambda: (rand(4),),
+    },
     # ---- Binary mul (3 dispatch branches + aliased ``x*x``) --------------
     {
         "id": "mul_JJ",

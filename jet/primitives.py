@@ -928,6 +928,26 @@ def jet_sub(
     return _addsub(self, other, sub, lambda c: -c)
 
 
+def jet_rsub(
+    self: Tensor | JetTuple,
+    other: Tensor | JetTuple | float | int,
+    alpha: float | int = 1,
+) -> Tensor | JetTuple:
+    """Taylor-mode arithmetic for ``aten.rsub.Scalar(self, other, alpha)``.
+
+    ``rsub`` computes ``other - alpha * self``.
+
+    Args:
+        self: The subtracted operand and its Taylor coefficients, or a constant.
+        other: The scalar (or tensor) it is subtracted from.
+        alpha: Multiplier of ``self``.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    return jet_sub(other, self if alpha == 1 else jet_mul(self, alpha))
+
+
 def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.mul(self, other)``.
 
@@ -1082,7 +1102,13 @@ def jet_max_pool2d(input: JetTuple, *pool_args: object) -> JetTuple:
 
 
 def jet_max_pool2d_backward(
-    grad_output: Tensor | JetTuple, input: Tensor | JetTuple, *pool_args: object
+    grad_output: Tensor | JetTuple,
+    input: Tensor | JetTuple,
+    kernel_size: list[int],
+    stride: list[int] = (),
+    padding: list[int] | int = 0,
+    dilation: list[int] | int = 1,
+    ceil_mode: bool = False,
 ) -> Tensor | JetTuple:
     """Taylor-mode arithmetic for ``aten.max_pool2d_backward(grad_output, input, ...)``.
 
@@ -1098,15 +1124,17 @@ def jet_max_pool2d_backward(
     Args:
         grad_output: The incoming gradient and its Taylor coefficients.
         input: The pooled input (its primal picks the arg-max positions).
-        *pool_args: ``kernel_size`` and the optional ``stride``, ``padding``,
-            ``dilation`` and ``ceil_mode`` of the op; omitted ones take the
-            op's defaults.
+        kernel_size: The pooling window.
+        stride: Its stride; empty for ``kernel_size``.
+        padding: Implicit negative-infinity padding on both sides.
+        dilation: Spacing between window elements.
+        ceil_mode: Whether to round the output size up instead of down.
 
     Returns:
         The gradient w.r.t. ``input`` and its Taylor coefficients.
     """
     x0 = input[0] if isinstance(input, JetTuple) else input
-    pool_args = (*pool_args, *([], 0, 1, False)[len(pool_args) - 1 :])
+    pool_args = (kernel_size, list(stride), padding, dilation, ceil_mode)
     _, indices = ops.aten.max_pool2d_with_indices.default(x0, *pool_args)
     return _deflinear(ops.aten.max_pool2d_with_indices_backward.default)(
         grad_output, x0, *pool_args, indices
@@ -1294,6 +1322,60 @@ def jet_nll_loss_forward(
     return JetTuple((output, *coeffs), collapsed=self.collapsed), total_weight
 
 
+def jet_nll_loss_backward(
+    grad_output: Tensor | JetTuple,
+    self: Tensor | JetTuple,
+    target: Tensor,
+    weight: Tensor | None,
+    reduction: int,
+    ignore_index: int,
+    total_weight: Tensor,
+) -> Tensor | JetTuple:
+    """Taylor-mode arithmetic for ``aten.nll_loss_backward``.
+
+    Autograd's backward of ``nll_loss`` writes ``-grad_output`` (times the class
+    weight, divided by ``total_weight`` for the mean) into the target column of
+    a zero tensor shaped like ``self``. It is linear in ``grad_output`` and reads
+    ``self`` only for its shape, so the ATen op is applied to every coefficient
+    of ``grad_output`` with the primal of ``self``. A constant ``grad_output``
+    gives a constant output.
+
+    Args:
+        grad_output: The incoming gradient and its Taylor coefficients, or a
+            constant.
+        self: The log-probabilities (or their jet); only the shape is used.
+        target: The (constant) class-index targets.
+        weight: Optional (constant) per-class weights, or ``None``.
+        reduction: The ATen reduction enum -- ``0`` (none), ``1`` (mean),
+            ``2`` (sum).
+        ignore_index: Target value to ignore.
+        total_weight: The (constant) ``total_weight`` the forward returned.
+
+    Returns:
+        The value and its Taylor coefficients, or a plain tensor when
+        ``grad_output`` is a constant.
+
+    Raises:
+        NotImplementedError: If ``target``, ``weight``, or ``total_weight`` is
+            Taylor-expanded; all three must be constant tensors.
+    """
+    if any(isinstance(t, JetTuple) for t in (target, weight, total_weight)):
+        raise NotImplementedError(
+            "jet_nll_loss_backward does not support a Taylor-expanded target, "
+            "weight, or total_weight; all three must be constant tensors."
+        )
+    primal = self[0] if isinstance(self, JetTuple) else self
+
+    def op(g: Tensor) -> Tensor:
+        return ops.aten.nll_loss_backward.default(
+            g, primal, target, weight, reduction, ignore_index, total_weight
+        )
+
+    if not isinstance(grad_output, JetTuple):
+        return op(grad_output)
+    return _apply_linear(grad_output, op)
+
+
 # --- Batch norm ---
 
 
@@ -1435,9 +1517,14 @@ def _deflinear(prim: Callable) -> Callable:
 def _deflinear_first(prim: Callable) -> Callable:
     """Build the jet rule of an op that is linear in its first tensor argument.
 
-    Like :func:`_deflinear`, but the later tensor arguments enter only through
-    their primal (e.g. the ``self`` of a pooling backward, which sets the
-    output's shape), so a jet among them is replaced by its primal.
+    Like :func:`_deflinear`, but the later tensor arguments are read for their
+    shape or integer indices only, never for their values, so a jet among them
+    is replaced by its primal. E.g. ``avg_pool2d_backward(grad_output, self,
+    ...)`` spreads each entry of ``grad_output`` evenly over its window; ``self``
+    only sets the output's shape, so its coefficients cannot affect the result.
+    Contrast ``tanh_backward(grad_output, output) = grad_output * (1 -
+    output**2)``, where ``output``'s coefficients enter the product: not a
+    linear op but a composition.
     """
 
     def rule(self, *args, **kwargs):

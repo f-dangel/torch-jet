@@ -23,9 +23,6 @@ from test.utils import assert_jet_matches_oracle, device_kw, make_jet_args, vjp_
 UNSUPPORTED = (
     "sdpa",
     "conv",
-    "nll_loss",
-    "mse_loss",
-    "sigmoid",
 )
 CASES = [vjp_case(c) for c in PRIMITIVE_CASES]
 SUPPORTED = [c for c in CASES if not c["id"].startswith(UNSUPPORTED)]

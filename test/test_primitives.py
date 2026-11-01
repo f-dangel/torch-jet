@@ -652,6 +652,33 @@ def _where_case(
     }
 
 
+def _index_put_case(cid: str, jets: str) -> dict[str, Any]:
+    """``self.index_put((idx,), values, accumulate=True)`` for ``(3, 4)`` and ``(2, 4)``.
+
+    ``jets`` marks which of ``self`` / ``values`` are jets, the rest are frozen
+    constants; ``idx`` is a constant long index tensor. Drawn under ``manual_seed(3)``.
+    """
+    shapes = ((3, 4), (2, 4))
+
+    def build(device):
+        manual_seed(3)
+        idx = randint(0, 3, (2,), device=device)
+        consts = [rand(*shape, **device_kw(device)) for shape in shapes]
+
+        def f(*args):
+            it = iter(args)
+            self, values = [next(it) if j == "J" else c for j, c in zip(jets, consts)]
+            return self.index_put((idx,), values, accumulate=True)
+
+        return f
+
+    return {
+        "id": cid,
+        "f": build,
+        "args_fn": lambda: tuple(rand(*s) for s, j in zip(shapes, jets) if j == "J"),
+    }
+
+
 def _sdpa_case(
     cid: str,
     jets: str = "JJJ",
@@ -1294,6 +1321,7 @@ PRIMITIVE_CASES = [
     ),
     _index_case("index_rows", lambda idx: idx),
     _index_case("index_cols", lambda idx: (slice(None), idx)),
+    *(_index_put_case(f"index_put_{jets}", jets) for jets in ("JJ", "JC", "CJ")),
     # ``as_strided`` restrides a tensor over the same storage; here into the
     # channels_last strides of a ``[N, C, 1, 1]`` tensor. ``as_strided_`` is the
     # in-place variant that adaptive average pooling emits on a channels_last

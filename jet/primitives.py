@@ -935,9 +935,7 @@ def jet_rsub(
 ) -> Tensor | JetTuple:
     """Taylor-mode arithmetic for ``aten.rsub.Scalar(self, other, alpha)``.
 
-    ``rsub`` computes ``other - alpha * self`` (e.g. ``1 - y`` in the
-    decomposition of ``sigmoid_backward``), so it is ``sub`` with swapped
-    operands.
+    ``rsub`` computes ``other - alpha * self``.
 
     Args:
         self: The subtracted operand and its Taylor coefficients, or a constant.

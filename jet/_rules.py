@@ -70,7 +70,6 @@ RULES: dict = {
     ops.aten.add.Tensor: _defshared(primitives.jet_add),
     ops.aten.add.Scalar: _defshared(primitives.jet_add),
     ops.aten.sub.Tensor: _defshared(primitives.jet_sub),
-    # ``1 - y`` in a decomposition (e.g. of ``sigmoid_backward``): swapped ``sub``.
     ops.aten.rsub.Scalar: _defshared(primitives.jet_rsub),
     ops.aten.mul.Tensor: _defshared(primitives.jet_mul),
     # ``x * 2.0`` traces to ``mul.Tensor``; decompositions (e.g. the sdpa math

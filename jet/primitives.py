@@ -1308,22 +1308,18 @@ def jet_embedding(
 
     if not isinstance(weight, JetTuple):
         return op(weight)
-    K = len(weight) - 1
+    K, collapsed = len(weight) - 1, weight.collapsed
     padded = (indices == padding_idx).unsqueeze(-1) if padding_idx >= 0 else None
 
     def coeff(k: int) -> Tensor:
         # Index the batched (R, V, D) coefficients along dim 1 instead of
         # vmapping the op: functorch's batching rule clones the whole table.
-        c = (
-            weight[k][:, indices]
-            if _is_batched(k, K, weight.collapsed)
-            else op(weight[k])
-        )
+        w_k = weight[k]
+        c = w_k[:, indices] if _is_batched(k, K, collapsed) else op(w_k)
         return c if padded is None else c.masked_fill(padded, 0)
 
     return JetTuple(
-        (op(weight[0]), *(coeff(k) for k in range(1, K + 1))),
-        collapsed=weight.collapsed,
+        (op(weight[0]), *(coeff(k) for k in range(1, K + 1))), collapsed=collapsed
     )
 
 

@@ -1376,9 +1376,14 @@ def _deflinear(prim: Callable) -> Callable:
 def _deflinear_first(prim: Callable) -> Callable:
     """Build the jet rule of an op that is linear in its first tensor argument.
 
-    Like :func:`_deflinear`, but the later tensor arguments enter only through
-    their primal (e.g. the ``self`` of a pooling backward, which sets the
-    output's shape), so a jet among them is replaced by its primal.
+    Like :func:`_deflinear`, but the later tensor arguments are read for their
+    shape or integer indices only, never for their values, so a jet among them
+    is replaced by its primal. E.g. ``avg_pool2d_backward(grad_output, self,
+    ...)`` spreads each entry of ``grad_output`` evenly over its window; ``self``
+    only sets the output's shape, so its coefficients cannot affect the result.
+    Contrast ``tanh_backward(grad_output, output) = grad_output * (1 -
+    output**2)``, where ``output``'s coefficients enter the product: not a
+    linear op but a composition.
     """
 
     def rule(self, *args, **kwargs):

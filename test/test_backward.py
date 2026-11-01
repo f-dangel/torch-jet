@@ -20,7 +20,6 @@ UNSUPPORTED = (
     "layer_norm",
     "nll_loss",
     "mse_loss",
-    "gelu",
     "upsample",
     "index",
     "as_strided",

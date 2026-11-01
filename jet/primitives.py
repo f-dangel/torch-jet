@@ -1482,15 +1482,19 @@ def _defzero(prim: Callable) -> Callable:
     constant-output op has all coefficients zero, so only the primal carries
     information. ``prim`` is applied to the primal to produce the output value
     (which carries any ``dtype`` / ``device`` / ``layout`` kwargs the user
-    passed). Each zero coefficient matches its input slot's shape -- which
-    respects the collapsed per-slot contract (``(R, *S)`` for ``c_1..c_{K-1}``,
-    ``S`` for ``c_K``) and reduces to the primal's shape in standard mode -- and
-    inherits ``primal_out``'s metadata. The output mode follows ``self.collapsed``.
+    passed). Each zero coefficient has the output's shape behind its input
+    slot's leading direction dims -- ``(R, *out)`` for a collapsed
+    ``c_1..c_{K-1}``, ``out`` otherwise -- so ``new_zeros`` with a size
+    different from the input's works. The output mode follows ``self.collapsed``.
     """
 
     def rule(self: JetTuple, *args, **kwargs) -> JetTuple:
         primal_out = prim(self[0], *args, **kwargs)
-        coeffs = [primal_out.new_zeros(c.shape) for c in self[1:]]
+        lead = self[0].ndim
+        coeffs = [
+            primal_out.new_zeros((*c.shape[: c.ndim - lead], *primal_out.shape))
+            for c in self[1:]
+        ]
         return JetTuple([primal_out, *coeffs], collapsed=self.collapsed)
 
     return rule

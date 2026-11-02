@@ -135,7 +135,7 @@ f_jet = jet(f, (x,))  # propagates (x₀, x₁, ..., x_K) ↦ (f₀, f₁, ..., 
 
 x0 = x
 x1 = ones_like(x)
-x2 = zeros_like(x)  # or x.new_zeros(()).expand(x.shape), which allocates nothing
+x2 = zeros_like(x)  # or x.new_zeros(()).expand(x.shape), which allocates one element
 
 # Evaluate the second derivative
 f0, f1, f2 = f_jet((x0, x1, x2))

@@ -42,7 +42,7 @@ def jet(
     A coefficient that is zero (for instance ``c_2`` when evaluating a second
     derivative) only contributes its shape, dtype and device, so it can be
     passed as a stride-0 view, ``x.new_zeros(()).expand(x.shape)``, which
-    allocates nothing.
+    avoids an input-sized allocation.
 
     Args:
         f: Function to overload. May accept and return pytrees of tensors.

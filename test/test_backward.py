@@ -1,13 +1,15 @@
 """Jets of the vector-Jacobian product of every primitive case.
 
 A jet of a function that differentiates inside traces to a graph of autograd's
-backward ops, so this file checks the jet rules for those ops.
+backward ops, so this file checks the jet rules for those ops. A case whose
+backward op has no rule yet is a strict expected failure; once it passes, its
+prefix must leave ``UNSUPPORTED``.
 """
 
 from functools import partial
 from typing import Any
 
-from pytest import mark, skip
+from pytest import mark, param, skip
 from torch import bincount, manual_seed, rand, tensor
 from torch.func import vjp
 from torch.nn.functional import embedding
@@ -17,10 +19,16 @@ from jet import jet
 from test.test_primitives import PRIMITIVE_CASES
 from test.utils import assert_jet_matches_oracle, device_kw, make_jet_args, vjp_case
 
-CASES = [vjp_case(c) for c in PRIMITIVE_CASES]
+#: Prefixes of the case ids whose VJP needs a backward op without a jet rule.
+UNSUPPORTED: tuple[str, ...] = ()
+NO_RULE = mark.xfail(strict=True, raises=NotImplementedError, reason="no jet rule")
+CASES = [
+    param(c, id=c["id"], marks=NO_RULE if c["id"].startswith(UNSUPPORTED) else ())
+    for c in map(vjp_case, PRIMITIVE_CASES)
+]
 
 
-@mark.parametrize("config", CASES, ids=lambda c: c["id"])
+@mark.parametrize("config", CASES)
 def test_backward(config: dict[str, Any], K: int, collapsed: bool, device: str):
     """``jet(vjp(primitive))`` matches its mode-specific oracle."""
     assert_jet_matches_oracle(config, K, collapsed, device)

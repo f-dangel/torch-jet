@@ -105,8 +105,6 @@ RULES: dict = {
     # Token embedding lookup: linear in the weight, integer indices stay constant.
     ops.aten.embedding.default: _defshared(primitives.jet_embedding),
     ops.aten.index_put.default: _defshared(primitives.jet_index_put),
-    # Backward of ``as_strided``: copies ``grad_output`` into the strided view
-    # of ``new_zeros`` and scatters it back.
     ops.aten.copy.default: _defshared(primitives.jet_copy),
     ops.aten.as_strided_scatter.default: _defshared(primitives.jet_as_strided_scatter),
     # Current torch lowers all scalar division (``x / 2.0``) to this overload;

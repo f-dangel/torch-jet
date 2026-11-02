@@ -74,9 +74,10 @@ def jet(
         >>> vx, vy = Tensor([1.0, 0.0, 0.0]), Tensor([0.0, 1.0, 0.0])
         >>> f0, f1 = jet_f((x, vx), (y, vy))
     """
-    # Under the MATH backend attention traces to its math-path ops (on MPS to
-    # the math kernel, which has a rule), so no fused kernel without a jet rule
-    # appears in the forward or backward graph.
+    # Attention is traced on its math path. A fused kernel cannot propagate
+    # Taylor coefficients, which need the softmax structure explicit, and its
+    # backward kernel has no rule, so a jet loses nothing by not seeing it. On
+    # MPS the math backend is itself one kernel, which has a rule.
     with sdpa_kernel(SDPBackend.MATH):
         mod, _ = capture_graph(f, mock_args)
     interp = JetInterpreter(mod, collapsed=collapsed)

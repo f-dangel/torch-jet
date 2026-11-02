@@ -196,6 +196,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Primitive cases for a transposed and a dilated strided convolution; the
+  VJP sweep picks them up too ([PR](https://github.com/f-dangel/torch-jet/pull/266)).
 - The `nll_loss` test cases also cover an ignored target (`ignore_index`)
   ([PR](https://github.com/f-dangel/torch-jet/pull/277)).
 - The exact `gelu` forward rule is one elementwise rule over the closed-form

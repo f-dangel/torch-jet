@@ -657,15 +657,16 @@ def _index_put_case(cid: str, jets: str, accumulate: bool) -> dict[str, Any]:
     """``self.index_put((idx,), values, accumulate)``; ``self`` is (3, 4), ``values`` (2, 4).
 
     ``jets`` marks which of ``self`` / ``values`` are jets, the rest are frozen
-    constants; ``idx`` is a constant long index tensor, with repeats only when
-    accumulating (overwriting repeats is nondeterministic). Drawn under
-    ``manual_seed(3)``.
+    constants. Accumulating writes both rows of ``values`` into the same row
+    of ``self`` (as the backward of ``x[idx]`` does for a repeated index);
+    overwriting uses two distinct rows, since overwriting a repeat is
+    nondeterministic. Drawn under ``manual_seed(3)``.
     """
     shapes = ((3, 4), (2, 4))
 
     def build(device):
         manual_seed(3)
-        idx = (randint(0, 3, (2,)) if accumulate else randperm(3)[:2]).to(device)
+        idx = (tensor([1, 1]) if accumulate else randperm(3)[:2]).to(device)
         consts = [rand(*shape, **device_kw(device)) for shape in shapes]
 
         def f(*args):

@@ -1476,11 +1476,21 @@ def _storage_lookup(
 ) -> tuple[Tensor, int]:
     """Element indices of ``x`` by storage position, for views inside ``x``'s elements.
 
-    Returns ``(lookup, base)``: ``lookup[p - base]`` is the index of the element
-    of ``x`` stored at position ``p``. ``x`` must be dense (its elements fill
-    ``[base, base + numel)``) and the view ``(size, stride, offset)`` must stay
-    in that range; the element-wise relation between storage positions and
-    coefficients is undefined otherwise.
+    Args:
+        x: The tensor whose storage the view ``(size, stride, offset)`` reads.
+        size: Shape of the view.
+        stride: Strides of the view.
+        offset: Storage offset of the view.
+
+    Returns:
+        ``(lookup, base)``: ``lookup[p - base]`` is the index of the element of
+        ``x`` stored at position ``p``.
+
+    Raises:
+        NotImplementedError: If ``x`` is not dense (its elements do not fill
+            ``[base, base + numel)``) or the view leaves that range; the
+            element-wise relation between storage positions and coefficients
+            is undefined then.
     """
     base, n = x.storage_offset(), x.numel()
     dims = sorted((s, k) for k, s in zip(x.shape, x.stride()) if k > 1)

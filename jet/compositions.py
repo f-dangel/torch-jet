@@ -813,7 +813,7 @@ def convolution_backward(
     *conv_args, output_mask = conv_args
     x, w = (t[0] if isinstance(t, JetTuple) else t for t in (input, weight))
 
-    def piece(index: int) -> Callable:
+    def piece(index: int) -> Callable[[Tensor, Tensor, Tensor], Tensor]:
         """``convolution_backward`` restricted to output ``index``."""
         mask = [i == index for i in range(3)]
 
@@ -824,20 +824,22 @@ def convolution_backward(
 
         return op
 
+    input_piece, weight_piece, bias_piece = (piece(i) for i in range(3))
+
     grad_input = grad_weight = grad_bias = None
     if output_mask[0]:
         grad_input = _apply_bilinear(
-            lambda g, b: piece(0)(g, x, b), grad_output, weight
+            lambda g, b: input_piece(g, x, b), grad_output, weight
         )
     if output_mask[1]:
         grad_weight = _apply_bilinear(
-            lambda g, a: piece(1)(g, a, w), grad_output, input
+            lambda g, a: weight_piece(g, a, w), grad_output, input
         )
     if output_mask[2]:
         grad_bias = (
-            _apply_linear(grad_output, lambda g: piece(2)(g, x, w))
+            _apply_linear(grad_output, lambda g: bias_piece(g, x, w))
             if isinstance(grad_output, JetTuple)
-            else piece(2)(grad_output, x, w)
+            else bias_piece(grad_output, x, w)
         )
     return grad_input, grad_weight, grad_bias
 

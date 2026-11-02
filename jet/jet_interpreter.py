@@ -76,7 +76,7 @@ class JetInterpreter(Interpreter):
     def call_function(
         self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Any]
     ) -> Any:
-        """Dispatch to ``RULES[target][self.collapsed]`` when any arg is a jet tuple.
+        """Dispatch to ``RULES[target]`` when any arg is a jet tuple.
 
         Args:
             target: The function or callable to execute.
@@ -95,7 +95,7 @@ class JetInterpreter(Interpreter):
                 raise NotImplementedError(
                     f"No jet rule for {target}. Please file an issue."
                 )
-            result = rule[self.collapsed](*args, **kwargs)
+            result = rule(*args, **kwargs)
             self._check_collapsed(result, target)
             return result
         return super().call_function(target, args, kwargs)

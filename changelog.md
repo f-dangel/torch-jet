@@ -215,6 +215,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- The rule registry stores one rule per op instead of a `{collapsed: rule}`
+  pair of the same rule; the interpreter and compositions call it directly
+  ([PR](https://github.com/f-dangel/torch-jet/pull/287)).
 - In the VJP sweep (`test/test_backward.py`), a case listed in `UNSUPPORTED`
   is now expected to raise `NotImplementedError` only in the cells that reach a
   rule; the collapsed `K < 2` cells check the mode's guard as before

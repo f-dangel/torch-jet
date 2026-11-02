@@ -65,7 +65,7 @@ def _rule(op: Callable, collapsed: bool) -> Callable:
 
     def dispatch(*args: object, **kwargs: object) -> object:
         if _has_jet_arg((*args, *kwargs.values())):
-            return jet._rules.RULES[op][collapsed](*args, **kwargs)
+            return jet._rules.RULES[op](*args, **kwargs)
         return op(*args, **kwargs)
 
     return dispatch

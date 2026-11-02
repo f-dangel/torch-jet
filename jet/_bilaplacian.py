@@ -2,7 +2,7 @@
 
 from typing import Callable
 
-from torch import Tensor, eye, triu_indices, zeros, zeros_like
+from torch import Tensor, eye, triu_indices, zeros
 
 from jet._jet import _uncollapsed_via_vmap, jet
 from jet.ttc_coefficients import compute_all_gammas
@@ -129,9 +129,10 @@ def bilaplacian(
         Returns:
             The (collapsed or summed) 4th-order coefficient.
         """
-        z = zeros_like(x)
-        R = X1.shape[0]
-        Z = zeros(R, *in_shape, dtype=x.dtype, device=x.device)
+        # stride-0 views of one element; a factory (not ``x.new_zeros``) so
+        # that it stays unbatched when ``bilap_f`` runs under ``vmap``
+        zero = zeros((), dtype=x.dtype, device=x.device)
+        z, Z = zero.expand(in_shape), zero.expand(X1.shape[0], *in_shape)
         result = require_single_tensor_output(cjet_f((x, X1, Z, Z, z)), "bilaplacian")
         _, _, _, _, F4 = result
         return F4

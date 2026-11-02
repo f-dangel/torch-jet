@@ -1,9 +1,9 @@
 """Implementation of AD primitives in Taylor-mode arithmetic.
 
 A *primitive* is an irreducible jet rule -- an op that is not expressed in terms
-of other rules (those live in :mod:`jet.compositions`). Each op appears here with
-both its standard and collapsed bodies co-located. Collapsed Taylor mode
-propagates a single "collapsed jet" with mixed shapes:
+of other rules (those live in :mod:`jet.compositions`). Each rule is one body
+that reads ``collapsed`` off its input and serves both modes. Collapsed Taylor
+mode propagates a single "collapsed jet" with mixed shapes:
 
   - Coefficient 0 (primal): shape (...)
   - Coefficients 1..K-1: shape (R, ...) -- batched over R directions

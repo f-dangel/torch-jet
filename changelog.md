@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support jets of gradients (Taylor mode through a function that calls
   `torch.func.grad` or `torch.func.vjp`) by adding jet rules for the ATen ops
   autograd's backward pass emits:
+  - `aten.index_put.default`, which with `new_zeros` forms the backward of
+    fancy indexing `x[idx]` (jointly linear in the tensor being written and
+    the values) ([PR](https://github.com/f-dangel/torch-jet/pull/280)).
   - `aten.avg_pool2d_backward.default`, `aten._adaptive_avg_pool2d_backward.default`,
     `aten.max_pool2d_with_indices_backward.default` and the fused
     `aten.max_pool2d_backward.default` (MPS), the backwards of the pooling ops

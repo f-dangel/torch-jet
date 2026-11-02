@@ -129,10 +129,10 @@ def bilaplacian(
         Returns:
             The (collapsed or summed) 4th-order coefficient.
         """
-        # stride-0 view holding one element; a factory (not ``x.new_zeros``) so
+        # stride-0 views of one element; a factory (not ``x.new_zeros``) so
         # that it stays unbatched when ``bilap_f`` runs under ``vmap``
-        z = zeros((), dtype=x.dtype, device=x.device).expand(in_shape)
-        Z = z.expand(X1.shape[0], *in_shape)
+        zero = zeros((), dtype=x.dtype, device=x.device)
+        z, Z = zero.expand(in_shape), zero.expand(X1.shape[0], *in_shape)
         result = require_single_tensor_output(cjet_f((x, X1, Z, Z, z)), "bilaplacian")
         _, _, _, _, F4 = result
         return F4

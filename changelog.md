@@ -196,6 +196,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- In the VJP sweep (`test/test_backward.py`), a case listed in `UNSUPPORTED`
+  is now expected to raise `NotImplementedError` only in the cells that reach a
+  rule; the collapsed `K < 2` cells check the mode's guard as before
+  ([PR](https://github.com/f-dangel/torch-jet/pull/281)).
 - Attention is traced on its math path, so jets of the attention VJP work on
   every device:
   - `jet` traces its function under the math attention backend

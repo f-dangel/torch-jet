@@ -34,11 +34,16 @@ def _deflinear(prim: Callable) -> dict[bool, Rule]:
     return _defshared(primitives._deflinear(prim))
 
 
+def _deflinear_first(prim: Callable) -> dict[bool, Rule]:
+    """Build the rule for an op linear in its first argument (later tensors by primal)."""
+    return _defshared(primitives._deflinear_first(prim))
+
+
 def _defzero(prim: Callable) -> dict[bool, Rule]:
     """Build the constant-output rule for a ``prim``.
 
     The rule is mode-agnostic -- :func:`jet.primitives._defzero` zeros each
-    coefficient to its input slot's shape and follows ``self.collapsed``.
+    coefficient to the output's shape and follows ``self.collapsed``.
     """
     return _defshared(primitives._defzero(prim))
 
@@ -92,10 +97,16 @@ RULES: dict = {
     ),
     # The fused, indices-free pooling op some backends emit (e.g. MPS).
     ops.aten.max_pool2d.default: _defshared(primitives.jet_max_pool2d),
+    ops.aten.max_pool2d_backward.default: _defshared(
+        primitives.jet_max_pool2d_backward
+    ),
     ops.aten.nll_loss_forward.default: _defshared(primitives.jet_nll_loss_forward),
     ops.aten.nll_loss_backward.default: _defshared(primitives.jet_nll_loss_backward),
     # Token embedding lookup: linear in the weight, integer indices stay constant.
     ops.aten.embedding.default: _defshared(primitives.jet_embedding),
+    ops.aten.index_put.default: _defshared(primitives.jet_index_put),
+    ops.aten.copy.default: _defshared(primitives.jet_copy),
+    ops.aten.as_strided_scatter.default: _defshared(primitives.jet_as_strided_scatter),
     # Current torch lowers all scalar division (``x / 2.0``) to this overload;
     # a Taylor-expanded divisor uses the division recurrence.
     ops.aten.div.Tensor: _defshared(primitives.jet_div),
@@ -112,6 +123,9 @@ RULES: dict = {
     ops.aten._safe_softmax.default: _defshared(compositions.safe_softmax),
     ops.aten.gelu.default: _defshared(compositions.gelu),
     ops.aten.tanh_backward.default: _defshared(compositions.tanh_backward),
+    ops.aten.convolution_backward.default: _defshared(
+        compositions.convolution_backward
+    ),
     ops.aten.hardswish_backward.default: _defshared(
         compositions.elementwise_backward(primitives._hardswish_derivatives)
     ),
@@ -195,11 +209,19 @@ for _prim in (
 ):
     RULES[_prim] = _deflinear(_prim)
 
+for _prim in (
+    ops.aten.avg_pool2d_backward.default,
+    ops.aten._adaptive_avg_pool2d_backward.default,
+    ops.aten.max_pool2d_with_indices_backward.default,
+):
+    RULES[_prim] = _deflinear_first(_prim)
+
 # Constant-output ops: primal carries the value, coefficients are zero.
 for op in (
     ops.aten.zeros_like.default,
     ops.aten.ones_like.default,
     ops.aten.empty_like.default,
     ops.aten.fill.Scalar,
+    ops.aten.new_zeros.default,
 ):
     RULES[op] = _defzero(op)

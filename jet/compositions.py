@@ -655,6 +655,78 @@ def tanh_backward(
     return mul(grad_output, sub(1, pow(output, 2)))
 
 
+def convolution_backward(
+    grad_output: Tensor | JetTuple,
+    input: Tensor | JetTuple,
+    weight: Tensor | JetTuple,
+    bias_sizes: list[int] | None,
+    *conv_args: object,
+) -> tuple[Tensor | JetTuple | None, ...]:
+    """Taylor-mode arithmetic for ``aten.convolution_backward``.
+
+    The op returns the triple ``(grad_input, grad_weight, grad_bias)`` and
+    takes a list of three booleans, ``output_mask``, that says which entries
+    to compute; the others are returned as ``None``. Autograd masks out the
+    gradients it does not need (e.g. ``grad_input`` when ``input`` does not
+    require grad, ``grad_bias`` for a bias-free convolution).
+
+    Each entry has its own Taylor-mode structure: ``grad_input`` is bilinear
+    in ``(grad_output, weight)``, ``grad_weight`` is bilinear in
+    ``(grad_output, input)``, and ``grad_bias`` sums ``grad_output`` over the
+    batch and spatial dims, so it is linear.
+
+    The remaining tensor of each call (``input`` for ``grad_input``,
+    ``weight`` for ``grad_weight``, both for ``grad_bias``) only provides a
+    shape, so the primal goes there.
+
+    Args:
+        grad_output: The incoming gradient; a jet or a constant ``Tensor``.
+        input: The convolution input; a jet or a constant ``Tensor``.
+        weight: The convolution kernel; a jet or a constant ``Tensor``.
+        bias_sizes: The bias shape, or ``None`` for a bias-free convolution.
+        *conv_args: The remaining structural arguments (``stride``,
+            ``padding``, ``dilation``, ``transposed``, ``output_padding``,
+            ``groups``), forwarded unchanged, followed by the ``output_mask``.
+
+    Returns:
+        The op's ``(grad_input, grad_weight, grad_bias)`` triple, each a jet
+        (or a constant when none of its operands is a jet), ``None`` where
+        ``output_mask`` is ``False``.
+    """
+    *conv_args, output_mask = conv_args
+    x, w = (t[0] if isinstance(t, JetTuple) else t for t in (input, weight))
+
+    def piece(index: int) -> Callable[[Tensor, Tensor, Tensor], Tensor]:
+        """``convolution_backward`` restricted to output ``index``."""
+        mask = [i == index for i in range(3)]
+
+        def op(g: Tensor, a: Tensor, b: Tensor) -> Tensor:
+            return ops.aten.convolution_backward.default(
+                g, a, b, bias_sizes, *conv_args, mask
+            )[index]
+
+        return op
+
+    input_piece, weight_piece, bias_piece = (piece(i) for i in range(3))
+
+    grad_input = grad_weight = grad_bias = None
+    if output_mask[0]:
+        grad_input = _apply_bilinear(
+            lambda g, b: input_piece(g, x, b), grad_output, weight
+        )
+    if output_mask[1]:
+        grad_weight = _apply_bilinear(
+            lambda g, a: weight_piece(g, a, w), grad_output, input
+        )
+    if output_mask[2]:
+        grad_bias = (
+            _apply_linear(grad_output, lambda g: bias_piece(g, x, w))
+            if isinstance(grad_output, JetTuple)
+            else bias_piece(grad_output, x, w)
+        )
+    return grad_input, grad_weight, grad_bias
+
+
 def elementwise_backward(
     deriv_fn: Callable[..., dict[int, Tensor | None]],
 ) -> Callable[..., JetTuple]:

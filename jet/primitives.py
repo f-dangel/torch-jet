@@ -1472,7 +1472,9 @@ def jet_copy(
     return _apply_linear(src, lambda c: ops.aten.copy.default(self, c, non_blocking))
 
 
-def _storage_lookup(x: Tensor, size: Sequence[int], stride: Sequence[int], offset: int):
+def _storage_lookup(
+    x: Tensor, size: Sequence[int], stride: Sequence[int], offset: int
+) -> tuple[Tensor, int]:
     """Element indices of ``x`` by storage position, for views inside ``x``'s elements.
 
     Returns ``(lookup, base)``: ``lookup[p - base]`` is the index of the element

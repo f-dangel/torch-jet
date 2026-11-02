@@ -11,14 +11,7 @@ algebraic identity (e.g. ``addmm == add(self, mm(mat1, mat2))``).
 from math import pi, sqrt
 from typing import Callable
 
-from torch import (
-    Tensor,
-    contiguous_format,
-    finfo,
-    ones,
-    ops,
-    uint8,
-)
+from torch import Tensor, contiguous_format, finfo, ones, ops, uint8
 from torch import bool as bool_dtype
 from torch import dtype as torch_dtype
 

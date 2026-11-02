@@ -1557,6 +1557,39 @@ def test_fused_rms_norm_matches_traced(collapsed: bool, device: str):
     assert_close(rstd[0], want_rstd, **tol)
 
 
+def test_as_strided_ignores_coefficient_layout(collapsed: bool, device: str):
+    """``as_strided`` gathers coefficients by element.
+
+    The op addresses the storage behind its input, which a coefficient need
+    not share: a transposed or an expanded coefficient must give the jet of its
+    contiguous copy.
+    """
+    K = 2
+    manual_seed(0)
+    x = rand(4, 4, device=device)
+    jet_f = jet(
+        lambda x: ops.aten.as_strided.default(x, [2, 2], [1, 4]), (x,), collapsed
+    )
+    for relayout in (
+        lambda c: c.transpose(-2, -1).contiguous().transpose(-2, -1),
+        lambda c: c.new_zeros(()).expand(c.shape),
+    ):
+        (odd,) = make_jet_args((x,), K, collapsed)
+        odd = (odd[0], *(relayout(c) for c in odd[1:]))
+        plain = (odd[0], *(c.contiguous() for c in odd[1:]))
+        for got, want in zip(jet_f(odd), jet_f(plain)):
+            assert_close(got, want)
+
+
+def test_as_strided_outside_input_raises(collapsed: bool, device: str):
+    """A view that reads storage outside its input's elements has no rule."""
+    manual_seed(0)
+    x = rand(4, 4, device=device)
+    jet_f = jet(lambda x: x[:1].as_strided([4], [4], 0), (x,), collapsed=collapsed)
+    with raises(NotImplementedError, match="dense input"):
+        jet_f(*make_jet_args((x,), 2, collapsed))
+
+
 def test_div_self_is_exact(collapsed: bool, device: str):
     """The order-1..K coefficients of ``x / x`` are exactly zero.
 

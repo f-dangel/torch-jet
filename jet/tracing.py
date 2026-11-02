@@ -8,7 +8,6 @@ from torch import Tensor, ops
 from torch.func import functionalize
 from torch.fx import GraphModule
 from torch.fx.experimental.proxy_tensor import make_fx
-from torch.nn.attention import SDPBackend, sdpa_kernel
 from torch.utils._pytree import TreeSpec, tree_flatten, tree_unflatten
 
 from jet.utils import PyTree
@@ -133,11 +132,7 @@ def capture_graph(
     def flat_f(*flat_tensors: Tensor) -> PyTree[Tensor]:
         return f(*tree_unflatten(list(flat_tensors), in_spec))
 
-    # Under the MATH backend attention traces to its math-path ops (on MPS to
-    # the math kernel, which has a rule), so no fused kernel without a jet rule
-    # appears in the forward or backward graph.
-    with sdpa_kernel(SDPBackend.MATH):
-        mod = _make_fx(functionalize(flat_f))(*flat_mocks)
+    mod = _make_fx(functionalize(flat_f))(*flat_mocks)
     _replace_inplace_ops(mod)
     _replace_views(mod)
     mod.graph.eliminate_dead_code()

@@ -22,10 +22,12 @@ from typing import Callable, Self
 from scipy.special import comb, factorial, stirling2
 from torch import (
     Tensor,
+    arange,
     cat,
     cos,
     erf,
     exp,
+    full,
     log,
     matmul,
     ops,
@@ -1469,6 +1471,62 @@ def jet_copy(
     return _apply_linear(src, lambda c: ops.aten.copy.default(self, c, non_blocking))
 
 
+Layout = tuple[Sequence[int], Sequence[int], int]  # (shape, stride, storage offset)
+
+
+def _element_map(reader: Layout, source: Layout, device) -> Tensor:
+    """Index of the ``source`` element at each ``reader`` entry's storage position.
+
+    Both layouts address one storage. The result has the reader's shape and is
+    ``-1`` where no source element lives at that position.
+    """
+
+    def last(shape, stride, offset):
+        return offset + sum((n - 1) * s for n, s in zip(shape, stride) if n > 0)
+
+    span = 1 + max(last(*reader), last(*source))
+    positions = arange(span, device=device)
+    element = full((span,), -1, device=device)
+    element[positions.as_strided(*source)] = arange(
+        positions.as_strided(*source).numel(), device=device
+    ).view(source[0])
+    return element[positions.as_strided(*reader)]
+
+
+def _layout(x: Tensor) -> Layout:
+    return x.shape, x.stride(), x.storage_offset()
+
+
+def jet_as_strided(
+    self: Tensor | JetTuple,
+    size: list[int],
+    stride: list[int],
+    storage_offset: int | None = None,
+) -> Tensor | JetTuple:
+    """Taylor-mode arithmetic for ``aten.as_strided(self, size, stride, storage_offset)``.
+
+    The op reads the storage behind its input, which a coefficient need not
+    share (an expanded zero or a transposed coefficient has another layout).
+    So the coefficients are not restrided but gathered by the primal element
+    each entry of the view reads; an entry backed by no primal element is a
+    constant and gets a zero coefficient.
+    """
+    if not isinstance(self, JetTuple):
+        return ops.aten.as_strided.default(self, size, stride, storage_offset)
+    x = self[0]
+    offset = x.storage_offset() if storage_offset is None else storage_offset
+    element = _element_map((size, stride, offset), _layout(x), x.device)
+    missing = element < 0
+
+    def gather(c: Tensor) -> Tensor:
+        return c.reshape(-1)[element.clamp(min=0)].masked_fill(missing, 0)
+
+    primal = ops.aten.as_strided.default(x, size, stride, storage_offset)
+    return JetTuple(
+        (primal, *_apply_linear_coeffs(self, gather)), collapsed=self.collapsed
+    )
+
+
 def jet_as_strided_scatter(
     self: Tensor | JetTuple,
     src: Tensor | JetTuple,
@@ -1479,19 +1537,21 @@ def jet_as_strided_scatter(
     """Taylor-mode arithmetic for ``aten.as_strided_scatter(self, src, size, stride, offset)``.
 
     Writes ``src`` into the ``as_strided`` view of a copy of ``self``: jointly
-    linear in both, so :func:`_pair_linear` applies it coefficient-wise.
-    functorch cannot ``vmap`` the op, so a collapsed batched slot restrides by
-    hand: the view gains a leading dim of ``R`` contiguous slices.
+    linear in both, so :func:`_pair_linear` applies it coefficient-wise. As in
+    :func:`jet_as_strided`, the view addresses the storage behind ``self``,
+    which its coefficients need not share, so each coefficient of ``self`` is
+    overwritten where the view lands by a gather from ``src``'s coefficient.
     """
+    x = self[0] if isinstance(self, JetTuple) else self
+    offset = x.storage_offset() if storage_offset is None else storage_offset
+    written = _element_map(_layout(x), (size, stride, offset), x.device)
+    mask, index = written >= 0, written.clamp(min=0)
 
     def prim(a: Tensor, b: Tensor) -> Tensor:
-        return ops.aten.as_strided_scatter.default(a, b, size, stride, storage_offset)
+        return where(mask, b.reshape(-1)[index], a)
 
     def batched(a: Tensor, b: Tensor) -> Tensor:
-        a = a.contiguous()
-        return ops.aten.as_strided_scatter.default(
-            a, b, [a.shape[0], *size], [a.stride(0), *stride], storage_offset
-        )
+        return where(mask, b.reshape(b.shape[0], -1)[:, index], a)
 
     return _pair_linear(prim, batched)(self, src)
 

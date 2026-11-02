@@ -1,11 +1,11 @@
 """Composite jet rules: ATen ops that decompose into other registered ops.
 
-Each rule here is **mode-agnostic** -- a single function that reads the
-``collapsed`` flag off its jet input and pulls its sub-rules from the shared
-``RULES`` registry (:mod:`jet._rules`), so standard and collapsed Taylor mode
-share one body. The primitives a composition wires together (``add``, ``mm``,
-``pow``, ...) carry the per-mode arithmetic; the composition only encodes the
-algebraic identity (e.g. ``addmm == add(self, mm(mat1, mat2))``).
+Each rule here is **mode-agnostic** -- a single function that pulls its
+sub-rules from the shared ``RULES`` registry (:mod:`jet._rules`). The
+primitives a composition wires together (``add``, ``mm``, ``pow``, ...) read
+the ``collapsed`` flag off their jet inputs and carry the per-mode arithmetic;
+the composition only encodes the algebraic identity (e.g.
+``addmm == add(self, mm(mat1, mat2))``).
 """
 
 from math import pi, sqrt
@@ -28,31 +28,8 @@ from jet.primitives import (
 )
 
 
-def _collapsed_of(*args: object) -> bool:
-    """Return the shared ``collapsed`` flag of the ``JetTuple`` args.
-
-    The interpreter only dispatches to a rule when at least one argument is a
-    jet, so a ``JetTuple`` is always present. All jet arguments must agree on
-    the mode -- a whole run is either standard or collapsed -- so a mix is a
-    bug (mirrors :func:`jet.primitives._jet_order`'s single-``K`` check).
-
-    Raises:
-        TypeError: If no argument is a ``JetTuple`` (should be unreachable).
-        ValueError: If two ``JetTuple`` args disagree on ``collapsed``.
-    """
-    flags = {arg.collapsed for arg in args if isinstance(arg, JetTuple)}
-    if not flags:
-        raise TypeError("composition rule called without a JetTuple argument")
-    if len(flags) > 1:
-        raise ValueError(
-            "composition rule received JetTuple arguments with mixed collapsed "
-            "flags; all jets in a run must share the same mode"
-        )
-    return flags.pop()
-
-
-def _rule(op: Callable, collapsed: bool) -> Callable:
-    """Fetch ``op``'s rule for ``collapsed`` mode from the shared registry.
+def _rule(op: Callable) -> Callable:
+    """Fetch ``op``'s rule from the shared registry.
 
     ``jet._rules`` imports this module to assemble ``RULES``, so the registry
     is reached through the module (``jet._rules.RULES``) and read at call time;
@@ -90,9 +67,8 @@ def addmm(
     Returns:
         The value and its Taylor coefficients.
     """
-    collapsed = _collapsed_of(self, mat1, mat2)
-    add = _rule(ops.aten.add.Tensor, collapsed)
-    mm = _rule(ops.aten.mm.default, collapsed)
+    add = _rule(ops.aten.add.Tensor)
+    mm = _rule(ops.aten.mm.default)
     return add(self, mm(mat1, mat2))
 
 
@@ -114,9 +90,8 @@ def stack(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
     Returns:
         The value and its Taylor coefficients.
     """
-    collapsed = _collapsed_of(*tensors)
-    cat = _rule(ops.aten.cat.default, collapsed)
-    unsqueeze = _rule(ops.aten.unsqueeze.default, collapsed)
+    cat = _rule(ops.aten.cat.default)
+    unsqueeze = _rule(ops.aten.unsqueeze.default)
     return cat([unsqueeze(t, dim) for t in tensors], dim)
 
 
@@ -145,8 +120,7 @@ def convolution(
     Returns:
         The value and its Taylor coefficients.
     """
-    collapsed = _collapsed_of(input, weight, bias)
-    add = _rule(ops.aten.add.Tensor, collapsed)
+    add = _rule(ops.aten.add.Tensor)
 
     def cv(a: Tensor, b: Tensor) -> Tensor:
         """Bias-free convolution -- the bilinear core of ``aten.convolution``."""
@@ -182,9 +156,9 @@ def _reduce_loss(loss: JetTuple, reduction: int) -> JetTuple:
     if reduction == 0:  # 'none'
         return loss
     if reduction == 1:  # 'mean'
-        return _rule(ops.aten.mean.default, loss.collapsed)(loss)
+        return _rule(ops.aten.mean.default)(loss)
     if reduction == 2:  # 'sum'
-        return _rule(ops.aten.sum.default, loss.collapsed)(loss)
+        return _rule(ops.aten.sum.default)(loss)
     raise ValueError(f"Unsupported reduction {reduction}; expected 0, 1, or 2.")
 
 
@@ -206,9 +180,8 @@ def mse_loss(
     Returns:
         The value and its Taylor coefficients.
     """
-    collapsed = _collapsed_of(self, target)
-    sub = _rule(ops.aten.sub.Tensor, collapsed)
-    pow = _rule(ops.aten.pow.Tensor_Scalar, collapsed)
+    sub = _rule(ops.aten.sub.Tensor)
+    pow = _rule(ops.aten.pow.Tensor_Scalar)
     squared_error = pow(sub(self, target), 2)
     return _reduce_loss(squared_error, reduction)
 
@@ -234,11 +207,10 @@ def log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTup
     """
     if half_to_float:
         self = _apply_linear(self, lambda c: c.float())
-    collapsed = _collapsed_of(self)
-    sub = _rule(ops.aten.sub.Tensor, collapsed)
-    exp = _rule(ops.aten.exp.default, collapsed)
-    log = _rule(ops.aten.log.default, collapsed)
-    sum = _rule(ops.aten.sum.dim_IntList, collapsed)
+    sub = _rule(ops.aten.sub.Tensor)
+    exp = _rule(ops.aten.exp.default)
+    log = _rule(ops.aten.log.default)
+    sum = _rule(ops.aten.sum.dim_IntList)
     shift = self[0].amax(dim, keepdim=True)
     shifted = sub(self, shift)
     exp_jet = exp(shifted)
@@ -268,11 +240,10 @@ def softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTuple:
     """
     if half_to_float:
         self = _apply_linear(self, lambda c: c.float())
-    collapsed = _collapsed_of(self)
-    sub = _rule(ops.aten.sub.Tensor, collapsed)
-    exp = _rule(ops.aten.exp.default, collapsed)
-    sum = _rule(ops.aten.sum.dim_IntList, collapsed)
-    div = _rule(ops.aten.div.Tensor, collapsed)
+    sub = _rule(ops.aten.sub.Tensor)
+    exp = _rule(ops.aten.exp.default)
+    sum = _rule(ops.aten.sum.dim_IntList)
+    div = _rule(ops.aten.div.Tensor)
     shift = self[0].amax(dim, keepdim=True)
     exp_jet = exp(sub(self, shift))
     return div(exp_jet, sum(exp_jet, dim, keepdim=True))
@@ -323,21 +294,18 @@ def gelu(self: JetTuple, approximate: str = "none") -> JetTuple:
     """
     if approximate == "none":
         return _elementwise(self, _gelu_exact_derivatives)
-    collapsed = _collapsed_of(self)
-    mul = _rule(ops.aten.mul.Tensor, collapsed)
-    add = _rule(ops.aten.add.Tensor, collapsed)
+    mul = _rule(ops.aten.mul.Tensor)
+    add = _rule(ops.aten.add.Tensor)
     if approximate == "tanh":
-        pow = _rule(ops.aten.pow.Tensor_Scalar, collapsed)
+        pow = _rule(ops.aten.pow.Tensor_Scalar)
         cubic = add(self, mul(pow(self, 3), 0.044715))
-        inner = _rule(ops.aten.tanh.default, collapsed)(mul(cubic, sqrt(2 / pi)))
+        inner = _rule(ops.aten.tanh.default)(mul(cubic, sqrt(2 / pi)))
     else:
         raise NotImplementedError(f"gelu: unsupported approximate={approximate!r}")
     return mul(mul(self, 0.5), add(inner, 1.0))
 
 
-def _standardize(
-    input: Tensor | JetTuple, dims: list[int], eps: float, collapsed: bool
-) -> tuple:
+def _standardize(input: Tensor | JetTuple, dims: list[int], eps: float) -> tuple:
     """Standardize ``input`` over ``dims`` with its own statistics.
 
     ``(input - mean) * (var + eps)**-0.5`` with biased ``var``, composed from
@@ -348,11 +316,11 @@ def _standardize(
     Returns:
         ``(out, mean, rstd)``; ``mean`` / ``rstd`` keep ``dims`` as size 1.
     """
-    sub = _rule(ops.aten.sub.Tensor, collapsed)
-    mul = _rule(ops.aten.mul.Tensor, collapsed)
-    add = _rule(ops.aten.add.Tensor, collapsed)
-    pow = _rule(ops.aten.pow.Tensor_Scalar, collapsed)
-    mean = _rule(ops.aten.mean.dim, collapsed)
+    sub = _rule(ops.aten.sub.Tensor)
+    mul = _rule(ops.aten.mul.Tensor)
+    add = _rule(ops.aten.add.Tensor)
+    pow = _rule(ops.aten.pow.Tensor_Scalar)
+    mean = _rule(ops.aten.mean.dim)
     mu = mean(input, dims, keepdim=True)
     centered = sub(input, mu)
     rstd = pow(add(mean(pow(centered, 2), dims, keepdim=True), eps), -0.5)
@@ -363,13 +331,12 @@ def _affine(
     out: Tensor | JetTuple,
     weight: Tensor | JetTuple | None,
     bias: Tensor | JetTuple | None,
-    collapsed: bool,
 ) -> Tensor | JetTuple:
     """``out * weight + bias`` for optional (``None`` = absent) broadcastable params."""
     if weight is not None:
-        out = _rule(ops.aten.mul.Tensor, collapsed)(out, weight)
+        out = _rule(ops.aten.mul.Tensor)(out, weight)
     if bias is not None:
-        out = _rule(ops.aten.add.Tensor, collapsed)(out, bias)
+        out = _rule(ops.aten.add.Tensor)(out, bias)
     return out
 
 
@@ -415,10 +382,9 @@ def native_batch_norm(
             "statistics, which is not yet implemented."
         )
 
-    collapsed = _collapsed_of(input, weight, bias)
-    sub = _rule(ops.aten.sub.Tensor, collapsed)
-    mul = _rule(ops.aten.mul.Tensor, collapsed)
-    view = _rule(ops.aten.view.default, collapsed)
+    sub = _rule(ops.aten.sub.Tensor)
+    mul = _rule(ops.aten.mul.Tensor)
+    view = _rule(ops.aten.view.default)
 
     primal = input[0] if isinstance(input, JetTuple) else input
     shape = _bn_channel_view(primal)
@@ -427,7 +393,7 @@ def native_batch_norm(
     out = mul(out, view(rstd, shape))
     weight = None if weight is None else view(weight, shape)
     bias = None if bias is None else view(bias, shape)
-    out = _affine(out, weight, bias, collapsed)
+    out = _affine(out, weight, bias)
     empty = primal.new_empty(0)
     return out, empty, empty
 
@@ -451,13 +417,12 @@ def native_layer_norm(
         (``mean`` / ``rstd`` keep the normalized dims as size 1, like the op),
         so a downstream ``getitem`` falls through to the native op.
     """
-    collapsed = _collapsed_of(input, weight, bias)
     dims = list(range(-len(normalized_shape), 0))
-    out, mu, rstd = _standardize(input, dims, eps, collapsed)
-    out = _affine(out, weight, bias, collapsed)
+    out, mu, rstd = _standardize(input, dims, eps)
+    out = _affine(out, weight, bias)
     # The ATen op's output is contiguous (ConvNeXt ``view``s it after a permute).
     if not out[0].is_contiguous():
-        clone = _rule(ops.aten.clone.default, collapsed)
+        clone = _rule(ops.aten.clone.default)
         out = clone(out, memory_format=contiguous_format)
     return out, mu, rstd
 
@@ -484,17 +449,16 @@ def _fused_rms_norm(
         the op returns ``None`` there), so a downstream ``getitem`` falls
         through to the native op.
     """
-    collapsed = _collapsed_of(input, weight)
-    mul = _rule(ops.aten.mul.Tensor, collapsed)
-    add = _rule(ops.aten.add.Tensor, collapsed)
-    pow = _rule(ops.aten.pow.Tensor_Scalar, collapsed)
-    mean = _rule(ops.aten.mean.dim, collapsed)
-    rsqrt = _rule(ops.aten.rsqrt.default, collapsed)
+    mul = _rule(ops.aten.mul.Tensor)
+    add = _rule(ops.aten.add.Tensor)
+    pow = _rule(ops.aten.pow.Tensor_Scalar)
+    mean = _rule(ops.aten.mean.dim)
+    rsqrt = _rule(ops.aten.rsqrt.default)
     if eps is None:
         eps = finfo((input[0] if isinstance(input, JetTuple) else input).dtype).eps
     dims = list(range(-len(normalized_shape), 0))
     rstd = rsqrt(add(mean(pow(input, 2), dims, keepdim=True), eps))
-    return _affine(mul(input, rstd), weight, None, collapsed), rstd
+    return _affine(mul(input, rstd), weight, None), rstd
 
 
 def cudnn_batch_norm(
@@ -566,13 +530,12 @@ def scaled_dot_product_attention(
             "Taylor-mode scaled_dot_product_attention requires dropout_p == 0; "
             "jets require eval mode (call model.eval())."
         )
-    collapsed = _collapsed_of(query, key, value)
-    mul = _rule(ops.aten.mul.Tensor, collapsed)
-    matmul = _rule(ops.aten.matmul.default, collapsed)
-    transpose = _rule(ops.aten.transpose.int, collapsed)
+    mul = _rule(ops.aten.mul.Tensor)
+    matmul = _rule(ops.aten.matmul.default)
+    transpose = _rule(ops.aten.transpose.int)
     q, k = (x[0] if isinstance(x, JetTuple) else x for x in (query, key))
     if q.shape[-3] != k.shape[-3]:
-        repeat = _rule(ops.aten.repeat_interleave.self_int, collapsed)
+        repeat = _rule(ops.aten.repeat_interleave.self_int)
         groups = q.shape[-3] // k.shape[-3]
         key, value = (repeat(x, groups, -3) for x in (key, value))
     scale = q.shape[-1] ** -0.5 if scale is None else scale
@@ -583,13 +546,11 @@ def scaled_dot_product_attention(
         ).tril()
     if attn_mask is not None:
         if attn_mask.dtype == bool_dtype:
-            masked_fill = _rule(ops.aten.masked_fill.Scalar, collapsed)
+            masked_fill = _rule(ops.aten.masked_fill.Scalar)
             scores = masked_fill(scores, ~attn_mask, -float("inf"))
         else:
-            scores = _rule(ops.aten.add.Tensor, collapsed)(scores, attn_mask)
-    attn = _rule(ops.aten._softmax.default, collapsed)(
-        scores, dim=-1, half_to_float=False
-    )
+            scores = _rule(ops.aten.add.Tensor)(scores, attn_mask)
+    attn = _rule(ops.aten._softmax.default)(scores, dim=-1, half_to_float=False)
     return matmul(attn, value)
 
 
@@ -641,10 +602,9 @@ def tanh_backward(
     Returns:
         The value and its Taylor coefficients.
     """
-    collapsed = _collapsed_of(grad_output, output)
-    mul = _rule(ops.aten.mul.Tensor, collapsed)
-    pow = _rule(ops.aten.pow.Tensor_Scalar, collapsed)
-    sub = _rule(ops.aten.sub.Tensor, collapsed)
+    mul = _rule(ops.aten.mul.Tensor)
+    pow = _rule(ops.aten.pow.Tensor_Scalar)
+    sub = _rule(ops.aten.sub.Tensor)
     return mul(grad_output, sub(1, pow(output, 2)))
 
 
@@ -749,7 +709,7 @@ def elementwise_backward(
             d = deriv_fn(x0, *args, K + 1, **kwargs)
             return {k: d[k + 1] for k in range(K + 1)}
 
-        mul = _rule(ops.aten.mul.Tensor, _collapsed_of(grad_output, self))
+        mul = _rule(ops.aten.mul.Tensor)
         return mul(grad_output, _elementwise(self, shifted))
 
     return rule

@@ -26,7 +26,6 @@ from torch import (
     cos,
     erf,
     exp,
-    full_like,
     log,
     matmul,
     ops,
@@ -1549,28 +1548,20 @@ def jet_as_strided_scatter(
 
     Writes ``src`` into the ``as_strided`` view of a copy of ``self``: jointly
     linear in both, so :func:`_pair_linear` applies it coefficient-wise. As in
-    :func:`jet_as_strided`, the view addresses the storage behind ``self``,
-    which its coefficients need not share, so each coefficient of ``self`` is
-    overwritten where the view lands by a gather from ``src``'s coefficient.
-    The primal keeps the native op (and its output layout).
+    :func:`jet_as_strided`, the copy of a coefficient of ``self`` is laid out
+    like the primal, so the view lands on the same elements. The primal keeps
+    the native op (and its output layout).
     """
     x = self[0] if isinstance(self, JetTuple) else self
     offset = x.storage_offset() if storage_offset is None else storage_offset
-    lookup, base = _storage_lookup(x, size, stride, offset)
-    written = full_like(lookup, -1)  # src element written at each storage position
-    written[lookup.as_strided(size, stride, offset - base)] = arange(
-        written.as_strided(size, stride, offset - base).numel(), device=x.device
-    ).view(size)
-    written = written.as_strided(x.shape, x.stride(), 0)
-    mask, index = written >= 0, written.clamp(min=0)
+    base = _check_view(x, size, stride, offset)
 
     def prim(a: Tensor, b: Tensor) -> Tensor:
-        return a if 0 in size else where(mask, b.reshape(-1)[index], a)
+        out = _in_layout_of(a, x)
+        out.as_strided(size, stride, offset - base).copy_(b)
+        return out.as_strided(x.shape, x.stride(), 0)
 
-    def batched(a: Tensor, b: Tensor) -> Tensor:
-        return a if 0 in size else where(mask, b.reshape(b.shape[0], -1)[:, index], a)
-
-    out = _pair_linear(prim, batched)(self, src)
+    out = _pair_linear(prim)(self, src)
     primal = ops.aten.as_strided_scatter.default(
         x, src[0] if isinstance(src, JetTuple) else src, size, stride, storage_offset
     )

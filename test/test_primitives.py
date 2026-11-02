@@ -1147,12 +1147,12 @@ PRIMITIVE_CASES = [
     _embedding_case("padding_idx", (2, 3), padding_idx=0),
     _embedding_case("padding_idx_neg", (2, 3), padding_idx=-1),
     # ``scaled_dot_product_attention`` traces to scaled ``matmul``s, masking, and
-    # ``softmax``; every pattern of jet (J) / constant (C) query, key, value
-    # meets every option.
+    # ``softmax``. Which operand is a jet and which option is set are independent
+    # axes of the decomposition, so each is swept on its own: every option with
+    # all of query, key, value jets, and every jet (J) / constant (C) pattern with
+    # the default options.
     *(
-        _sdpa_case(f"sdpa_{jets}{oid}", jets=jets, **kw)
-        # ``CCJ``: only ``value`` is a jet, so the attention weights are constants
-        for jets in ("JJJ", "JCC", "CCJ", "CJJ", "CJC", "JCJ", "JJC")
+        _sdpa_case(f"sdpa_JJJ{oid}", jets="JJJ", **kw)
         for oid, kw in (
             ("", {}),
             ("_causal", {"is_causal": True}),
@@ -1162,6 +1162,11 @@ PRIMITIVE_CASES = [
             # Grouped-query attention: one key/value head serves both query heads.
             ("_gqa", {"kv_heads": 1, "enable_gqa": True}),
         )
+    ),
+    *(
+        _sdpa_case(f"sdpa_{jets}", jets=jets)
+        # ``CCJ``: only ``value`` is a jet, so the attention weights are constants
+        for jets in ("JCC", "CCJ", "CJJ", "CJC", "JCJ", "JJC")
     ),
     {
         "id": "sdpa_mha_layout",

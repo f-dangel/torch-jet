@@ -21,10 +21,9 @@ from test.utils import assert_jet_matches_oracle, device_kw, make_jet_args, vjp_
 
 #: Prefixes of the case ids whose VJP needs a backward op without a jet rule.
 UNSUPPORTED: tuple[str, ...] = ()
-CASES = [vjp_case(c) for c in PRIMITIVE_CASES]
 
 
-@mark.parametrize("config", CASES, ids=lambda c: c["id"])
+@mark.parametrize("config", map(vjp_case, PRIMITIVE_CASES), ids=lambda c: c["id"])
 def test_backward(config: dict[str, Any], K: int, collapsed: bool, device: str):
     """``jet(vjp(primitive))`` matches its mode-specific oracle.
 

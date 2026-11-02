@@ -766,12 +766,12 @@ def tanh_backward(
 
 
 def convolution_backward(
-    grad_output: object,
-    input: object,
-    weight: object,
+    grad_output: Tensor | JetTuple,
+    input: Tensor | JetTuple,
+    weight: Tensor | JetTuple,
     bias_sizes: list[int] | None,
     *conv_args: object,
-) -> tuple:
+) -> tuple[Tensor | JetTuple | None, ...]:
     """Taylor-mode arithmetic for ``aten.convolution_backward``.
 
     Autograd's backward of ``convolution`` returns up to three gradients, each

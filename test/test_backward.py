@@ -20,10 +20,7 @@ from test.test_primitives import PRIMITIVE_CASES
 from test.utils import assert_jet_matches_oracle, device_kw, make_jet_args, vjp_case
 
 #: Prefixes of the case ids whose VJP needs a backward op without a jet rule.
-UNSUPPORTED = (
-    "sdpa",
-    "conv",
-)
+UNSUPPORTED = ("sdpa",)
 CASES = [vjp_case(c) for c in PRIMITIVE_CASES]
 SUPPORTED = [c for c in CASES if not c["id"].startswith(UNSUPPORTED)]
 XFAILED = [c for c in CASES if c["id"].startswith(UNSUPPORTED)]

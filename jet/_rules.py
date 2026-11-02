@@ -123,6 +123,9 @@ RULES: dict = {
     ops.aten._safe_softmax.default: _defshared(compositions.safe_softmax),
     ops.aten.gelu.default: _defshared(compositions.gelu),
     ops.aten.tanh_backward.default: _defshared(compositions.tanh_backward),
+    ops.aten.convolution_backward.default: _defshared(
+        compositions.convolution_backward
+    ),
     ops.aten.hardswish_backward.default: _defshared(
         compositions.elementwise_backward(primitives._hardswish_derivatives)
     ),

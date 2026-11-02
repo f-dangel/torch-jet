@@ -654,7 +654,7 @@ def _where_case(
 
 
 def _index_put_case(cid: str, jets: str, accumulate: bool) -> dict[str, Any]:
-    """``self.index_put((idx,), values, accumulate)``; ``self`` is (3, 4), ``values`` (2, 4).
+    """``self.index_put((idx,), values, accumulate)``, shapes (3, 4) and (2, 4).
 
     ``jets`` marks which of ``self`` / ``values`` are jets, the rest are frozen
     constants. Accumulating writes both rows of ``values`` into the same row

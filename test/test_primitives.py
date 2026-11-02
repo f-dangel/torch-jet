@@ -1585,8 +1585,7 @@ def test_storage_rules_ignore_coefficient_layout(collapsed: bool, device: str):
             for leaf in make_jet_args(args, K, collapsed)
         )
         plain = tuple((leaf[0], *(c.contiguous() for c in leaf[1:])) for leaf in odd)
-        for got, want in zip(jet_f(*odd), jet_f(*plain)):
-            assert_close(got, want)
+        assert_close(jet_f(*odd), jet_f(*plain))
 
 
 def test_as_strided_outside_input_raises(collapsed: bool, device: str):

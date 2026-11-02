@@ -1557,28 +1557,39 @@ def test_fused_rms_norm_matches_traced(collapsed: bool, device: str):
     assert_close(rstd[0], want_rstd, **tol)
 
 
-def test_as_strided_ignores_coefficient_layout(collapsed: bool, device: str):
-    """``as_strided`` gathers coefficients by element.
+def test_storage_rules_ignore_coefficient_layout(collapsed: bool, device: str):
+    """``as_strided`` and ``as_strided_scatter`` act on coefficients by element.
 
-    The op addresses the storage behind its input, which a coefficient need
+    Both ops address the storage behind their input, which a coefficient need
     not share: a transposed or an expanded coefficient must give the jet of its
     contiguous copy.
     """
     K = 2
     manual_seed(0)
-    x = rand(4, 4, device=device)
-    jet_f = jet(
-        lambda x: ops.aten.as_strided.default(x, [2, 2], [1, 4]), (x,), collapsed
+    x, s = rand(4, 4, device=device), rand(2, 2, device=device)
+    cases = (
+        (lambda x: ops.aten.as_strided.default(x, [2, 2], [1, 4]), (x,)),
+        (
+            lambda x, s: ops.aten.as_strided_scatter.default(x, s, [2, 2], [4, 1]),
+            (x, s),
+        ),
     )
-    for relayout in (
+    relayouts = (
         lambda c: c.transpose(-2, -1).contiguous().transpose(-2, -1),
         lambda c: c.new_zeros(()).expand(c.shape),
-    ):
-        (odd,) = make_jet_args((x,), K, collapsed)
-        odd = (odd[0], *(relayout(c) for c in odd[1:]))
-        plain = (odd[0], *(c.contiguous() for c in odd[1:]))
-        for got, want in zip(jet_f(odd), jet_f(plain)):
-            assert_close(got, want)
+    )
+    for f, args in cases:
+        jet_f = jet(f, args, collapsed=collapsed)
+        for relayout in relayouts:
+            odd = tuple(
+                (leaf[0], *(relayout(c) for c in leaf[1:]))
+                for leaf in make_jet_args(args, K, collapsed)
+            )
+            plain = tuple(
+                (leaf[0], *(c.contiguous() for c in leaf[1:])) for leaf in odd
+            )
+            for got, want in zip(jet_f(*odd), jet_f(*plain)):
+                assert_close(got, want)
 
 
 def test_as_strided_outside_input_raises(collapsed: bool, device: str):
@@ -1588,29 +1599,6 @@ def test_as_strided_outside_input_raises(collapsed: bool, device: str):
     jet_f = jet(lambda x: x[:1].as_strided([4], [4], 0), (x,), collapsed=collapsed)
     with raises(NotImplementedError, match="dense input"):
         jet_f(*make_jet_args((x,), 2, collapsed))
-
-
-def test_as_strided_scatter_ignores_coefficient_layout(collapsed: bool, device: str):
-    """``as_strided_scatter`` gathers coefficients by element (see ``as_strided``)."""
-    K = 2
-    manual_seed(0)
-    x, s = rand(4, 4, device=device), rand(2, 2, device=device)
-    jet_f = jet(
-        lambda x, s: ops.aten.as_strided_scatter.default(x, s, [2, 2], [4, 1]),
-        (x, s),
-        collapsed,
-    )
-    for relayout in (
-        lambda c: c.transpose(-2, -1).contiguous().transpose(-2, -1),
-        lambda c: c.new_zeros(()).expand(c.shape),
-    ):
-        odd = tuple(
-            (leaf[0], *(relayout(c) for c in leaf[1:]))
-            for leaf in make_jet_args((x, s), K, collapsed)
-        )
-        plain = tuple((leaf[0], *(c.contiguous() for c in leaf[1:])) for leaf in odd)
-        for got, want in zip(jet_f(*odd), jet_f(*plain)):
-            assert_close(got, want)
 
 
 def test_div_self_is_exact(collapsed: bool, device: str):

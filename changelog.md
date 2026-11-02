@@ -175,6 +175,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (transposed, expanded); a view that reads storage outside the input's
   elements raises `NotImplementedError`
   ([PR](https://github.com/f-dangel/torch-jet/pull/284)).
+- `laplacian` and `bilaplacian` pass their zero Taylor coefficients as stride-0
+  views of a scalar instead of dense tensors, so they no longer allocate one
+  input-sized buffer (`bilaplacian`: one of shape `(R, *input)` and one of the
+  input's shape) per call
+  ([PR](https://github.com/f-dangel/torch-jet/pull/282)).
 - Constant-output rules (`zeros_like`, `ones_like`, `empty_like`, `fill`,
   `new_zeros`) zero their coefficients to the *output's* shape instead of the
   input's; the two differ for `new_zeros` with an explicit size

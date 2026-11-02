@@ -196,6 +196,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- `jet` traces its function under the math attention backend
+  (`sdpa_kernel(SDPBackend.MATH)`), so the trace of
+  `F.scaled_dot_product_attention` contains the math-path ops instead of a
+  fused op (MPS keeps its math kernel) and jets of the attention VJP work on
+  every device ([PR](https://github.com/f-dangel/torch-jet/pull/272)).
 - Primitive cases for a transposed and a dilated strided convolution; the
   VJP sweep picks them up too ([PR](https://github.com/f-dangel/torch-jet/pull/266)).
 - The `nll_loss` test cases also cover an ignored target (`ignore_index`)

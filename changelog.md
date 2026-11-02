@@ -215,6 +215,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- The unary pointwise test cases come from one table of ops and input
+  samplers instead of one comprehension per op
+  ([PR](https://github.com/f-dangel/torch-jet/pull/290)).
 - The `scaled_dot_product_attention` test cases sweep the jet/constant operand
   patterns and the options separately (13 cases) instead of their product (43);
   the two axes are independent in the op's decomposition

@@ -527,12 +527,30 @@ def _norm_cases(
     ]
 
 
+#: Unary pointwise ops with their input sampler (``dims -> Tensor``). The
+#: sampler puts the inputs where the op's branches and conditioning demand it:
+#: ``randn`` straddles a kink at 0, ``c * randn`` reaches kinks or tails further
+#: out, ``rand + 0.5`` keeps a positive domain well-conditioned; the smooth
+#: sigmoid-like ops stay at plain ``randn`` because their float32 Stirling-form
+#: derivatives lose precision at high order for large ``|x|``.
 _UNARY_POINTWISE = {
-    "sin": sin,
-    "cos": cos,
-    "tanh": tanh,
-    "sigmoid": sigmoid,
-    "exp": exp,
+    "sin": (sin, rand),
+    "cos": (cos, rand),
+    "tanh": (tanh, rand),
+    "sigmoid": (sigmoid, rand),
+    "exp": (exp, rand),
+    "relu": (relu, randn),  # kink at 0
+    "hardtanh": (hardtanh, lambda *d: 4 * randn(*d)),  # clamps at -1, 1 (relu6: 0, 6)
+    "hardsigmoid": (hardsigmoid, lambda *d: 4 * randn(*d)),  # kinks at -3, 3
+    "hardswish": (hardswish, lambda *d: 4 * randn(*d)),  # quadratic on (-3, 3)
+    "silu": (silu, randn),
+    "erf": (erf, lambda *d: 2 * randn(*d)),  # tails
+    "gelu": (gelu, lambda *d: 2 * randn(*d)),  # tails
+    "gelu_tanh": (lambda x: gelu(x, approximate="tanh"), randn),
+    "log": (log, lambda *d: rand(*d) + 0.5),  # ``1 / x0**k`` derivatives
+    "rsqrt": (rsqrt, lambda *d: rand(*d) + 0.5),
+    # Called directly: ``x + 0.5`` and functionalized ``add_`` trace to ``add.Tensor``.
+    "add_scalar": (lambda x: ops.aten.add.Scalar(x, 0.5), rand),
 }
 _UNARY_SHAPES = {"1d": (4,), "2d": (3, 4)}
 _POW_EXPONENTS = {
@@ -760,30 +778,9 @@ PRIMITIVE_CASES = [
         {
             "id": f"{name}-{sid}",
             "f": _stateless(fn),
-            "args_fn": lambda dims=dims: (rand(*dims),),
+            "args_fn": lambda dims=dims, sample=sample: (sample(*dims),),
         }
-        for name, fn in _UNARY_POINTWISE.items()
-        for sid, dims in _UNARY_SHAPES.items()
-    ),
-    # ---- ReLU (piecewise linear; ``randn`` straddles 0 to exercise both
-    # the active ``x>0`` mask and the zeroed-out ``x<0`` branch) -----------
-    *(
-        {
-            "id": f"relu-{sid}",
-            "f": _stateless(relu),
-            "args_fn": lambda dims=dims: (randn(*dims),),
-        }
-        for sid, dims in _UNARY_SHAPES.items()
-    ),
-    # ---- Hardtanh (piecewise linear with two kinks; ``4 * randn`` straddles
-    # the default bounds ``[-1, 1]`` and ``relu6``'s ``[0, 6]`` to exercise the
-    # inner slope and both clamped branches) --------------------------------
-    *(
-        {
-            "id": f"hardtanh-{sid}",
-            "f": _stateless(hardtanh),
-            "args_fn": lambda dims=dims: (4 * randn(*dims),),
-        }
+        for name, (fn, sample) in _UNARY_POINTWISE.items()
         for sid, dims in _UNARY_SHAPES.items()
     ),
     {
@@ -798,85 +795,16 @@ PRIMITIVE_CASES = [
         "f": _stateless(lambda x: threshold(x, 0.1, -2.0)),
         "args_fn": lambda: (randn(3, 4),),
     },
-    # ---- Hardsigmoid (``relu6(x + 3) / 6``; ``4 * randn`` straddles the kinks
-    # at ``-3`` and ``3`` to exercise the inner slope and both clamped
-    # branches) -----------------------------------------------------------
+    # The kinks themselves: autograd's convention there (slope ``0`` at both
+    # for hardsigmoid, ``0`` at ``-3`` and ``1`` at ``3`` for hardswish) must
+    # hold on every device.
     *(
         {
-            "id": f"hardsigmoid-{sid}",
-            "f": _stateless(hardsigmoid),
-            "args_fn": lambda dims=dims: (4 * randn(*dims),),
+            "id": f"{name}_kinks",
+            "f": _stateless(fn),
+            "args_fn": lambda: (tensor([-3.0, -1.0, 0.0, 1.0, 3.0]),),
         }
-        for sid, dims in _UNARY_SHAPES.items()
-    ),
-    # The kinks themselves: autograd's convention there (slope ``0`` at both)
-    # must hold on every device.
-    {
-        "id": "hardsigmoid_kinks",
-        "f": _stateless(hardsigmoid),
-        "args_fn": lambda: (tensor([-3.0, -1.0, 0.0, 1.0, 3.0]),),
-    },
-    # ---- Hardswish (quadratic on (-3, 3), kinks at +-3; ``4 * randn`` covers
-    # all three branches) and SiLU (smooth ``x * sigmoid(x)``; plain ``randn``
-    # like ``sigmoid``, whose float32 Stirling-form derivatives lose precision
-    # at high order for large ``|x|``) ---------------------------------------
-    *(
-        {
-            "id": f"{name}-{sid}",
-            "f": _stateless(f),
-            "args_fn": lambda dims=dims, scale=scale: (scale * randn(*dims),),
-        }
-        for name, f, scale in (("hardswish", hardswish, 4), ("silu", silu, 1))
-        for sid, dims in _UNARY_SHAPES.items()
-    ),
-    # The kinks themselves: autograd's one-sided convention there (``0`` at
-    # ``-3``, ``1`` at ``3``) must hold on every device.
-    {
-        "id": "hardswish_kinks",
-        "f": _stateless(hardswish),
-        "args_fn": lambda: (tensor([-3.0, -1.0, 0.0, 1.0, 3.0]),),
-    },
-    # ---- erf (``2 * randn`` covers the tails) ------------------------------
-    *(
-        {
-            "id": f"erf-{sid}",
-            "f": _stateless(erf),
-            "args_fn": lambda dims=dims: (2 * randn(*dims),),
-        }
-        for sid, dims in _UNARY_SHAPES.items()
-    ),
-    # ---- GELU, exact and tanh (``2 * randn`` covers the tails of the exact
-    # variant; plain ``randn`` for the tanh variant, like ``sigmoid`` / ``silu``)
-    *(
-        {
-            "id": f"{name}-{sid}",
-            "f": _stateless(f),
-            "args_fn": lambda dims=dims, scale=scale: (scale * randn(*dims),),
-        }
-        for name, f, scale in (
-            ("gelu", gelu, 2),
-            ("gelu_tanh", lambda x: gelu(x, approximate="tanh"), 1),
-        )
-        for sid, dims in _UNARY_SHAPES.items()
-    ),
-    # ---- log (positive domain; ``rand + 0.5`` keeps inputs in [0.5, 1.5)
-    # so the ``1 / x0**k`` derivatives stay well-conditioned) --------------
-    *(
-        {
-            "id": f"log-{sid}",
-            "f": _stateless(log),
-            "args_fn": lambda dims=dims: (rand(*dims) + 0.5,),
-        }
-        for sid, dims in _UNARY_SHAPES.items()
-    ),
-    # ---- rsqrt (positive domain, shifted like ``log``) --------------------
-    *(
-        {
-            "id": f"rsqrt-{sid}",
-            "f": _stateless(rsqrt),
-            "args_fn": lambda dims=dims: (rand(*dims) + 0.5,),
-        }
-        for sid, dims in _UNARY_SHAPES.items()
+        for name, fn in (("hardsigmoid", hardsigmoid), ("hardswish", hardswish))
     ),
     # ---- Unary with scalar exponent (float + low/high integer) -----------
     # ``pow_int_5`` at ``K=5`` hits the order-equals-exponent edge where the
@@ -904,16 +832,6 @@ PRIMITIVE_CASES = [
     },
     {"id": "add_JC", "f": _stateless(lambda x: x + 2.0), "args_fn": lambda: (rand(4),)},
     {"id": "add_CJ", "f": _stateless(lambda x: 2.0 + x), "args_fn": lambda: (rand(4),)},
-    # ---- add.Scalar (called directly: ``x + 0.5`` and functionalized
-    # ``add_`` trace to ``add.Tensor``) ------------------------------------
-    *(
-        {
-            "id": f"add_scalar-{sid}",
-            "f": _stateless(lambda x: ops.aten.add.Scalar(x, 0.5)),
-            "args_fn": lambda dims=dims: (rand(*dims),),
-        }
-        for sid, dims in _UNARY_SHAPES.items()
-    ),
     # ---- Constant padding (``F.pad``; a nonzero fill, cropping via negative
     # padding, and padding two dims) --------------------------------------
     *(

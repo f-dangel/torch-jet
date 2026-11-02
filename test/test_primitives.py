@@ -1493,9 +1493,7 @@ def test_max_pool2d_matches_with_indices(collapsed: bool, device: str):
     expected, _ = primitives.jet_max_pool2d_with_indices(jet_in, *pool_args)
 
     assert fused.collapsed == expected.collapsed
-    assert len(fused) == len(expected)
-    for got, want in zip(fused, expected):
-        assert_close(got, want, **tolerances_for(device))
+    assert_close(fused, expected, **tolerances_for(device))
 
 
 @mark.parametrize(
@@ -1551,8 +1549,7 @@ def test_fused_rms_norm_matches_traced(collapsed: bool, device: str):
     )
 
     tol = tolerances_for(device)
-    for got, exp_ in zip(out, want):
-        assert_close(got, exp_, **tol)
+    assert_close(out, want, **tol)
     want_rstd = ((x[0] ** 2).mean(-1, keepdim=True) + finfo(float32).eps).rsqrt()
     assert_close(rstd[0], want_rstd, **tol)
 

@@ -135,7 +135,7 @@ f_jet = jet(f, (x,))  # propagates (x₀, x₁, ..., x_K) ↦ (f₀, f₁, ..., 
 
 x0 = x
 x1 = ones_like(x)
-x2 = zeros_like(x)  # or x.new_zeros(()).expand(x.shape), which allocates one element
+x2 = x.new_zeros(()).expand(x.shape)  # stride-0 view of one zero element
 
 # Evaluate the second derivative
 f0, f1, f2 = f_jet((x0, x1, x2))
@@ -206,7 +206,7 @@ f_jet = jet(f, (x,))
 
 # constant Taylor coefficients
 x0 = x
-x2 = zeros_like(x)
+x2 = x.new_zeros(()).expand(x.shape)
 
 d2_diag = zeros_like(x)
 

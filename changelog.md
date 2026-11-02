@@ -168,10 +168,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
-- The `as_strided` and `as_strided_scatter` rules gather coefficients by the
-  primal element each view entry reads instead of restriding them with the
-  primal's strides, which silently gave wrong values for a coefficient whose
-  memory layout differs from the primal's (transposed, expanded)
+- The `as_strided` rule gathers coefficients by the primal element each view
+  entry reads instead of restriding them with the primal's strides, which
+  silently gave wrong values for a coefficient whose memory layout differs from
+  the primal's (transposed, expanded); a view that reads storage outside the
+  input's elements raises `NotImplementedError`
   ([PR](https://github.com/f-dangel/torch-jet/pull/284)).
 - Constant-output rules (`zeros_like`, `ones_like`, `empty_like`, `fill`,
   `new_zeros`) zero their coefficients to the *output's* shape instead of the

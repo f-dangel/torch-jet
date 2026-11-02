@@ -1580,10 +1580,13 @@ def test_as_strided_ignores_coefficient_layout(collapsed: bool, device: str):
         for got, want in zip(jet_f(odd), jet_f(plain)):
             assert_close(got, want)
 
-    # a view that reads storage outside its input's elements has no rule
-    outside = jet(lambda x: x[:1].as_strided([4], [4], 0), (x,), collapsed=collapsed)
+
+def test_as_strided_outside_input_raises(collapsed: bool, device: str):
+    """A view that reads storage outside its input's elements has no rule."""
+    x = rand(4, 4, device=device)
+    jet_f = jet(lambda x: x[:1].as_strided([4], [4], 0), (x,), collapsed=collapsed)
     with raises(NotImplementedError, match="dense input"):
-        outside(*make_jet_args((x,), K, collapsed))
+        jet_f(*make_jet_args((x,), 2, collapsed))
 
 
 def test_as_strided_scatter_ignores_coefficient_layout(collapsed: bool, device: str):

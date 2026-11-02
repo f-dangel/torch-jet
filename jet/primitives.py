@@ -1547,21 +1547,26 @@ def jet_as_strided_scatter(
     """Taylor-mode arithmetic for ``aten.as_strided_scatter(self, src, size, stride, offset)``.
 
     Writes ``src`` into the ``as_strided`` view of a copy of ``self``: jointly
-    linear in both, so :func:`_pair_linear` applies it coefficient-wise.
-    functorch cannot ``vmap`` the op, so a collapsed batched slot restrides by
-    hand: the view gains a leading dim of ``R`` contiguous slices.
+    linear in both, so :func:`_pair_linear` applies it coefficient-wise. As in
+    :func:`jet_as_strided`, the copy of a coefficient of ``self`` is laid out
+    like the primal, so the view lands on the same elements. The primal comes
+    from the native op: the copy has storage offset 0, but the native output
+    keeps the input's, which a later ``as_strided`` node was traced with.
     """
+    x = self[0] if isinstance(self, JetTuple) else self
+    offset = x.storage_offset() if storage_offset is None else storage_offset
+    base = _check_view(x, size, stride, offset)
 
     def prim(a: Tensor, b: Tensor) -> Tensor:
-        return ops.aten.as_strided_scatter.default(a, b, size, stride, storage_offset)
+        out = _in_layout_of(a, x)
+        out.as_strided(size, stride, offset - base).copy_(b)
+        return out.as_strided(x.shape, x.stride(), 0)
 
-    def batched(a: Tensor, b: Tensor) -> Tensor:
-        a = a.contiguous()
-        return ops.aten.as_strided_scatter.default(
-            a, b, [a.shape[0], *size], [a.stride(0), *stride], storage_offset
-        )
-
-    return _pair_linear(prim, batched)(self, src)
+    out = _pair_linear(prim)(self, src)
+    primal = ops.aten.as_strided_scatter.default(
+        x, src[0] if isinstance(src, JetTuple) else src, size, stride, storage_offset
+    )
+    return JetTuple((primal, *out[1:]), collapsed=out.collapsed)
 
 
 def _deflinear(prim: Callable) -> Callable:

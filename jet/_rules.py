@@ -106,6 +106,7 @@ RULES: dict = {
     ops.aten.embedding.default: _defshared(primitives.jet_embedding),
     ops.aten.index_put.default: _defshared(primitives.jet_index_put),
     ops.aten.copy.default: _defshared(primitives.jet_copy),
+    ops.aten.as_strided.default: _defshared(primitives.jet_as_strided),
     ops.aten.as_strided_scatter.default: _defshared(primitives.jet_as_strided_scatter),
     # Current torch lowers all scalar division (``x / 2.0``) to this overload;
     # a Taylor-expanded divisor uses the division recurrence.
@@ -176,7 +177,6 @@ for _prim in (
     # Grouped-query attention repeats each key/value head for its query heads.
     ops.aten.repeat_interleave.self_int,
     ops.aten.clone.default,
-    ops.aten.as_strided.default,
     # Transformer views: ``x[i]`` (``select``), ``x[a:b]`` (``slice``), fancy
     # ``x[idx]`` (``index``; its ``indices: Tensor?[]`` list is forwarded as-is),
     # and ``.to(dtype)`` (``_to_copy``; still linear with a dtype change).

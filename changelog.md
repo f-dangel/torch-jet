@@ -168,6 +168,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
+- The `as_strided` and `as_strided_scatter` rules gather coefficients by the
+  primal element each view entry reads instead of restriding them with the
+  primal's strides, which silently gave wrong values for a coefficient whose
+  memory layout differs from the primal's (transposed, expanded)
+  ([PR](https://github.com/f-dangel/torch-jet/pull/284)).
 - `laplacian` and `bilaplacian` pass their zero Taylor coefficients as stride-0
   views of a scalar instead of dense tensors, so they no longer allocate one
   input-sized buffer (`bilaplacian`: one of shape `(R, *input)` and one of the

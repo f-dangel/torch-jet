@@ -783,12 +783,7 @@ def convolution_backward(
     Each entry has its own Taylor-mode structure: ``grad_input`` is bilinear
     in ``(grad_output, weight)``, ``grad_weight`` is bilinear in
     ``(grad_output, input)``, and ``grad_bias`` sums ``grad_output`` over the
-    batch and spatial dims, so it is linear. The rule therefore honours the
-    caller's mask entry by entry and lifts each requested gradient separately
-    with :func:`_apply_bilinear` / :func:`_apply_linear`. Those helpers call
-    the op once per coefficient (pair), so each such call passes a one-hot
-    ``output_mask`` and keeps only that entry; computing all three gradients
-    per call would waste work on outputs the Leibniz term discards.
+    batch and spatial dims, so it is linear.
 
     The third tensor of each call (``input`` for ``grad_input``, ``weight``
     for ``grad_weight``, both for ``grad_bias``) only provides a shape, so the

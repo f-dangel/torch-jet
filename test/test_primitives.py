@@ -27,6 +27,7 @@ from torch import (
     rand,
     randint,
     randn,
+    randperm,
     relu,
     rsqrt,
     rsub,
@@ -649,6 +650,36 @@ def _where_case(
         "id": cid,
         "f": build,
         "args_fn": lambda: tuple(rand(*_WHERE_SHAPE) for _ in range(n)),
+    }
+
+
+def _index_put_case(cid: str, jets: str, accumulate: bool) -> dict[str, Any]:
+    """``self.index_put((idx,), values, accumulate)``, shapes (3, 4) and (2, 4).
+
+    ``jets`` marks which of ``self`` / ``values`` are jets, the rest are frozen
+    constants. Accumulating writes both rows of ``values`` into the same row
+    of ``self`` (as the backward of ``x[idx]`` does for a repeated index);
+    overwriting uses two distinct rows: with ``accumulate=False`` the behavior
+    is undefined for duplicate indices. Drawn under ``manual_seed(3)``.
+    """
+    shapes = ((3, 4), (2, 4))
+
+    def build(device):
+        manual_seed(3)
+        idx = (tensor([1, 1]) if accumulate else randperm(3)[:2]).to(device)
+        consts = [rand(*shape, **device_kw(device)) for shape in shapes]
+
+        def f(*args):
+            it = iter(args)
+            self, values = [next(it) if j == "J" else c for j, c in zip(jets, consts)]
+            return self.index_put((idx,), values, accumulate)
+
+        return f
+
+    return {
+        "id": cid,
+        "f": build,
+        "args_fn": lambda: tuple(rand(*s) for s, j in zip(shapes, jets) if j == "J"),
     }
 
 
@@ -1294,6 +1325,11 @@ PRIMITIVE_CASES = [
     ),
     _index_case("index_rows", lambda idx: idx),
     _index_case("index_cols", lambda idx: (slice(None), idx)),
+    *(
+        _index_put_case(f"index_put_{jets}{oid}", jets, accumulate)
+        for jets in ("JJ", "JC", "CJ")
+        for oid, accumulate in (("", False), ("_accumulate", True))
+    ),
     # ``as_strided`` restrides a tensor over the same storage; here into the
     # channels_last strides of a ``[N, C, 1, 1]`` tensor. ``as_strided_`` is the
     # in-place variant that adaptive average pooling emits on a channels_last
@@ -1352,6 +1388,12 @@ PRIMITIVE_CASES = [
     {
         "id": "zeros_like_dtype_cast",
         "f": _stateless(lambda x: zeros_like(x, dtype=float32)),
+        "args_fn": lambda: (rand(3, 4),),
+    },
+    # ``new_zeros`` changes the shape: the coefficients take the output's.
+    {
+        "id": "new_zeros",
+        "f": _stateless(lambda x: x.new_zeros((2, 5))),
         "args_fn": lambda: (rand(3, 4),),
     },
     # Autograd seeds its backward pass with ``ones_like(loss)``.

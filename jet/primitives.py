@@ -1501,6 +1501,7 @@ def _pair_linear(prim: Callable[[Tensor, Tensor], Tensor]) -> Callable:
     primal and contributes zeros to every coefficient (``(R, *shape)`` in a
     collapsed batched slot, which ``vmap``s ``prim`` over ``R``).
     """
+    batched_prim = vmap(prim)
 
     def rule(a: Tensor | JetTuple, b: Tensor | JetTuple) -> JetTuple:
         K = _jet_order(a, b)
@@ -1516,7 +1517,7 @@ def _pair_linear(prim: Callable[[Tensor, Tensor], Tensor]) -> Callable:
         out = []
         for k in range(K + 1):
             batched = _is_batched(k, K, jet.collapsed)
-            op = vmap(prim) if batched else prim
+            op = batched_prim if batched else prim
             out.append(op(part(a, k, batched), part(b, k, batched)))
         return JetTuple(out, collapsed=jet.collapsed)
 

@@ -1495,9 +1495,12 @@ def _deflinear_first(prim: Callable) -> Callable:
 def _pair_linear(prim: Callable[[Tensor, Tensor], Tensor]) -> Callable:
     """Build the jet rule of an op jointly linear in two tensor operands.
 
-    Each coefficient is ``prim(a_k, b_k)``; a constant operand enters the
-    primal and contributes zeros to every coefficient (``(R, *shape)`` in a
-    collapsed batched slot, which ``vmap``s ``prim`` over ``R``).
+    Jointly linear: linear in the pair, ``prim(a, b) = A a + B b`` for linear
+    maps ``A``, ``B`` (e.g. ``a + b``, ``cat``, ``index_put``), unlike a
+    bilinear ``a * b``. Hence each coefficient is ``prim(a_k, b_k)``; a constant
+    operand enters the primal and contributes zeros to every coefficient
+    (``(R, *shape)`` in a collapsed batched slot, which ``vmap``s ``prim``
+    over ``R``).
     """
 
     def rule(a: Tensor | JetTuple, b: Tensor | JetTuple) -> JetTuple:

@@ -2,14 +2,14 @@
 
 A jet of a function that differentiates inside traces to a graph of autograd's
 backward ops, so this file checks the jet rules for those ops. A case whose
-backward op has no rule yet is a strict expected failure on one cell of the
-grid; once it passes, its prefix must leave ``UNSUPPORTED``.
+backward op has no rule yet is a strict expected failure; once it passes, its
+prefix must leave ``UNSUPPORTED``.
 """
 
 from functools import partial
 from typing import Any
 
-from pytest import mark, skip
+from pytest import mark, param, skip
 from torch import bincount, manual_seed, rand, tensor
 from torch.func import vjp
 from torch.nn.functional import embedding
@@ -21,22 +21,17 @@ from test.utils import assert_jet_matches_oracle, device_kw, make_jet_args, vjp_
 
 #: Prefixes of the case ids whose VJP needs a backward op without a jet rule.
 UNSUPPORTED: tuple[str, ...] = ()
-CASES = [vjp_case(c) for c in PRIMITIVE_CASES]
-SUPPORTED = [c for c in CASES if not c["id"].startswith(UNSUPPORTED)]
-XFAILED = [c for c in CASES if c["id"].startswith(UNSUPPORTED)]
+NO_RULE = mark.xfail(strict=True, raises=NotImplementedError, reason="no jet rule")
+CASES = [
+    param(c, id=c["id"], marks=NO_RULE if c["id"].startswith(UNSUPPORTED) else ())
+    for c in map(vjp_case, PRIMITIVE_CASES)
+]
 
 
-@mark.parametrize("config", SUPPORTED, ids=lambda c: c["id"])
+@mark.parametrize("config", CASES)
 def test_backward(config: dict[str, Any], K: int, collapsed: bool, device: str):
     """``jet(vjp(primitive))`` matches its mode-specific oracle."""
     assert_jet_matches_oracle(config, K, collapsed, device)
-
-
-@mark.parametrize("config", XFAILED, ids=lambda c: c["id"])
-@mark.xfail(strict=True, raises=NotImplementedError, reason="no jet rule")
-def test_backward_unsupported(config: dict[str, Any], device: str):
-    """A VJP whose backward op has no jet rule raises ``NotImplementedError``."""
-    assert_jet_matches_oracle(config, K=1, collapsed=False, device=device)
 
 
 def test_embedding_backward_scale_grad_by_freq(K: int, collapsed: bool, device: str):

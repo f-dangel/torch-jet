@@ -659,8 +659,8 @@ def _index_put_case(cid: str, jets: str, accumulate: bool) -> dict[str, Any]:
     ``jets`` marks which of ``self`` / ``values`` are jets, the rest are frozen
     constants. Accumulating writes both rows of ``values`` into the same row
     of ``self`` (as the backward of ``x[idx]`` does for a repeated index);
-    overwriting uses two distinct rows, since overwriting a repeat is
-    nondeterministic. Drawn under ``manual_seed(3)``.
+    overwriting uses two distinct rows: with ``accumulate=False`` the behavior
+    is undefined for duplicate indices. Drawn under ``manual_seed(3)``.
     """
     shapes = ((3, 4), (2, 4))
 

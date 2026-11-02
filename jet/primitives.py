@@ -1549,8 +1549,9 @@ def jet_as_strided_scatter(
     Writes ``src`` into the ``as_strided`` view of a copy of ``self``: jointly
     linear in both, so :func:`_pair_linear` applies it coefficient-wise. As in
     :func:`jet_as_strided`, the copy of a coefficient of ``self`` is laid out
-    like the primal, so the view lands on the same elements. The primal keeps
-    the native op (and its output layout).
+    like the primal, so the view lands on the same elements. The primal comes
+    from the native op: the copy has storage offset 0, but the native output
+    keeps the input's, which a later ``as_strided`` node was traced with.
     """
     x = self[0] if isinstance(self, JetTuple) else self
     offset = x.storage_offset() if storage_offset is None else storage_offset

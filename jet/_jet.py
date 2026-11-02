@@ -6,6 +6,7 @@ from typing import Callable
 from torch import Tensor, stack, tensor, zeros_like
 from torch.autograd import grad
 from torch.func import vmap
+from torch.nn.attention import SDPBackend, sdpa_kernel
 from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
 
 from jet.jet_interpreter import JetInterpreter
@@ -73,7 +74,11 @@ def jet(
         >>> vx, vy = Tensor([1.0, 0.0, 0.0]), Tensor([0.0, 1.0, 0.0])
         >>> f0, f1 = jet_f((x, vx), (y, vy))
     """
-    mod, _ = capture_graph(f, mock_args)
+    # Under the MATH backend attention traces to its math-path ops (on MPS to
+    # the math kernel, which has a rule), so no fused kernel without a jet rule
+    # appears in the forward or backward graph.
+    with sdpa_kernel(SDPBackend.MATH):
+        mod, _ = capture_graph(f, mock_args)
     interp = JetInterpreter(mod, collapsed=collapsed)
 
     def transformed(*args: PyTree[Jet]) -> PyTree[Jet]:

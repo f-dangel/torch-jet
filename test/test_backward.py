@@ -2,14 +2,14 @@
 
 A jet of a function that differentiates inside traces to a graph of autograd's
 backward ops, so this file checks the jet rules for those ops. A case whose
-backward op has no rule yet is a strict expected failure; once it passes, its
-prefix must leave ``UNSUPPORTED``.
+backward op has no rule yet must raise ``NotImplementedError``; once it passes,
+its prefix must leave ``UNSUPPORTED``.
 """
 
 from functools import partial
 from typing import Any
 
-from pytest import mark, param, skip
+from pytest import mark, raises, skip
 from torch import bincount, manual_seed, rand, tensor
 from torch.func import vjp
 from torch.nn.functional import embedding
@@ -21,17 +21,22 @@ from test.utils import assert_jet_matches_oracle, device_kw, make_jet_args, vjp_
 
 #: Prefixes of the case ids whose VJP needs a backward op without a jet rule.
 UNSUPPORTED: tuple[str, ...] = ()
-NO_RULE = mark.xfail(strict=True, raises=NotImplementedError, reason="no jet rule")
-CASES = [
-    param(c, id=c["id"], marks=NO_RULE if c["id"].startswith(UNSUPPORTED) else ())
-    for c in map(vjp_case, PRIMITIVE_CASES)
-]
+CASES = [vjp_case(c) for c in PRIMITIVE_CASES]
 
 
-@mark.parametrize("config", CASES)
+@mark.parametrize("config", CASES, ids=lambda c: c["id"])
 def test_backward(config: dict[str, Any], K: int, collapsed: bool, device: str):
-    """``jet(vjp(primitive))`` matches its mode-specific oracle."""
-    assert_jet_matches_oracle(config, K, collapsed, device)
+    """``jet(vjp(primitive))`` matches its mode-specific oracle.
+
+    A case listed in ``UNSUPPORTED`` must raise ``NotImplementedError`` on every
+    cell that reaches a rule; ``collapsed`` with ``K < 2`` is rejected before
+    that and keeps the oracle's check of the guard.
+    """
+    if config["id"].startswith(UNSUPPORTED) and not (collapsed and K < 2):
+        with raises(NotImplementedError, match="No jet rule"):
+            assert_jet_matches_oracle(config, K, collapsed, device)
+    else:
+        assert_jet_matches_oracle(config, K, collapsed, device)
 
 
 def test_embedding_backward_scale_grad_by_freq(K: int, collapsed: bool, device: str):

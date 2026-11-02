@@ -172,7 +172,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   views of a scalar instead of dense tensors, so they no longer allocate one
   input-sized buffer (`bilaplacian`: one of shape `(R, *input)` and one of the
   input's shape) per call
-  ([PR](https://github.com/f-dangel/torch-jet/pull/282)).
+  ([PR](https://github.com/f-dangel/torch-jet/pull/282)); the `jet` docstring
+  and the Taylor-mode example show the pattern
+  ([PR](https://github.com/f-dangel/torch-jet/pull/NNN)).
 - Constant-output rules (`zeros_like`, `ones_like`, `empty_like`, `fill`,
   `new_zeros`) zero their coefficients to the *output's* shape instead of the
   input's; the two differ for `new_zeros` with an explicit size

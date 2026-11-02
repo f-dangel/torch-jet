@@ -1454,6 +1454,48 @@ def jet_index_put(
     )(self, values)
 
 
+def jet_copy(
+    self: Tensor | JetTuple, src: Tensor | JetTuple, non_blocking: bool = False
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.copy(self, src, non_blocking)``.
+
+    The output is ``src`` broadcast to ``self``'s shape and dtype, so it is
+    linear in ``src`` and ``self`` enters only through its primal. A jet
+    ``self`` with a constant ``src`` (its coefficients would be zero) raises.
+    """
+    if not isinstance(src, JetTuple):
+        raise NotImplementedError("jet_copy: a jet self with a constant src")
+    self = self[0] if isinstance(self, JetTuple) else self
+    return _apply_linear(src, lambda c: ops.aten.copy.default(self, c, non_blocking))
+
+
+def jet_as_strided_scatter(
+    self: Tensor | JetTuple,
+    src: Tensor | JetTuple,
+    size: list[int],
+    stride: list[int],
+    storage_offset: int | None = None,
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.as_strided_scatter(self, src, size, stride, offset)``.
+
+    Writes ``src`` into the ``as_strided`` view of a copy of ``self``: jointly
+    linear in both, so :func:`_pair_linear` applies it coefficient-wise.
+    functorch cannot ``vmap`` the op, so a collapsed batched slot restrides by
+    hand: the view gains a leading dim of ``R`` contiguous slices.
+    """
+
+    def prim(a: Tensor, b: Tensor) -> Tensor:
+        return ops.aten.as_strided_scatter.default(a, b, size, stride, storage_offset)
+
+    def batched(a: Tensor, b: Tensor) -> Tensor:
+        a = a.contiguous()
+        return ops.aten.as_strided_scatter.default(
+            a, b, [a.shape[0], *size], [a.stride(0), *stride], storage_offset
+        )
+
+    return _pair_linear(prim, batched)(self, src)
+
+
 def _deflinear(prim: Callable) -> Callable:
     """Build a linear jet rule (standard or collapsed).
 
@@ -1492,16 +1534,20 @@ def _deflinear_first(prim: Callable) -> Callable:
     return rule
 
 
-def _pair_linear(prim: Callable[[Tensor, Tensor], Tensor]) -> Callable:
+def _pair_linear(
+    prim: Callable[[Tensor, Tensor], Tensor],
+    batched_prim: Callable[[Tensor, Tensor], Tensor] | None = None,
+) -> Callable:
     """Build the jet rule of an op jointly linear in two tensor operands.
 
     Jointly linear: linear in the pair, ``prim(a, b) = A a + B b`` for linear
     maps ``A``, ``B`` (e.g. ``index_put``), unlike a bilinear ``a * b``. Hence
     each coefficient is ``prim(a_k, b_k)``; a constant operand enters the
     primal and contributes zeros to every coefficient (``(R, *shape)`` in a
-    collapsed batched slot, which ``vmap``s ``prim`` over ``R``).
+    collapsed batched slot, which applies ``batched_prim`` -- by default
+    ``prim`` ``vmap``ped over ``R``).
     """
-    batched_prim = vmap(prim)
+    batched_prim = vmap(prim) if batched_prim is None else batched_prim
 
     def rule(a: Tensor | JetTuple, b: Tensor | JetTuple) -> JetTuple:
         K = _jet_order(a, b)

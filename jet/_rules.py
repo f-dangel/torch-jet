@@ -105,6 +105,8 @@ RULES: dict = {
     # Token embedding lookup: linear in the weight, integer indices stay constant.
     ops.aten.embedding.default: _defshared(primitives.jet_embedding),
     ops.aten.index_put.default: _defshared(primitives.jet_index_put),
+    ops.aten.copy.default: _defshared(primitives.jet_copy),
+    ops.aten.as_strided_scatter.default: _defshared(primitives.jet_as_strided_scatter),
     # Current torch lowers all scalar division (``x / 2.0``) to this overload;
     # a Taylor-expanded divisor uses the division recurrence.
     ops.aten.div.Tensor: _defshared(primitives.jet_div),

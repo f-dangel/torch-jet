@@ -168,10 +168,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
-- The `as_strided` and `as_strided_scatter` rules gather coefficients by the
-  primal element each view entry reads instead of restriding them with the
-  primal's strides, which silently gave wrong values for a coefficient whose
-  memory layout differs from the primal's (transposed, expanded)
+- The `as_strided` rule copies each coefficient into the primal's memory
+  layout before viewing it like the primal, instead of viewing the
+  coefficient's own storage with the primal's strides, which silently gave
+  wrong values for a coefficient whose layout differs from the primal's
+  (transposed, expanded); a view that reads storage outside the input's
+  elements raises `NotImplementedError`
   ([PR](https://github.com/f-dangel/torch-jet/pull/284)).
 - `laplacian` and `bilaplacian` pass their zero Taylor coefficients as stride-0
   views of a scalar instead of dense tensors, so they no longer allocate one
@@ -208,6 +210,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- In the VJP sweep (`test/test_backward.py`), a case listed in `UNSUPPORTED`
+  is now expected to raise `NotImplementedError` only in the cells that reach a
+  rule; the collapsed `K < 2` cells check the mode's guard as before
+  ([PR](https://github.com/f-dangel/torch-jet/pull/281)).
 - Attention is traced on its math path, so jets of the attention VJP work on
   every device:
   - `jet` traces its function under the math attention backend

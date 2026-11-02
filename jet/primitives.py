@@ -22,12 +22,10 @@ from typing import Callable, Self
 from scipy.special import comb, factorial, stirling2
 from torch import (
     Tensor,
-    arange,
     cat,
     cos,
     erf,
     exp,
-    full,
     log,
     matmul,
     ops,
@@ -1471,30 +1469,44 @@ def jet_copy(
     return _apply_linear(src, lambda c: ops.aten.copy.default(self, c, non_blocking))
 
 
-Layout = tuple[Sequence[int], Sequence[int], int]  # (shape, stride, storage offset)
+def _check_view(
+    x: Tensor, size: Sequence[int], stride: Sequence[int], offset: int
+) -> int:
+    """Check that the view ``(size, stride, offset)`` stays inside ``x``'s elements.
 
+    Args:
+        x: The tensor whose storage the view reads.
+        size: Shape of the view.
+        stride: Strides of the view.
+        offset: Storage offset of the view.
 
-def _element_map(reader: Layout, source: Layout, device) -> Tensor:
-    """Index of the ``source`` element at each ``reader`` entry's storage position.
+    Returns:
+        ``x``'s storage offset, the position of its first element.
 
-    Both layouts address one storage. The result has the reader's shape and is
-    ``-1`` where no source element lives at that position.
+    Raises:
+        NotImplementedError: If ``x`` is not dense (its elements do not fill
+            ``[base, base + numel)``) or the view leaves that range; such a view
+            reads storage no coefficient element corresponds to.
     """
+    base, n = x.storage_offset(), x.numel()
+    dense, expect = True, 1
+    for s, k in sorted((s, k) for k, s in zip(x.shape, x.stride()) if k > 1):
+        dense, expect = dense and s == expect, expect * k
+    last = offset + sum((k - 1) * s for k, s in zip(size, stride) if k > 0)
+    if not dense or offset < base or (0 not in size and last >= base + n):
+        raise NotImplementedError(
+            f"as_strided(size={list(size)}, stride={list(stride)}, offset={offset}) "
+            f"on a tensor of shape {list(x.shape)}, stride {list(x.stride())}, offset "
+            f"{base}: the jet rules need a dense input whose elements the view stays in."
+        )
+    return base
 
-    def last(shape, stride, offset):
-        return offset + sum((n - 1) * s for n, s in zip(shape, stride) if n > 0)
 
-    span = 1 + max(last(*reader), last(*source))
-    positions = arange(span, device=device)
-    element = full((span,), -1, device=device)
-    element[positions.as_strided(*source)] = arange(
-        positions.as_strided(*source).numel(), device=device
-    ).view(source[0])
-    return element[positions.as_strided(*reader)]
-
-
-def _layout(x: Tensor) -> Layout:
-    return x.shape, x.stride(), x.storage_offset()
+def _in_layout_of(c: Tensor, x: Tensor) -> Tensor:
+    """Copy ``c`` into a fresh buffer laid out like ``x`` (with storage offset 0)."""
+    buf = c.new_empty(x.numel())
+    buf.as_strided(x.shape, x.stride(), 0).copy_(c)
+    return buf
 
 
 def jet_as_strided(
@@ -1507,23 +1519,21 @@ def jet_as_strided(
 
     The op reads the storage behind its input, which a coefficient need not
     share (an expanded zero or a transposed coefficient has another layout).
-    So the coefficients are not restrided but gathered by the primal element
-    each entry of the view reads; an entry backed by no primal element is a
-    constant and gets a zero coefficient.
+    So each coefficient is first copied into the primal's layout, then viewed
+    like the primal.
     """
     if not isinstance(self, JetTuple):
         return ops.aten.as_strided.default(self, size, stride, storage_offset)
     x = self[0]
     offset = x.storage_offset() if storage_offset is None else storage_offset
-    element = _element_map((size, stride, offset), _layout(x), x.device)
-    missing = element < 0
+    base = _check_view(x, size, stride, offset)
 
-    def gather(c: Tensor) -> Tensor:
-        return c.reshape(-1)[element.clamp(min=0)].masked_fill(missing, 0)
+    def view(c: Tensor) -> Tensor:
+        return _in_layout_of(c, x).as_strided(size, stride, offset - base)
 
     primal = ops.aten.as_strided.default(x, size, stride, storage_offset)
     return JetTuple(
-        (primal, *_apply_linear_coeffs(self, gather)), collapsed=self.collapsed
+        (primal, *_apply_linear_coeffs(self, view)), collapsed=self.collapsed
     )
 
 
@@ -1537,21 +1547,19 @@ def jet_as_strided_scatter(
     """Taylor-mode arithmetic for ``aten.as_strided_scatter(self, src, size, stride, offset)``.
 
     Writes ``src`` into the ``as_strided`` view of a copy of ``self``: jointly
-    linear in both, so :func:`_pair_linear` applies it coefficient-wise. As in
-    :func:`jet_as_strided`, the view addresses the storage behind ``self``,
-    which its coefficients need not share, so each coefficient of ``self`` is
-    overwritten where the view lands by a gather from ``src``'s coefficient.
+    linear in both, so :func:`_pair_linear` applies it coefficient-wise.
+    functorch cannot ``vmap`` the op, so a collapsed batched slot restrides by
+    hand: the view gains a leading dim of ``R`` contiguous slices.
     """
-    x = self[0] if isinstance(self, JetTuple) else self
-    offset = x.storage_offset() if storage_offset is None else storage_offset
-    written = _element_map(_layout(x), (size, stride, offset), x.device)
-    mask, index = written >= 0, written.clamp(min=0)
 
     def prim(a: Tensor, b: Tensor) -> Tensor:
-        return where(mask, b.reshape(-1)[index], a)
+        return ops.aten.as_strided_scatter.default(a, b, size, stride, storage_offset)
 
     def batched(a: Tensor, b: Tensor) -> Tensor:
-        return where(mask, b.reshape(b.shape[0], -1)[:, index], a)
+        a = a.contiguous()
+        return ops.aten.as_strided_scatter.default(
+            a, b, [a.shape[0], *size], [a.stride(0), *stride], storage_offset
+        )
 
     return _pair_linear(prim, batched)(self, src)
 

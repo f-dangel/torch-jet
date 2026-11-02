@@ -785,11 +785,9 @@ def convolution_backward(
     ``(grad_output, input)``, and ``grad_bias`` sums ``grad_output`` over the
     batch and spatial dims, so it is linear.
 
-    The third tensor of each call (``input`` for ``grad_input``, ``weight``
-    for ``grad_weight``, both for ``grad_bias``) only provides a shape, so the
-    primal goes there: passing a coefficient would silently change nothing
-    but the shape check (the sweep's jet-input cells would catch it, as the
-    pieces would then not depend on that coefficient).
+    The remaining tensor of each call (``input`` for ``grad_input``,
+    ``weight`` for ``grad_weight``, both for ``grad_bias``) only provides a
+    shape, so the primal goes there.
 
     Args:
         grad_output: The incoming gradient; a jet or a constant ``Tensor``.

@@ -1101,6 +1101,46 @@ def jet_max_pool2d(input: JetTuple, *pool_args: object) -> JetTuple:
     return jet
 
 
+def jet_max_pool2d_backward(
+    grad_output: Tensor | JetTuple,
+    input: Tensor | JetTuple,
+    kernel_size: list[int],
+    stride: list[int] = (),
+    padding: list[int] | int = 0,
+    dilation: list[int] | int = 1,
+    ceil_mode: bool = False,
+) -> Tensor | JetTuple:
+    """Taylor-mode arithmetic for ``aten.max_pool2d_backward(grad_output, input, ...)``.
+
+    The fused, indices-free backward some backends emit (e.g. MPS). Max pooling
+    is piecewise linear: its backward scatters ``grad_output`` to the arg-max
+    positions of ``input``, which depend on ``input``'s primal only (the forward
+    rule gathers at the same positions), so the rule is linear in
+    ``grad_output`` and ignores ``input``'s coefficients. It recomputes the
+    ``indices`` from the primal and scatters through
+    ``max_pool2d_with_indices_backward``, which, unlike the fused op, has a
+    vmap rule for collapsed mode.
+
+    Args:
+        grad_output: The incoming gradient and its Taylor coefficients.
+        input: The pooled input (its primal picks the arg-max positions).
+        kernel_size: The pooling window.
+        stride: Its stride; empty for ``kernel_size``.
+        padding: Implicit negative-infinity padding on both sides.
+        dilation: Spacing between window elements.
+        ceil_mode: Whether to round the output size up instead of down.
+
+    Returns:
+        The gradient w.r.t. ``input`` and its Taylor coefficients.
+    """
+    x0 = input[0] if isinstance(input, JetTuple) else input
+    pool_args = (kernel_size, list(stride), padding, dilation, ceil_mode)
+    _, indices = ops.aten.max_pool2d_with_indices.default(x0, *pool_args)
+    return _deflinear(ops.aten.max_pool2d_with_indices_backward.default)(
+        grad_output, x0, *pool_args, indices
+    )
+
+
 # --- Concatenation ---
 
 
@@ -1397,6 +1437,65 @@ def jet_embedding(
     )
 
 
+def jet_index_put(
+    self: Tensor | JetTuple,
+    indices: list[Tensor | None],
+    values: Tensor | JetTuple,
+    accumulate: bool = False,
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.index_put(self, indices, values, accumulate)``.
+
+    Jointly linear in ``self`` and ``values`` for constant integer ``indices``
+    (autograd's backward of ``x[idx]`` scatters into ``new_zeros``), so
+    :func:`_pair_linear` applies the op coefficient-wise.
+    """
+    return _pair_linear(
+        lambda a, b: ops.aten.index_put.default(a, indices, b, accumulate)
+    )(self, values)
+
+
+def jet_copy(
+    self: Tensor | JetTuple, src: Tensor | JetTuple, non_blocking: bool = False
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.copy(self, src, non_blocking)``.
+
+    The output is ``src`` broadcast to ``self``'s shape and dtype, so it is
+    linear in ``src`` and ``self`` enters only through its primal. A jet
+    ``self`` with a constant ``src`` (its coefficients would be zero) raises.
+    """
+    if not isinstance(src, JetTuple):
+        raise NotImplementedError("jet_copy: a jet self with a constant src")
+    self = self[0] if isinstance(self, JetTuple) else self
+    return _apply_linear(src, lambda c: ops.aten.copy.default(self, c, non_blocking))
+
+
+def jet_as_strided_scatter(
+    self: Tensor | JetTuple,
+    src: Tensor | JetTuple,
+    size: list[int],
+    stride: list[int],
+    storage_offset: int | None = None,
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.as_strided_scatter(self, src, size, stride, offset)``.
+
+    Writes ``src`` into the ``as_strided`` view of a copy of ``self``: jointly
+    linear in both, so :func:`_pair_linear` applies it coefficient-wise.
+    functorch cannot ``vmap`` the op, so a collapsed batched slot restrides by
+    hand: the view gains a leading dim of ``R`` contiguous slices.
+    """
+
+    def prim(a: Tensor, b: Tensor) -> Tensor:
+        return ops.aten.as_strided_scatter.default(a, b, size, stride, storage_offset)
+
+    def batched(a: Tensor, b: Tensor) -> Tensor:
+        a = a.contiguous()
+        return ops.aten.as_strided_scatter.default(
+            a, b, [a.shape[0], *size], [a.stride(0), *stride], storage_offset
+        )
+
+    return _pair_linear(prim, batched)(self, src)
+
+
 def _deflinear(prim: Callable) -> Callable:
     """Build a linear jet rule (standard or collapsed).
 
@@ -1415,6 +1514,62 @@ def _deflinear(prim: Callable) -> Callable:
     return rule
 
 
+def _deflinear_first(prim: Callable) -> Callable:
+    """Build the jet rule of an op that is linear in its first tensor argument.
+
+    Like :func:`_deflinear`, but the later tensor arguments are read for their
+    shape or integer indices only, never for their values, so a jet among them
+    is replaced by its primal. E.g. ``avg_pool2d_backward(grad_output, self,
+    ...)`` spreads each entry of ``grad_output`` evenly over its window; ``self``
+    only sets the output's shape, so its coefficients cannot affect the result.
+    Contrast ``tanh_backward(grad_output, output) = grad_output * (1 -
+    output**2)``, where ``output``'s coefficients enter the product: not a
+    linear op but a composition.
+    """
+
+    def rule(self, *args, **kwargs):
+        args = tuple(a[0] if isinstance(a, JetTuple) else a for a in args)
+        return _deflinear(prim)(self, *args, **kwargs)
+
+    return rule
+
+
+def _pair_linear(
+    prim: Callable[[Tensor, Tensor], Tensor],
+    batched_prim: Callable[[Tensor, Tensor], Tensor] | None = None,
+) -> Callable:
+    """Build the jet rule of an op jointly linear in two tensor operands.
+
+    Jointly linear: linear in the pair, ``prim(a, b) = A a + B b`` for linear
+    maps ``A``, ``B`` (e.g. ``index_put``), unlike a bilinear ``a * b``. Hence
+    each coefficient is ``prim(a_k, b_k)``; a constant operand enters the
+    primal and contributes zeros to every coefficient (``(R, *shape)`` in a
+    collapsed batched slot, which applies ``batched_prim`` -- by default
+    ``prim`` ``vmap``ped over ``R``).
+    """
+    batched_prim = vmap(prim) if batched_prim is None else batched_prim
+
+    def rule(a: Tensor | JetTuple, b: Tensor | JetTuple) -> JetTuple:
+        K = _jet_order(a, b)
+        jet = a if isinstance(a, JetTuple) else b
+
+        def part(t: Tensor | JetTuple, k: int, batched: bool) -> Tensor:
+            if isinstance(t, JetTuple):
+                return t[k]
+            if k == 0:
+                return t
+            return t.new_zeros(jet[k].shape[0], *t.shape) if batched else zeros_like(t)
+
+        out = []
+        for k in range(K + 1):
+            batched = _is_batched(k, K, jet.collapsed)
+            op = batched_prim if batched else prim
+            out.append(op(part(a, k, batched), part(b, k, batched)))
+        return JetTuple(out, collapsed=jet.collapsed)
+
+    return rule
+
+
 def _defzero(prim: Callable) -> Callable:
     """Build a constant-output jet rule (output independent of the input).
 
@@ -1422,15 +1577,19 @@ def _defzero(prim: Callable) -> Callable:
     constant-output op has all coefficients zero, so only the primal carries
     information. ``prim`` is applied to the primal to produce the output value
     (which carries any ``dtype`` / ``device`` / ``layout`` kwargs the user
-    passed). Each zero coefficient matches its input slot's shape -- which
-    respects the collapsed per-slot contract (``(R, *S)`` for ``c_1..c_{K-1}``,
-    ``S`` for ``c_K``) and reduces to the primal's shape in standard mode -- and
-    inherits ``primal_out``'s metadata. The output mode follows ``self.collapsed``.
+    passed). Each zero coefficient has the output's shape behind its input
+    slot's leading direction dims -- ``(R, *out)`` for a collapsed
+    ``c_1..c_{K-1}``, ``out`` otherwise -- so ``new_zeros`` with a size
+    different from the input's works. The output mode follows ``self.collapsed``.
     """
 
     def rule(self: JetTuple, *args, **kwargs) -> JetTuple:
         primal_out = prim(self[0], *args, **kwargs)
-        coeffs = [primal_out.new_zeros(c.shape) for c in self[1:]]
+        lead = self[0].ndim
+        coeffs = [
+            primal_out.new_zeros((*c.shape[: c.ndim - lead], *primal_out.shape))
+            for c in self[1:]
+        ]
         return JetTuple([primal_out, *coeffs], collapsed=self.collapsed)
 
     return rule

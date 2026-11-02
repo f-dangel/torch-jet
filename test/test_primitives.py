@@ -27,6 +27,7 @@ from torch import (
     rand,
     randint,
     randn,
+    randperm,
     relu,
     rsqrt,
     rsub,
@@ -46,6 +47,7 @@ from torch.nn.functional import (
     avg_pool2d,
     batch_norm,
     conv2d,
+    conv_transpose2d,
     embedding,
     gelu,
     hardsigmoid,
@@ -223,7 +225,19 @@ _CONV_SHAPES = {
     "x_grouped": (1, _C_IN, 6, 6),  # input for the strided grouped conv
     "w": (_C_OUT, _C_IN, _K, _K),  # weight (C_out, C_in, kH, kW)
     "dw": (_C_OUT, _C_IN // _GROUPS, _K, _K),  # grouped weight
+    "wt": (_C_IN, _C_OUT, _K, _K),  # transposed weight (C_in, C_out, kH, kW)
     "b": (_C_OUT,),  # bias (C_out,)
+}
+
+
+# Conv variants: id suffix -> (functional, weight key, structural kwargs). The
+# plain conv is the default of ``_conv_case``; the others add one case each. A
+# transposed conv is only tested with ``output_padding=0``: PyTorch's double
+# backward raises for other values, so there is no oracle.
+_CONV_VARIANTS = {
+    "": (conv2d, "w", {"stride": 1, "padding": 1}),
+    "transposed": (conv_transpose2d, "wt", {"stride": 2, "padding": 1}),
+    "dilated": (conv2d, "w", {"stride": 2, "padding": 2, "dilation": 2}),
 }
 
 
@@ -234,17 +248,19 @@ def _conv_consts(device: str) -> dict[str, Any]:
     return {name: rand(*shape, **kw) for name, shape in _CONV_SHAPES.items()}
 
 
-def _conv_case(input: str, weight: str, bias: str) -> dict[str, Any]:
+def _conv_case(input: str, weight: str, bias: str, variant: str = "") -> dict[str, Any]:
     """Build one ``{id, f, args_fn}`` case for an ``(input, weight, bias)`` combo.
 
     Each operand code is ``"C"`` (constant) or ``"J"`` (jet); ``bias`` may also be
     ``"N"`` (absent). Jet operands are consumed positionally in the order
     ``input, weight, bias`` so the harness attaches Taylor coefficients to them;
-    constants are frozen via :func:`_conv_consts`. All combos use a plain
-    stride-1, padding-1 conv. The id signature is ``conv2d_<input><weight><bias>``
-    (the absent-bias letter is dropped, so a bias-free conv reads ``conv2d_JC``).
+    constants are frozen via :func:`_conv_consts`. ``variant`` picks the conv
+    from ``_CONV_VARIANTS`` (default: a plain stride-1, padding-1 conv). The id
+    is ``conv2d_<input><weight><bias>`` plus the variant (the absent-bias letter
+    is dropped, so a bias-free conv reads ``conv2d_JC``).
     """
     input_jet, weight_jet, bias_jet = input == "J", weight == "J", bias == "J"
+    conv, weight_key, kwargs = _CONV_VARIANTS[variant]
 
     def builder(device):
         c = _conv_consts(device)
@@ -252,9 +268,9 @@ def _conv_case(input: str, weight: str, bias: str) -> dict[str, Any]:
         def f(*args: Any):
             it = iter(args)
             x = next(it) if input_jet else c["x"]
-            w = next(it) if weight_jet else c["w"]
+            w = next(it) if weight_jet else c[weight_key]
             b = next(it) if bias_jet else (c["b"] if bias == "C" else None)
-            return conv2d(x, w, b, stride=1, padding=1)
+            return conv(x, w, b, **kwargs)
 
         return f
 
@@ -263,13 +279,14 @@ def _conv_case(input: str, weight: str, bias: str) -> dict[str, Any]:
         if input_jet:
             out.append(rand(*_CONV_SHAPES["x"]))
         if weight_jet:
-            out.append(rand(*_CONV_SHAPES["w"]))
+            out.append(rand(*_CONV_SHAPES[weight_key]))
         if bias_jet:
             out.append(rand(*_CONV_SHAPES["b"]))
         return tuple(out)
 
     sig = f"{input}{weight}" + ("" if bias == "N" else bias)
-    return {"id": f"conv2d_{sig}", "f": builder, "args_fn": args_fn}
+    id = f"conv2d_{sig}_{variant}".rstrip("_")
+    return {"id": id, "f": builder, "args_fn": args_fn}
 
 
 def _conv2d_grouped_jet(device):
@@ -286,13 +303,15 @@ def _conv_cases() -> list[dict[str, Any]]:
     absent (``N`` -> bias-free conv), constant (``C``), or a jet (``J``). Combos
     with no jet operand are skipped (nothing to differentiate). Plus one grouped
     (depthwise) conv -- a distinct weight shape, stride, and ``groups`` -- to
-    exercise the grouped dispatch path.
+    exercise the grouped dispatch path, and one all-jet case per non-default
+    ``_CONV_VARIANTS`` entry (transposed, dilated strided).
     """
     cases = [
         _conv_case(input, weight, bias)
         for input, weight, bias in product("CJ", "CJ", "NCJ")
         if "J" in (input, weight, bias)
     ]
+    cases += [_conv_case("J", "J", "J", v) for v in _CONV_VARIANTS if v]
     cases.append(
         {
             "id": "conv2d_grouped",
@@ -649,6 +668,36 @@ def _where_case(
         "id": cid,
         "f": build,
         "args_fn": lambda: tuple(rand(*_WHERE_SHAPE) for _ in range(n)),
+    }
+
+
+def _index_put_case(cid: str, jets: str, accumulate: bool) -> dict[str, Any]:
+    """``self.index_put((idx,), values, accumulate)``, shapes (3, 4) and (2, 4).
+
+    ``jets`` marks which of ``self`` / ``values`` are jets, the rest are frozen
+    constants. Accumulating writes both rows of ``values`` into the same row
+    of ``self`` (as the backward of ``x[idx]`` does for a repeated index);
+    overwriting uses two distinct rows: with ``accumulate=False`` the behavior
+    is undefined for duplicate indices. Drawn under ``manual_seed(3)``.
+    """
+    shapes = ((3, 4), (2, 4))
+
+    def build(device):
+        manual_seed(3)
+        idx = (tensor([1, 1]) if accumulate else randperm(3)[:2]).to(device)
+        consts = [rand(*shape, **device_kw(device)) for shape in shapes]
+
+        def f(*args):
+            it = iter(args)
+            self, values = [next(it) if j == "J" else c for j, c in zip(jets, consts)]
+            return self.index_put((idx,), values, accumulate)
+
+        return f
+
+    return {
+        "id": cid,
+        "f": build,
+        "args_fn": lambda: tuple(rand(*s) for s, j in zip(shapes, jets) if j == "J"),
     }
 
 
@@ -1294,6 +1343,11 @@ PRIMITIVE_CASES = [
     ),
     _index_case("index_rows", lambda idx: idx),
     _index_case("index_cols", lambda idx: (slice(None), idx)),
+    *(
+        _index_put_case(f"index_put_{jets}{oid}", jets, accumulate)
+        for jets in ("JJ", "JC", "CJ")
+        for oid, accumulate in (("", False), ("_accumulate", True))
+    ),
     # ``as_strided`` restrides a tensor over the same storage; here into the
     # channels_last strides of a ``[N, C, 1, 1]`` tensor. ``as_strided_`` is the
     # in-place variant that adaptive average pooling emits on a channels_last
@@ -1352,6 +1406,12 @@ PRIMITIVE_CASES = [
     {
         "id": "zeros_like_dtype_cast",
         "f": _stateless(lambda x: zeros_like(x, dtype=float32)),
+        "args_fn": lambda: (rand(3, 4),),
+    },
+    # ``new_zeros`` changes the shape: the coefficients take the output's.
+    {
+        "id": "new_zeros",
+        "f": _stateless(lambda x: x.new_zeros((2, 5))),
         "args_fn": lambda: (rand(3, 4),),
     },
     # Autograd seeds its backward pass with ``ones_like(loss)``.

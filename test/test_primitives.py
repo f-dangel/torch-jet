@@ -1583,6 +1583,7 @@ def test_as_strided_ignores_coefficient_layout(collapsed: bool, device: str):
 
 def test_as_strided_outside_input_raises(collapsed: bool, device: str):
     """A view that reads storage outside its input's elements has no rule."""
+    manual_seed(0)
     x = rand(4, 4, device=device)
     jet_f = jet(lambda x: x[:1].as_strided([4], [4], 0), (x,), collapsed=collapsed)
     with raises(NotImplementedError, match="dense input"):

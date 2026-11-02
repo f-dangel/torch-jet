@@ -200,7 +200,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `UNSUPPORTED` with `pytest.raises(NotImplementedError)` on the cells that
   reach a rule instead of a strict `xfail` mark, which also hit the collapsed
   `K < 2` cells that only check the mode's guard
-  ([PR](https://github.com/f-dangel/torch-jet/pull/NNN)).
+  ([PR](https://github.com/f-dangel/torch-jet/pull/281)).
 - `jet` traces its function under the math attention backend
   (`sdpa_kernel(SDPBackend.MATH)`), so the trace of
   `F.scaled_dot_product_attention` contains the math-path ops instead of a

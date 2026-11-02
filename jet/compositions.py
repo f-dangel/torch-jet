@@ -774,18 +774,27 @@ def convolution_backward(
 ) -> tuple[Tensor | JetTuple | None, ...]:
     """Taylor-mode arithmetic for ``aten.convolution_backward``.
 
-    Autograd's backward of ``convolution`` returns up to three gradients, each
-    a convolution-like product of two of its tensor inputs: ``grad_input`` is
-    bilinear in ``(grad_output, weight)``, ``grad_weight`` is bilinear in
+    The op returns the triple ``(grad_input, grad_weight, grad_bias)`` and
+    takes a list of three booleans, ``output_mask``, that says which entries
+    to compute; the others are returned as ``None``. Autograd masks out the
+    gradients it does not need (e.g. ``grad_input`` when ``input`` does not
+    require grad, ``grad_bias`` for a bias-free convolution).
+
+    Each entry has its own Taylor-mode structure: ``grad_input`` is bilinear
+    in ``(grad_output, weight)``, ``grad_weight`` is bilinear in
     ``(grad_output, input)``, and ``grad_bias`` sums ``grad_output`` over the
-    batch and spatial dims, so it is linear. Each piece calls the ATen op with
-    a one-hot ``output_mask`` and lifts it with :func:`_apply_bilinear` /
-    :func:`_apply_linear` (Leibniz rule for two jets, coefficient-wise for
-    one). The third tensor of each call (``input`` for ``grad_input``,
-    ``weight`` for ``grad_weight``, both for ``grad_bias``) only provides a
-    shape, so the primal goes there: passing a coefficient would silently
-    change nothing but the shape check (the sweep's jet-input cells would
-    catch it, as the pieces would then not depend on that coefficient).
+    batch and spatial dims, so it is linear. The rule therefore honours the
+    caller's mask entry by entry and lifts each requested gradient separately
+    with :func:`_apply_bilinear` / :func:`_apply_linear`. Those helpers call
+    the op once per coefficient (pair), so each such call passes a one-hot
+    ``output_mask`` and keeps only that entry; computing all three gradients
+    per call would waste work on outputs the Leibniz term discards.
+
+    The third tensor of each call (``input`` for ``grad_input``, ``weight``
+    for ``grad_weight``, both for ``grad_bias``) only provides a shape, so the
+    primal goes there: passing a coefficient would silently change nothing
+    but the shape check (the sweep's jet-input cells would catch it, as the
+    pieces would then not depend on that coefficient).
 
     Args:
         grad_output: The incoming gradient; a jet or a constant ``Tensor``.
@@ -794,7 +803,7 @@ def convolution_backward(
         bias_sizes: The bias shape, or ``None`` for a bias-free convolution.
         *conv_args: The remaining structural arguments (``stride``,
             ``padding``, ``dilation``, ``transposed``, ``output_padding``,
-            ``groups``) and the ``output_mask``, forwarded unchanged.
+            ``groups``), forwarded unchanged, followed by the ``output_mask``.
 
     Returns:
         The op's ``(grad_input, grad_weight, grad_bias)`` triple, each a jet

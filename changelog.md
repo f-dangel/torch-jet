@@ -196,10 +196,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
-- The VJP sweep (`test/test_backward.py`) checks a case listed in
-  `UNSUPPORTED` with `pytest.raises(NotImplementedError)` on the cells that
-  reach a rule instead of a strict `xfail` mark, which also hit the collapsed
-  `K < 2` cells that only check the mode's guard
+- In the VJP sweep (`test/test_backward.py`), a case listed in `UNSUPPORTED`
+  is now expected to raise `NotImplementedError` only in the cells that reach a
+  rule; the collapsed `K < 2` cells check the mode's guard as before
   ([PR](https://github.com/f-dangel/torch-jet/pull/281)).
 - `jet` traces its function under the math attention backend
   (`sdpa_kernel(SDPBackend.MATH)`), so the trace of

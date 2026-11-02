@@ -28,6 +28,7 @@ from torch import (
     empty_like,
     erf,
     exp,
+    full_like,
     log,
     matmul,
     ops,
@@ -1532,21 +1533,33 @@ def jet_as_strided_scatter(
     """Taylor-mode arithmetic for ``aten.as_strided_scatter(self, src, size, stride, offset)``.
 
     Writes ``src`` into the ``as_strided`` view of a copy of ``self``: jointly
-    linear in both, so :func:`_pair_linear` applies it coefficient-wise.
-    functorch cannot ``vmap`` the op, so a collapsed batched slot restrides by
-    hand: the view gains a leading dim of ``R`` contiguous slices.
+    linear in both, so :func:`_pair_linear` applies it coefficient-wise. As in
+    :func:`jet_as_strided`, the view addresses the storage behind ``self``,
+    which its coefficients need not share, so each coefficient of ``self`` is
+    overwritten where the view lands by a gather from ``src``'s coefficient.
+    The primal keeps the native op (and its output layout).
     """
+    x = self[0] if isinstance(self, JetTuple) else self
+    offset = x.storage_offset() if storage_offset is None else storage_offset
+    lookup, base = _storage_lookup(x, size, stride, offset)
+    written = full_like(lookup, -1)  # src element written at each storage position
+    written[lookup.as_strided(size, stride, offset - base)] = arange(
+        written.as_strided(size, stride, offset - base).numel(), device=x.device
+    ).view(size)
+    written = written.as_strided(x.shape, x.stride(), 0)
+    mask, index = written >= 0, written.clamp(min=0)
 
     def prim(a: Tensor, b: Tensor) -> Tensor:
-        return ops.aten.as_strided_scatter.default(a, b, size, stride, storage_offset)
+        return a if 0 in size else where(mask, b.reshape(-1)[index], a)
 
     def batched(a: Tensor, b: Tensor) -> Tensor:
-        a = a.contiguous()
-        return ops.aten.as_strided_scatter.default(
-            a, b, [a.shape[0], *size], [a.stride(0), *stride], storage_offset
-        )
+        return a if 0 in size else where(mask, b.reshape(b.shape[0], -1)[:, index], a)
 
-    return _pair_linear(prim, batched)(self, src)
+    out = _pair_linear(prim, batched)(self, src)
+    primal = ops.aten.as_strided_scatter.default(
+        x, src[0] if isinstance(src, JetTuple) else src, size, stride, storage_offset
+    )
+    return JetTuple((primal, *out[1:]), collapsed=out.collapsed)
 
 
 def _deflinear(prim: Callable) -> Callable:

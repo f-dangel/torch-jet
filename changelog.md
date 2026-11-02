@@ -174,6 +174,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the primal's (transposed, expanded); a view that reads storage outside the
   input's elements raises `NotImplementedError`
   ([PR](https://github.com/f-dangel/torch-jet/pull/284)).
+- The `as_strided_scatter` rule writes the source's coefficients into the
+  input's by element as well, and keeps the native op for the primal; it also
+  restrided the coefficients with the primal's strides before
+  ([PR](https://github.com/f-dangel/torch-jet/pull/285)).
 - Constant-output rules (`zeros_like`, `ones_like`, `empty_like`, `fill`,
   `new_zeros`) zero their coefficients to the *output's* shape instead of the
   input's; the two differ for `new_zeros` with an explicit size

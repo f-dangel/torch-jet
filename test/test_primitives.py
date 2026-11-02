@@ -1586,6 +1586,29 @@ def test_as_strided_ignores_coefficient_layout(collapsed: bool, device: str):
         outside(*make_jet_args((x,), K, collapsed))
 
 
+def test_as_strided_scatter_ignores_coefficient_layout(collapsed: bool, device: str):
+    """``as_strided_scatter`` gathers coefficients by element (see ``as_strided``)."""
+    K = 2
+    manual_seed(0)
+    x, s = rand(4, 4, device=device), rand(2, 2, device=device)
+    jet_f = jet(
+        lambda x, s: ops.aten.as_strided_scatter.default(x, s, [2, 2], [4, 1]),
+        (x, s),
+        collapsed,
+    )
+    for relayout in (
+        lambda c: c.transpose(-2, -1).contiguous().transpose(-2, -1),
+        lambda c: c.new_zeros(()).expand(c.shape),
+    ):
+        odd = tuple(
+            (leaf[0], *(relayout(c) for c in leaf[1:]))
+            for leaf in make_jet_args((x, s), K, collapsed)
+        )
+        plain = tuple((leaf[0], *(c.contiguous() for c in leaf[1:])) for leaf in odd)
+        for got, want in zip(jet_f(*odd), jet_f(*plain)):
+            assert_close(got, want)
+
+
 def test_div_self_is_exact(collapsed: bool, device: str):
     """The order-1..K coefficients of ``x / x`` are exactly zero.
 

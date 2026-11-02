@@ -774,18 +774,20 @@ def convolution_backward(
 ) -> tuple[Tensor | JetTuple | None, ...]:
     """Taylor-mode arithmetic for ``aten.convolution_backward``.
 
-    Autograd's backward of ``convolution`` returns up to three gradients, each
-    a convolution-like product of two of its tensor inputs: ``grad_input`` is
-    bilinear in ``(grad_output, weight)``, ``grad_weight`` is bilinear in
+    The op returns the triple ``(grad_input, grad_weight, grad_bias)`` and
+    takes a list of three booleans, ``output_mask``, that says which entries
+    to compute; the others are returned as ``None``. Autograd masks out the
+    gradients it does not need (e.g. ``grad_input`` when ``input`` does not
+    require grad, ``grad_bias`` for a bias-free convolution).
+
+    Each entry has its own Taylor-mode structure: ``grad_input`` is bilinear
+    in ``(grad_output, weight)``, ``grad_weight`` is bilinear in
     ``(grad_output, input)``, and ``grad_bias`` sums ``grad_output`` over the
-    batch and spatial dims, so it is linear. Each piece calls the ATen op with
-    a one-hot ``output_mask`` and lifts it with :func:`_apply_bilinear` /
-    :func:`_apply_linear` (Leibniz rule for two jets, coefficient-wise for
-    one). The third tensor of each call (``input`` for ``grad_input``,
+    batch and spatial dims, so it is linear.
+
+    The remaining tensor of each call (``input`` for ``grad_input``,
     ``weight`` for ``grad_weight``, both for ``grad_bias``) only provides a
-    shape, so the primal goes there: passing a coefficient would silently
-    change nothing but the shape check (the sweep's jet-input cells would
-    catch it, as the pieces would then not depend on that coefficient).
+    shape, so the primal goes there.
 
     Args:
         grad_output: The incoming gradient; a jet or a constant ``Tensor``.
@@ -794,7 +796,7 @@ def convolution_backward(
         bias_sizes: The bias shape, or ``None`` for a bias-free convolution.
         *conv_args: The remaining structural arguments (``stride``,
             ``padding``, ``dilation``, ``transposed``, ``output_padding``,
-            ``groups``) and the ``output_mask``, forwarded unchanged.
+            ``groups``), forwarded unchanged, followed by the ``output_mask``.
 
     Returns:
         The op's ``(grad_input, grad_weight, grad_bias)`` triple, each a jet
@@ -804,7 +806,7 @@ def convolution_backward(
     *conv_args, output_mask = conv_args
     x, w = (t[0] if isinstance(t, JetTuple) else t for t in (input, weight))
 
-    def piece(index: int) -> Callable:
+    def piece(index: int) -> Callable[[Tensor, Tensor, Tensor], Tensor]:
         """``convolution_backward`` restricted to output ``index``."""
         mask = [i == index for i in range(3)]
 
@@ -815,20 +817,22 @@ def convolution_backward(
 
         return op
 
+    input_piece, weight_piece, bias_piece = (piece(i) for i in range(3))
+
     grad_input = grad_weight = grad_bias = None
     if output_mask[0]:
         grad_input = _apply_bilinear(
-            lambda g, b: piece(0)(g, x, b), grad_output, weight
+            lambda g, b: input_piece(g, x, b), grad_output, weight
         )
     if output_mask[1]:
         grad_weight = _apply_bilinear(
-            lambda g, a: piece(1)(g, a, w), grad_output, input
+            lambda g, a: weight_piece(g, a, w), grad_output, input
         )
     if output_mask[2]:
         grad_bias = (
-            _apply_linear(grad_output, lambda g: piece(2)(g, x, w))
+            _apply_linear(grad_output, lambda g: bias_piece(g, x, w))
             if isinstance(grad_output, JetTuple)
-            else piece(2)(grad_output, x, w)
+            else bias_piece(grad_output, x, w)
         )
     return grad_input, grad_weight, grad_bias
 

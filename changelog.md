@@ -168,11 +168,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
-- The `as_strided` rule gathers coefficients by the primal element each view
-  entry reads instead of restriding them with the primal's strides, which
-  silently gave wrong values for a coefficient whose memory layout differs from
-  the primal's (transposed, expanded); a view that reads storage outside the
-  input's elements raises `NotImplementedError`
+- The `as_strided` rule copies each coefficient into the primal's memory
+  layout before viewing it like the primal, instead of viewing the
+  coefficient's own storage with the primal's strides, which silently gave
+  wrong values for a coefficient whose layout differs from the primal's
+  (transposed, expanded); a view that reads storage outside the input's
+  elements raises `NotImplementedError`
   ([PR](https://github.com/f-dangel/torch-jet/pull/284)).
 - The `as_strided_scatter` rule writes the source's coefficients into the
   input's by element as well, and keeps the native op for the primal; it also

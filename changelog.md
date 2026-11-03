@@ -220,6 +220,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Symbolic zeros, step 6: every rule handles a `None` coefficient, so the
+  opt-in marker and the interpreter's materialization before unmarked rules
+  are gone; the dense-versus-`None` test now enforces the contract for every
+  rule, the backward rules included
+  ([PR](https://github.com/f-dangel/torch-jet/pull/301)).
 - Symbolic zeros, step 5: an input coefficient of order two or higher may be
   `None` (the validator and `freeze` accept it); the collapsed Laplacian and
   Bi-Laplacian pass `None` for their zero input coefficients

@@ -32,8 +32,8 @@ from test.utils import (
 #: The encoder case belongs in CI's ``-m models`` job; mark the whole module.
 pytestmark = mark.models
 
-#: A small MLP and a tiny transformer encoder (its attention puts the
-#: scaled-dot-product-attention adapter of the running device on the path).
+#: A small MLP and a tiny transformer encoder (its attention runs on the math
+#: path, or on the MPS kernel adapter).
 CASES = [SCALAR_OUTPUT_CASES[0], ENCODER_CASES[0]]
 
 

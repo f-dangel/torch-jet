@@ -2,9 +2,10 @@
 
 from typing import Callable
 
-from torch import Tensor, eye, zeros
+from torch import Tensor, eye
 
 from jet._jet import _uncollapsed_via_vmap, jet
+from jet.primitives import _zero_coeff
 from jet.utils import (
     PyTree,
     require_single_tensor_input,
@@ -160,9 +161,7 @@ def laplacian(
             else sample(x, randomization[0], shape)
         )
         X1 = apply_weightings(x, V)
-        # stride-0 view holding one element; a factory (not ``x.new_zeros``) so
-        # that it stays unbatched when ``lap_f`` runs under ``vmap``
-        z = zeros((), dtype=x.dtype, device=x.device).expand(x.shape)
+        z = _zero_coeff(x, x.shape)
 
         _, _, F2 = require_single_tensor_output(cjet_f((x, X1, z)), "laplacian")
 

@@ -224,38 +224,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   jet takes anyway; PyTorch's fused CUDA fast path computes `gelu` with the
   tanh approximation, so the reference disagreed with the jet
   ([PR](https://github.com/f-dangel/torch-jet/pull/307)).
+- The attention-substitute tests expect the missing double backward on the
+  CPU and on CUDA in `float32`; CUDA in `float64` takes the
+  twice-differentiable math path
+  ([PR](https://github.com/f-dangel/torch-jet/pull/308)).
 - Ruff now ignores the magic trailing comma, so a construct that fits on one line is
   collapsed by `ruff format` and flagged by `make lint` and CI
   ([PR](https://github.com/f-dangel/torch-jet/pull/303)).
-- Symbolic zeros, step 6: every rule handles a `None` coefficient, so the
-  opt-in marker and the interpreter's materialization before unmarked rules
-  are gone; the dense-versus-`None` test now enforces the contract for every
-  rule, the backward rules included
-  ([PR](https://github.com/f-dangel/torch-jet/pull/301)).
-- Symbolic zeros, step 5: an input coefficient of order two or higher may be
-  `None` (the validator and `freeze` accept it); the collapsed Laplacian and
-  Bi-Laplacian pass `None` for their zero input coefficients
-  ([PR](https://github.com/f-dangel/torch-jet/pull/300)).
-- Symbolic zeros, step 4: the additive rules, `cat`, `where`, `masked_fill`,
-  `embedding`, the jointly linear rules and the constant-output rules pass a
-  `None` coefficient through (a constant-output rule now returns `None`
-  above order one); `addmm`, `stack` and `convolution` opt in
-  ([PR](https://github.com/f-dangel/torch-jet/pull/299)).
-- Symbolic zeros, step 3: the Leibniz product, Faà di Bruno and division
-  recurrences drop every term with a `None` factor and return `None` when
-  all terms vanish; the elementwise, `mul`, `mm` and `div` rules opt in
-  ([PR](https://github.com/f-dangel/torch-jet/pull/298)).
-- Symbolic zeros, step 2: the linear helpers (`_apply_linear_coeffs`,
-  `_apply_linear`, `_broadcast_coeffs`) pass a `None` coefficient through,
-  and the rules `_deflinear` and `_deflinear_first` build opt in
-  ([PR](https://github.com/f-dangel/torch-jet/pull/297)).
-- Symbolic zeros, step 1: a `JetTuple` coefficient of order 2 or higher may
-  be `None` (a zero known by construction, never inferred from values).
-  Rules opt in with `_symbolic_zeros`; the interpreter materializes the
-  `None` entries before any other rule and at the output, so nothing
-  observable changes yet. A new test module feeds every primitive case a
-  symbolic zero tail and compares against dense zeros
-  ([PR](https://github.com/f-dangel/torch-jet/pull/296)).
+- Symbolic zeros: a `JetTuple` coefficient of order two or higher may be
+  `None`, a zero known by construction (never inferred from values). Every
+  rule skips the terms a `None` would contribute, and the interpreter
+  materializes `None` as dense zeros only at the output. In steps:
+  - the contract and a test module that feeds every case a symbolic-zero
+    tail and compares against dense zeros
+    ([PR](https://github.com/f-dangel/torch-jet/pull/296));
+  - the linear helpers pass `None` through
+    ([PR](https://github.com/f-dangel/torch-jet/pull/297));
+  - the Leibniz, Faà di Bruno and division recurrences drop every term with
+    a `None` factor and return `None` when all terms vanish
+    ([PR](https://github.com/f-dangel/torch-jet/pull/298));
+  - the additive rules, `cat`, `where`, `masked_fill`, `embedding`, the
+    jointly linear rules and the constant-output rules pass `None` through;
+    a constant-output rule returns `None` above order one
+    ([PR](https://github.com/f-dangel/torch-jet/pull/299));
+  - an input coefficient of order two or higher may be `None` (the validator
+    and `freeze` accept it); the collapsed Laplacian and Bi-Laplacian pass
+    `None` for their zero input coefficients
+    ([PR](https://github.com/f-dangel/torch-jet/pull/300));
+  - every rule handles `None`, so the interim opt-in marker and the
+    interpreter's materialization before unmarked rules are gone; the test
+    covers the backward rules too
+    ([PR](https://github.com/f-dangel/torch-jet/pull/301)).
 - The interpreter names the derivative order and the number of collapsed
   directions `K` and `R`, like every other module
   ([PR](https://github.com/f-dangel/torch-jet/pull/302)).

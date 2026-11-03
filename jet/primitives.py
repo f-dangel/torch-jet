@@ -13,7 +13,7 @@ At each nonlinear collapsed op, the K-th output coefficient is computed as
 ``out_K = LINEAR_TERM(in_K_collapsed) + NONLINEAR_TERMS(in_1..K-1).sum(0)``.
 """
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 from functools import partial
 from math import pi, sqrt
 from operator import add, sub
@@ -116,29 +116,21 @@ def _symbolic_zeros(rule: Callable) -> Callable:
     return rule
 
 
-def _jet_args(args: Sequence[object]) -> Iterator[JetTuple]:
-    """Yield the ``JetTuple`` args, at top level or nested inside a ``list``.
-
-    Jets may appear at the top level or nested one level inside a ``list`` arg
-    (e.g. ``aten.cat([j1, j2], dim)``). Only ``list`` args are scanned, not
-    ``tuple``: multi-output ops (e.g. ``max_pool2d_with_indices``) return a
-    ``tuple`` whose element 0 is a jet, and the following ``getitem`` must fall
-    through to the default op.
-    """
-    for a in args:
-        if isinstance(a, JetTuple):
-            yield a
-        elif isinstance(a, list):
-            yield from (e for e in a if isinstance(e, JetTuple))
-
-
 def _has_jet_arg(args: Sequence[object]) -> bool:
-    """Return whether any arg is a ``JetTuple`` (see :func:`_jet_args`).
+    """Return whether any arg is a ``JetTuple``, at top level or inside a ``list``.
 
     The interpreter and the composition rules share this test to decide whether
-    an op gets its jet rule or runs natively.
+    an op gets its jet rule or runs natively. Jets may appear at the top level or
+    nested one level inside a ``list`` arg (e.g. ``aten.cat([j1, j2], dim)``).
+    Only ``list`` args are scanned, not ``tuple``: multi-output ops (e.g.
+    ``max_pool2d_with_indices``) return a ``tuple`` whose element 0 is a jet,
+    and the following ``getitem`` must fall through to the default op.
     """
-    return any(True for _ in _jet_args(args))
+    return any(
+        isinstance(a, JetTuple)
+        or (isinstance(a, list) and any(isinstance(e, JetTuple) for e in a))
+        for a in args
+    )
 
 
 def _jet_order(*args: Tensor) -> int:

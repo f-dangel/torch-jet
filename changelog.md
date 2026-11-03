@@ -215,6 +215,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Symbolic zeros, step 4: the additive rules, `cat`, `where`, `masked_fill`,
+  `embedding`, the jointly linear rules and the constant-output rules pass a
+  `None` coefficient through (a constant-output rule now returns `None`
+  above order one); `addmm`, `stack` and `convolution` opt in
+  ([PR](https://github.com/f-dangel/torch-jet/pull/299)).
 - Symbolic zeros, step 3: the Leibniz product, Faà di Bruno and division
   recurrences drop every term with a `None` factor and return `None` when
   all terms vanish; the elementwise, `mul`, `mm` and `div` rules opt in

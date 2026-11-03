@@ -3,14 +3,17 @@
 from typing import Any
 
 from pytest import mark
-from torch import zeros_like
+from torch import ops, rand, zeros_like
 from torch.nn.attention import SDPBackend, sdpa_kernel
 from torch.testing import assert_close
 from torch.utils._pytree import tree_flatten, tree_map
 
 from jet import capture_graph
+from jet._rules import RULES
 from jet.jet_interpreter import JetInterpreter
+from jet.primitives import JetTuple, jet_add, jet_cat
 from jet.utils import _is_jet_leaf
+from test.test_composition import COMPOSITION_CASES
 from test.test_primitives import PRIMITIVE_CASES
 from test.utils import make_jet_args, setup_case, tolerances_for
 
@@ -29,7 +32,7 @@ def _run_unchecked(f: Any, mock_args: tuple, collapsed: bool, args: tuple) -> An
 
 
 @mark.parametrize("K", [2, 3], ids=["K2", "K3"])
-@mark.parametrize("config", PRIMITIVE_CASES, ids=lambda c: c["id"])
+@mark.parametrize("config", PRIMITIVE_CASES + COMPOSITION_CASES, ids=lambda c: c["id"])
 def test_symbolic_zero_tail_matches_dense(
     config: dict[str, Any], K: int, collapsed: bool, device: str
 ):
@@ -47,3 +50,13 @@ def test_symbolic_zero_tail_matches_dense(
     want = _run_unchecked(f, mock_args, collapsed, dense)
     got = _run_unchecked(f, mock_args, collapsed, symbolic)
     assert_close(got, want, **tolerances_for(device))
+
+
+def test_symbolic_zero_survives_linear_rules(collapsed: bool, device: str):
+    """``add``, ``cat`` and a constant-output op keep a ``None`` coefficient ``None``."""
+    x = rand(3, device=device)
+    c_1 = rand(2, 3, device=device) if collapsed else rand(3, device=device)
+    a = JetTuple((x, c_1, None), collapsed=collapsed)
+    assert jet_add(a, a)[2] is None
+    assert jet_cat([a, x])[2] is None
+    assert RULES[ops.aten.zeros_like.default](a)[2] is None

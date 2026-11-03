@@ -176,13 +176,20 @@ def _coeff(t: Tensor | JetTuple, k: int, batched: bool, R: int) -> Tensor:
     """Coefficient ``k`` of an operand: a jet's own, or a constant's value / zeros.
 
     A constant enters the primal (``k == 0``) and contributes zeros to every
-    other coefficient, of shape ``(R, *t.shape)`` in a ``batched`` slot.
+    other coefficient, of shape ``(R, *t.shape)`` in a ``batched`` slot; a
+    jet's symbolic-zero (``None``) coefficient is materialized the same way.
     """
-    if isinstance(t, JetTuple):
-        return t[k]
-    if k == 0:
-        return t
-    return _zero_coeff(t, (R, *t.shape) if batched else t.shape)
+    is_jet = isinstance(t, JetTuple)
+    c = t[k] if is_jet else (t if k == 0 else None)
+    if c is not None:
+        return c
+    like = t[0] if is_jet else t
+    return _zero_coeff(like, (R, *like.shape) if batched else like.shape)
+
+
+def _all_none(operands: Sequence[Tensor | JetTuple], k: int) -> bool:
+    """Whether coefficient ``k`` is a symbolic zero in every jet of ``operands``."""
+    return all(t[k] is None for t in operands if isinstance(t, JetTuple))
 
 
 def _apply_linear(
@@ -281,12 +288,16 @@ def _pointwise(
     self: JetTuple,
     other: JetTuple,
     op: Callable[[Tensor, Tensor], Tensor],
+    neg: Callable[[Tensor], Tensor],
 ) -> JetTuple:
     """Apply pointwise ``op`` to two jets of equal order and mode.
 
     Broadcasts both operands' coefficients up to the result primal's shape via
     :func:`_broadcast_coeffs` before ``op``, so different-rank operands align
-    over their primal dims (R-aware in collapsed mode).
+    over their primal dims (R-aware in collapsed mode). A symbolic-zero
+    (``None``) coefficient leaves the other operand's coefficient as the result,
+    through ``neg`` when ``self``'s is the ``None`` one (``op(0, o)``); two
+    ``None`` coefficients stay ``None``.
 
     ``op`` must be elementwise (it broadcasts over leading dims); the product
     rules use the Leibniz helpers instead (see :func:`_apply_bilinear`).
@@ -295,7 +306,13 @@ def _pointwise(
     primal = op(self[0], other[0])
     s_coeffs = _broadcast_coeffs(self, primal)
     o_coeffs = _broadcast_coeffs(other, primal)
-    coeffs = (op(s, o) for s, o in zip(s_coeffs, o_coeffs))
+
+    def combine(s: Tensor | None, o: Tensor | None) -> Tensor | None:
+        if s is None:
+            return None if o is None else neg(o)
+        return s if o is None else op(s, o)
+
+    coeffs = (combine(s, o) for s, o in zip(s_coeffs, o_coeffs))
     return JetTuple((primal, *coeffs), collapsed=self.collapsed)
 
 
@@ -960,7 +977,7 @@ def _addsub(
     self_is = isinstance(self, JetTuple)
     other_is = isinstance(other, JetTuple)
     if self_is and other_is:
-        return _pointwise(self, other, op)
+        return _pointwise(self, other, op, neg)
     if self_is:
         primal = op(self[0], other)
         return JetTuple(
@@ -969,10 +986,12 @@ def _addsub(
     if other_is:
         primal = op(self, other[0])
         coeffs = _broadcast_coeffs(other, primal)
-        return JetTuple((primal, *map(neg, coeffs)), collapsed=other.collapsed)
+        coeffs = (None if c is None else neg(c) for c in coeffs)
+        return JetTuple((primal, *coeffs), collapsed=other.collapsed)
     return op(self, other)
 
 
+@_symbolic_zeros
 def jet_add(
     self: Tensor | JetTuple | float | int,
     other: Tensor | JetTuple | float | int,
@@ -990,6 +1009,7 @@ def jet_add(
     return _addsub(self, other, add, lambda c: c)
 
 
+@_symbolic_zeros
 def jet_sub(
     self: Tensor | JetTuple | float | int,
     other: Tensor | JetTuple | float | int,
@@ -1007,6 +1027,7 @@ def jet_sub(
     return _addsub(self, other, sub, lambda c: -c)
 
 
+@_symbolic_zeros
 def jet_rsub(
     self: Tensor | JetTuple,
     other: Tensor | JetTuple | float | int,
@@ -1228,6 +1249,7 @@ def jet_max_pool2d_backward(
 # --- Concatenation ---
 
 
+@_symbolic_zeros
 def jet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.cat(tensors, dim)``.
 
@@ -1238,7 +1260,8 @@ def jet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
     non-negative concat ``dim`` shifts by one there and constant operands pad
     with ``(R, *shape)`` zeros to match. Standard mode has no batched
     coefficients, so that machinery stays inert (``dim`` unshifted, zeros of
-    the operand's shape).
+    the operand's shape). A coefficient that is a symbolic zero (``None``) in
+    every jet operand stays ``None``.
 
     Args:
         tensors: The list of operands; each is a jet or a constant ``Tensor``.
@@ -1260,12 +1283,16 @@ def jet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
 
     out = []
     for k in range(K + 1):
+        if _all_none(tensors, k):
+            out.append(None)
+            continue
         batched = _is_batched(k, K, collapsed)
         d = dim + 1 if (batched and dim >= 0) else dim
         out.append(cat([_coeff(t, k, batched, R) for t in tensors], d))
     return JetTuple(tuple(out), collapsed=collapsed)
 
 
+@_symbolic_zeros
 def jet_where(
     condition: Tensor,
     self: Tensor | JetTuple | float | int,
@@ -1303,6 +1330,7 @@ def jet_where(
     return jet_add(keep(self, condition), keep(other, ~condition))
 
 
+@_symbolic_zeros
 def jet_masked_fill(
     self: Tensor | JetTuple, mask: Tensor, value: Tensor | JetTuple | float | int
 ) -> JetTuple:
@@ -1472,6 +1500,7 @@ def _bn_channel_view(primal: Tensor) -> tuple[int, ...]:
 # ``RULES`` registry lives in :mod:`jet._rules`.
 
 
+@_symbolic_zeros
 def jet_embedding(
     weight: Tensor | JetTuple, indices: Tensor, padding_idx: int = -1, *args
 ) -> JetTuple:
@@ -1502,10 +1531,12 @@ def jet_embedding(
     K, collapsed = len(weight) - 1, weight.collapsed
     padded = (indices == padding_idx).unsqueeze(-1) if padding_idx >= 0 else None
 
-    def coeff(k: int) -> Tensor:
+    def coeff(k: int) -> Tensor | None:
         # Index the batched (R, V, D) coefficients along dim 1 instead of
         # vmapping the op: functorch's batching rule clones the whole table.
         w_k = weight[k]
+        if w_k is None:
+            return None
         c = w_k[:, indices] if _is_batched(k, K, collapsed) else op(w_k)
         return c if padded is None else c.masked_fill(padded, 0)
 
@@ -1514,6 +1545,7 @@ def jet_embedding(
     )
 
 
+@_symbolic_zeros
 def jet_index_put(
     self: Tensor | JetTuple,
     indices: list[Tensor | None],
@@ -1692,7 +1724,8 @@ def _pair_linear(
     maps ``A``, ``B`` (e.g. ``index_put``), unlike a bilinear ``a * b``. Hence
     each coefficient is ``prim(a_k, b_k)`` (``vmap``ped over ``R`` in a
     collapsed batched slot); a constant operand enters the primal and
-    contributes zeros to every coefficient. ``primal`` computes the value
+    contributes zeros to every coefficient, and a coefficient that is a
+    symbolic zero (``None``) in both operands stays ``None``. ``primal`` computes the value
     instead of ``prim`` when the two differ (the native op may keep
     storage metadata that a linear re-implementation does not).
     """
@@ -1706,12 +1739,15 @@ def _pair_linear(
 
         out = [primal(_coeff(a, 0, False, R), _coeff(b, 0, False, R))]
         for k in range(1, K + 1):
+            if _all_none((a, b), k):
+                out.append(None)
+                continue
             batched = _is_batched(k, K, jet.collapsed)
             op = batched_prim if batched else prim
             out.append(op(_coeff(a, k, batched, R), _coeff(b, k, batched, R)))
         return JetTuple(out, collapsed=jet.collapsed)
 
-    return rule
+    return _symbolic_zeros(rule)
 
 
 def _defzero(prim: Callable) -> Callable:
@@ -1721,19 +1757,19 @@ def _defzero(prim: Callable) -> Callable:
     constant-output op has all coefficients zero, so only the primal carries
     information. ``prim`` is applied to the primal to produce the output value
     (which carries any ``dtype`` / ``device`` / ``layout`` kwargs the user
-    passed). Each zero coefficient has the output's shape behind its input
-    slot's leading direction dims -- ``(R, *out)`` for a collapsed
-    ``c_1..c_{K-1}``, ``out`` otherwise -- so ``new_zeros`` with a size
-    different from the input's works. The output mode follows ``self.collapsed``.
+    passed). ``c_1`` is a zero with the output's shape behind its input slot's
+    leading direction dims (``(R, *out)`` when collapsed and ``K > 1``), so
+    ``new_zeros`` with a size different from the input's works; the higher
+    coefficients are symbolic zeros (``None``). The output mode follows
+    ``self.collapsed``.
     """
 
     def rule(self: JetTuple, *args, **kwargs) -> JetTuple:
         primal_out = prim(self[0], *args, **kwargs)
-        lead = self[0].ndim
-        coeffs = [
-            _zero_coeff(primal_out, (*c.shape[: c.ndim - lead], *primal_out.shape))
-            for c in self[1:]
-        ]
+        coeffs: list[Tensor | None] = [None] * (len(self) - 1)
+        if coeffs:
+            lead = self[1].shape[: self[1].ndim - self[0].ndim]
+            coeffs[0] = _zero_coeff(primal_out, (*lead, *primal_out.shape))
         return JetTuple([primal_out, *coeffs], collapsed=self.collapsed)
 
-    return rule
+    return _symbolic_zeros(rule)

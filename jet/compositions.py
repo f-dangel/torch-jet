@@ -25,6 +25,7 @@ from jet.primitives import (
     _elementwise,
     _gelu_exact_derivatives,
     _has_jet_arg,
+    _symbolic_zeros,
 )
 
 
@@ -48,6 +49,7 @@ def _rule(op: Callable) -> Callable:
     return dispatch
 
 
+@_symbolic_zeros
 def addmm(
     self: Tensor | JetTuple, mat1: Tensor | JetTuple, mat2: Tensor | JetTuple
 ) -> JetTuple:
@@ -72,6 +74,7 @@ def addmm(
     return add(self, mm(mat1, mat2))
 
 
+@_symbolic_zeros
 def stack(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.stack(tensors, dim)``.
 
@@ -95,6 +98,7 @@ def stack(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
     return cat([unsqueeze(t, dim) for t in tensors], dim)
 
 
+@_symbolic_zeros
 def convolution(
     input: Tensor | JetTuple,
     weight: Tensor | JetTuple,

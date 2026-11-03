@@ -215,6 +215,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- The attention-substitute tests expect the missing double backward on the
+  CPU only; CUDA in `float64` takes the twice-differentiable math path
+  ([PR](https://github.com/f-dangel/torch-jet/pull/308)).
 - Symbolic zeros, step 4: the additive rules, `cat`, `where`, `masked_fill`,
   `embedding`, the jointly linear rules and the constant-output rules pass a
   `None` coefficient through (a constant-output rule now returns `None`

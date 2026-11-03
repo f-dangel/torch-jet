@@ -220,6 +220,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- The transformer-encoder tests run the encoder on its plain path, which a
+  jet takes anyway; PyTorch's fused CUDA fast path computes `gelu` with the
+  tanh approximation, so the reference disagreed with the jet
+  ([PR](https://github.com/f-dangel/torch-jet/pull/307)).
 - The attention-substitute tests expect the missing double backward on the
   CPU and on CUDA in `float32`; CUDA in `float64` takes the
   twice-differentiable math path

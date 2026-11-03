@@ -12,6 +12,9 @@ against ``mock_args``'s structure and the per-mode shape rules:
   ``(R, *S)`` with shared ``R`` across all leaves; ``c_K`` has shape ``S`` (the
   collapsed slot). Requires ``K >= 2``.
 
+In either mode a coefficient of order two or higher may be ``None``: a symbolic
+zero, skipped by the shape checks and by the rules (see :func:`jet.jet`).
+
 Structural traversal is delegated to PyTorch's pytree machinery (``tree_flatten``
 plus ``TreeSpec.flatten_up_to``) which raises ``"Node type/arity mismatch"``
 when ``args`` diverges from ``mock_args``'s structure.
@@ -22,14 +25,11 @@ from typing import Any
 from torch import Tensor
 from torch.utils._pytree import tree_flatten
 
-from jet.utils import Jet, PyTree
+from jet.utils import Jet, PyTree, _is_jet_leaf
 
 
 def validate_input_jet(
-    mock: tuple[PyTree[Tensor], ...],
-    args: tuple[PyTree[Jet], ...],
-    *,
-    collapsed: bool,
+    mock: tuple[PyTree[Tensor], ...], args: tuple[PyTree[Jet], ...], *, collapsed: bool
 ) -> tuple[list[Jet], int, int | None]:
     """Validate ``args`` against ``mock``'s structure and shapes.
 
@@ -75,11 +75,7 @@ def validate_input_jet(
 
 
 def _validate_jet_leaf(
-    mock: Tensor,
-    arg: Any,
-    collapsed: bool,
-    K_seen: int | None,
-    R_seen: int | None,
+    mock: Tensor, arg: Any, collapsed: bool, K_seen: int | None, R_seen: int | None
 ) -> tuple[int, int | None]:
     """Check that ``arg`` is a valid jet tuple matching ``mock``'s shape.
 
@@ -88,7 +84,8 @@ def _validate_jet_leaf(
 
     Args:
         mock: The expected primal shape (one tensor leaf of ``mock_args``).
-        arg: Candidate jet tuple ``(primal, c_1, ..., c_K)`` of tensors.
+        arg: Candidate jet tuple ``(primal, c_1, ..., c_K)`` of tensors; the
+            coefficients of order two and higher may be ``None``.
         collapsed: Whether to apply the collapsed-mode shape rules.
         K_seen: Derivative order observed at an earlier leaf, or ``None`` if
             this is the first leaf.
@@ -100,7 +97,7 @@ def _validate_jet_leaf(
         (so the caller can thread the pair to the next leaf).
 
     Raises:
-        ValueError: If ``arg`` is not a tuple of tensors, if its ``K`` or
+        ValueError: If ``arg`` is not a jet tuple, if its ``K`` or
             ``R`` disagrees with ``K_seen`` / ``R_seen``, if ``collapsed``
             mode is requested with ``K < 2``, or if any coefficient has the
             wrong shape.
@@ -115,9 +112,10 @@ def _validate_jet_leaf(
         raise ValueError(
             f"jet tuple must have at least 1 entry (primal), got length {len(arg)}."
         )
-    if not all(isinstance(e, Tensor) for e in arg):
+    if not _is_jet_leaf(arg):
         raise ValueError(
-            f"every entry of a jet tuple must be a Tensor; got types "
+            "the primal and c_1 of a jet tuple must be tensors and every higher "
+            "coefficient a tensor or None (a symbolic zero); got types "
             f"{[type(e).__name__ for e in arg]}."
         )
 
@@ -151,13 +149,17 @@ def _validate_jet_leaf(
     return K, R_seen if R_seen is not None else R
 
 
-def _check_coeffs(coeffs: list[Tensor], mock: Tensor, collapsed: bool) -> int | None:
+def _check_coeffs(
+    coeffs: list[Tensor | None], mock: Tensor, collapsed: bool
+) -> int | None:
     """Validate coefficient shapes against ``mock``'s shape.
 
     - Standard mode: every ``c_k`` has shape ``mock.shape``.
     - Collapsed mode: ``c_1..c_{K-1}`` have shape ``(R, *mock.shape)`` with
       shared ``R`` within the leaf; ``c_K`` has ``mock.shape`` (collapsed
       slot).
+    - A ``None`` coefficient (a symbolic zero) has no shape and is skipped;
+      ``c_1`` is always a tensor, so ``R`` is still found.
 
     Returns the leaf's ``R`` (collapsed mode with ``K >= 2``) for the caller
     to cross-check against other leaves, or ``None`` otherwise.
@@ -176,6 +178,8 @@ def _check_coeffs(coeffs: list[Tensor], mock: Tensor, collapsed: bool) -> int | 
     for k, c in enumerate(coeffs, start=1):
         # Batched: (R, *S). Otherwise: S (which covers all of standard mode
         # and the collapsed slot c_K).
+        if c is None:
+            continue
         if collapsed and k < K:
             if c.ndim != mock.ndim + 1 or c.shape[1:] != mock.shape:
                 raise ValueError(

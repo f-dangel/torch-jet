@@ -79,9 +79,7 @@ def test_laplacian_functions(
 
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize(
-    "distribution",
-    LAPLACIAN_SUPPORTED_DISTRIBUTIONS,
-    ids=lambda d: f"distribution={d}",
+    "distribution", LAPLACIAN_SUPPORTED_DISTRIBUTIONS, ids=lambda d: f"distribution={d}"
 )
 @mark.parametrize("config", EXP01_CASES, ids=lambda c: c["id"])
 def test_randomized_laplacian_functions_identical(
@@ -135,9 +133,7 @@ def test_randomized_laplacian_functions_identical(
 @mark.parametrize("weights", WEIGHTS, ids=WEIGHT_IDS)
 @mark.parametrize("strategy", SUPPORTED_STRATEGIES, ids=lambda s: f"strategy={s}")
 @mark.parametrize(
-    "distribution",
-    LAPLACIAN_SUPPORTED_DISTRIBUTIONS,
-    ids=lambda d: f"distribution={d}",
+    "distribution", LAPLACIAN_SUPPORTED_DISTRIBUTIONS, ids=lambda d: f"distribution={d}"
 )
 @mark.parametrize("config", EXP01_CASES, ids=lambda c: c["id"])
 def test_randomized_laplacian_functions_converge(

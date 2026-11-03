@@ -39,9 +39,7 @@ from torch import (
     where,
     zeros_like,
 )
-from torch import (
-    dtype as dtype_t,
-)
+from torch import dtype as dtype_t
 from torch.nn.functional import (
     adaptive_avg_pool2d,
     avg_pool2d,
@@ -1161,11 +1159,7 @@ PRIMITIVE_CASES = [
         "f": _stateless(lambda a, b: a / b),
         "args_fn": lambda: (rand(3, 4), rand(4) + 1.0),
     },
-    {
-        "id": "div_const_J",
-        "f": _const_over_jet,
-        "args_fn": lambda: (rand(3, 4),),
-    },
+    {"id": "div_const_J", "f": _const_over_jet, "args_fn": lambda: (rand(3, 4),)},
     # ---- Shape-only ops --------------------------------------------------
     # ``t`` (matrix transpose) is emitted by ``Linear`` (``addmm(b, x, W.t())``);
     # it changes the coefficients' shape, so collapsed mode must vmap over R.

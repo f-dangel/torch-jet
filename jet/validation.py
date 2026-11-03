@@ -26,10 +26,7 @@ from jet.utils import Jet, PyTree
 
 
 def validate_input_jet(
-    mock: tuple[PyTree[Tensor], ...],
-    args: tuple[PyTree[Jet], ...],
-    *,
-    collapsed: bool,
+    mock: tuple[PyTree[Tensor], ...], args: tuple[PyTree[Jet], ...], *, collapsed: bool
 ) -> tuple[list[Jet], int, int | None]:
     """Validate ``args`` against ``mock``'s structure and shapes.
 
@@ -75,11 +72,7 @@ def validate_input_jet(
 
 
 def _validate_jet_leaf(
-    mock: Tensor,
-    arg: Any,
-    collapsed: bool,
-    K_seen: int | None,
-    R_seen: int | None,
+    mock: Tensor, arg: Any, collapsed: bool, K_seen: int | None, R_seen: int | None
 ) -> tuple[int, int | None]:
     """Check that ``arg`` is a valid jet tuple matching ``mock``'s shape.
 

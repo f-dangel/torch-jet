@@ -44,14 +44,7 @@ def test_generate_multi_indices_structure_for_small_dimensions():
     """Test for explicit indices for P=2, derivative_order=2 and P=3, derivative_order=2."""
     assert set(generate_multi_indices(2, 2)) == {(0, 2), (1, 1), (2, 0)}
 
-    expected = {
-        (0, 0, 2),
-        (0, 1, 1),
-        (0, 2, 0),
-        (1, 0, 1),
-        (1, 1, 0),
-        (2, 0, 0),
-    }
+    expected = {(0, 0, 2), (0, 1, 1), (0, 2, 0), (1, 0, 1), (1, 1, 0), (2, 0, 0)}
     assert set(generate_multi_indices(3, 2)) == expected
 
 

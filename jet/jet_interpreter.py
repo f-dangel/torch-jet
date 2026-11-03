@@ -139,16 +139,11 @@ class JetInterpreter(Interpreter):
             )
 
         return tree_map(
-            _normalize_leaf,
-            result,
-            is_leaf=lambda x: isinstance(x, (JetTuple, Tensor)),
+            _normalize_leaf, result, is_leaf=lambda x: isinstance(x, (JetTuple, Tensor))
         )
 
     def _zero_coeffs(
-        self,
-        primal: Tensor,
-        derivative_order: int,
-        collapsed_directions: int | None,
+        self, primal: Tensor, derivative_order: int, collapsed_directions: int | None
     ) -> list[Tensor]:
         """Build ``derivative_order`` zero-coefficients for a constant output leaf.
 

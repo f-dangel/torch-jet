@@ -168,6 +168,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
+- The random directions of a randomized Laplacian are drawn on the CPU and
+  moved to the device, so every backend sees the same directions for a given
+  seed; the Monte-Carlo convergence test passes on MPS, where the device's
+  own stream drew a set that did not converge
+  ([PR](https://github.com/f-dangel/torch-jet/pull/305)).
 - The `as_strided` rule copies each coefficient into the primal's memory
   layout before viewing it like the primal, instead of viewing the
   coefficient's own storage with the primal's strides, which silently gave

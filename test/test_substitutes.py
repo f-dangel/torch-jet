@@ -8,7 +8,7 @@ PyTorch has caught up: drop the entry and the test.
 from typing import Callable
 
 from pytest import raises
-from torch import Tensor, manual_seed, rand, randn, tensor, zeros, zeros_like
+from torch import Tensor, float32, manual_seed, rand, randn, tensor, zeros, zeros_like
 from torch.autograd import grad
 from torch.nn import MultiheadAttention
 from torch.nn.functional import (
@@ -31,6 +31,21 @@ def _second_derivative(f: Callable, x: Tensor) -> Tensor:
     """
     (g,) = grad(f(x).sum(), x, create_graph=True)
     return grad(g.sum(), x)[0] if g.requires_grad else zeros_like(g)
+
+
+def _attention_cases(device: str) -> list[tuple[dict, bool]]:
+    """Tensor kwargs and whether the fused attention has no double backward.
+
+    CPU always runs a fused kernel without one. CUDA runs the fused kernel in
+    ``float32`` and the twice-differentiable math path in ``float64``, so it
+    covers both dtypes. The fused MPS op has a double backward.
+    """
+    if device == "cuda":
+        return [
+            ({"dtype": float32, "device": device}, True),
+            (device_kw(device), False),
+        ]
+    return [(device_kw(device), device == "cpu")]
 
 
 def test_max_pool2d_double_backward(device: str):
@@ -107,21 +122,23 @@ def test_embedding_padding_idx_gradient(device: str):
 
 
 def test_scaled_dot_product_attention_double_backward(device: str):
-    """The fused CPU/CUDA ``scaled_dot_product_attention`` has no double backward.
+    """The fused ``scaled_dot_product_attention`` kernels have no double backward.
 
-    Its substitute has one on every device, and agrees with the fused MPS op.
+    Its substitute has one everywhere, and agrees with the fused MPS op and
+    with the math path CUDA takes in ``float64``.
     """
-    manual_seed(0)
-    # leading dim unpacks into distinct query, key, and value
-    x = randn(3, 1, 2, 3, 4, requires_grad=True, **device_kw(device))
     substitute = DifferentiableSubstitutes.SUBSTITUTES[scaled_dot_product_attention]
-    expected = _second_derivative(lambda x: substitute(*x), x)
-    if device == "mps":
-        actual = _second_derivative(lambda x: scaled_dot_product_attention(*x), x)
-        assert_close(actual, expected)
-    else:
-        with raises(RuntimeError, match="is not implemented"):
-            _second_derivative(lambda x: scaled_dot_product_attention(*x), x)
+    for kw, fused_raises in _attention_cases(device):
+        manual_seed(0)
+        # leading dim unpacks into distinct query, key, and value
+        x = randn(3, 1, 2, 3, 4, requires_grad=True, **kw)
+        expected = _second_derivative(lambda x: substitute(*x), x)
+        if fused_raises:
+            with raises(RuntimeError, match="is not implemented"):
+                _second_derivative(lambda x: scaled_dot_product_attention(*x), x)
+        else:
+            actual = _second_derivative(lambda x: scaled_dot_product_attention(*x), x)
+            assert_close(actual, expected)
 
 
 def test_substitutes_reach_nested_torch_functions(device: str):
@@ -132,17 +149,17 @@ def test_substitutes_reach_nested_torch_functions(device: str):
     inner call; only the substitute bound on ``torch.nn.functional`` makes the
     block twice differentiable.
     """
-    manual_seed(0)
-    kw = device_kw(device)
-    mha = MultiheadAttention(8, 2, batch_first=True).eval().requires_grad_(False)
-    mha = mha.to(**kw)
-    x = randn(2, 3, 8, requires_grad=True, **kw)
+    for kw, fused_raises in _attention_cases(device):
+        manual_seed(0)
+        mha = MultiheadAttention(8, 2, batch_first=True).eval().requires_grad_(False)
+        mha = mha.to(**kw)
+        x = randn(2, 3, 8, requires_grad=True, **kw)
 
-    def block(x: Tensor) -> Tensor:
-        return mha(x, x, x, need_weights=False)[0]
+        def block(x: Tensor, mha: MultiheadAttention = mha) -> Tensor:
+            return mha(x, x, x, need_weights=False)[0]
 
-    if device != "mps":
-        with raises(RuntimeError, match="is not implemented"):
+        if fused_raises:
+            with raises(RuntimeError, match="is not implemented"):
+                _second_derivative(block, x)
+        with DifferentiableSubstitutes():
             _second_derivative(block, x)
-    with DifferentiableSubstitutes():
-        _second_derivative(block, x)

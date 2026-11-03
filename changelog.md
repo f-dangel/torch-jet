@@ -218,7 +218,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `nll_loss_backward` and `where` rules and the bias gradient of the
   convolution backward composition build their constant-or-jet dispatch
   with `_deflinear` instead of spelling it out
-  ([PR](https://github.com/f-dangel/torch-jet/pull/294))
+  ([PR](https://github.com/f-dangel/torch-jet/pull/294)).
 - Build every zero Taylor coefficient through one `_zero_coeff` helper
   (a stride-0 expanded view); `_coeff` resolves an operand's coefficient
   for both `cat` and `_pair_linear`, replacing their per-rule copies, and

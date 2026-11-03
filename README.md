@@ -69,10 +69,9 @@ See the [documentation](https://torch-jet.readthedocs.io/en/latest/generated/gal
 
 - **A jet of a transform**, such as `jet(torch.func.grad(f), ...)` or a jet
   of a `vjp`, works: autograd's backward pass adds its own ATen ops to the
-  trace, and the backward ops of the supported primitives have jet rules too
-  (the test suite runs a jet of each primitive's VJP). If the trace contains
-  an op without a rule, calling the jet raises `NotImplementedError` naming
-  that op.
+  trace, and the backward ops of the supported primitives have jet rules too.
+  If the trace contains an op without a rule, calling the jet raises
+  `NotImplementedError` naming that op.
 
 ## Citing
 

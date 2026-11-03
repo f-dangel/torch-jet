@@ -168,6 +168,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
+- The random directions of a randomized Laplacian are drawn on the CPU and
+  moved to the device, so every backend sees the same directions for a given
+  seed; the Monte-Carlo convergence test passes on MPS, where the device's
+  own stream drew a set that did not converge
+  ([PR](https://github.com/f-dangel/torch-jet/pull/305)).
 - The `as_strided` rule copies each coefficient into the primal's memory
   layout before viewing it like the primal, instead of viewing the
   coefficient's own storage with the primal's strides, which silently gave
@@ -218,6 +223,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ruff now ignores the magic trailing comma, so a construct that fits on one line is
   collapsed by `ruff format` and flagged by `make lint` and CI
   ([PR](https://github.com/f-dangel/torch-jet/pull/303)).
+- Symbolic zeros, step 6: every rule handles a `None` coefficient, so the
+  opt-in marker and the interpreter's materialization before unmarked rules
+  are gone; the dense-versus-`None` test now enforces the contract for every
+  rule, the backward rules included
+  ([PR](https://github.com/f-dangel/torch-jet/pull/301)).
+- Symbolic zeros, step 5: an input coefficient of order two or higher may be
+  `None` (the validator and `freeze` accept it); the collapsed Laplacian and
+  Bi-Laplacian pass `None` for their zero input coefficients
+  ([PR](https://github.com/f-dangel/torch-jet/pull/300)).
+- Symbolic zeros, step 4: the additive rules, `cat`, `where`, `masked_fill`,
+  `embedding`, the jointly linear rules and the constant-output rules pass a
+  `None` coefficient through (a constant-output rule now returns `None`
+  above order one); `addmm`, `stack` and `convolution` opt in
+  ([PR](https://github.com/f-dangel/torch-jet/pull/299)).
+- Symbolic zeros, step 3: the Leibniz product, Faà di Bruno and division
+  recurrences drop every term with a `None` factor and return `None` when
+  all terms vanish; the elementwise, `mul`, `mm` and `div` rules opt in
+  ([PR](https://github.com/f-dangel/torch-jet/pull/298)).
+- Symbolic zeros, step 2: the linear helpers (`_apply_linear_coeffs`,
+  `_apply_linear`, `_broadcast_coeffs`) pass a `None` coefficient through,
+  and the rules `_deflinear` and `_deflinear_first` build opt in
+  ([PR](https://github.com/f-dangel/torch-jet/pull/297)).
+- Symbolic zeros, step 1: a `JetTuple` coefficient of order 2 or higher may
+  be `None` (a zero known by construction, never inferred from values).
+  Rules opt in with `_symbolic_zeros`; the interpreter materializes the
+  `None` entries before any other rule and at the output, so nothing
+  observable changes yet. A new test module feeds every primitive case a
+  symbolic zero tail and compares against dense zeros
+  ([PR](https://github.com/f-dangel/torch-jet/pull/296)).
+- The interpreter names the derivative order and the number of collapsed
+  directions `K` and `R`, like every other module
+  ([PR](https://github.com/f-dangel/torch-jet/pull/302)).
 - The scaled-dot-product-attention composition is folded into the MPS
   kernel adapter, its only caller since attention traces on the math path
   elsewhere; it calls `jet_mm` and a local `repeat_interleave` rule, so the

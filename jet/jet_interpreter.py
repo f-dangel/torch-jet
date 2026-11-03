@@ -15,13 +15,13 @@ rule from the shared ``RULES`` registry (:mod:`jet._rules`).
 
 from typing import Any
 
-from torch import Tensor, zeros_like
+from torch import Tensor
 from torch.fx import GraphModule, Interpreter
 from torch.fx.node import Argument, Target
 from torch.utils._pytree import tree_leaves, tree_map
 
 from jet._rules import RULES
-from jet.primitives import JetTuple, _has_jet_arg
+from jet.primitives import JetTuple, _has_jet_arg, _slot_shape
 from jet.utils import Jet, PyTree
 
 
@@ -49,22 +49,16 @@ class JetInterpreter(Interpreter):
         super().__init__(module)
         self.collapsed: bool = collapsed
 
-    def run(
-        self,
-        derivative_order: int,
-        collapsed_directions: int | None,
-        *args: Tensor,
-        **kwargs: Any,
-    ) -> PyTree[Jet]:
+    def run(self, K: int, R: int | None, *args: Tensor, **kwargs: Any) -> PyTree[Jet]:
         """Run the graph, then unwrap interpreter-internal jet types.
 
-        ``derivative_order`` (``K``) and ``collapsed_directions`` (``R``)
-        come from the validator that already inspected ``args``; passing them
-        explicitly avoids re-deriving them from ``args[0]`` here. Used by
-        :meth:`_normalize` to expand constant outputs to the right shapes.
+        ``K`` and ``R`` come from the validator that already inspected
+        ``args``; passing them explicitly avoids re-deriving them from
+        ``args[0]`` here. Used by :meth:`_normalize` to expand constant
+        outputs to the right shapes.
         """
         result = super().run(*args, **kwargs)
-        return self._normalize(result, derivative_order, collapsed_directions)
+        return self._normalize(result, K, R)
 
     def placeholder(
         self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Any]
@@ -116,57 +110,50 @@ class JetInterpreter(Interpreter):
                 )
 
     def _normalize(
-        self,
-        result: PyTree[JetTuple | Tensor],
-        derivative_order: int,
-        collapsed_directions: int | None,
+        self, result: PyTree[JetTuple | Tensor], K: int, R: int | None
     ) -> PyTree[Jet]:
         """Convert the pytree-of-jets into a pytree of plain tuples.
 
-        Each ``JetTuple`` leaf becomes a plain ``(f_0, ..., f_K)`` tuple.
+        Each ``JetTuple`` leaf becomes a plain ``(f_0, ..., f_K)`` tuple; its
+        symbolic-zero (``None``) coefficients are materialized as dense zeros.
         Constant tensor leaves (outputs that do not depend on the inputs) are
-        expanded to zero-coefficient jets matching the mode's shape contract:
-        standard returns ``K`` zeros of the primal's shape; collapsed returns
-        ``K - 1`` zeros of shape ``(R, *S)`` plus one zero of ``S``.
+        expanded to zero-coefficient jets. Both follow the mode's shape
+        contract: standard returns ``K`` zeros of the primal's shape; collapsed
+        returns ``K - 1`` zeros of shape ``(R, *S)`` plus one zero of ``S``.
         """
 
         def _normalize_leaf(node: Any) -> Jet:
             if isinstance(node, JetTuple):
-                return tuple(node)
-            return (
-                node,
-                *self._zero_coeffs(node, derivative_order, collapsed_directions),
-            )
+                return (
+                    node[0],
+                    *(
+                        self._dense_zero(node[0], k, K, R) if c is None else c
+                        for k, c in enumerate(node[1:], start=1)
+                    ),
+                )
+            return (node, *self._zero_coeffs(node, K, R))
 
         return tree_map(
             _normalize_leaf, result, is_leaf=lambda x: isinstance(x, (JetTuple, Tensor))
         )
 
-    def _zero_coeffs(
-        self, primal: Tensor, derivative_order: int, collapsed_directions: int | None
-    ) -> list[Tensor]:
-        """Build ``derivative_order`` zero-coefficients for a constant output leaf.
+    def _zero_coeffs(self, primal: Tensor, K: int, R: int | None) -> list[Tensor]:
+        """Build ``K`` zero coefficients for a constant output leaf.
 
         Each returned tensor is a distinct allocation; sharing one
         ``zeros_like`` across coefficient slots would make in-place mutation
         of one slot mutate all the others.
 
         Raises:
-            ValueError: If ``self.collapsed`` and ``collapsed_directions`` is
-                ``None``. The validator guarantees ``R`` is set for any
-                collapsed call (``K >= 2`` forces at least one batched
-                coefficient), so this should be unreachable from the public
-                API; an explicit raise (rather than ``assert``) keeps the
-                contract visible under ``python -O``.
+            ValueError: If ``self.collapsed`` and ``R`` is ``None`` (see
+                :func:`_slot_shape`).
         """
-        if not self.collapsed:
-            return [zeros_like(primal) for _ in range(derivative_order)]
-        if collapsed_directions is None:
-            raise ValueError(
-                "Constant output in collapsed mode requires R; the caller "
-                "should have derived it from a jet tuple input."
-            )
-        return [
-            primal.new_zeros(collapsed_directions, *primal.shape)
-            for _ in range(derivative_order - 1)
-        ] + [zeros_like(primal)]
+        return [self._dense_zero(primal, k, K, R) for k in range(1, K + 1)]
+
+    def _dense_zero(self, primal: Tensor, k: int, K: int, R: int | None) -> Tensor:
+        """A dense zero for the order-``k`` coefficient of a leaf with ``primal``.
+
+        Used for a constant leaf and for a symbolic-zero coefficient of a jet
+        leaf (see :func:`_slot_shape`).
+        """
+        return primal.new_zeros(_slot_shape(primal, k, K, self.collapsed, R))

@@ -58,10 +58,10 @@ class JetInterpreter(Interpreter):
     ) -> PyTree[Jet]:
         """Run the graph, then unwrap interpreter-internal jet types.
 
-        ``K`` and ``R``
-        come from the validator that already inspected ``args``; passing them
-        explicitly avoids re-deriving them from ``args[0]`` here. Used by
-        :meth:`_normalize` to expand constant outputs to the right shapes.
+        ``K`` and ``R`` come from the validator that already inspected
+        ``args``; passing them explicitly avoids re-deriving them from
+        ``args[0]`` here. Used by :meth:`_normalize` to expand constant
+        outputs to the right shapes.
         """
         result = super().run(*args, **kwargs)
         return self._normalize(result, K, R)
@@ -185,8 +185,8 @@ class JetInterpreter(Interpreter):
         of one slot mutate all the others.
 
         Raises:
-            ValueError: If ``self.collapsed`` and ``R`` is
-                ``None`` (see :func:`_slot_shape`).
+            ValueError: If ``self.collapsed`` and ``R`` is ``None`` (see
+                :func:`_slot_shape`).
         """
         return [self._dense_zero(primal, k, K, R) for k in range(1, K + 1)]
 

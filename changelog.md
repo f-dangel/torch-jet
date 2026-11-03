@@ -215,6 +215,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- `_pair_linear` takes an optional primal function instead of a batched
+  variant nothing passed; the `as_strided_scatter` rule uses it for the native
+  primal rather than computing and discarding a copy, and `_check_view`
+  resolves the view's offset for both `as_strided` rules
+  ([PR](https://github.com/f-dangel/torch-jet/pull/292)).
 - The unary pointwise test cases come from one table of ops and input
   samplers instead of one comprehension per op
   ([PR](https://github.com/f-dangel/torch-jet/pull/290)).

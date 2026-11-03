@@ -7,11 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Jets now run on torchvision's CNNs and on transformers (`nn.TransformerEncoder`,
-ViT, and Hugging Face's GPT-2, BERT, and LLaMA), through gradients (a jet of
-`torch.func.grad` or `vjp`), under `vmap`, `grad`, `vjp`, and `jvp`, and with
-`torch.compile` via `jet.freeze`; a Taylor coefficient known to be zero can be
-passed as `None`, which `laplacian` and `bilaplacian` use for efficiency.
+Jets now run on torchvision's CNNs and on transformers, and are composable with
+`vmap`, `grad`, `vjp`, `jvp`, and `torch.compile` (via `jet.freeze`). A Taylor
+coefficient known to be zero can be passed as `None`, which `laplacian` and
+`bilaplacian` use for efficiency.
 
 ### Added/New
 
@@ -22,9 +21,14 @@ passed as `None`, which `laplacian` and `bilaplacian` use for efficiency.
     ([PR](https://github.com/f-dangel/torch-jet/pull/261)).
   - `aten.copy.default` and `aten.as_strided_scatter.default`, the backward of
     `as_strided` (linear in the copied source, jointly linear in the tensor
-    being written and the source) ([PR](https://github.com/f-dangel/torch-jet/pull/271)).
-  - `aten.index_put.default`, which with `new_zeros` forms the backward of
-    fancy indexing `x[idx]` (jointly linear in the tensor being written and
+    being written and the source)
+    ([PR](https://github.com/f-dangel/torch-jet/pull/271)); like `as_strided`,
+    `as_strided_scatter` gives correct values for coefficients laid out
+    differently from the primal
+    ([PR](https://github.com/f-dangel/torch-jet/pull/285)).
+  - `aten.index_put.default`, which with `new_zeros`
+    ([PR](https://github.com/f-dangel/torch-jet/pull/279)) forms the backward
+    of fancy indexing `x[idx]` (jointly linear in the tensor being written and
     the values) ([PR](https://github.com/f-dangel/torch-jet/pull/280)).
   - `aten.avg_pool2d_backward.default`, `aten._adaptive_avg_pool2d_backward.default`,
     `aten.max_pool2d_with_indices_backward.default` and the fused
@@ -114,7 +118,11 @@ passed as `None`, which `laplacian` and `bilaplacian` use for efficiency.
     constant, like in autograd's gradient, so the Taylor coefficients at its
     positions are zero ([PR](https://github.com/f-dangel/torch-jet/pull/276)).
   - `aten.masked_fill.Scalar` and `aten.masked_fill.Tensor` ([PR](https://github.com/f-dangel/torch-jet/pull/221)).
-  - `aten.where.self` ([PR](https://github.com/f-dangel/torch-jet/pull/219)).
+  - `aten.where.self` ([PR](https://github.com/f-dangel/torch-jet/pull/219));
+    with a Python scalar operand, it and `masked_fill` keep a half-precision
+    jet's dtype (e.g. the causal mask of `scaled_dot_product_attention` in
+    bfloat16)
+    ([PR](https://github.com/f-dangel/torch-jet/pull/234)).
   - The view/indexing ops `aten.select.int`, `aten.slice.Tensor`,
     `aten._to_copy.default`, and `aten.index.Tensor` ([PR](https://github.com/f-dangel/torch-jet/pull/218)).
   - `aten._softmax.default` ([PR](https://github.com/f-dangel/torch-jet/pull/215)).
@@ -152,7 +160,12 @@ passed as `None`, which `laplacian` and `bilaplacian` use for efficiency.
   - `aten.erf.default` ([PR](https://github.com/f-dangel/torch-jet/pull/207)).
   - `aten.as_strided.default`, to which the in-place `as_strided_` that
     adaptive average pooling emits on channels_last inputs is mapped (ConvNeXt)
-    ([PR](https://github.com/f-dangel/torch-jet/pull/208)).
+    ([PR](https://github.com/f-dangel/torch-jet/pull/208)); each coefficient is
+    copied into the primal's memory layout before it is viewed like the
+    primal, so coefficients laid out differently (transposed, expanded) give
+    correct values, and a view that reads storage outside the input's elements
+    raises `NotImplementedError`
+    ([PR](https://github.com/f-dangel/torch-jet/pull/284)).
   - `aten.gelu.default` (exact and `approximate="tanh"`; ConvNeXt)
     ([PR](https://github.com/f-dangel/torch-jet/pull/209)).
   - ConvNeXt-Tiny in the end-to-end tests, completing the list above
@@ -165,18 +178,6 @@ passed as `None`, which `laplacian` and `bilaplacian` use for efficiency.
   seed; the Monte-Carlo convergence test passes on MPS, where the device's
   own stream drew a set that did not converge
   ([PR](https://github.com/f-dangel/torch-jet/pull/305)).
-- The `as_strided` rule copies each coefficient into the primal's memory
-  layout before viewing it like the primal, instead of viewing the
-  coefficient's own storage with the primal's strides, which silently gave
-  wrong values for a coefficient whose layout differs from the primal's
-  (transposed, expanded); a view that reads storage outside the input's
-  elements raises `NotImplementedError`
-  ([PR](https://github.com/f-dangel/torch-jet/pull/284)).
-- The `as_strided_scatter` rule writes the source's coefficients into copies
-  of the input's coefficients that are laid out like the primal, and keeps the
-  native op for the primal; it also viewed the coefficients' own storage with
-  the primal's strides before
-  ([PR](https://github.com/f-dangel/torch-jet/pull/285)).
 - `laplacian` and `bilaplacian` pass their zero Taylor coefficients as stride-0
   views of a scalar instead of dense tensors, so they no longer allocate one
   input-sized buffer (`bilaplacian`: one of shape `(R, *input)` and one of the
@@ -184,10 +185,6 @@ passed as `None`, which `laplacian` and `bilaplacian` use for efficiency.
   ([PR](https://github.com/f-dangel/torch-jet/pull/282)); the Taylor-mode and
   Laplacian tutorials use the pattern
   ([PR](https://github.com/f-dangel/torch-jet/pull/283)).
-- Constant-output rules (`zeros_like`, `ones_like`, `empty_like`, `fill`,
-  `new_zeros`) zero their coefficients to the *output's* shape instead of the
-  input's; the two differ for `new_zeros` with an explicit size
-  ([PR](https://github.com/f-dangel/torch-jet/pull/279)).
 - Collapsed Faà di Bruno terms sum the direction dim out of the product of
   inner coefficients *before* multiplying by the outer derivative, so autograd
   saves the summed product instead of the direction-batched one; restores the
@@ -201,15 +198,12 @@ passed as `None`, which `laplacian` and `bilaplacian` use for efficiency.
 - `aten.cat.default` in collapsed mode no longer fails on a 1-D empty constant
   operand, which `cat` skips (Hugging Face's empty key/value cache, e.g. GPT-2)
   ([PR](https://github.com/f-dangel/torch-jet/pull/237)).
-- `aten.where.self` / `aten.masked_fill` with a Python scalar operand no longer
-  upcast a half-precision jet to float32 (e.g. the causal mask of
-  `scaled_dot_product_attention` in bfloat16)
-  ([PR](https://github.com/f-dangel/torch-jet/pull/234)).
 
 ### Internal
 
-- Docs: the release notes open with a one-sentence summary and no longer list
-  the removed attention adapters and `padding_idx` warning; the README's
+- Docs: the release notes open with a one-sentence summary, no longer list
+  the removed attention adapters and `padding_idx` warning, and fold the fixes
+  of features new in this release into those features' entries; the README's
   section on PyTorch's transforms names them in its heading and states that
   jets of `grad` and `vjp` work
   ([PR](https://github.com/f-dangel/torch-jet/pull/309)).

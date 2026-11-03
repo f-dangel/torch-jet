@@ -81,8 +81,7 @@ def jet(
         >>> f0, f1 = jet_f((x, vx), (y, vy))
 
         **Symbolic zero** (a higher coefficient known to vanish, e.g. along a
-        straight line ``x0 + t * x1``; the rules skip its terms, the output is
-        still dense)
+        straight line ``x0 + t * x1``; the output is still dense)
 
         >>> jet_f = jet(sin, (zeros(1),))
         >>> f0, f1, f2 = jet_f((x0, x1, None))  # symbolic zero

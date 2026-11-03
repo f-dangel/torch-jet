@@ -323,9 +323,7 @@ def _pointwise(
 
 
 def _leibniz(
-    self: JetTuple,
-    other: JetTuple,
-    binary_op: Callable[[Tensor, Tensor], Tensor],
+    self: JetTuple, other: JetTuple, binary_op: Callable[[Tensor, Tensor], Tensor]
 ) -> tuple[Tensor, ...]:
     """Apply the Leibniz product rule for a bilinear ``binary_op`` (orders 1..K).
 
@@ -546,9 +544,7 @@ def _collapsed_highest_order(vs: tuple[Tensor, ...], dn: dict[int, Tensor]) -> T
 
 
 def _faa_di_bruno(
-    vs: tuple[Tensor, ...],
-    dn: dict[int, Tensor],
-    collapsed: bool = False,
+    vs: tuple[Tensor, ...], dn: dict[int, Tensor], collapsed: bool = False
 ) -> list[Tensor]:
     """Apply Faà di Bruno's formula for elementwise functions.
 
@@ -879,8 +875,7 @@ def _log_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:
 
 
 def _elementwise(
-    self: Tensor | JetTuple,
-    deriv_fn: Callable[[Tensor, int], dict[int, Tensor]],
+    self: Tensor | JetTuple, deriv_fn: Callable[[Tensor, int], dict[int, Tensor]]
 ) -> Tensor | JetTuple:
     """Generic elementwise jet rule (standard *or* collapsed).
 
@@ -995,8 +990,7 @@ def _addsub(
 
 
 def jet_add(
-    self: Tensor | JetTuple | float | int,
-    other: Tensor | JetTuple | float | int,
+    self: Tensor | JetTuple | float | int, other: Tensor | JetTuple | float | int
 ) -> Tensor | JetTuple | float | int:
     """Taylor-mode arithmetic for ``aten.add(self, other)`` (standard or collapsed).
 
@@ -1012,8 +1006,7 @@ def jet_add(
 
 
 def jet_sub(
-    self: Tensor | JetTuple | float | int,
-    other: Tensor | JetTuple | float | int,
+    self: Tensor | JetTuple | float | int, other: Tensor | JetTuple | float | int
 ) -> Tensor | JetTuple | float | int:
     """Taylor-mode arithmetic for ``aten.sub(self, other)`` (standard or collapsed).
 

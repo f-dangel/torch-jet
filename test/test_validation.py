@@ -101,10 +101,7 @@ def test_validate_rejects_wrong_coefficient_shape():
 def test_validate_collapsed_rejects_R_mismatch_across_leaves():
     """R must agree across all collapsed leaves."""
     mock = (zeros(3), zeros(3))
-    args = (
-        _ones_args((3,), K=2, R=4),
-        _ones_args((3,), K=2, R=5),
-    )
+    args = (_ones_args((3,), K=2, R=4), _ones_args((3,), K=2, R=5))
     with raises(ValueError, match="leaf's R=5 disagrees with R=4"):
         validate_input_jet(mock, args, collapsed=True)
 

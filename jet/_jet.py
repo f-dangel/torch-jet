@@ -157,10 +157,7 @@ def _rev_jet(
             return tree_unflatten(taylor_series, in_spec)
 
         t = tensor(
-            0.0,
-            requires_grad=True,
-            dtype=ref_tensor.dtype,
-            device=ref_tensor.device,
+            0.0, requires_grad=True, dtype=ref_tensor.dtype, device=ref_tensor.device
         )
         f_paths = f(*path(t))
 

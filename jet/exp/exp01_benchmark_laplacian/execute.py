@@ -367,10 +367,7 @@ def bilaplacian_function(
     elif strategy in {"jet_naive", "jet_simplified"}:
         collapsed = strategy == "jet_simplified"
         bilap_fn = jet_bilaplacian(
-            f,
-            (dummy_x,),
-            randomization=randomization,
-            collapsed=collapsed,
+            f, (dummy_x,), randomization=randomization, collapsed=collapsed
         )
         bilap_fn, _ = capture_graph(bilap_fn, (dummy_x,))
         common_subexpression_elimination(bilap_fn.graph)
@@ -497,9 +494,7 @@ def get_function_and_description(
     kwargs = {"randomization": randomization}
     if operator == "weighted-laplacian":
         kwargs["weighting"] = get_weighting(
-            X[0],
-            ("diagonal_increments", rank_ratio),
-            randomization=randomization,
+            X[0], ("diagonal_increments", rank_ratio), randomization=randomization
         )
 
     factory = {

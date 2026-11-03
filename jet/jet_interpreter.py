@@ -134,9 +134,7 @@ class JetInterpreter(Interpreter):
             return (node, *self._zero_coeffs(node, K, R))
 
         return tree_map(
-            _normalize_leaf,
-            result,
-            is_leaf=lambda x: isinstance(x, (JetTuple, Tensor)),
+            _normalize_leaf, result, is_leaf=lambda x: isinstance(x, (JetTuple, Tensor))
         )
 
     def _zero_coeffs(self, primal: Tensor, K: int, R: int | None) -> list[Tensor]:

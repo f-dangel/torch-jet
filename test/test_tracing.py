@@ -103,3 +103,6 @@ def test_freeze_fixes_symbolic_zero_leaves():
     assert_close(frozen((x, v, None)), jet_f((x, v, zeros_like(x))))
     with raises(ValueError, match="was None at trace time"):
         frozen((x, v, zeros_like(x)))
+    frozen = freeze(jet_f, ((x, v, zeros_like(x)),))
+    with raises(ValueError, match="was a tensor at trace time"):
+        frozen((x, v, None))

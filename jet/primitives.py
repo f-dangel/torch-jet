@@ -198,11 +198,6 @@ def _coeff(t: Tensor | JetTuple, k: int, batched: bool, R: int) -> Tensor:
     return _zero_coeff(like, (R, *like.shape) if batched else like.shape)
 
 
-def _all_none(operands: Sequence[Tensor | JetTuple], k: int) -> bool:
-    """Whether coefficient ``k`` is a symbolic zero in every jet of ``operands``."""
-    return all(t[k] is None for t in operands if isinstance(t, JetTuple))
-
-
 def _apply_linear(
     self: JetTuple, op: Callable[[Tensor], Tensor | Sequence[Tensor]]
 ) -> JetTuple | tuple[JetTuple, ...]:
@@ -328,9 +323,7 @@ def _pointwise(
 
 
 def _leibniz(
-    self: JetTuple,
-    other: JetTuple,
-    binary_op: Callable[[Tensor, Tensor], Tensor],
+    self: JetTuple, other: JetTuple, binary_op: Callable[[Tensor, Tensor], Tensor]
 ) -> tuple[Tensor, ...]:
     """Apply the Leibniz product rule for a bilinear ``binary_op`` (orders 1..K).
 
@@ -551,9 +544,7 @@ def _collapsed_highest_order(vs: tuple[Tensor, ...], dn: dict[int, Tensor]) -> T
 
 
 def _faa_di_bruno(
-    vs: tuple[Tensor, ...],
-    dn: dict[int, Tensor],
-    collapsed: bool = False,
+    vs: tuple[Tensor, ...], dn: dict[int, Tensor], collapsed: bool = False
 ) -> list[Tensor]:
     """Apply Faà di Bruno's formula for elementwise functions.
 
@@ -884,8 +875,7 @@ def _log_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:
 
 
 def _elementwise(
-    self: Tensor | JetTuple,
-    deriv_fn: Callable[[Tensor, int], dict[int, Tensor]],
+    self: Tensor | JetTuple, deriv_fn: Callable[[Tensor, int], dict[int, Tensor]]
 ) -> Tensor | JetTuple:
     """Generic elementwise jet rule (standard *or* collapsed).
 
@@ -1000,8 +990,7 @@ def _addsub(
 
 
 def jet_add(
-    self: Tensor | JetTuple | float | int,
-    other: Tensor | JetTuple | float | int,
+    self: Tensor | JetTuple | float | int, other: Tensor | JetTuple | float | int
 ) -> Tensor | JetTuple | float | int:
     """Taylor-mode arithmetic for ``aten.add(self, other)`` (standard or collapsed).
 
@@ -1017,8 +1006,7 @@ def jet_add(
 
 
 def jet_sub(
-    self: Tensor | JetTuple | float | int,
-    other: Tensor | JetTuple | float | int,
+    self: Tensor | JetTuple | float | int, other: Tensor | JetTuple | float | int
 ) -> Tensor | JetTuple | float | int:
     """Taylor-mode arithmetic for ``aten.sub(self, other)`` (standard or collapsed).
 
@@ -1284,7 +1272,7 @@ def jet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
 
     out = []
     for k in range(K + 1):
-        if _all_none(tensors, k):
+        if all(t[k] is None for t in tensors if isinstance(t, JetTuple)):
             out.append(None)
             continue
         batched = _is_batched(k, K, collapsed)
@@ -1733,7 +1721,7 @@ def _pair_linear(
 
         out = [primal(_coeff(a, 0, False, R), _coeff(b, 0, False, R))]
         for k in range(1, K + 1):
-            if _all_none((a, b), k):
+            if all(x[k] is None for x in (a, b) if isinstance(x, JetTuple)):
                 out.append(None)
                 continue
             batched = _is_batched(k, K, jet.collapsed)
@@ -1751,11 +1739,10 @@ def _defzero(prim: Callable) -> Callable:
     constant-output op has all coefficients zero, so only the primal carries
     information. ``prim`` is applied to the primal to produce the output value
     (which carries any ``dtype`` / ``device`` / ``layout`` kwargs the user
-    passed). ``c_1`` is a zero with the output's shape behind its input slot's
-    leading direction dims (``(R, *out)`` when collapsed and ``K > 1``), so
-    ``new_zeros`` with a size different from the input's works; the higher
-    coefficients are symbolic zeros (``None``). The output mode follows
-    ``self.collapsed``.
+    passed). ``c_1`` is a zero with the output's shape (not the input's:
+    ``new_zeros`` picks its own size) behind its input slot's leading direction
+    dims (``(R, *out)`` when collapsed and ``K > 1``); the higher coefficients
+    are symbolic zeros (``None``). The output mode follows ``self.collapsed``.
     """
 
     def rule(self: JetTuple, *args, **kwargs) -> JetTuple:

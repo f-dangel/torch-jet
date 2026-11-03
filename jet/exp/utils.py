@@ -109,9 +109,7 @@ def run_verbose(cmd: list[str]) -> CompletedProcess:
 
 
 def to_string(
-    drop_none_values: bool = True,
-    compact_bool_values: bool = True,
-    **kwargs: str | int,
+    drop_none_values: bool = True, compact_bool_values: bool = True, **kwargs: str | int
 ) -> str:
     """Convert a dictionary to a string representation.
 

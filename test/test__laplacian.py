@@ -16,11 +16,7 @@ from jet.weighted_laplacian import C_func_diagonal_increments, get_weighting
 from test.utils import SCALAR_OUTPUT_CASES as LAPLACIAN_CASES
 from test.utils import setup_case, tolerances_for
 
-WEIGHTS = [
-    None,
-    "diagonal_increments",
-    ("diagonal_increments", 0.5),
-]
+WEIGHTS = [None, "diagonal_increments", ("diagonal_increments", 0.5)]
 WEIGHT_IDS = [
     "standard-laplacian",
     "weighted-laplacian",

@@ -200,7 +200,9 @@ def freeze(
                     raise ValueError(f"leaf {i} was None at trace time, got a tensor.")
                 continue
             shape, dtype, device = sig
-            if t is None or (t.shape, t.dtype, t.device) != (shape, dtype, device):
+            if t is None:
+                raise ValueError(f"leaf {i} was a tensor at trace time, got None.")
+            if (t.shape, t.dtype, t.device) != (shape, dtype, device):
                 raise ValueError(
                     f"leaf {i} has shape {tuple(t.shape)}, dtype {t.dtype}, "
                     f"device {t.device}; expected shape {tuple(shape)}, dtype "

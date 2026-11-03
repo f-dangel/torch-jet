@@ -347,10 +347,7 @@ f_pytree_jet = jet(f_pytree, (mock_inputs,))
 inputs = {"x": rand(2), "y": rand(2)}
 d_inputs = {"x": ones_like(inputs["x"]), "y": zeros_like(inputs["y"])}
 
-jet_inputs = {
-    "x": (inputs["x"], d_inputs["x"]),
-    "y": (inputs["y"], d_inputs["y"]),
-}
+jet_inputs = {"x": (inputs["x"], d_inputs["x"]), "y": (inputs["y"], d_inputs["y"])}
 out = f_pytree_jet(jet_inputs)
 
 # %%

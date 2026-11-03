@@ -541,8 +541,7 @@ def get_function_and_description(
         key = PRNGKey(2)
         sample_func = {"normal": normal}[distribution]
         V = device_put(
-            sample_func(key, shape=(num_samples, *X.shape), dtype=X.dtype),
-            X.device,
+            sample_func(key, shape=(num_samples, *X.shape), dtype=X.dtype), X.device
         )
         func_args += (V,)
 
@@ -579,10 +578,7 @@ if __name__ == "__main__":
     # Carry out the measurements
     # 1) Peak memory with non-differentiable result
     mem_no = measure_peak_memory(
-        func_no,
-        f"{op} non-differentiable ({description})",
-        is_cuda,
-        use_jax=True,
+        func_no, f"{op} non-differentiable ({description})", is_cuda, use_jax=True
     )
 
     # 2) On CPU, measuring peak memory does not seem to work

@@ -201,6 +201,9 @@ def require_single_tensor_output(result: PyTree[Jet], transform: str) -> Jet:
 def sample(x_meta: Tensor, distribution: str, shape: tuple[int, ...]) -> Tensor:
     """Sample a random tensor with the same dtype and device as a given tensor.
 
+    The draw happens on the CPU and is moved to the device, so every backend
+    sees the same directions for a given seed.
+
     Args:
         x_meta: Tensor whose dtype and device are to be matched.
         distribution: Distribution to sample from. Supported: "normal", "rademacher".
@@ -210,7 +213,7 @@ def sample(x_meta: Tensor, distribution: str, shape: tuple[int, ...]) -> Tensor:
         Sampled tensor.
     """
     sample_func = {"normal": randn, "rademacher": rademacher}[distribution]
-    return sample_func(*shape, dtype=x_meta.dtype, device=x_meta.device)
+    return sample_func(*shape, dtype=x_meta.dtype).to(x_meta.device)
 
 
 class _CustomDrawer(FxGraphDrawer):

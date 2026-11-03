@@ -168,6 +168,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
+- The random directions of a randomized Laplacian are drawn on the CPU and
+  moved to the device, so every backend sees the same directions for a given
+  seed; the Monte-Carlo convergence test passes on MPS, where the device's
+  own stream drew a set that did not converge
+  ([PR](https://github.com/f-dangel/torch-jet/pull/305)).
 - The `as_strided` rule copies each coefficient into the primal's memory
   layout before viewing it like the primal, instead of viewing the
   coefficient's own storage with the primal's strides, which silently gave
@@ -215,6 +220,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Ruff now ignores the magic trailing comma, so a construct that fits on one line is
+  collapsed by `ruff format` and flagged by `make lint` and CI
+  ([PR](https://github.com/f-dangel/torch-jet/pull/303)).
 - Symbolic zeros: a `JetTuple` coefficient of order two or higher may be
   `None`, a zero known by construction (never inferred from values). Every
   rule skips the terms a `None` would contribute, and the interpreter
@@ -239,6 +247,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     interpreter's materialization before unmarked rules are gone; the test
     covers the backward rules too
     ([PR](https://github.com/f-dangel/torch-jet/pull/301)).
+- The interpreter names the derivative order and the number of collapsed
+  directions `K` and `R`, like every other module
+  ([PR](https://github.com/f-dangel/torch-jet/pull/302)).
 - The scaled-dot-product-attention composition is folded into the MPS
   kernel adapter, its only caller since attention traces on the math path
   elsewhere; it calls `jet_mm` and a local `repeat_interleave` rule, so the

@@ -49,22 +49,16 @@ class JetInterpreter(Interpreter):
         super().__init__(module)
         self.collapsed: bool = collapsed
 
-    def run(
-        self,
-        derivative_order: int,
-        collapsed_directions: int | None,
-        *args: Tensor,
-        **kwargs: Any,
-    ) -> PyTree[Jet]:
+    def run(self, K: int, R: int | None, *args: Tensor, **kwargs: Any) -> PyTree[Jet]:
         """Run the graph, then unwrap interpreter-internal jet types.
 
-        ``derivative_order`` (``K``) and ``collapsed_directions`` (``R``)
-        come from the validator that already inspected ``args``; passing them
-        explicitly avoids re-deriving them from ``args[0]`` here. Used by
-        :meth:`_normalize` to expand constant outputs to the right shapes.
+        ``K`` and ``R`` come from the validator that already inspected
+        ``args``; passing them explicitly avoids re-deriving them from
+        ``args[0]`` here. Used by :meth:`_normalize` to expand constant
+        outputs to the right shapes.
         """
         result = super().run(*args, **kwargs)
-        return self._normalize(result, derivative_order, collapsed_directions)
+        return self._normalize(result, K, R)
 
     def placeholder(
         self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Any]
@@ -116,10 +110,7 @@ class JetInterpreter(Interpreter):
                 )
 
     def _normalize(
-        self,
-        result: PyTree[JetTuple | Tensor],
-        derivative_order: int,
-        collapsed_directions: int | None,
+        self, result: PyTree[JetTuple | Tensor], K: int, R: int | None
     ) -> PyTree[Jet]:
         """Convert the pytree-of-jets into a pytree of plain tuples.
 
@@ -136,60 +127,33 @@ class JetInterpreter(Interpreter):
                 return (
                     node[0],
                     *(
-                        self._dense_zero(
-                            node[0], k, derivative_order, collapsed_directions
-                        )
-                        if c is None
-                        else c
+                        self._dense_zero(node[0], k, K, R) if c is None else c
                         for k, c in enumerate(node[1:], start=1)
                     ),
                 )
-            return (
-                node,
-                *self._zero_coeffs(node, derivative_order, collapsed_directions),
-            )
+            return (node, *self._zero_coeffs(node, K, R))
 
         return tree_map(
-            _normalize_leaf,
-            result,
-            is_leaf=lambda x: isinstance(x, (JetTuple, Tensor)),
+            _normalize_leaf, result, is_leaf=lambda x: isinstance(x, (JetTuple, Tensor))
         )
 
-    def _zero_coeffs(
-        self,
-        primal: Tensor,
-        derivative_order: int,
-        collapsed_directions: int | None,
-    ) -> list[Tensor]:
-        """Build ``derivative_order`` zero-coefficients for a constant output leaf.
+    def _zero_coeffs(self, primal: Tensor, K: int, R: int | None) -> list[Tensor]:
+        """Build ``K`` zero coefficients for a constant output leaf.
 
         Each returned tensor is a distinct allocation; sharing one
         ``zeros_like`` across coefficient slots would make in-place mutation
         of one slot mutate all the others.
 
         Raises:
-            ValueError: If ``self.collapsed`` and ``collapsed_directions`` is
-                ``None`` (see :func:`_slot_shape`).
+            ValueError: If ``self.collapsed`` and ``R`` is ``None`` (see
+                :func:`_slot_shape`).
         """
-        return [
-            self._dense_zero(primal, k, derivative_order, collapsed_directions)
-            for k in range(1, derivative_order + 1)
-        ]
+        return [self._dense_zero(primal, k, K, R) for k in range(1, K + 1)]
 
-    def _dense_zero(
-        self,
-        primal: Tensor,
-        k: int,
-        derivative_order: int,
-        collapsed_directions: int | None,
-    ) -> Tensor:
+    def _dense_zero(self, primal: Tensor, k: int, K: int, R: int | None) -> Tensor:
         """A dense zero for the order-``k`` coefficient of a leaf with ``primal``.
 
         Used for a constant leaf and for a symbolic-zero coefficient of a jet
         leaf (see :func:`_slot_shape`).
         """
-        return primal.new_zeros(
-            _slot_shape(
-                primal, k, derivative_order, self.collapsed, collapsed_directions
-            )
-        )
+        return primal.new_zeros(_slot_shape(primal, k, K, self.collapsed, R))

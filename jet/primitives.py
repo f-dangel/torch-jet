@@ -33,6 +33,7 @@ from torch import (
     sin,
     tanh,
     where,
+    zeros,
     zeros_like,
 )
 from torch.func import vmap
@@ -123,6 +124,29 @@ def _is_batched(k: int, K: int, collapsed: bool) -> bool:
     R-sum) on, so standard mode degenerates to the plain coefficient-wise path.
     """
     return collapsed and 0 < k < K
+
+
+def _zero_coeff(like: Tensor, shape: Sequence[int]) -> Tensor:
+    """A zero Taylor coefficient of ``shape`` with ``like``'s dtype and device.
+
+    A stride-0 view of one element: the zeros a constant contributes are only
+    read, so no buffer of ``shape`` is allocated. Built by a factory rather
+    than ``like.new_zeros`` so that it stays unbatched under ``vmap``.
+    """
+    return zeros((), dtype=like.dtype, device=like.device).expand(shape)
+
+
+def _coeff(t: Tensor | JetTuple, k: int, batched: bool, R: int) -> Tensor:
+    """Coefficient ``k`` of an operand: a jet's own, or a constant's value / zeros.
+
+    A constant enters the primal (``k == 0``) and contributes zeros to every
+    other coefficient, of shape ``(R, *t.shape)`` in a ``batched`` slot.
+    """
+    if isinstance(t, JetTuple):
+        return t[k]
+    if k == 0:
+        return t
+    return _zero_coeff(t, (R, *t.shape) if batched else t.shape)
 
 
 def _apply_linear(
@@ -1153,8 +1177,8 @@ def jet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
     coefficients (orders ``1..K-1``) carry a leading direction dim ``R``, so a
     non-negative concat ``dim`` shifts by one there and constant operands pad
     with ``(R, *shape)`` zeros to match. Standard mode has no batched
-    coefficients, so that machinery stays inert (``dim`` unshifted,
-    ``zeros_like`` padding).
+    coefficients, so that machinery stays inert (``dim`` unshifted, zeros of
+    the operand's shape).
 
     Args:
         tensors: The list of operands; each is a jet or a constant ``Tensor``.
@@ -1174,18 +1198,11 @@ def jet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
     collapsed = first.collapsed
     R = first[1].shape[0] if collapsed else 0
 
-    def part(t: object, k: int, batched: bool) -> Tensor:
-        if isinstance(t, JetTuple):
-            return t[k]
-        if k == 0:
-            return t
-        return t.new_zeros(R, *t.shape) if batched else zeros_like(t)
-
     out = []
     for k in range(K + 1):
         batched = _is_batched(k, K, collapsed)
         d = dim + 1 if (batched and dim >= 0) else dim
-        out.append(cat([part(t, k, batched) for t in tensors], d))
+        out.append(cat([_coeff(t, k, batched, R) for t in tensors], d))
     return JetTuple(tuple(out), collapsed=collapsed)
 
 
@@ -1625,19 +1642,13 @@ def _pair_linear(
     def rule(a: Tensor | JetTuple, b: Tensor | JetTuple) -> JetTuple:
         K = _jet_order(a, b)
         jet = a if isinstance(a, JetTuple) else b
+        R = jet[1].shape[0] if jet.collapsed else 0
 
-        def part(t: Tensor | JetTuple, k: int, batched: bool) -> Tensor:
-            if isinstance(t, JetTuple):
-                return t[k]
-            if k == 0:
-                return t
-            return t.new_zeros(jet[k].shape[0], *t.shape) if batched else zeros_like(t)
-
-        out = [primal(part(a, 0, False), part(b, 0, False))]
+        out = [primal(_coeff(a, 0, False, R), _coeff(b, 0, False, R))]
         for k in range(1, K + 1):
             batched = _is_batched(k, K, jet.collapsed)
             op = batched_prim if batched else prim
-            out.append(op(part(a, k, batched), part(b, k, batched)))
+            out.append(op(_coeff(a, k, batched, R), _coeff(b, k, batched, R)))
         return JetTuple(out, collapsed=jet.collapsed)
 
     return rule
@@ -1660,7 +1671,7 @@ def _defzero(prim: Callable) -> Callable:
         primal_out = prim(self[0], *args, **kwargs)
         lead = self[0].ndim
         coeffs = [
-            primal_out.new_zeros((*c.shape[: c.ndim - lead], *primal_out.shape))
+            _zero_coeff(primal_out, (*c.shape[: c.ndim - lead], *primal_out.shape))
             for c in self[1:]
         ]
         return JetTuple([primal_out, *coeffs], collapsed=self.collapsed)

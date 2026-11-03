@@ -1237,8 +1237,7 @@ def jet_where(
     )
 
     def keep(t, cond):  # ``where(cond, t, 0)``: linear in ``t``
-        f = partial(where, cond, other=0.0)
-        return _apply_linear(t, f) if isinstance(t, JetTuple) else f(t)
+        return _deflinear(partial(where, cond, other=0.0))(t)
 
     return jet_add(keep(self, condition), keep(other, ~condition))
 
@@ -1388,9 +1387,7 @@ def jet_nll_loss_backward(
             g, primal, target, weight, reduction, ignore_index, total_weight
         )
 
-    if not isinstance(grad_output, JetTuple):
-        return op(grad_output)
-    return _apply_linear(grad_output, op)
+    return _deflinear(op)(grad_output)
 
 
 # --- Batch norm ---

@@ -22,6 +22,7 @@ from jet.primitives import (
     _apply_bilinear,
     _apply_linear,
     _bn_channel_view,
+    _deflinear,
     _elementwise,
     _gelu_exact_derivatives,
     _has_jet_arg,
@@ -672,11 +673,7 @@ def convolution_backward(
             lambda g, a: weight_piece(g, a, w), grad_output, input
         )
     if output_mask[2]:
-        grad_bias = (
-            _apply_linear(grad_output, lambda g: bias_piece(g, x, w))
-            if isinstance(grad_output, JetTuple)
-            else bias_piece(grad_output, x, w)
-        )
+        grad_bias = _deflinear(bias_piece)(grad_output, x, w)
     return grad_input, grad_weight, grad_bias
 
 

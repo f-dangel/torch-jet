@@ -86,6 +86,8 @@ def jet(
 
         >>> jet_f = jet(sin, (zeros(1),))
         >>> f0, f1, f2 = jet_f((x0, x1, None))
+        >>> g0, g1, g2 = jet_f((x0, x1, zeros(1)))  # the same with a dense zero
+        >>> assert f0.allclose(g0) and f1.allclose(g1) and f2.allclose(g2)
     """
     # Attention is traced on its math path. A fused kernel cannot propagate
     # Taylor coefficients, which need the softmax structure explicit, and its

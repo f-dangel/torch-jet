@@ -396,15 +396,18 @@ def _leibniz(
     K = len(self) - 1
     collapsed = self.collapsed
 
-    def product(j: int, k: int) -> Tensor:
+    def product(j: int, k: int) -> Tensor | None:
         """``binary_op(self[j], other[k - j])``, vmapped over ``R`` if batched.
 
         ``binary_op`` may be an op (``conv``) that cannot broadcast over a leading
         batch dim, so ``R`` is mapped explicitly per direction. When neither
         operand is batched (all of standard mode, plus the collapsed linear
-        terms) it is a plain call.
+        terms) it is a plain call. A symbolic-zero factor makes the term
+        ``None`` (dropped by the caller).
         """
         a, b = self[j], other[k - j]
+        if a is None or b is None:
+            return None
         a_batched = _is_batched(j, K, collapsed)
         b_batched = _is_batched(k - j, K, collapsed)
         if not (a_batched or b_batched):
@@ -419,13 +422,17 @@ def _leibniz(
             # Skip the multiply when the binomial factor is 1 (most terms, all
             # but the middle one at K=2): fewer graph nodes, same values.
             c = comb(k, j, exact=True)
-            term_j = product(j, k) if c == 1 else c * product(j, k)
+            term_j = product(j, k)
+            if term_j is None:
+                continue
+            if c != 1:
+                term_j = c * term_j
             # The collapsed K-th coefficient carries no R, so reduce its batched
             # (R-carrying) terms over the direction dim; standard never enters.
             if k == K and _is_batched(j, K, collapsed):
                 term_j = term_j.sum(0)
             term = term_j if term is None else term + term_j
-        coeffs += (term,)
+        coeffs += (term,)  # ``None`` iff every term vanished: a symbolic zero
     return coeffs
 
 
@@ -506,10 +513,11 @@ def _partition_term(
 
     Returns:
         The partition's contribution to the Faà di Bruno sum, or ``None`` when
-        the required outer derivative ``dn[len(sigma)]`` is ``None`` (a
-        structurally vanishing term that callers skip).
+        the required outer derivative ``dn[len(sigma)]`` or one of the inner
+        coefficients the partition uses is ``None`` (a structurally vanishing
+        term that callers skip).
     """
-    if dn[len(sigma)] is None:
+    if dn[len(sigma)] is None or any(vs[i - 1] is None for i in sigma):
         return None
     vs_count = {i: sigma.count(i) for i in sigma}
     vs_contract = [
@@ -544,7 +552,9 @@ def _collapsed_highest_order(vs: tuple[Tensor, ...], dn: dict[int, Tensor]) -> T
         The collapsed highest-order coefficient.
     """
     K = len(vs)
-    linear_term = dn[1] * vs[K - 1] if dn[1] is not None else None
+    linear_term = (
+        dn[1] * vs[K - 1] if dn[1] is not None and vs[K - 1] is not None else None
+    )
     nonlinear_term = None
     for sigma in integer_partitions(K):
         if sigma == (K,):
@@ -560,9 +570,7 @@ def _collapsed_highest_order(vs: tuple[Tensor, ...], dn: dict[int, Tensor]) -> T
         return linear_term + nonlinear_term
     elif nonlinear_term is not None:
         return nonlinear_term
-    elif linear_term is not None:
-        return linear_term
-    return zeros_like(dn[0])
+    return linear_term  # ``None`` iff every term vanished: a symbolic zero
 
 
 def _faa_di_bruno(
@@ -597,12 +605,10 @@ def _faa_di_bruno(
                 term = _partition_term(vs, sigma, dn)
                 if term is not None:
                     result = term if result is None else result + term
-            # ``result is None`` means every Faà di Bruno term vanished
-            # structurally (all required outer derivatives are ``None``), as
-            # happens for a constant outer function like ``x ** 0``. Materialize
-            # the zero coefficient with the matching input-coefficient shape
-            # (``vs[k]`` is ``(R, *S)`` in collapsed mode, ``S`` in standard).
-            vs_out.append(zeros_like(vs[k]) if result is None else result)
+            # ``None`` iff every Faà di Bruno term vanished structurally (all
+            # required outer derivatives or inner coefficients are ``None``,
+            # e.g. a constant outer function like ``x ** 0``): a symbolic zero.
+            vs_out.append(result)
     return vs_out
 
 
@@ -925,6 +931,7 @@ def _elementwise(
 # --- Power ---
 
 
+@_symbolic_zeros
 def jet_pow(self: JetTuple, exponent: float | int) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.pow(self, exponent)``.
 
@@ -942,6 +949,7 @@ def jet_pow(self: JetTuple, exponent: float | int) -> JetTuple:
 # --- Hardtanh ---
 
 
+@_symbolic_zeros
 def jet_hardtanh(
     self: Tensor | JetTuple, min_val: float = -1.0, max_val: float = 1.0
 ) -> Tensor | JetTuple:
@@ -963,6 +971,7 @@ def jet_hardtanh(
 # --- Threshold ---
 
 
+@_symbolic_zeros
 def jet_threshold(
     self: Tensor | JetTuple, threshold: float, value: float
 ) -> Tensor | JetTuple:
@@ -1069,6 +1078,7 @@ def jet_rsub(
     return jet_sub(other, self if alpha == 1 else jet_mul(self, alpha))
 
 
+@_symbolic_zeros
 def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.mul(self, other)``.
 
@@ -1085,6 +1095,7 @@ def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
     return _apply_bilinear(lambda a, b: a * b, self, other)
 
 
+@_symbolic_zeros
 def jet_div(
     self: Tensor | JetTuple | float | int, other: Tensor | JetTuple | float | int
 ) -> Tensor | JetTuple:
@@ -1118,17 +1129,20 @@ def jet_div(
     for k in range(1, K + 1):
         acc = a[k - 1]
         for j in range(1, k + 1):
+            if b[j - 1] is None or q[k - j] is None:
+                continue  # a symbolic-zero factor: the term vanishes
             term = comb(k, j, exact=True) * b[j - 1] * q[k - j]
             if k == K and _is_batched(j, K, collapsed):
                 term = term.sum(0)
             acc = -term if acc is None else acc - term
-        q.append(acc / other[0])
+        q.append(None if acc is None else acc / other[0])
     return JetTuple(q, collapsed=collapsed)
 
 
 # --- Linear decomposition ---
 
 
+@_symbolic_zeros
 def jet_mm(self: Tensor | JetTuple, mat2: Tensor | JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.mm`` / ``aten.bmm`` (``self @ mat2``).
 

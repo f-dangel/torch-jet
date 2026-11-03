@@ -161,9 +161,9 @@ def laplacian(
             else sample(x, randomization[0], shape)
         )
         X1 = apply_weightings(x, V)
-        # The second input coefficient is zero: a symbolic zero (``None``) on
-        # the collapsed path, so the rules skip its terms; the vmap reference
-        # takes a dense zero.
+        # The second input coefficient is zero. The collapsed path passes a
+        # symbolic zero (``None``), so the rules skip its terms; the uncollapsed
+        # path wraps a standard jet in ``vmap`` and must pass a real zero tensor.
         z = None if collapsed else _zero_coeff(x, x.shape)
 
         _, _, F2 = require_single_tensor_output(cjet_f((x, X1, z)), "laplacian")

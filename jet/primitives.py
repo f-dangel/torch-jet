@@ -52,12 +52,11 @@ class JetTuple(tuple):
 
     A coefficient of order ``2`` or higher may be ``None``: a *symbolic zero*,
     a coefficient known to vanish by construction (a declared zero input slot,
-    the output of a constant op). It is never inferred from tensor values. A
-    rule marked with :func:`_symbolic_zeros` handles ``None`` itself; the
-    interpreter materializes the ``None`` entries of a jet (as stride-0 zero
-    views) before calling any other rule, and as dense zeros at the output
-    boundary, so no rule sees ``None`` unless it opted in and no user ever
-    does. The primal and ``c_1`` are always tensors.
+    the output of a constant op). It is never inferred from tensor values. The
+    primal and ``c_1`` are always tensors, so ``K``, ``R`` and the device can be
+    read off any jet. :meth:`materialized` is the same jet with its ``None``
+    entries as zero views; which rules receive a ``None`` at all is governed by
+    :func:`_symbolic_zeros`.
     """
 
     def __new__(cls, iterable=(), *, collapsed: bool) -> Self:

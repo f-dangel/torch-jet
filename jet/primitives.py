@@ -212,30 +212,37 @@ def _apply_linear(
     """
     out0, coeffs = op(self[0]), _apply_linear_coeffs(self, op)
     if isinstance(out0, (tuple, list)):
+        # A symbolic zero splits into one symbolic zero per piece.
+        coeffs = tuple([None] * len(out0) if c is None else c for c in coeffs)
         return tuple(JetTuple(p, collapsed=self.collapsed) for p in zip(out0, *coeffs))
     return JetTuple((out0, *coeffs), collapsed=self.collapsed)
 
 
 def _apply_linear_coeffs(
     self: JetTuple, op: Callable[[Tensor], Tensor]
-) -> tuple[Tensor, ...]:
+) -> tuple[Tensor | None, ...]:
     """Apply a linear ``op`` to coefficients 1..K of ``self`` (skipping the primal).
 
     Used by ops that handle the primal separately (e.g. the pooling and
     nll-loss rules, which compute the primal's value and indices first).
     Standard mode applies ``op`` to every coefficient; collapsed mode vmaps the
     batched coefficients ``c_1..c_{K-1}`` over the direction dim ``R`` and
-    applies ``op`` directly to the already-collapsed slot ``c_K``.
+    applies ``op`` directly to the already-collapsed slot ``c_K``. A symbolic
+    zero stays one (``op(0) == 0``).
     """
     K = len(self) - 1
     vop = vmap(op)
-    return tuple(
-        vop(self[k]) if _is_batched(k, K, self.collapsed) else op(self[k])
-        for k in range(1, K + 1)
-    )
+
+    def apply(k: int) -> Tensor | None:
+        c = self[k]
+        if c is None:
+            return None
+        return vop(c) if _is_batched(k, K, self.collapsed) else op(c)
+
+    return tuple(apply(k) for k in range(1, K + 1))
 
 
-def _broadcast_coeffs(self: JetTuple, primal: Tensor) -> list[Tensor]:
+def _broadcast_coeffs(self: JetTuple, primal: Tensor) -> list[Tensor | None]:
     """Broadcast a jet's coefficients (orders 1..K) up to ``primal``'s shape.
 
     For ``jet + constant`` (and ``sub``) where the constant is larger than the
@@ -248,13 +255,16 @@ def _broadcast_coeffs(self: JetTuple, primal: Tensor) -> list[Tensor]:
     after ``R``, then expand); plain PyTorch broadcasting would left-pad at the
     front and shift ``R`` into a primal dim when ranks differ. The collapsed
     ``K``-th coefficient and the primal carry no ``R`` and broadcast normally --
-    which is also exactly the standard-mode path for every coefficient.
+    which is also exactly the standard-mode path for every coefficient. A
+    symbolic zero has no shape and stays ``None``.
     """
     K = len(self) - 1
     out = []
     for k in range(1, K + 1):
         c = self[k]
-        if _is_batched(k, K, self.collapsed):  # batched (R, *S) -> (R, *primal.shape)
+        if c is None:
+            pass
+        elif _is_batched(k, K, self.collapsed):  # batched (R, *S) -> (R, *primal.shape)
             target = (c.shape[0], *primal.shape)
             if c.shape != target:
                 pad = primal.ndim - (c.ndim - 1)
@@ -1635,7 +1645,7 @@ def _deflinear(prim: Callable) -> Callable:
             return prim(self, *args, **kwargs)
         return _apply_linear(self, lambda c: prim(c, *args, **kwargs))
 
-    return rule
+    return _symbolic_zeros(rule)
 
 
 def _deflinear_first(prim: Callable) -> Callable:
@@ -1655,7 +1665,7 @@ def _deflinear_first(prim: Callable) -> Callable:
         args = tuple(a[0] if isinstance(a, JetTuple) else a for a in args)
         return _deflinear(prim)(self, *args, **kwargs)
 
-    return rule
+    return _symbolic_zeros(rule)
 
 
 def _pair_linear(

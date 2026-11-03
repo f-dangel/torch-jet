@@ -2,7 +2,7 @@
 
 from pytest import FixtureRequest, fixture
 from torch import cuda
-from torch.backends import mha, mps
+from torch.backends import mps
 
 #: Devices the test suite parametrizes over. CPU is always present; CUDA and
 #: MPS are added when their respective backends are available.
@@ -29,16 +29,3 @@ def collapsed(request: FixtureRequest) -> bool:
 def K(request: FixtureRequest) -> int:
     """Run the requesting test once per Taylor order in ``{0, 1, 2, 5}``."""
     return request.param
-
-
-@fixture(autouse=True, scope="session")
-def no_transformer_fast_path() -> None:
-    """Run ``nn.TransformerEncoderLayer`` on its plain path, as a traced jet does.
-
-    Tracing and torch-function modes already disable PyTorch's fused
-    transformer fast path; only a plain eager call would take it. On CUDA the
-    fused kernel computes ``gelu`` differently from the plain path (about
-    ``2e-4`` per element), so a plain call would disagree with everything the
-    tests compare it against.
-    """
-    mha.set_fastpath_enabled(False)

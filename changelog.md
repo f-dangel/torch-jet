@@ -220,8 +220,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
-- The test suite runs `nn.TransformerEncoderLayer` on its plain path, which a
-  traced jet takes anyway; the fused CUDA kernel computes `gelu` differently
+- The transformer-encoder tests run the encoder on its plain path, which a
+  jet takes anyway; PyTorch's fused CUDA fast path computes `gelu` with the
+  tanh approximation, so the reference disagreed with the jet
   ([PR](https://github.com/f-dangel/torch-jet/pull/307)).
 - Ruff now ignores the magic trailing comma, so a construct that fits on one line is
   collapsed by `ruff format` and flagged by `make lint` and CI

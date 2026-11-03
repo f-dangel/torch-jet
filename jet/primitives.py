@@ -66,6 +66,30 @@ class JetTuple(tuple):
         obj.collapsed = collapsed
         return obj
 
+    def materialized(self) -> Self:
+        """This jet with every ``None`` coefficient replaced by a zero view.
+
+        Each zero is a stride-0 view of one element in the slot's shape (see
+        :func:`_slot_shape`); ``R`` is read off ``c_1``, which is batched in
+        every collapsed jet (collapsed mode requires ``K >= 2``).
+
+        Returns:
+            ``self`` if no coefficient is ``None``, else a new jet with the same
+            ``collapsed`` flag.
+        """
+        if not any(c is None for c in self):
+            return self
+        K, R = len(self) - 1, self[1].shape[0] if self.collapsed else None
+        return JetTuple(
+            (
+                _zero_coeff(self[0], _slot_shape(self[0], k, K, self.collapsed, R))
+                if c is None
+                else c
+                for k, c in enumerate(self)
+            ),
+            collapsed=self.collapsed,
+        )
+
 
 # Register with PyTorch's pytree so that vmap, make_fx, etc. can flatten/unflatten
 # JetTuple the same way they handle plain tuples; the ``collapsed`` flag rides in
@@ -162,6 +186,37 @@ def _is_batched(k: int, K: int, collapsed: bool) -> bool:
     R-sum) on, so standard mode degenerates to the plain coefficient-wise path.
     """
     return collapsed and 0 < k < K
+
+
+def _slot_shape(
+    like: Tensor, k: int, K: int, collapsed: bool, R: int | None
+) -> tuple[int, ...]:
+    """Shape of the order-``k`` coefficient slot of a leaf shaped like ``like``.
+
+    Args:
+        like: The leaf's primal.
+        k: The coefficient order.
+        K: The derivative order.
+        collapsed: Whether the jet is collapsed.
+        R: The number of directions of a collapsed jet (``None`` otherwise).
+
+    Returns:
+        ``(R, *S)`` for a collapsed ``c_1..c_{K-1}``, ``S`` otherwise.
+
+    Raises:
+        ValueError: If the slot is batched and ``R`` is ``None``. The validator
+            guarantees ``R`` for any collapsed call, so this is unreachable from
+            the public API; an explicit raise keeps the contract visible under
+            ``python -O``.
+    """
+    if not _is_batched(k, K, collapsed):
+        return tuple(like.shape)
+    if R is None:
+        raise ValueError(
+            "Constant output in collapsed mode requires R; the caller "
+            "should have derived it from a jet tuple input."
+        )
+    return (R, *like.shape)
 
 
 def _zero_coeff(like: Tensor, shape: Sequence[int]) -> Tensor:

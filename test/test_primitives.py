@@ -746,9 +746,8 @@ def _sdpa_case(
 def _mha_sdpa(x):
     """``nn.MultiheadAttention``'s attention block, ``(L, B, H*E)`` in, ``(L*B, H*E)`` out.
 
-    The fused CPU kernel lays its output out like its ``(L, B, H, E)``-ordered
-    query, so the ``.contiguous()`` is a no-op the fake-mode trace drops; the
-    following ``view`` then relies on the rule reproducing that layout.
+    The ``view`` / ``transpose`` / ``permute`` / ``contiguous`` / ``view`` chain
+    around the attention is the one ``nn.MultiheadAttention`` traces to.
     """
     L, B, HE = x.shape
     q = x.view(L, B * 2, HE // 2).transpose(0, 1).view(B, 2, L, HE // 2)

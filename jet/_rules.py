@@ -56,9 +56,6 @@ RULES: dict[Callable, Rule] = {
     ops.aten.mm.default: primitives.jet_mm,
     # Batched matmul: the same bilinear rule (``matmul`` handles the batch dims).
     ops.aten.bmm.default: primitives.jet_mm,
-    # Not produced by tracing (``matmul`` lowers to ``mm``/``bmm``); compositions
-    # call it on operands with leading batch dims, where native ``bmm`` fails.
-    ops.aten.matmul.default: primitives.jet_mm,
     ops.aten.cat.default: primitives.jet_cat,
     ops.aten.where.self: primitives.jet_where,
     ops.aten.masked_fill.Scalar: primitives.jet_masked_fill,
@@ -137,8 +134,6 @@ for _prim in (
     ops.aten.transpose.int,
     ops.aten.permute.default,
     ops.aten.expand.default,
-    # Grouped-query attention repeats each key/value head for its query heads.
-    ops.aten.repeat_interleave.self_int,
     ops.aten.clone.default,
     # Transformer views: ``x[i]`` (``select``), ``x[a:b]`` (``slice``), fancy
     # ``x[idx]`` (``index``; its ``indices: Tensor?[]`` list is forwarded as-is),

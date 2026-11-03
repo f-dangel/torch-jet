@@ -13,7 +13,7 @@ At each nonlinear collapsed op, the K-th output coefficient is computed as
 ``out_K = LINEAR_TERM(in_K_collapsed) + NONLINEAR_TERMS(in_1..K-1).sum(0)``.
 """
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from functools import partial
 from math import pi, sqrt
 from operator import add, sub
@@ -93,32 +93,34 @@ def _symbolic_zeros(rule: Callable) -> Callable:
     return rule
 
 
-def _has_symbolic_zero(args: Sequence[object]) -> bool:
-    """Whether any jet in ``args`` (or in a list/tuple in it) has a ``None`` entry."""
+def _jet_args(args: Sequence[object]) -> Iterator[JetTuple]:
+    """Yield the ``JetTuple`` args, at top level or nested inside a ``list``.
+
+    Jets may appear at the top level or nested one level inside a ``list`` arg
+    (e.g. ``aten.cat([j1, j2], dim)``). Only ``list`` args are scanned, not
+    ``tuple``: multi-output ops (e.g. ``max_pool2d_with_indices``) return a
+    ``tuple`` whose element 0 is a jet, and the following ``getitem`` must fall
+    through to the default op.
+    """
     for a in args:
         if isinstance(a, JetTuple):
-            if any(c is None for c in a):
-                return True
-        elif isinstance(a, (list, tuple)) and _has_symbolic_zero(a):
-            return True
-    return False
+            yield a
+        elif isinstance(a, list):
+            yield from (e for e in a if isinstance(e, JetTuple))
 
 
 def _has_jet_arg(args: Sequence[object]) -> bool:
-    """Return whether any arg is a ``JetTuple``, at top level or inside a ``list``.
+    """Return whether any arg is a ``JetTuple`` (see :func:`_jet_args`).
 
     The interpreter and the composition rules share this test to decide whether
-    an op gets its jet rule or runs natively. Jets may appear at the top level or
-    nested one level inside a ``list`` arg (e.g. ``aten.cat([j1, j2], dim)``).
-    Only ``list`` args are scanned, not ``tuple``: multi-output ops (e.g.
-    ``max_pool2d_with_indices``) return a ``tuple`` whose element 0 is a jet,
-    and the following ``getitem`` must fall through to the default op.
+    an op gets its jet rule or runs natively.
     """
-    return any(
-        isinstance(a, JetTuple)
-        or (isinstance(a, list) and any(isinstance(e, JetTuple) for e in a))
-        for a in args
-    )
+    return any(True for _ in _jet_args(args))
+
+
+def _has_symbolic_zero(args: Sequence[object]) -> bool:
+    """Whether any jet arg (see :func:`_jet_args`) has a ``None`` coefficient."""
+    return any(c is None for jet in _jet_args(args) for c in jet)
 
 
 def _jet_order(*args: Tensor) -> int:

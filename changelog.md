@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added/New
+
+### Fixed/Removed
+
+### Internal
+
+## [1.1.0] - 2026-11-03
+
 Jets now run on torchvision's CNNs and on transformers, and are composable with
 `vmap`, `grad`, `vjp`, `jvp`, and `torch.compile` (via `jet.freeze`). A Taylor
 coefficient known to be zero can be passed as `None`, which `laplacian` and
@@ -700,6 +708,7 @@ future PyTorch releases may still require raising the minimum supported version.
 Today, we are releasing a cleaned up version of the library used in the experiments for our NeurIPS 2025 paper.
 The repository also hosts the LaTeX source for the paper and poster.
 
-[Unreleased]: https://github.com/f-dangel/torch-jet/compare/1.0.0...HEAD
+[Unreleased]: https://github.com/f-dangel/torch-jet/compare/1.1.0...HEAD
+[1.1.0]: https://github.com/f-dangel/torch-jet/compare/1.0.0...1.1.0
 [1.0.0]: https://github.com/f-dangel/torch-jet/compare/0.0.1...1.0.0
 [0.0.1]: https://github.com/f-dangel/torch-jet/releases/tag/0.0.1

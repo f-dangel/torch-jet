@@ -49,7 +49,7 @@ section of the introductory tutorial.
 
 See the [documentation](https://torch-jet.readthedocs.io/en/latest/generated/gallery/).
 
-### Composing with other transforms
+### Works with `vmap`, `grad`, `vjp`, `jvp`, and `torch.compile`
 
 - **Transforms over a jet.** A jet function returned by `jet(...)` is an
   ordinary PyTorch function, so `torch.func.vmap`, `grad`, `vjp`, and `jvp`
@@ -67,10 +67,11 @@ See the [documentation](https://torch-jet.readthedocs.io/en/latest/generated/gal
   compiled = torch.compile(jet.freeze(jet_fn, jet_args))
   ```
 
-- **A jet of a transform**, such as `jet(torch.func.grad(f), ...)`, works in
-  principle. But some of the ops that autograd's backward pass adds may not
-  have a jet rule yet, in which case the trace stops at the first op without
-  a rule.
+- **A jet of a transform**, such as `jet(torch.func.grad(f), ...)` or a jet
+  of a `vjp`, works: autograd's backward pass adds its own ATen ops to the
+  trace, and the backward ops of the supported primitives have jet rules too.
+  If the trace contains an op without a rule, calling the jet raises
+  `NotImplementedError` naming that op.
 
 ## Citing
 

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Jets now run on torchvision's CNNs and on transformers, and are composable with
+`vmap`, `grad`, `vjp`, `jvp`, and `torch.compile` (via `jet.freeze`). A Taylor
+coefficient known to be zero can be passed as `None`, which `laplacian` and
+`bilaplacian` use for efficiency.
+
 ### Added/New
 
 - Support jets of gradients (Taylor mode through a function that calls
@@ -16,9 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     ([PR](https://github.com/f-dangel/torch-jet/pull/261)).
   - `aten.copy.default` and `aten.as_strided_scatter.default`, the backward of
     `as_strided` (linear in the copied source, jointly linear in the tensor
-    being written and the source) ([PR](https://github.com/f-dangel/torch-jet/pull/271)).
-  - `aten.index_put.default`, which with `new_zeros` forms the backward of
-    fancy indexing `x[idx]` (jointly linear in the tensor being written and
+    being written and the source)
+    ([PR](https://github.com/f-dangel/torch-jet/pull/271)); like `as_strided`,
+    `as_strided_scatter` gives correct values for coefficients laid out
+    differently from the primal
+    ([PR](https://github.com/f-dangel/torch-jet/pull/285)).
+  - `aten.index_put.default`, which with `new_zeros`
+    ([PR](https://github.com/f-dangel/torch-jet/pull/279)) forms the backward
+    of fancy indexing `x[idx]` (jointly linear in the tensor being written and
     the values) ([PR](https://github.com/f-dangel/torch-jet/pull/280)).
   - `aten.avg_pool2d_backward.default`, `aten._adaptive_avg_pool2d_backward.default`,
     `aten.max_pool2d_with_indices_backward.default` and the fused
@@ -73,9 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `test/test_transformer_encoder.py` and `test/test_huggingface.py`) by adding
   jet rules for the ATen ops they need:
   - Grouped-query attention (`F.scaled_dot_product_attention` with
-    `enable_gqa=True`, e.g. LLaMA): the composition repeats each key/value head
-    for its query heads through a new linear rule for
-    `aten.repeat_interleave.self_int` ([PR](https://github.com/f-dangel/torch-jet/pull/240)).
+    `enable_gqa=True`, e.g. LLaMA) ([PR](https://github.com/f-dangel/torch-jet/pull/240)).
   - End-to-end tests on tiny Hugging Face transformers (GPT-2 with and without
     the language model head, BERT; `sdpa` and `eager` attention), built from
     configs with random weights; `transformers` joins the `test` extra
@@ -92,24 +100,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     call ([PR](https://github.com/f-dangel/torch-jet/pull/232)).
   - End-to-end tests for `nn.TransformerEncoder` (post-norm, pre-norm, GELU)
     and torchvision's `vit_b_16` ([PR](https://github.com/f-dangel/torch-jet/pull/231)).
-  - Scaled dot-product attention: a composition for
-    `F.scaled_dot_product_attention` with default arguments (eval mode,
-    `dropout_p == 0`) and an adapter for the fused CPU op ([PR](https://github.com/f-dangel/torch-jet/pull/226)).
-    - The sdpa adapters lay out their output out of place, so a jet can be
-      batched over directions with `vmap` when the trace hits a fused
-      attention kernel
-      ([PR](https://github.com/f-dangel/torch-jet/pull/242)).
-    - The CUDA adapters return their output in the same memory layout as the
-      fused kernels, so views the trace bases on that layout work (e.g.
-      `nn.MultiheadAttention` in half precision, and `sdpa(...).transpose(1,
-      2).reshape(...)` blocks in float32)
-      ([PR](https://github.com/f-dangel/torch-jet/pull/235)).
-    - Adapters for the fused CUDA ops (flash and memory-efficient), and
-      `aten._safe_softmax.default` for the math fallback (e.g. float64 on CUDA)
+  - Scaled dot-product attention: `F.scaled_dot_product_attention` with
+    default arguments (eval mode, `dropout_p == 0`) ([PR](https://github.com/f-dangel/torch-jet/pull/226)).
+    - `aten._safe_softmax.default`, the softmax of the math attention path
       ([PR](https://github.com/f-dangel/torch-jet/pull/228)).
-    - The CPU adapter returns its output in the same memory layout as the
-      fused kernel, so `nn.MultiheadAttention` works
-      ([PR](https://github.com/f-dangel/torch-jet/pull/229)).
     - Composed sub-rules fall through to the native op on constant inputs, so
       attention with only a jet `value` works
       ([PR](https://github.com/f-dangel/torch-jet/pull/227)).
@@ -119,10 +113,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       ([PR](https://github.com/f-dangel/torch-jet/pull/223)).
   - `aten._fused_rms_norm.default`, the op `torch.nn.RMSNorm` lowers to on
     CUDA/MPS ([PR](https://github.com/f-dangel/torch-jet/pull/214)).
-  - `aten.embedding.default`; a warning flags `padding_idx`, which only masks
-    autograd's gradient while jets propagate the true derivative ([PR](https://github.com/f-dangel/torch-jet/pull/217)).
+  - `aten.embedding.default`
+    ([PR](https://github.com/f-dangel/torch-jet/pull/217)); the `padding_idx` row is a
+    constant, like in autograd's gradient, so the Taylor coefficients at its
+    positions are zero ([PR](https://github.com/f-dangel/torch-jet/pull/276)).
   - `aten.masked_fill.Scalar` and `aten.masked_fill.Tensor` ([PR](https://github.com/f-dangel/torch-jet/pull/221)).
-  - `aten.where.self` ([PR](https://github.com/f-dangel/torch-jet/pull/219)).
+  - `aten.where.self` ([PR](https://github.com/f-dangel/torch-jet/pull/219));
+    with a Python scalar operand, it and `masked_fill` keep a half-precision
+    jet's dtype (e.g. the causal mask of `scaled_dot_product_attention` in
+    bfloat16)
+    ([PR](https://github.com/f-dangel/torch-jet/pull/234)).
   - The view/indexing ops `aten.select.int`, `aten.slice.Tensor`,
     `aten._to_copy.default`, and `aten.index.Tensor` ([PR](https://github.com/f-dangel/torch-jet/pull/218)).
   - `aten._softmax.default` ([PR](https://github.com/f-dangel/torch-jet/pull/215)).
@@ -160,7 +160,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `aten.erf.default` ([PR](https://github.com/f-dangel/torch-jet/pull/207)).
   - `aten.as_strided.default`, to which the in-place `as_strided_` that
     adaptive average pooling emits on channels_last inputs is mapped (ConvNeXt)
-    ([PR](https://github.com/f-dangel/torch-jet/pull/208)).
+    ([PR](https://github.com/f-dangel/torch-jet/pull/208)); each coefficient is
+    copied into the primal's memory layout before it is viewed like the
+    primal, so coefficients laid out differently (transposed, expanded) give
+    correct values, and a view that reads storage outside the input's elements
+    raises `NotImplementedError`
+    ([PR](https://github.com/f-dangel/torch-jet/pull/284)).
   - `aten.gelu.default` (exact and `approximate="tanh"`; ConvNeXt)
     ([PR](https://github.com/f-dangel/torch-jet/pull/209)).
   - ConvNeXt-Tiny in the end-to-end tests, completing the list above
@@ -173,18 +178,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   seed; the Monte-Carlo convergence test passes on MPS, where the device's
   own stream drew a set that did not converge
   ([PR](https://github.com/f-dangel/torch-jet/pull/305)).
-- The `as_strided` rule copies each coefficient into the primal's memory
-  layout before viewing it like the primal, instead of viewing the
-  coefficient's own storage with the primal's strides, which silently gave
-  wrong values for a coefficient whose layout differs from the primal's
-  (transposed, expanded); a view that reads storage outside the input's
-  elements raises `NotImplementedError`
-  ([PR](https://github.com/f-dangel/torch-jet/pull/284)).
-- The `as_strided_scatter` rule writes the source's coefficients into copies
-  of the input's coefficients that are laid out like the primal, and keeps the
-  native op for the primal; it also viewed the coefficients' own storage with
-  the primal's strides before
-  ([PR](https://github.com/f-dangel/torch-jet/pull/285)).
 - `laplacian` and `bilaplacian` pass their zero Taylor coefficients as stride-0
   views of a scalar instead of dense tensors, so they no longer allocate one
   input-sized buffer (`bilaplacian`: one of shape `(R, *input)` and one of the
@@ -192,14 +185,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([PR](https://github.com/f-dangel/torch-jet/pull/282)); the Taylor-mode and
   Laplacian tutorials use the pattern
   ([PR](https://github.com/f-dangel/torch-jet/pull/283)).
-- Constant-output rules (`zeros_like`, `ones_like`, `empty_like`, `fill`,
-  `new_zeros`) zero their coefficients to the *output's* shape instead of the
-  input's; the two differ for `new_zeros` with an explicit size
-  ([PR](https://github.com/f-dangel/torch-jet/pull/279)).
-- Jets of `embedding` treat the `padding_idx` row as a constant, like
-  autograd's gradient: the Taylor coefficients at its positions are zero. The
-  warning that reverse mode and jets disagree is gone
-  ([PR](https://github.com/f-dangel/torch-jet/pull/276)).
 - Collapsed Faà di Bruno terms sum the direction dim out of the product of
   inner coefficients *before* multiplying by the outer derivative, so autograd
   saves the summed product instead of the direction-batched one; restores the
@@ -213,10 +198,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `aten.cat.default` in collapsed mode no longer fails on a 1-D empty constant
   operand, which `cat` skips (Hugging Face's empty key/value cache, e.g. GPT-2)
   ([PR](https://github.com/f-dangel/torch-jet/pull/237)).
-- `aten.where.self` / `aten.masked_fill` with a Python scalar operand no longer
-  upcast a half-precision jet to float32 (e.g. the causal mask of
-  `scaled_dot_product_attention` in bfloat16)
-  ([PR](https://github.com/f-dangel/torch-jet/pull/234)).
 
 ### Internal
 

@@ -201,12 +201,6 @@ coefficient known to be zero can be passed as `None`, which `laplacian` and
 
 ### Internal
 
-- Docs: the release notes open with a one-sentence summary, no longer list
-  the removed attention adapters and `padding_idx` warning, and fold the fixes
-  of features new in this release into those features' entries; the README's
-  section on PyTorch's transforms names them in its heading and states that
-  jets of `grad` and `vjp` work
-  ([PR](https://github.com/f-dangel/torch-jet/pull/309)).
 - The transformer-encoder tests run the encoder on its plain path, which a
   jet takes anyway; PyTorch's fused CUDA fast path computes `gelu` with the
   tanh approximation, so the reference disagreed with the jet

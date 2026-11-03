@@ -49,13 +49,7 @@ class JetInterpreter(Interpreter):
         super().__init__(module)
         self.collapsed: bool = collapsed
 
-    def run(
-        self,
-        K: int,
-        R: int | None,
-        *args: Tensor,
-        **kwargs: Any,
-    ) -> PyTree[Jet]:
+    def run(self, K: int, R: int | None, *args: Tensor, **kwargs: Any) -> PyTree[Jet]:
         """Run the graph, then unwrap interpreter-internal jet types.
 
         ``K`` and ``R`` come from the validator that already inspected
@@ -137,10 +131,7 @@ class JetInterpreter(Interpreter):
                 )
 
     def _normalize(
-        self,
-        result: PyTree[JetTuple | Tensor],
-        K: int,
-        R: int | None,
+        self, result: PyTree[JetTuple | Tensor], K: int, R: int | None
     ) -> PyTree[Jet]:
         """Convert the pytree-of-jets into a pytree of plain tuples.
 
@@ -161,10 +152,7 @@ class JetInterpreter(Interpreter):
                         for k, c in enumerate(node[1:], start=1)
                     ),
                 )
-            return (
-                node,
-                *self._zero_coeffs(node, K, R),
-            )
+            return (node, *self._zero_coeffs(node, K, R))
 
         return tree_map(
             _normalize_leaf,
@@ -172,12 +160,7 @@ class JetInterpreter(Interpreter):
             is_leaf=lambda x: isinstance(x, (JetTuple, Tensor)),
         )
 
-    def _zero_coeffs(
-        self,
-        primal: Tensor,
-        K: int,
-        R: int | None,
-    ) -> list[Tensor]:
+    def _zero_coeffs(self, primal: Tensor, K: int, R: int | None) -> list[Tensor]:
         """Build ``K`` zero coefficients for a constant output leaf.
 
         Each returned tensor is a distinct allocation; sharing one
@@ -190,13 +173,7 @@ class JetInterpreter(Interpreter):
         """
         return [self._dense_zero(primal, k, K, R) for k in range(1, K + 1)]
 
-    def _dense_zero(
-        self,
-        primal: Tensor,
-        k: int,
-        K: int,
-        R: int | None,
-    ) -> Tensor:
+    def _dense_zero(self, primal: Tensor, k: int, K: int, R: int | None) -> Tensor:
         """A dense zero for the order-``k`` coefficient of a leaf with ``primal``.
 
         Used for a constant leaf and for a symbolic-zero coefficient of a jet

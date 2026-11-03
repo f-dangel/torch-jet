@@ -130,9 +130,10 @@ def bilaplacian(
         Returns:
             The (collapsed or summed) 4th-order coefficient.
         """
-        # Only the first input coefficient is nonzero: symbolic zeros
-        # (``None``) on the collapsed path, so the rules skip their terms; the
-        # vmap reference takes dense zeros.
+        # Only the first input coefficient is nonzero. The collapsed path passes
+        # symbolic zeros (``None``), so the rules skip their terms; the
+        # uncollapsed path wraps a standard jet in ``vmap`` and must pass real
+        # zero tensors.
         if collapsed:
             z = Z = None
         else:

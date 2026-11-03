@@ -168,6 +168,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
+- The random directions of a randomized Laplacian are drawn on the CPU and
+  moved to the device, so every backend sees the same directions for a given
+  seed; the Monte-Carlo convergence test passes on MPS, where the device's
+  own stream drew a set that did not converge
+  ([PR](https://github.com/f-dangel/torch-jet/pull/305)).
 - The `as_strided` rule copies each coefficient into the primal's memory
   layout before viewing it like the primal, instead of viewing the
   coefficient's own storage with the primal's strides, which silently gave
@@ -244,6 +249,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   observable changes yet. A new test module feeds every primitive case a
   symbolic zero tail and compares against dense zeros
   ([PR](https://github.com/f-dangel/torch-jet/pull/296)).
+- The interpreter names the derivative order and the number of collapsed
+  directions `K` and `R`, like every other module
+  ([PR](https://github.com/f-dangel/torch-jet/pull/302)).
 - The scaled-dot-product-attention composition is folded into the MPS
   kernel adapter, its only caller since attention traces on the math path
   elsewhere; it calls `jet_mm` and a local `repeat_interleave` rule, so the

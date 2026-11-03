@@ -42,8 +42,7 @@ def jet(
     In either mode an input coefficient of order two or higher may be ``None``:
     a symbolic zero, a coefficient known to vanish by construction (the second
     coefficient of a Laplacian's input jet, say). The rules skip every term it
-    would contribute instead of computing it on zeros. Only for zeros known by
-    construction; a tensor is never inspected for being zero. The output never
+    would contribute instead of computing it on zeros. The output never
     contains ``None``.
 
     Args:
@@ -80,6 +79,14 @@ def jet(
         >>> x, y = Tensor([0.1, 0.2, 0.3]), Tensor([0.4, 0.5, 0.6])
         >>> vx, vy = Tensor([1.0, 0.0, 0.0]), Tensor([0.0, 1.0, 0.0])
         >>> f0, f1 = jet_f((x, vx), (y, vy))
+
+        **Symbolic zero** (a higher coefficient known to vanish, e.g. along a
+        straight line ``x0 + t * x1``; the output is still dense)
+
+        >>> jet_f = jet(sin, (zeros(1),))
+        >>> f0, f1, f2 = jet_f((x0, x1, None))  # symbolic zero
+        >>> g0, g1, g2 = jet_f((x0, x1, zeros(1)))  # materialized zero
+        >>> assert f0.allclose(g0) and f1.allclose(g1) and f2.allclose(g2)
     """
     # Attention is traced on its math path. A fused kernel cannot propagate
     # Taylor coefficients, which need the softmax structure explicit, and its
@@ -126,11 +133,11 @@ def _rev_jet(
     def jet_f(*args: PyTree[Jet]) -> PyTree[Jet]:
         """Compute the function and its Taylor coefficients."""
         leaves, in_spec = tree_flatten(args, is_leaf=_is_jet_leaf)
-        derivative_order = len(leaves[0]) - 1
+        K = len(leaves[0]) - 1
 
         primals = [leaf[0] for leaf in leaves]
         taylor_coeffs_by_order = [
-            [leaf[order + 1] for leaf in leaves] for order in range(derivative_order)
+            [leaf[order + 1] for leaf in leaves] for order in range(K)
         ]
         ref_tensor = primals[0]
 
@@ -143,7 +150,7 @@ def _rev_jet(
                 primal
                 + sum(
                     t**order / factorial(order) * taylor_coeffs_by_order[order - 1][i]
-                    for order in range(1, derivative_order + 1)
+                    for order in range(1, K + 1)
                 )
                 for i, primal in enumerate(primals)
             ]
@@ -161,15 +168,14 @@ def _rev_jet(
         num_output_paths = len(f_paths)
 
         flat_taylor_coeffs_out = [
-            [zeros_like(f_path).flatten() for f_path in f_paths]
-            for _ in range(derivative_order)
+            [zeros_like(f_path).flatten() for f_path in f_paths] for _ in range(K)
         ]
 
         for path_idx in range(num_output_paths):
             f_path = f_paths[path_idx]
             for i, path_node in enumerate(f_path.flatten()):
                 dnf_dt = path_node
-                for order in range(derivative_order):
+                for order in range(K):
                     dnf_dt = _grad(dnf_dt, t)
                     flat_taylor_coeffs_out[order][path_idx][i] = (
                         dnf_dt.detach() if detach else dnf_dt
@@ -180,7 +186,7 @@ def _rev_jet(
                 f_path.detach() if detach else f_path,
                 *(
                     flat_taylor_coeffs_out[order][path_idx].reshape_as(f_path)
-                    for order in range(derivative_order)
+                    for order in range(K)
                 ),
             )
             for path_idx, f_path in enumerate(f_paths)

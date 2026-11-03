@@ -60,13 +60,14 @@ def test_validate_rejects_non_tensor_in_tuple():
 
 def test_validate_accepts_symbolic_zero_coefficients():
     """``None`` above order one is accepted; ``K`` and ``R`` are still found."""
-    mock = (zeros(3),)
+    mock = (zeros(2),)
     leaves, K, R = validate_input_jet(
-        mock, ((zeros(3), zeros(3), None),), collapsed=False
+        mock, ((zeros(2), zeros(2), None),), collapsed=False
     )
     assert (K, R) == (2, None) and leaves[0][2] is None
-    args = ((zeros(3), zeros(4, 3), None, None),)
-    assert validate_input_jet(mock, args, collapsed=True)[1:] == (3, 4)
+    K, R = 3, 4  # collapsed: c_1 is batched over the directions, c_2 and c_3 None
+    args = ((zeros(2), zeros(R, 2), *[None] * (K - 1)),)
+    assert validate_input_jet(mock, args, collapsed=True)[1:] == (K, R)
 
 
 @mark.parametrize("args", [(None, zeros(3)), (zeros(3), None, zeros(3))])

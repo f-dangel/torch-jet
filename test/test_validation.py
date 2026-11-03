@@ -4,7 +4,7 @@ The validator is independent of the rest of the jet pipeline; these tests
 exercise it directly without going through jet().
 """
 
-from pytest import raises
+from pytest import mark, raises
 from torch import zeros
 
 from jet.validation import validate_input_jet
@@ -54,8 +54,27 @@ def test_validate_rejects_non_tensor_in_tuple():
     """Python scalars inside the tuple are rejected."""
     mock = (zeros(3),)
     args = ((zeros(3), 1.0),)
-    with raises(ValueError, match="every entry of a jet tuple must be a Tensor"):
+    with raises(ValueError, match="a tensor or None"):
         validate_input_jet(mock, args, collapsed=False)
+
+
+def test_validate_accepts_symbolic_zero_coefficients():
+    """``None`` above order one is accepted; ``K`` and ``R`` are still found."""
+    mock = (zeros(2),)
+    leaves, K, R = validate_input_jet(
+        mock, ((zeros(2), zeros(2), None),), collapsed=False
+    )
+    assert (K, R) == (2, None) and leaves[0][2] is None
+    K, R = 3, 4  # collapsed: c_1 is batched over the directions, c_2 and c_3 None
+    args = ((zeros(2), zeros(R, 2), *[None] * (K - 1)),)
+    assert validate_input_jet(mock, args, collapsed=True)[1:] == (K, R)
+
+
+@mark.parametrize("args", [(None, zeros(3)), (zeros(3), None, zeros(3))])
+def test_validate_rejects_none_primal_or_c1(args: tuple):
+    """The primal and ``c_1`` must be tensors."""
+    with raises(ValueError, match="a tensor or None"):
+        validate_input_jet((zeros(3),), (args,), collapsed=False)
 
 
 def test_validate_rejects_wrong_primal_shape():
@@ -82,10 +101,7 @@ def test_validate_rejects_wrong_coefficient_shape():
 def test_validate_collapsed_rejects_R_mismatch_across_leaves():
     """R must agree across all collapsed leaves."""
     mock = (zeros(3), zeros(3))
-    args = (
-        _ones_args((3,), K=2, R=4),
-        _ones_args((3,), K=2, R=5),
-    )
+    args = (_ones_args((3,), K=2, R=4), _ones_args((3,), K=2, R=5))
     with raises(ValueError, match="leaf's R=5 disagrees with R=4"):
         validate_input_jet(mock, args, collapsed=True)
 

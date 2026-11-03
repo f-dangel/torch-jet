@@ -15,19 +15,8 @@ from typing import Callable
 
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
-from torch import (
-    Tensor,
-    arange,
-    eye,
-    manual_seed,
-    rand,
-    stack,
-    vmap,
-    zeros_like,
-)
-from torch import (
-    compile as torch_compile,
-)
+from torch import Tensor, arange, eye, manual_seed, rand, stack, vmap, zeros_like
+from torch import compile as torch_compile
 from torch.func import hessian
 from torch.nn import Linear, Sequential, Tanh
 from tueplots import bundles

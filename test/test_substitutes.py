@@ -8,16 +8,7 @@ PyTorch has caught up: drop the entry and the test.
 from typing import Callable
 
 from pytest import raises
-from torch import (
-    Tensor,
-    float32,
-    manual_seed,
-    rand,
-    randn,
-    tensor,
-    zeros,
-    zeros_like,
-)
+from torch import Tensor, float32, manual_seed, rand, randn, tensor, zeros, zeros_like
 from torch.autograd import grad
 from torch.nn import MultiheadAttention
 from torch.nn.functional import (

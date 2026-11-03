@@ -156,9 +156,10 @@ def freeze(
 
     Everything is fixed at trace time: the pytree structure of ``args`` (for
     jet arguments: the order ``K``, the direction count ``R``, and collapsed
-    or not), and every leaf's shape, dtype, and device. Calling the frozen
-    function with different arguments raises. The plain jet callable stays
-    flexible.
+    or not), and every leaf's shape, dtype, and device. A ``None`` leaf (a
+    jet's symbolic-zero coefficient, see :func:`jet.jet`) must be ``None`` at
+    call time too. Calling the frozen function with different arguments
+    raises. The plain jet callable stays flexible.
 
     Args:
         f: Callable to trace (e.g. a jet function). May accept pytrees of
@@ -183,7 +184,7 @@ def freeze(
     """
     mod, in_spec = capture_graph(f, args)
     leaves = tree_flatten(args)[0]
-    signature = [(t.shape, t.dtype, t.device) for t in leaves]
+    signature = [None if t is None else (t.shape, t.dtype, t.device) for t in leaves]
 
     def frozen(*new_args: PyTree[Tensor]) -> PyTree[Tensor]:
         new_leaves, new_spec = tree_flatten(new_args)
@@ -193,7 +194,14 @@ def freeze(
                 f"trace-time pytree structure, got {len(new_leaves)} leaves with "
                 "a different structure (order, direction count, or nesting)."
             )
-        for i, (t, (shape, dtype, device)) in enumerate(zip(new_leaves, signature)):
+        for i, (t, sig) in enumerate(zip(new_leaves, signature)):
+            if sig is None:
+                if t is not None:
+                    raise ValueError(f"leaf {i} was None at trace time, got a tensor.")
+                continue
+            shape, dtype, device = sig
+            if t is None:
+                raise ValueError(f"leaf {i} was a tensor at trace time, got None.")
             if (t.shape, t.dtype, t.device) != (shape, dtype, device):
                 raise ValueError(
                     f"leaf {i} has shape {tuple(t.shape)}, dtype {t.dtype}, "

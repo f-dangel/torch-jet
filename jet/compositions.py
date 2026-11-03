@@ -26,6 +26,7 @@ from jet.primitives import (
     _elementwise,
     _gelu_exact_derivatives,
     _has_jet_arg,
+    jet_mm,
 )
 
 
@@ -496,65 +497,6 @@ def cudnn_batch_norm(
     return out, empty, empty, empty.new_empty(0, dtype=uint8)
 
 
-def scaled_dot_product_attention(
-    query: Tensor | JetTuple,
-    key: Tensor | JetTuple,
-    value: Tensor | JetTuple,
-    attn_mask: Tensor | None = None,
-    dropout_p: float = 0.0,
-    is_causal: bool = False,
-    scale: float | None = None,
-) -> JetTuple:
-    """Taylor-mode arithmetic for ``aten.scaled_dot_product_attention`` (eval mode).
-
-    ``softmax(scale * query @ key^T + mask, -1) @ value`` (``scale = 1/sqrt(E)``
-    by default), composed from the ``mul`` / ``transpose`` / ``matmul`` /
-    ``masked_fill`` / ``add`` / ``_softmax`` rules (``matmul`` broadcasts over
-    the leading batch dims). A causal or bool ``attn_mask`` (``True`` = attend)
-    fills the blocked scores with ``-inf``, a float one is added. The
-    ``_softmax`` rule's max-shift keeps the whole jet stable; a fully masked
-    row gives ``NaN`` like the ATen math path. Any of ``query`` ``(..., L, E)``
-    / ``key`` ``(..., S, E)`` / ``value`` ``(..., S, Ev)`` may be a jet or a
-    constant; ``attn_mask`` is a constant broadcastable to ``(..., L, S)``.
-    Grouped-query attention (``enable_gqa``: fewer key/value heads than query
-    heads along dim ``-3``) repeats each key/value head for its query heads.
-
-    Returns:
-        The value and its Taylor coefficients, shape ``(..., L, Ev)``.
-
-    Raises:
-        NotImplementedError: If ``dropout_p != 0`` (jets require eval mode,
-            ``model.eval()``).
-    """
-    if dropout_p != 0:
-        raise NotImplementedError(
-            "Taylor-mode scaled_dot_product_attention requires dropout_p == 0; "
-            "jets require eval mode (call model.eval())."
-        )
-    mul = _rule(ops.aten.mul.Tensor)
-    matmul = _rule(ops.aten.matmul.default)
-    transpose = _rule(ops.aten.transpose.int)
-    q, k = (x[0] if isinstance(x, JetTuple) else x for x in (query, key))
-    if q.shape[-3] != k.shape[-3]:
-        repeat = _rule(ops.aten.repeat_interleave.self_int)
-        groups = q.shape[-3] // k.shape[-3]
-        key, value = (repeat(x, groups, -3) for x in (key, value))
-    scale = q.shape[-1] ** -0.5 if scale is None else scale
-    scores = matmul(mul(query, scale), transpose(key, -2, -1))
-    if is_causal:
-        attn_mask = ones(
-            q.shape[-2], k.shape[-2], dtype=bool_dtype, device=q.device
-        ).tril()
-    if attn_mask is not None:
-        if attn_mask.dtype == bool_dtype:
-            masked_fill = _rule(ops.aten.masked_fill.Scalar)
-            scores = masked_fill(scores, ~attn_mask, -float("inf"))
-        else:
-            scores = _rule(ops.aten.add.Tensor)(scores, attn_mask)
-    attn = _rule(ops.aten._softmax.default)(scores, dim=-1, half_to_float=False)
-    return matmul(attn, value)
-
-
 def _scaled_dot_product_attention_math_for_mps(
     query: Tensor | JetTuple,
     key: Tensor | JetTuple,
@@ -566,24 +508,59 @@ def _scaled_dot_product_attention_math_for_mps(
     *,
     scale: float | None = None,
     enable_gqa: bool = False,
-) -> tuple:
-    """Adapter for the MPS math kernel ``F.scaled_dot_product_attention`` lowers to.
+) -> tuple[JetTuple, None]:
+    """Taylor-mode arithmetic for the MPS attention kernel (eval mode).
 
-    ``enable_gqa`` is implied by the head counts, so the composition needs no
-    flag. The second, backward-only output is ``None`` so that any consumer
-    (e.g. a future backward rule for nesting) fails loudly.
+    On MPS ``F.scaled_dot_product_attention`` lowers to this one math kernel
+    (CPU and CUDA trace its math-path ops instead). ``softmax(scale * query @
+    key^T + mask, -1) @ value`` (``scale = 1/sqrt(E)`` by default), composed
+    from the ``mul`` / ``transpose`` / ``masked_fill`` / ``add`` / ``_softmax``
+    rules and :func:`jet_mm` (``matmul`` broadcasts over the leading batch
+    dims). A causal or bool ``attn_mask`` (``True`` = attend) fills the
+    blocked scores with ``-inf``, a float one is added. The ``_softmax``
+    rule's max-shift keeps the whole jet stable; a fully masked row gives
+    ``NaN`` like the ATen math path. Any of ``query`` ``(..., L, E)`` / ``key``
+    ``(..., S, E)`` / ``value`` ``(..., S, Ev)`` may be a jet or a constant;
+    ``attn_mask`` is a constant broadcastable to ``(..., L, S)``. Grouped-query
+    attention (fewer key/value heads than query heads along dim ``-3``) repeats
+    each key/value head for its query heads; ``enable_gqa`` is implied by the
+    head counts.
+
+    Returns:
+        The value and its Taylor coefficients, shape ``(..., L, Ev)``, and
+        ``None`` for the kernel's backward-only second output, so that any
+        consumer (e.g. a future backward rule for nesting) fails loudly.
 
     Raises:
-        NotImplementedError: If ``dropout_mask`` is given.
+        NotImplementedError: If ``dropout_p != 0`` or ``dropout_mask`` is given
+            (jets require eval mode, ``model.eval()``).
     """
-    if dropout_mask is not None:
+    if dropout_p != 0 or dropout_mask is not None:
         raise NotImplementedError(
-            "Taylor-mode scaled_dot_product_attention does not support dropout_mask."
+            "Taylor-mode scaled_dot_product_attention requires dropout_p == 0 and "
+            "no dropout_mask; jets require eval mode (call model.eval())."
         )
-    out = scaled_dot_product_attention(
-        query, key, value, attn_mask, dropout_p, is_causal, scale
-    )
-    return out, None
+    mul = _rule(ops.aten.mul.Tensor)
+    transpose = _rule(ops.aten.transpose.int)
+    q, k = (x[0] if isinstance(x, JetTuple) else x for x in (query, key))
+    if q.shape[-3] != k.shape[-3]:
+        repeat = _deflinear(ops.aten.repeat_interleave.self_int)
+        groups = q.shape[-3] // k.shape[-3]
+        key, value = (repeat(x, groups, -3) for x in (key, value))
+    scale = q.shape[-1] ** -0.5 if scale is None else scale
+    scores = jet_mm(mul(query, scale), transpose(key, -2, -1))
+    if is_causal:
+        attn_mask = ones(
+            q.shape[-2], k.shape[-2], dtype=bool_dtype, device=q.device
+        ).tril()
+    if attn_mask is not None:
+        if attn_mask.dtype == bool_dtype:
+            masked_fill = _rule(ops.aten.masked_fill.Scalar)
+            scores = masked_fill(scores, ~attn_mask, -float("inf"))
+        else:
+            scores = _rule(ops.aten.add.Tensor)(scores, attn_mask)
+    attn = _rule(ops.aten._softmax.default)(scores, dim=-1, half_to_float=False)
+    return jet_mm(attn, value), None
 
 
 def tanh_backward(

@@ -215,6 +215,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- The scaled-dot-product-attention composition is folded into the MPS
+  kernel adapter, its only caller since attention traces on the math path
+  elsewhere; it calls `jet_mm` and a local `repeat_interleave` rule, so the
+  registry drops the `matmul` and `repeat_interleave` entries tracing never
+  produces ([PR](https://github.com/f-dangel/torch-jet/pull/295)).
 - The `nll_loss_backward` and `where` rules and the bias gradient of the
   convolution backward composition build their constant-or-jet dispatch
   with `_deflinear` instead of spelling it out

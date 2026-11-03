@@ -235,6 +235,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   observable changes yet. A new test module feeds every primitive case a
   symbolic zero tail and compares against dense zeros
   ([PR](https://github.com/f-dangel/torch-jet/pull/296)).
+- The interpreter names the derivative order and the number of collapsed
+  directions `K` and `R`, like every other module
+  ([PR](https://github.com/f-dangel/torch-jet/pull/302)).
 - The scaled-dot-product-attention composition is folded into the MPS
   kernel adapter, its only caller since attention traces on the math path
   elsewhere; it calls `jet_mm` and a local `repeat_interleave` rule, so the

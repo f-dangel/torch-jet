@@ -238,11 +238,6 @@ def _coeff(t: Tensor | JetTuple, k: int, batched: bool, R: int) -> Tensor:
     return _zero_coeff(like, (R, *like.shape) if batched else like.shape)
 
 
-def _all_none(operands: Sequence[Tensor | JetTuple], k: int) -> bool:
-    """Whether coefficient ``k`` is a symbolic zero in every jet of ``operands``."""
-    return all(t[k] is None for t in operands if isinstance(t, JetTuple))
-
-
 def _apply_linear(
     self: JetTuple, op: Callable[[Tensor], Tensor | Sequence[Tensor]]
 ) -> JetTuple | tuple[JetTuple, ...]:
@@ -1334,7 +1329,7 @@ def jet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
 
     out = []
     for k in range(K + 1):
-        if _all_none(tensors, k):
+        if all(t[k] is None for t in tensors if isinstance(t, JetTuple)):
             out.append(None)
             continue
         batched = _is_batched(k, K, collapsed)
@@ -1787,7 +1782,7 @@ def _pair_linear(
 
         out = [primal(_coeff(a, 0, False, R), _coeff(b, 0, False, R))]
         for k in range(1, K + 1):
-            if _all_none((a, b), k):
+            if all(x[k] is None for x in (a, b) if isinstance(x, JetTuple)):
                 out.append(None)
                 continue
             batched = _is_batched(k, K, jet.collapsed)

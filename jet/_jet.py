@@ -39,6 +39,12 @@ def jet(
       smaller tensors through the graph. Requires ``K >= 2`` and ``R`` may
       vary per call.
 
+    In either mode an input coefficient of order two or higher may be ``None``:
+    a symbolic zero, a coefficient known to vanish by construction (the second
+    coefficient of a Laplacian's input jet, say). The rules skip every term it
+    would contribute instead of computing it on zeros. The output never
+    contains ``None``.
+
     Args:
         f: Function to overload. May accept and return pytrees of tensors.
         mock_args: Mock input tensors (or pytrees of tensors) for tracing
@@ -73,6 +79,14 @@ def jet(
         >>> x, y = Tensor([0.1, 0.2, 0.3]), Tensor([0.4, 0.5, 0.6])
         >>> vx, vy = Tensor([1.0, 0.0, 0.0]), Tensor([0.0, 1.0, 0.0])
         >>> f0, f1 = jet_f((x, vx), (y, vy))
+
+        **Symbolic zero** (a higher coefficient known to vanish, e.g. along a
+        straight line ``x0 + t * x1``; the output is still dense)
+
+        >>> jet_f = jet(sin, (zeros(1),))
+        >>> f0, f1, f2 = jet_f((x0, x1, None))  # symbolic zero
+        >>> g0, g1, g2 = jet_f((x0, x1, zeros(1)))  # materialized zero
+        >>> assert f0.allclose(g0) and f1.allclose(g1) and f2.allclose(g2)
     """
     # Attention is traced on its math path. A fused kernel cannot propagate
     # Taylor coefficients, which need the softmax structure explicit, and its

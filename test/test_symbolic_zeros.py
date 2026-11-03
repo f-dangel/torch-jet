@@ -4,31 +4,16 @@ from typing import Any
 
 from pytest import mark
 from torch import ops, rand, zeros_like
-from torch.nn.attention import SDPBackend, sdpa_kernel
 from torch.testing import assert_close
-from torch.utils._pytree import tree_flatten, tree_map
+from torch.utils._pytree import tree_map
 
-from jet import capture_graph
+from jet import jet
 from jet._rules import RULES
-from jet.jet_interpreter import JetInterpreter
 from jet.primitives import JetTuple, jet_add, jet_cat
 from jet.utils import _is_jet_leaf
 from test.test_composition import COMPOSITION_CASES
 from test.test_primitives import PRIMITIVE_CASES
 from test.utils import make_jet_args, setup_case, tolerances_for
-
-
-def _run_unchecked(f: Any, mock_args: tuple, collapsed: bool, args: tuple) -> Any:
-    """``jet(f, mock_args, collapsed)(*args)`` without the validator.
-
-    The validator rejects ``None`` entries; the interpreter is driven directly.
-    """
-    with sdpa_kernel(SDPBackend.MATH):
-        mod, _ = capture_graph(f, mock_args)
-    leaves = tree_flatten(mock_args)[1].flatten_up_to(args)
-    K = len(leaves[0]) - 1
-    R = leaves[0][1].shape[0] if collapsed else None
-    return JetInterpreter(mod, collapsed=collapsed).run(K, R, *leaves)
 
 
 @mark.parametrize("K", [2, 3], ids=["K2", "K3"])
@@ -47,9 +32,8 @@ def test_symbolic_zero_tail_matches_dense(
     symbolic = tree_map(
         lambda leaf: (*leaf[:2], *([None] * (K - 1))), args, is_leaf=_is_jet_leaf
     )
-    want = _run_unchecked(f, mock_args, collapsed, dense)
-    got = _run_unchecked(f, mock_args, collapsed, symbolic)
-    assert_close(got, want, **tolerances_for(device))
+    jet_f = jet(f, mock_args, collapsed=collapsed)
+    assert_close(jet_f(*symbolic), jet_f(*dense), **tolerances_for(device))
 
 
 def test_symbolic_zero_survives_linear_rules(collapsed: bool, device: str):

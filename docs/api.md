@@ -9,7 +9,8 @@ PyTorch's pytree machinery to flatten and rebuild it.
 
 The jet transforms further use `PyTree[Jet]`, where each tensor leaf is replaced
 by a *jet tuple* `(primal, c_1, ..., c_K)`: a tensor bundled with its `K` Taylor
-coefficients.
+coefficients. An input coefficient of order two or higher may be `None`, a
+symbolic zero (see `jet.jet`).
 
 ## Function transformations
 

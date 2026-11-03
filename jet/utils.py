@@ -29,9 +29,15 @@ type PyTree[Leaf] = (
 
 
 def _is_jet_leaf(x: Any) -> bool:
-    """``True`` iff ``x`` is a jet tuple: a ``tuple`` of one or more tensors."""
+    """``True`` iff ``x`` is a jet tuple: a ``tuple`` of one or more tensors.
+
+    The coefficients of order two and higher may be ``None`` (symbolic zeros).
+    """
     return (
-        isinstance(x, tuple) and len(x) >= 1 and all(isinstance(e, Tensor) for e in x)
+        isinstance(x, tuple)
+        and len(x) >= 1
+        and all(isinstance(e, Tensor) for e in x[:2])
+        and all(e is None or isinstance(e, Tensor) for e in x[2:])
     )
 
 

@@ -24,12 +24,16 @@ CASES = (
 )
 
 
-@mark.parametrize("K", [2, 3], ids=["K2", "K3"])
 @mark.parametrize("config", CASES, ids=lambda c: c["id"])
 def test_symbolic_zero_tail_matches_dense(
-    config: dict[str, Any], K: int, collapsed: bool, device: str
+    config: dict[str, Any], collapsed: bool, device: str
 ):
-    """``None`` in the coefficients of order ``2..K`` equals zero tensors there."""
+    """``None`` in the coefficients of order ``2..K`` equals zero tensors there.
+
+    ``K = 3`` has two symbolic zeros in a row; the collapsed Laplacian and
+    Bi-Laplacian tests cover ``K = 2`` and ``K = 4``.
+    """
+    K = 3
     f, mock_args = setup_case(config, device)
     args = make_jet_args(mock_args, K, collapsed)
     dense = tree_map(

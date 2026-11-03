@@ -215,6 +215,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Symbolic zeros, step 3: the Leibniz product, Faà di Bruno and division
+  recurrences drop every term with a `None` factor and return `None` when
+  all terms vanish; the elementwise, `mul`, `mm` and `div` rules opt in
+  ([PR](https://github.com/f-dangel/torch-jet/pull/298)).
 - Symbolic zeros, step 2: the linear helpers (`_apply_linear_coeffs`,
   `_apply_linear`, `_broadcast_coeffs`) pass a `None` coefficient through,
   and the rules `_deflinear` and `_deflinear_first` build opt in

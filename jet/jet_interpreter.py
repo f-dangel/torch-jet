@@ -24,7 +24,7 @@ from jet._rules import RULES
 from jet.primitives import (
     JetTuple,
     _has_jet_arg,
-    _has_symbolic_zero,
+    _jet_args,
     _slot_shape,
 )
 from jet.utils import Jet, PyTree
@@ -104,7 +104,9 @@ class JetInterpreter(Interpreter):
                 raise NotImplementedError(
                     f"No jet rule for {target}. Please file an issue."
                 )
-            if not getattr(rule, "symbolic_zeros", False) and _has_symbolic_zero(args):
+            if not getattr(rule, "symbolic_zeros", False) and any(
+                c is None for jet in _jet_args(args) for c in jet
+            ):
                 args = self._materialize(args)
             result = rule(*args, **kwargs)
             self._check_collapsed(result, target)

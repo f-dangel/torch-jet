@@ -21,12 +21,7 @@ from torch.fx.node import Argument, Target
 from torch.utils._pytree import tree_leaves, tree_map
 
 from jet._rules import RULES
-from jet.primitives import (
-    JetTuple,
-    _has_jet_arg,
-    _has_symbolic_zero,
-    _slot_shape,
-)
+from jet.primitives import JetTuple, _has_jet_arg, _slot_shape
 from jet.utils import Jet, PyTree
 
 
@@ -88,10 +83,6 @@ class JetInterpreter(Interpreter):
             args: Positional arguments of the node.
             kwargs: Keyword arguments of the node.
 
-        A rule that has not opted in to symbolic zeros (see
-        :class:`JetTuple`) receives its jet arguments with every ``None``
-        coefficient materialized.
-
         Returns:
             The result of the jet operation (a jet tuple) or the original op.
 
@@ -104,23 +95,10 @@ class JetInterpreter(Interpreter):
                 raise NotImplementedError(
                     f"No jet rule for {target}. Please file an issue."
                 )
-            if not getattr(rule, "symbolic_zeros", False) and _has_symbolic_zero(args):
-                args = self._materialize(args)
             result = rule(*args, **kwargs)
             self._check_collapsed(result, target)
             return result
         return super().call_function(target, args, kwargs)
-
-    def _materialize(self, args: tuple[Argument, ...]) -> tuple[Argument, ...]:
-        """Replace the ``None`` coefficients of every jet in ``args`` by zeros.
-
-        See :meth:`JetTuple.materialized`.
-        """
-        return tree_map(
-            lambda x: x.materialized() if isinstance(x, JetTuple) else x,
-            args,
-            is_leaf=lambda x: isinstance(x, JetTuple),
-        )
 
     def _check_collapsed(self, result: Any, target: Target) -> None:
         """Assert every ``JetTuple`` a rule returns matches the run's mode.

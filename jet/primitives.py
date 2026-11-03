@@ -54,9 +54,9 @@ class JetTuple(tuple):
     a coefficient known to vanish by construction (a declared zero input slot,
     the output of a constant op). It is never inferred from tensor values. The
     primal and ``c_1`` are always tensors, so ``K``, ``R`` and the device can be
-    read off any jet. :meth:`materialized` is the same jet with its ``None``
-    entries as zero views; which rules receive a ``None`` at all is governed by
-    :func:`_symbolic_zeros`.
+    read off any jet. Every rule receives a ``None`` as is and skips the terms
+    it would contribute; the interpreter materializes ``None`` as dense zeros
+    only at the output boundary, so no user ever sees one.
     """
 
     def __new__(cls, iterable=(), *, collapsed: bool) -> Self:
@@ -64,30 +64,6 @@ class JetTuple(tuple):
         obj = super().__new__(cls, iterable)
         obj.collapsed = collapsed
         return obj
-
-    def materialized(self) -> Self:
-        """This jet with every ``None`` coefficient replaced by a zero view.
-
-        Each zero is a stride-0 view of one element in the slot's shape (see
-        :func:`_slot_shape`); ``R`` is read off ``c_1``, which is batched in
-        every collapsed jet (collapsed mode requires ``K >= 2``).
-
-        Returns:
-            ``self`` if no coefficient is ``None``, else a new jet with the same
-            ``collapsed`` flag.
-        """
-        if not any(c is None for c in self):
-            return self
-        K, R = len(self) - 1, self[1].shape[0] if self.collapsed else None
-        return JetTuple(
-            (
-                _zero_coeff(self[0], _slot_shape(self[0], k, K, self.collapsed, R))
-                if c is None
-                else c
-                for k, c in enumerate(self)
-            ),
-            collapsed=self.collapsed,
-        )
 
 
 # Register with PyTorch's pytree so that vmap, make_fx, etc. can flatten/unflatten
@@ -98,22 +74,6 @@ register_pytree_node(
     flatten_fn=lambda x: (list(x), x.collapsed),
     unflatten_fn=lambda values, collapsed: JetTuple(values, collapsed=collapsed),
 )
-
-
-def _symbolic_zeros(rule: Callable) -> Callable:
-    """Mark ``rule`` as handling symbolic-zero (``None``) coefficients itself.
-
-    The interpreter materializes the ``None`` coefficients of a jet argument
-    before calling any rule without this mark (see :class:`JetTuple`).
-
-    Args:
-        rule: The jet rule.
-
-    Returns:
-        ``rule``, marked.
-    """
-    rule.symbolic_zeros = True
-    return rule
 
 
 def _jet_args(args: Sequence[object]) -> Iterator[JetTuple]:
@@ -139,11 +99,6 @@ def _has_jet_arg(args: Sequence[object]) -> bool:
     an op gets its jet rule or runs natively.
     """
     return any(True for _ in _jet_args(args))
-
-
-def _has_symbolic_zero(args: Sequence[object]) -> bool:
-    """Whether any jet arg (see :func:`_jet_args`) has a ``None`` coefficient."""
-    return any(c is None for jet in _jet_args(args) for c in jet)
 
 
 def _jet_order(*args: Tensor) -> int:
@@ -953,7 +908,6 @@ def _elementwise(
 # --- Power ---
 
 
-@_symbolic_zeros
 def jet_pow(self: JetTuple, exponent: float | int) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.pow(self, exponent)``.
 
@@ -971,7 +925,6 @@ def jet_pow(self: JetTuple, exponent: float | int) -> JetTuple:
 # --- Hardtanh ---
 
 
-@_symbolic_zeros
 def jet_hardtanh(
     self: Tensor | JetTuple, min_val: float = -1.0, max_val: float = 1.0
 ) -> Tensor | JetTuple:
@@ -993,7 +946,6 @@ def jet_hardtanh(
 # --- Threshold ---
 
 
-@_symbolic_zeros
 def jet_threshold(
     self: Tensor | JetTuple, threshold: float, value: float
 ) -> Tensor | JetTuple:
@@ -1047,7 +999,6 @@ def _addsub(
     return op(self, other)
 
 
-@_symbolic_zeros
 def jet_add(
     self: Tensor | JetTuple | float | int,
     other: Tensor | JetTuple | float | int,
@@ -1065,7 +1016,6 @@ def jet_add(
     return _addsub(self, other, add, lambda c: c)
 
 
-@_symbolic_zeros
 def jet_sub(
     self: Tensor | JetTuple | float | int,
     other: Tensor | JetTuple | float | int,
@@ -1083,7 +1033,6 @@ def jet_sub(
     return _addsub(self, other, sub, lambda c: -c)
 
 
-@_symbolic_zeros
 def jet_rsub(
     self: Tensor | JetTuple,
     other: Tensor | JetTuple | float | int,
@@ -1104,7 +1053,6 @@ def jet_rsub(
     return jet_sub(other, self if alpha == 1 else jet_mul(self, alpha))
 
 
-@_symbolic_zeros
 def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.mul(self, other)``.
 
@@ -1121,7 +1069,6 @@ def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
     return _apply_bilinear(lambda a, b: a * b, self, other)
 
 
-@_symbolic_zeros
 def jet_div(
     self: Tensor | JetTuple | float | int, other: Tensor | JetTuple | float | int
 ) -> Tensor | JetTuple:
@@ -1168,7 +1115,6 @@ def jet_div(
 # --- Linear decomposition ---
 
 
-@_symbolic_zeros
 def jet_mm(self: Tensor | JetTuple, mat2: Tensor | JetTuple) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.mm`` / ``aten.bmm`` (``self @ mat2``).
 
@@ -1305,7 +1251,6 @@ def jet_max_pool2d_backward(
 # --- Concatenation ---
 
 
-@_symbolic_zeros
 def jet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.cat(tensors, dim)``.
 
@@ -1348,7 +1293,6 @@ def jet_cat(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
     return JetTuple(tuple(out), collapsed=collapsed)
 
 
-@_symbolic_zeros
 def jet_where(
     condition: Tensor,
     self: Tensor | JetTuple | float | int,
@@ -1385,7 +1329,6 @@ def jet_where(
     return jet_add(keep(self, condition), keep(other, ~condition))
 
 
-@_symbolic_zeros
 def jet_masked_fill(
     self: Tensor | JetTuple, mask: Tensor, value: Tensor | JetTuple | float | int
 ) -> JetTuple:
@@ -1553,7 +1496,6 @@ def _bn_channel_view(primal: Tensor) -> tuple[int, ...]:
 # ``RULES`` registry lives in :mod:`jet._rules`.
 
 
-@_symbolic_zeros
 def jet_embedding(
     weight: Tensor | JetTuple, indices: Tensor, padding_idx: int = -1, *args
 ) -> JetTuple:
@@ -1598,7 +1540,6 @@ def jet_embedding(
     )
 
 
-@_symbolic_zeros
 def jet_index_put(
     self: Tensor | JetTuple,
     indices: list[Tensor | None],
@@ -1744,7 +1685,7 @@ def _deflinear(prim: Callable) -> Callable:
             return prim(self, *args, **kwargs)
         return _apply_linear(self, lambda c: prim(c, *args, **kwargs))
 
-    return _symbolic_zeros(rule)
+    return rule
 
 
 def _deflinear_first(prim: Callable) -> Callable:
@@ -1764,7 +1705,7 @@ def _deflinear_first(prim: Callable) -> Callable:
         args = tuple(a[0] if isinstance(a, JetTuple) else a for a in args)
         return _deflinear(prim)(self, *args, **kwargs)
 
-    return _symbolic_zeros(rule)
+    return rule
 
 
 def _pair_linear(
@@ -1800,7 +1741,7 @@ def _pair_linear(
             out.append(op(_coeff(a, k, batched, R), _coeff(b, k, batched, R)))
         return JetTuple(out, collapsed=jet.collapsed)
 
-    return _symbolic_zeros(rule)
+    return rule
 
 
 def _defzero(prim: Callable) -> Callable:
@@ -1825,4 +1766,4 @@ def _defzero(prim: Callable) -> Callable:
             coeffs[0] = _zero_coeff(primal_out, (*lead, *primal_out.shape))
         return JetTuple([primal_out, *coeffs], collapsed=self.collapsed)
 
-    return _symbolic_zeros(rule)
+    return rule

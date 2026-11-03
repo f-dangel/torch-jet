@@ -10,13 +10,7 @@ from typing import Callable
 from torch import Tensor, ops
 
 from jet import compositions, primitives
-from jet.primitives import (
-    JetTuple,
-    _deflinear,
-    _deflinear_first,
-    _defzero,
-    _symbolic_zeros,
-)
+from jet.primitives import JetTuple, _deflinear, _deflinear_first, _defzero
 
 #: A jet rule: maps a ``JetTuple`` (and any structural args) to its image.
 Rule = Callable[..., JetTuple]
@@ -24,7 +18,7 @@ Rule = Callable[..., JetTuple]
 
 def _defelementwise(deriv_fn: Callable[[Tensor, int], dict[int, Tensor]]) -> Rule:
     """Build the elementwise-unary rule from ``deriv_fn`` (e.g. ``_sin_derivatives``)."""
-    return _symbolic_zeros(partial(primitives._elementwise, deriv_fn=deriv_fn))
+    return partial(primitives._elementwise, deriv_fn=deriv_fn)
 
 
 #: Maps an ``aten`` op overload to its jet rule.

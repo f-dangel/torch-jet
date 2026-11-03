@@ -1470,18 +1470,18 @@ def jet_copy(
 
 
 def _check_view(
-    x: Tensor, size: Sequence[int], stride: Sequence[int], offset: int
+    x: Tensor, size: Sequence[int], stride: Sequence[int], storage_offset: int | None
 ) -> int:
-    """Check that the view ``(size, stride, offset)`` stays inside ``x``'s elements.
+    """Check that the view ``(size, stride, storage_offset)`` stays inside ``x``'s elements.
 
     Args:
         x: The tensor whose storage the view reads.
         size: Shape of the view.
         stride: Strides of the view.
-        offset: Storage offset of the view.
+        storage_offset: Storage offset of the view; ``None`` keeps ``x``'s.
 
     Returns:
-        ``x``'s storage offset, the position of its first element.
+        The view's offset relative to ``x``'s first element.
 
     Raises:
         NotImplementedError: If ``x`` is not dense (its elements do not fill
@@ -1489,6 +1489,7 @@ def _check_view(
             reads storage no coefficient element corresponds to.
     """
     base, n = x.storage_offset(), x.numel()
+    offset = base if storage_offset is None else storage_offset
     dense, expect = True, 1
     for s, k in sorted((s, k) for k, s in zip(x.shape, x.stride()) if k > 1):
         dense, expect = dense and s == expect, expect * k
@@ -1499,7 +1500,7 @@ def _check_view(
             f"on a tensor of shape {list(x.shape)}, stride {list(x.stride())}, offset "
             f"{base}: the jet rules need a dense input whose elements the view stays in."
         )
-    return base
+    return offset - base
 
 
 def _in_layout_of(c: Tensor, x: Tensor) -> Tensor:
@@ -1525,11 +1526,10 @@ def jet_as_strided(
     if not isinstance(self, JetTuple):
         return ops.aten.as_strided.default(self, size, stride, storage_offset)
     x = self[0]
-    offset = x.storage_offset() if storage_offset is None else storage_offset
-    base = _check_view(x, size, stride, offset)
+    offset = _check_view(x, size, stride, storage_offset)
 
     def view(c: Tensor) -> Tensor:
-        return _in_layout_of(c, x).as_strided(size, stride, offset - base)
+        return _in_layout_of(c, x).as_strided(size, stride, offset)
 
     primal = ops.aten.as_strided.default(x, size, stride, storage_offset)
     return JetTuple(
@@ -1554,19 +1554,17 @@ def jet_as_strided_scatter(
     keeps the input's, which a later ``as_strided`` node was traced with.
     """
     x = self[0] if isinstance(self, JetTuple) else self
-    offset = x.storage_offset() if storage_offset is None else storage_offset
-    base = _check_view(x, size, stride, offset)
+    offset = _check_view(x, size, stride, storage_offset)
 
     def prim(a: Tensor, b: Tensor) -> Tensor:
         out = _in_layout_of(a, x)
-        out.as_strided(size, stride, offset - base).copy_(b)
+        out.as_strided(size, stride, offset).copy_(b)
         return out.as_strided(x.shape, x.stride(), 0)
 
-    out = _pair_linear(prim)(self, src)
-    primal = ops.aten.as_strided_scatter.default(
-        x, src[0] if isinstance(src, JetTuple) else src, size, stride, storage_offset
-    )
-    return JetTuple((primal, *out[1:]), collapsed=out.collapsed)
+    def primal(a: Tensor, b: Tensor) -> Tensor:
+        return ops.aten.as_strided_scatter.default(a, b, size, stride, storage_offset)
+
+    return _pair_linear(prim, primal)(self, src)
 
 
 def _deflinear(prim: Callable) -> Callable:
@@ -1609,18 +1607,20 @@ def _deflinear_first(prim: Callable) -> Callable:
 
 def _pair_linear(
     prim: Callable[[Tensor, Tensor], Tensor],
-    batched_prim: Callable[[Tensor, Tensor], Tensor] | None = None,
+    primal: Callable[[Tensor, Tensor], Tensor] | None = None,
 ) -> Callable:
     """Build the jet rule of an op jointly linear in two tensor operands.
 
     Jointly linear: linear in the pair, ``prim(a, b) = A a + B b`` for linear
     maps ``A``, ``B`` (e.g. ``index_put``), unlike a bilinear ``a * b``. Hence
-    each coefficient is ``prim(a_k, b_k)``; a constant operand enters the
-    primal and contributes zeros to every coefficient (``(R, *shape)`` in a
-    collapsed batched slot, which applies ``batched_prim`` -- by default
-    ``prim`` ``vmap``ped over ``R``).
+    each coefficient is ``prim(a_k, b_k)`` (``vmap``ped over ``R`` in a
+    collapsed batched slot); a constant operand enters the primal and
+    contributes zeros to every coefficient. ``primal`` computes the value
+    instead of ``prim`` when the two differ (the native op may keep
+    storage metadata that a linear re-implementation does not).
     """
-    batched_prim = vmap(prim) if batched_prim is None else batched_prim
+    primal = prim if primal is None else primal
+    batched_prim = vmap(prim)
 
     def rule(a: Tensor | JetTuple, b: Tensor | JetTuple) -> JetTuple:
         K = _jet_order(a, b)
@@ -1633,8 +1633,8 @@ def _pair_linear(
                 return t
             return t.new_zeros(jet[k].shape[0], *t.shape) if batched else zeros_like(t)
 
-        out = []
-        for k in range(K + 1):
+        out = [primal(part(a, 0, False), part(b, 0, False))]
+        for k in range(1, K + 1):
             batched = _is_batched(k, K, jet.collapsed)
             op = batched_prim if batched else prim
             out.append(op(part(a, k, batched), part(b, k, batched)))

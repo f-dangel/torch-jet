@@ -218,7 +218,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ruff now ignores the magic trailing comma, so a construct that fits on one line is
   collapsed by `ruff format` and flagged by `make lint` and CI
   ([PR](https://github.com/f-dangel/torch-jet/pull/303)).
-
 - The scaled-dot-product-attention composition is folded into the MPS
   kernel adapter, its only caller since attention traces on the math path
   elsewhere; it calls `jet_mm` and a local `repeat_interleave` rule, so the

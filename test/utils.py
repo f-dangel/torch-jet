@@ -176,6 +176,25 @@ class DifferentiableSubstitutes(TorchFunctionMode):
         return func(*args, **kwargs)
 
 
+def pick_operands(args: tuple, codes: str, consts: tuple) -> list:
+    """Resolve a case's operands from its positional jet ``args``.
+
+    Args:
+        args: The jet operands, in operand order.
+        codes: One letter per operand: ``"J"`` takes the next of ``args``,
+            ``"C"`` the operand's entry of ``consts``, ``"N"`` is ``None`` (absent).
+        consts: The frozen constants, one per operand.
+
+    Returns:
+        The operands, in order.
+    """
+    it = iter(args)
+    return [
+        next(it) if code == "J" else (const if code == "C" else None)
+        for code, const in zip(codes, consts)
+    ]
+
+
 def _stateless(f: Callable) -> Callable[[str], Callable]:
     """Wrap a device-independent test function as a device-aware builder."""
     return lambda device: f

@@ -78,6 +78,7 @@ from test.utils import (
     class_index_loss,
     device_kw,
     make_jet_args,
+    pick_operands,
     tolerances_for,
 )
 
@@ -151,10 +152,7 @@ def _matmul_case(
         cs = _consts(device)
 
         def f(*args: Any):
-            it = iter(args)
-            b = next(it) if bias == "J" else (cs["B"] if bias == "C" else None)
-            m1 = next(it) if mat1_jet else cs[L]
-            m2 = next(it) if mat2_jet else cs[R]
+            b, m1, m2 = pick_operands(args, bias + mat1 + mat2, (cs["B"], cs[L], cs[R]))
             return m1 @ m2 if b is None else addmm(b, m1, m2)
 
         return f
@@ -266,10 +264,9 @@ def _conv_case(input: str, weight: str, bias: str, variant: str = "") -> dict[st
         c = _conv_consts(device)
 
         def f(*args: Any):
-            it = iter(args)
-            x = next(it) if input_jet else c["x"]
-            w = next(it) if weight_jet else c[weight_key]
-            b = next(it) if bias_jet else (c["b"] if bias == "C" else None)
+            x, w, b = pick_operands(
+                args, input + weight + bias, (c["x"], c[weight_key], c["b"])
+            )
             return conv(x, w, b, **kwargs)
 
         return f
@@ -339,19 +336,6 @@ def _stack_jet_const(device):
     return lambda x: stack([x, const], dim=0)
 
 
-def _norm_pick(args, inp: str, weight: str, bias: str, x_const, w_const, b_const):
-    # Resolve input/weight/bias of a normalization case from the positional jet
-    # args (order: input, weight, bias). ``inp`` is ``"J"`` (a jet arg) or
-    # ``"C"`` (captured constant); ``weight`` / ``bias`` add ``"N"`` (absent).
-    # Jets are consumed from ``args`` in order; constants/None come from the
-    # captured closures.
-    it = iter(args)
-    x = next(it) if inp == "J" else x_const
-    w = next(it) if weight == "J" else (w_const if weight == "C" else None)
-    b = next(it) if bias == "J" else (b_const if bias == "C" else None)
-    return x, w, b
-
-
 def _norm_primals(shape, param_shape, inp: str, weight: str, bias: str):
     # Jet primals (CPU) for a normalization case, in the order input, weight,
     # bias -- only the entries flagged ``"J"`` (Taylor-expanded); the affine
@@ -397,7 +381,9 @@ def _norm_case(
         extra = consts(kw)
 
         def f(*args):
-            x, w, b = _norm_pick(args, inp, weight, bias, x_const, w_const, b_const)
+            x, w, b = pick_operands(
+                args, inp + weight + bias, (x_const, w_const, b_const)
+            )
             return call(x, w, b, *extra)
 
         return f
@@ -706,8 +692,7 @@ def _index_put_case(cid: str, jets: str, accumulate: bool) -> dict[str, Any]:
         consts = [rand(*shape, **device_kw(device)) for shape in shapes]
 
         def f(*args):
-            it = iter(args)
-            self, values = [next(it) if j == "J" else c for j, c in zip(jets, consts)]
+            self, values = pick_operands(args, jets, consts)
             return self.index_put((idx,), values, accumulate)
 
         return f
@@ -746,8 +731,7 @@ def _sdpa_case(
             m[:, 0] = True
 
         def f(*args):
-            it = iter(args)
-            qkv = [next(it) if j == "J" else c for j, c in zip(jets, consts)]
+            qkv = pick_operands(args, jets, consts)
             return scaled_dot_product_attention(*qkv, attn_mask=m, **kw)
 
         return f

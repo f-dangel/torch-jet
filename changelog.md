@@ -215,6 +215,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- The test suite runs `nn.TransformerEncoderLayer` on its plain path, which a
+  traced jet takes anyway; the fused CUDA kernel computes `gelu` differently
+  ([PR](https://github.com/f-dangel/torch-jet/pull/307)).
 - Symbolic zeros, step 4: the additive rules, `cat`, `where`, `masked_fill`,
   `embedding`, the jointly linear rules and the constant-output rules pass a
   `None` coefficient through (a constant-output rule now returns `None`

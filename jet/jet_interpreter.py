@@ -15,13 +15,13 @@ rule from the shared ``RULES`` registry (:mod:`jet._rules`).
 
 from typing import Any
 
-from torch import Tensor, zeros_like
+from torch import Tensor
 from torch.fx import GraphModule, Interpreter
 from torch.fx.node import Argument, Target
 from torch.utils._pytree import tree_leaves, tree_map
 
 from jet._rules import RULES
-from jet.primitives import JetTuple, _has_jet_arg
+from jet.primitives import JetTuple, _has_jet_arg, _slot_shape
 from jet.utils import Jet, PyTree
 
 
@@ -83,6 +83,10 @@ class JetInterpreter(Interpreter):
             args: Positional arguments of the node.
             kwargs: Keyword arguments of the node.
 
+        A rule that has not opted in to symbolic zeros (see
+        :class:`JetTuple`) receives its jet arguments with every ``None``
+        coefficient materialized.
+
         Returns:
             The result of the jet operation (a jet tuple) or the original op.
 
@@ -95,10 +99,27 @@ class JetInterpreter(Interpreter):
                 raise NotImplementedError(
                     f"No jet rule for {target}. Please file an issue."
                 )
+            if not getattr(rule, "symbolic_zeros", False):
+                args = self._materialize(args)
             result = rule(*args, **kwargs)
             self._check_collapsed(result, target)
             return result
         return super().call_function(target, args, kwargs)
+
+    def _materialize(self, args: tuple[Argument, ...]) -> tuple[Argument, ...]:
+        """Replace the ``None`` coefficients of every jet in ``args`` by zeros.
+
+        Scans where :func:`_has_jet_arg` does (top level and one level inside a
+        ``list``); a jet without ``None`` is returned as is, so this is a no-op
+        on dense jets (see :meth:`JetTuple.materialized`).
+        """
+
+        def dense(a: Argument) -> Argument:
+            return a.materialized() if isinstance(a, JetTuple) else a
+
+        return tuple(
+            [dense(e) for e in a] if isinstance(a, list) else dense(a) for a in args
+        )
 
     def _check_collapsed(self, result: Any, target: Target) -> None:
         """Assert every ``JetTuple`` a rule returns matches the run's mode.
@@ -123,16 +144,27 @@ class JetInterpreter(Interpreter):
     ) -> PyTree[Jet]:
         """Convert the pytree-of-jets into a pytree of plain tuples.
 
-        Each ``JetTuple`` leaf becomes a plain ``(f_0, ..., f_K)`` tuple.
+        Each ``JetTuple`` leaf becomes a plain ``(f_0, ..., f_K)`` tuple; its
+        symbolic-zero (``None``) coefficients are materialized as dense zeros.
         Constant tensor leaves (outputs that do not depend on the inputs) are
-        expanded to zero-coefficient jets matching the mode's shape contract:
-        standard returns ``K`` zeros of the primal's shape; collapsed returns
-        ``K - 1`` zeros of shape ``(R, *S)`` plus one zero of ``S``.
+        expanded to zero-coefficient jets. Both follow the mode's shape
+        contract: standard returns ``K`` zeros of the primal's shape; collapsed
+        returns ``K - 1`` zeros of shape ``(R, *S)`` plus one zero of ``S``.
         """
 
         def _normalize_leaf(node: Any) -> Jet:
             if isinstance(node, JetTuple):
-                return tuple(node)
+                return (
+                    node[0],
+                    *(
+                        self._dense_zero(
+                            node[0], k, derivative_order, collapsed_directions
+                        )
+                        if c is None
+                        else c
+                        for k, c in enumerate(node[1:], start=1)
+                    ),
+                )
             return (
                 node,
                 *self._zero_coeffs(node, derivative_order, collapsed_directions),
@@ -158,20 +190,27 @@ class JetInterpreter(Interpreter):
 
         Raises:
             ValueError: If ``self.collapsed`` and ``collapsed_directions`` is
-                ``None``. The validator guarantees ``R`` is set for any
-                collapsed call (``K >= 2`` forces at least one batched
-                coefficient), so this should be unreachable from the public
-                API; an explicit raise (rather than ``assert``) keeps the
-                contract visible under ``python -O``.
+                ``None`` (see :func:`_slot_shape`).
         """
-        if not self.collapsed:
-            return [zeros_like(primal) for _ in range(derivative_order)]
-        if collapsed_directions is None:
-            raise ValueError(
-                "Constant output in collapsed mode requires R; the caller "
-                "should have derived it from a jet tuple input."
-            )
         return [
-            primal.new_zeros(collapsed_directions, *primal.shape)
-            for _ in range(derivative_order - 1)
-        ] + [zeros_like(primal)]
+            self._dense_zero(primal, k, derivative_order, collapsed_directions)
+            for k in range(1, derivative_order + 1)
+        ]
+
+    def _dense_zero(
+        self,
+        primal: Tensor,
+        k: int,
+        derivative_order: int,
+        collapsed_directions: int | None,
+    ) -> Tensor:
+        """A dense zero for the order-``k`` coefficient of a leaf with ``primal``.
+
+        Used for a constant leaf and for a symbolic-zero coefficient of a jet
+        leaf (see :func:`_slot_shape`).
+        """
+        return primal.new_zeros(
+            _slot_shape(
+                primal, k, derivative_order, self.collapsed, collapsed_directions
+            )
+        )

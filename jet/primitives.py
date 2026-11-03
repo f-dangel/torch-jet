@@ -49,6 +49,14 @@ class JetTuple(tuple):
     ``collapsed`` is ``False`` for standard Taylor mode and ``True`` for
     collapsed mode (where coefficients ``c_1..c_{K-1}`` carry a leading
     direction dim ``R`` and ``c_K`` is already summed over it).
+
+    A coefficient of order ``2`` or higher may be ``None``: a *symbolic zero*,
+    a coefficient known to vanish by construction (a declared zero input slot,
+    the output of a constant op). It is never inferred from tensor values. The
+    primal and ``c_1`` are always tensors, so ``K``, ``R`` and the device can be
+    read off any jet. :meth:`materialized` is the same jet with its ``None``
+    entries as zero views; which rules receive a ``None`` at all is governed by
+    :func:`_symbolic_zeros`.
     """
 
     def __new__(cls, iterable=(), *, collapsed: bool) -> Self:
@@ -56,6 +64,30 @@ class JetTuple(tuple):
         obj = super().__new__(cls, iterable)
         obj.collapsed = collapsed
         return obj
+
+    def materialized(self) -> Self:
+        """This jet with every ``None`` coefficient replaced by a zero view.
+
+        Each zero is a stride-0 view of one element in the slot's shape (see
+        :func:`_slot_shape`); ``R`` is read off ``c_1``, which is batched in
+        every collapsed jet (collapsed mode requires ``K >= 2``).
+
+        Returns:
+            ``self`` if no coefficient is ``None``, else a new jet with the same
+            ``collapsed`` flag.
+        """
+        if not any(c is None for c in self):
+            return self
+        K, R = len(self) - 1, self[1].shape[0] if self.collapsed else None
+        return JetTuple(
+            (
+                _zero_coeff(self[0], _slot_shape(self[0], k, K, self.collapsed, R))
+                if c is None
+                else c
+                for k, c in enumerate(self)
+            ),
+            collapsed=self.collapsed,
+        )
 
 
 # Register with PyTorch's pytree so that vmap, make_fx, etc. can flatten/unflatten
@@ -66,6 +98,22 @@ register_pytree_node(
     flatten_fn=lambda x: (list(x), x.collapsed),
     unflatten_fn=lambda values, collapsed: JetTuple(values, collapsed=collapsed),
 )
+
+
+def _symbolic_zeros(rule: Callable) -> Callable:
+    """Mark ``rule`` as handling symbolic-zero (``None``) coefficients itself.
+
+    The interpreter materializes the ``None`` coefficients of a jet argument
+    before calling any rule without this mark (see :class:`JetTuple`).
+
+    Args:
+        rule: The jet rule.
+
+    Returns:
+        ``rule``, marked.
+    """
+    rule.symbolic_zeros = True
+    return rule
 
 
 def _has_jet_arg(args: Sequence[object]) -> bool:
@@ -124,6 +172,37 @@ def _is_batched(k: int, K: int, collapsed: bool) -> bool:
     R-sum) on, so standard mode degenerates to the plain coefficient-wise path.
     """
     return collapsed and 0 < k < K
+
+
+def _slot_shape(
+    like: Tensor, k: int, K: int, collapsed: bool, R: int | None
+) -> tuple[int, ...]:
+    """Shape of the order-``k`` coefficient slot of a leaf shaped like ``like``.
+
+    Args:
+        like: The leaf's primal.
+        k: The coefficient order.
+        K: The derivative order.
+        collapsed: Whether the jet is collapsed.
+        R: The number of directions of a collapsed jet (``None`` otherwise).
+
+    Returns:
+        ``(R, *S)`` for a collapsed ``c_1..c_{K-1}``, ``S`` otherwise.
+
+    Raises:
+        ValueError: If the slot is batched and ``R`` is ``None``. The validator
+            guarantees ``R`` for any collapsed call, so this is unreachable from
+            the public API; an explicit raise keeps the contract visible under
+            ``python -O``.
+    """
+    if not _is_batched(k, K, collapsed):
+        return tuple(like.shape)
+    if R is None:
+        raise ValueError(
+            "Constant output in collapsed mode requires R; the caller "
+            "should have derived it from a jet tuple input."
+        )
+    return (R, *like.shape)
 
 
 def _zero_coeff(like: Tensor, shape: Sequence[int]) -> Tensor:

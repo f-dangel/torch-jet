@@ -99,13 +99,7 @@ class JetInterpreter(Interpreter):
                 raise NotImplementedError(
                     f"No jet rule for {target}. Please file an issue."
                 )
-            if not getattr(rule, "symbolic_zeros", False) and any(
-                c is None
-                for a in args
-                for jet in (a if isinstance(a, list) else [a])
-                if isinstance(jet, JetTuple)
-                for c in jet
-            ):
+            if not getattr(rule, "symbolic_zeros", False):
                 args = self._materialize(args)
             result = rule(*args, **kwargs)
             self._check_collapsed(result, target)
@@ -115,12 +109,16 @@ class JetInterpreter(Interpreter):
     def _materialize(self, args: tuple[Argument, ...]) -> tuple[Argument, ...]:
         """Replace the ``None`` coefficients of every jet in ``args`` by zeros.
 
-        See :meth:`JetTuple.materialized`.
+        Scans where :func:`_has_jet_arg` does (top level and one level inside a
+        ``list``); a jet without ``None`` is returned as is, so this is a no-op
+        on dense jets (see :meth:`JetTuple.materialized`).
         """
-        return tree_map(
-            lambda x: x.materialized() if isinstance(x, JetTuple) else x,
-            args,
-            is_leaf=lambda x: isinstance(x, JetTuple),
+
+        def dense(a: Argument) -> Argument:
+            return a.materialized() if isinstance(a, JetTuple) else a
+
+        return tuple(
+            [dense(e) for e in a] if isinstance(a, list) else dense(a) for a in args
         )
 
     def _check_collapsed(self, result: Any, target: Target) -> None:

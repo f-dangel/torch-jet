@@ -215,6 +215,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Symbolic zeros, step 2: the linear helpers (`_apply_linear_coeffs`,
+  `_apply_linear`, `_broadcast_coeffs`) pass a `None` coefficient through,
+  and the rules `_deflinear` and `_deflinear_first` build opt in
+  ([PR](https://github.com/f-dangel/torch-jet/pull/297)).
 - Symbolic zeros, step 1: a `JetTuple` coefficient of order 2 or higher may
   be `None` (a zero known by construction, never inferred from values).
   Rules opt in with `_symbolic_zeros`; the interpreter materializes the

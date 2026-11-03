@@ -25,8 +25,7 @@ from jet.primitives import (
     JetTuple,
     _has_jet_arg,
     _has_symbolic_zero,
-    _is_batched,
-    _zero_coeff,
+    _slot_shape,
 )
 from jet.utils import Jet, PyTree
 
@@ -54,8 +53,6 @@ class JetInterpreter(Interpreter):
         """Initialize the JetInterpreter."""
         super().__init__(module)
         self.collapsed: bool = collapsed
-        #: ``R`` of the current run (set by :meth:`run`).
-        self._directions: int | None = None
 
     def run(
         self,
@@ -71,7 +68,6 @@ class JetInterpreter(Interpreter):
         explicitly avoids re-deriving them from ``args[0]`` here. Used by
         :meth:`_normalize` to expand constant outputs to the right shapes.
         """
-        self._directions = collapsed_directions
         result = super().run(*args, **kwargs)
         return self._normalize(result, derivative_order, collapsed_directions)
 
@@ -118,28 +114,10 @@ class JetInterpreter(Interpreter):
     def _materialize(self, args: tuple[Argument, ...]) -> tuple[Argument, ...]:
         """Replace the ``None`` coefficients of every jet in ``args`` by zeros.
 
-        Each zero is a stride-0 view of one element in the slot's shape (see
-        :meth:`_slot_shape`).
+        See :meth:`JetTuple.materialized`.
         """
-
-        def dense(jet: JetTuple) -> JetTuple:
-            if not any(c is None for c in jet):
-                return jet
-            K = len(jet) - 1
-            return JetTuple(
-                (
-                    _zero_coeff(
-                        jet[0], self._slot_shape(jet[0], k, K, self._directions)
-                    )
-                    if c is None
-                    else c
-                    for k, c in enumerate(jet)
-                ),
-                collapsed=jet.collapsed,
-            )
-
         return tree_map(
-            lambda x: dense(x) if isinstance(x, JetTuple) else x,
+            lambda x: x.materialized() if isinstance(x, JetTuple) else x,
             args,
             is_leaf=lambda x: isinstance(x, JetTuple),
         )
@@ -213,11 +191,7 @@ class JetInterpreter(Interpreter):
 
         Raises:
             ValueError: If ``self.collapsed`` and ``collapsed_directions`` is
-                ``None``. The validator guarantees ``R`` is set for any
-                collapsed call (``K >= 2`` forces at least one batched
-                coefficient), so this should be unreachable from the public
-                API; an explicit raise (rather than ``assert``) keeps the
-                contract visible under ``python -O``.
+                ``None`` (see :func:`_slot_shape`).
         """
         return [
             self._dense_zero(primal, k, derivative_order, collapsed_directions)
@@ -234,32 +208,10 @@ class JetInterpreter(Interpreter):
         """A dense zero for the order-``k`` coefficient of a leaf with ``primal``.
 
         Used for a constant leaf and for a symbolic-zero coefficient of a jet
-        leaf (see :meth:`_slot_shape`).
+        leaf (see :func:`_slot_shape`).
         """
         return primal.new_zeros(
-            self._slot_shape(primal, k, derivative_order, collapsed_directions)
-        )
-
-    def _slot_shape(
-        self,
-        primal: Tensor,
-        k: int,
-        derivative_order: int,
-        collapsed_directions: int | None,
-    ) -> tuple[int, ...]:
-        """Shape of the order-``k`` coefficient slot of a leaf with ``primal``.
-
-        ``(R, *S)`` for a collapsed ``c_1..c_{K-1}``, ``S`` otherwise.
-
-        Raises:
-            ValueError: If the slot is batched and ``collapsed_directions`` is
-                ``None`` (see :meth:`_zero_coeffs`).
-        """
-        if not _is_batched(k, derivative_order, self.collapsed):
-            return tuple(primal.shape)
-        if collapsed_directions is None:
-            raise ValueError(
-                "Constant output in collapsed mode requires R; the caller "
-                "should have derived it from a jet tuple input."
+            _slot_shape(
+                primal, k, derivative_order, self.collapsed, collapsed_directions
             )
-        return (collapsed_directions, *primal.shape)
+        )

@@ -80,6 +80,13 @@ def jet(
         >>> x, y = Tensor([0.1, 0.2, 0.3]), Tensor([0.4, 0.5, 0.6])
         >>> vx, vy = Tensor([1.0, 0.0, 0.0]), Tensor([0.0, 1.0, 0.0])
         >>> f0, f1 = jet_f((x, vx), (y, vy))
+
+        **Symbolic zero** (a higher coefficient known to vanish, e.g. along a
+        straight line ``x0 + t * x1``; the rules skip its terms, the output is
+        still dense)
+
+        >>> jet_f = jet(sin, (zeros(1),))
+        >>> f0, f1, f2 = jet_f((x0, x1, None))
     """
     # Attention is traced on its math path. A fused kernel cannot propagate
     # Taylor coefficients, which need the softmax structure explicit, and its

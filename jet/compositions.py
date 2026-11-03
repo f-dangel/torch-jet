@@ -650,11 +650,7 @@ def convolution_backward(
             lambda g, a: weight_piece(g, a, w), grad_output, input
         )
     if output_mask[2]:
-        grad_bias = (
-            _apply_linear(grad_output, lambda g: bias_piece(g, x, w))
-            if isinstance(grad_output, JetTuple)
-            else bias_piece(grad_output, x, w)
-        )
+        grad_bias = _deflinear(bias_piece)(grad_output, x, w)
     return grad_input, grad_weight, grad_bias
 
 

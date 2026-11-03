@@ -220,6 +220,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   elsewhere; it calls `jet_mm` and a local `repeat_interleave` rule, so the
   registry drops the `matmul` and `repeat_interleave` entries tracing never
   produces ([PR](https://github.com/f-dangel/torch-jet/pull/295)).
+- The `nll_loss_backward` and `where` rules and the bias gradient of the
+  convolution backward composition build their constant-or-jet dispatch
+  with `_deflinear` instead of spelling it out
+  ([PR](https://github.com/f-dangel/torch-jet/pull/294)).
+- Build every zero Taylor coefficient through one `_zero_coeff` helper
+  (a stride-0 expanded view); `_coeff` resolves an operand's coefficient
+  for both `cat` and `_pair_linear`, replacing their per-rule copies, and
+  the Laplacian rules use the same helper
+  ([PR](https://github.com/f-dangel/torch-jet/pull/293)).
+- `_pair_linear` takes an optional primal function instead of a batched
+  variant nothing passed; the `as_strided_scatter` rule uses it for the native
+  primal rather than computing and discarding a copy, and `_check_view`
+  resolves the view's offset for both `as_strided` rules
+  ([PR](https://github.com/f-dangel/torch-jet/pull/292)).
 - Test case builders resolve their jet and constant operands with one
   `pick_operands` helper instead of five copies of the same loop
   ([PR](https://github.com/f-dangel/torch-jet/pull/291)).

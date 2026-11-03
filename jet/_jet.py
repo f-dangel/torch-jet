@@ -42,8 +42,7 @@ def jet(
     In either mode an input coefficient of order two or higher may be ``None``:
     a symbolic zero, a coefficient known to vanish by construction (the second
     coefficient of a Laplacian's input jet, say). The rules skip every term it
-    would contribute instead of computing it on zeros. Only for zeros known by
-    construction; a tensor is never inspected for being zero. The output never
+    would contribute instead of computing it on zeros. The output never
     contains ``None``.
 
     Args:

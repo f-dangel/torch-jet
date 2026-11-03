@@ -66,7 +66,8 @@ def test_validate_accepts_symbolic_zero_coefficients():
     )
     assert (K, R) == (2, None) and leaves[0][2] is None
     args = ((zeros(3), zeros(4, 3), None, None),)
-    assert validate_input_jet(mock, args, collapsed=True)[1:] == (3, 4)
+    _, K, R = validate_input_jet(mock, args, collapsed=True)
+    assert (K, R) == (3, 4)
 
 
 @mark.parametrize("args", [(None, zeros(3)), (zeros(3), None, zeros(3))])

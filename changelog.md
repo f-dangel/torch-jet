@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Jets now run on torchvision's CNNs and on transformers (`nn.TransformerEncoder`,
+ViT, and Hugging Face's GPT-2, BERT, and LLaMA), through gradients (a jet of
+`torch.func.grad` or `vjp`), under `vmap`, `grad`, `vjp`, and `jvp`, and with
+`torch.compile` via `jet.freeze`; a Taylor coefficient known to be zero can be
+passed as `None`, which `laplacian` and `bilaplacian` use to skip the work for
+their zero coefficients.
+
 ### Added/New
 
 - Support jets of gradients (Taylor mode through a function that calls
@@ -73,9 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `test/test_transformer_encoder.py` and `test/test_huggingface.py`) by adding
   jet rules for the ATen ops they need:
   - Grouped-query attention (`F.scaled_dot_product_attention` with
-    `enable_gqa=True`, e.g. LLaMA): the composition repeats each key/value head
-    for its query heads through a new linear rule for
-    `aten.repeat_interleave.self_int` ([PR](https://github.com/f-dangel/torch-jet/pull/240)).
+    `enable_gqa=True`, e.g. LLaMA) ([PR](https://github.com/f-dangel/torch-jet/pull/240)).
   - End-to-end tests on tiny Hugging Face transformers (GPT-2 with and without
     the language model head, BERT; `sdpa` and `eager` attention), built from
     configs with random weights; `transformers` joins the `test` extra
@@ -92,24 +97,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     call ([PR](https://github.com/f-dangel/torch-jet/pull/232)).
   - End-to-end tests for `nn.TransformerEncoder` (post-norm, pre-norm, GELU)
     and torchvision's `vit_b_16` ([PR](https://github.com/f-dangel/torch-jet/pull/231)).
-  - Scaled dot-product attention: a composition for
-    `F.scaled_dot_product_attention` with default arguments (eval mode,
-    `dropout_p == 0`) and an adapter for the fused CPU op ([PR](https://github.com/f-dangel/torch-jet/pull/226)).
-    - The sdpa adapters lay out their output out of place, so a jet can be
-      batched over directions with `vmap` when the trace hits a fused
-      attention kernel
-      ([PR](https://github.com/f-dangel/torch-jet/pull/242)).
-    - The CUDA adapters return their output in the same memory layout as the
-      fused kernels, so views the trace bases on that layout work (e.g.
-      `nn.MultiheadAttention` in half precision, and `sdpa(...).transpose(1,
-      2).reshape(...)` blocks in float32)
-      ([PR](https://github.com/f-dangel/torch-jet/pull/235)).
-    - Adapters for the fused CUDA ops (flash and memory-efficient), and
-      `aten._safe_softmax.default` for the math fallback (e.g. float64 on CUDA)
+  - Scaled dot-product attention: `F.scaled_dot_product_attention` with
+    default arguments (eval mode, `dropout_p == 0`) ([PR](https://github.com/f-dangel/torch-jet/pull/226)).
+    - `aten._safe_softmax.default`, the softmax of the math attention path
       ([PR](https://github.com/f-dangel/torch-jet/pull/228)).
-    - The CPU adapter returns its output in the same memory layout as the
-      fused kernel, so `nn.MultiheadAttention` works
-      ([PR](https://github.com/f-dangel/torch-jet/pull/229)).
     - Composed sub-rules fall through to the native op on constant inputs, so
       attention with only a jet `value` works
       ([PR](https://github.com/f-dangel/torch-jet/pull/227)).
@@ -119,8 +110,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       ([PR](https://github.com/f-dangel/torch-jet/pull/223)).
   - `aten._fused_rms_norm.default`, the op `torch.nn.RMSNorm` lowers to on
     CUDA/MPS ([PR](https://github.com/f-dangel/torch-jet/pull/214)).
-  - `aten.embedding.default`; a warning flags `padding_idx`, which only masks
-    autograd's gradient while jets propagate the true derivative ([PR](https://github.com/f-dangel/torch-jet/pull/217)).
+  - `aten.embedding.default`
+    ([PR](https://github.com/f-dangel/torch-jet/pull/217)); the `padding_idx` row is a
+    constant, like in autograd's gradient, so the Taylor coefficients at its
+    positions are zero ([PR](https://github.com/f-dangel/torch-jet/pull/276)).
   - `aten.masked_fill.Scalar` and `aten.masked_fill.Tensor` ([PR](https://github.com/f-dangel/torch-jet/pull/221)).
   - `aten.where.self` ([PR](https://github.com/f-dangel/torch-jet/pull/219)).
   - The view/indexing ops `aten.select.int`, `aten.slice.Tensor`,
@@ -196,10 +189,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `new_zeros`) zero their coefficients to the *output's* shape instead of the
   input's; the two differ for `new_zeros` with an explicit size
   ([PR](https://github.com/f-dangel/torch-jet/pull/279)).
-- Jets of `embedding` treat the `padding_idx` row as a constant, like
-  autograd's gradient: the Taylor coefficients at its positions are zero. The
-  warning that reverse mode and jets disagree is gone
-  ([PR](https://github.com/f-dangel/torch-jet/pull/276)).
 - Collapsed Faà di Bruno terms sum the direction dim out of the product of
   inner coefficients *before* multiplying by the outer derivative, so autograd
   saves the summed product instead of the direction-batched one; restores the
@@ -220,6 +209,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Docs: the release notes open with a one-sentence summary and no longer list
+  the removed attention adapters and `padding_idx` warning; the README's
+  section on PyTorch's transforms names them in its heading and states that
+  jets of `grad` and `vjp` work
+  ([PR](https://github.com/f-dangel/torch-jet/pull/309)).
 - The transformer-encoder tests run the encoder on its plain path, which a
   jet takes anyway; PyTorch's fused CUDA fast path computes `gelu` with the
   tanh approximation, so the reference disagreed with the jet

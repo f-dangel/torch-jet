@@ -215,6 +215,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- The `nll_loss_backward` and `where` rules and the bias gradient of the
+  convolution backward composition build their constant-or-jet dispatch
+  with `_deflinear` instead of spelling it out
+  ([PR](https://github.com/f-dangel/torch-jet/pull/294))
 - Test case builders resolve their jet and constant operands with one
   `pick_operands` helper instead of five copies of the same loop
   ([PR](https://github.com/f-dangel/torch-jet/pull/291)).

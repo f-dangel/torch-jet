@@ -107,21 +107,22 @@ def test_embedding_padding_idx_gradient(device: str):
 
 
 def test_scaled_dot_product_attention_double_backward(device: str):
-    """The fused CPU/CUDA ``scaled_dot_product_attention`` has no double backward.
+    """The fused CPU ``scaled_dot_product_attention`` has no double backward.
 
-    Its substitute has one on every device, and agrees with the fused MPS op.
+    Its substitute has one on every device, and agrees with the fused MPS op
+    and with the math path CUDA takes in ``float64``.
     """
     manual_seed(0)
     # leading dim unpacks into distinct query, key, and value
     x = randn(3, 1, 2, 3, 4, requires_grad=True, **device_kw(device))
     substitute = DifferentiableSubstitutes.SUBSTITUTES[scaled_dot_product_attention]
     expected = _second_derivative(lambda x: substitute(*x), x)
-    if device == "mps":
-        actual = _second_derivative(lambda x: scaled_dot_product_attention(*x), x)
-        assert_close(actual, expected)
-    else:
+    if device == "cpu":
         with raises(RuntimeError, match="is not implemented"):
             _second_derivative(lambda x: scaled_dot_product_attention(*x), x)
+    else:
+        actual = _second_derivative(lambda x: scaled_dot_product_attention(*x), x)
+        assert_close(actual, expected)
 
 
 def test_substitutes_reach_nested_torch_functions(device: str):
@@ -141,7 +142,7 @@ def test_substitutes_reach_nested_torch_functions(device: str):
     def block(x: Tensor) -> Tensor:
         return mha(x, x, x, need_weights=False)[0]
 
-    if device != "mps":
+    if device == "cpu":
         with raises(RuntimeError, match="is not implemented"):
             _second_derivative(block, x)
     with DifferentiableSubstitutes():

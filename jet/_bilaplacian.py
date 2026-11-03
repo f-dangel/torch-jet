@@ -130,7 +130,13 @@ def bilaplacian(
         Returns:
             The (collapsed or summed) 4th-order coefficient.
         """
-        z, Z = _zero_coeff(x, in_shape), _zero_coeff(x, (X1.shape[0], *in_shape))
+        # Only the first input coefficient is nonzero: symbolic zeros
+        # (``None``) on the collapsed path, so the rules skip their terms; the
+        # vmap reference takes dense zeros.
+        if collapsed:
+            z = Z = None
+        else:
+            z, Z = _zero_coeff(x, in_shape), _zero_coeff(x, (X1.shape[0], *in_shape))
         result = require_single_tensor_output(cjet_f((x, X1, Z, Z, z)), "bilaplacian")
         _, _, _, _, F4 = result
         return F4

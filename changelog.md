@@ -215,6 +215,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Symbolic zeros, step 5: an input coefficient of order two or higher may be
+  `None` (the validator and `freeze` accept it); the collapsed Laplacian and
+  Bi-Laplacian pass `None` for their zero input coefficients
+  ([PR](https://github.com/f-dangel/torch-jet/pull/300)).
 - Symbolic zeros, step 4: the additive rules, `cat`, `where`, `masked_fill`,
   `embedding`, the jointly linear rules and the constant-output rules pass a
   `None` coefficient through (a constant-output rule now returns `None`

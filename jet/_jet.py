@@ -39,6 +39,13 @@ def jet(
       smaller tensors through the graph. Requires ``K >= 2`` and ``R`` may
       vary per call.
 
+    In either mode an input coefficient of order two or higher may be ``None``:
+    a symbolic zero, a coefficient known to vanish by construction (the second
+    coefficient of a Laplacian's input jet, say). The rules skip every term it
+    would contribute instead of computing it on zeros. Only for zeros known by
+    construction; a tensor is never inspected for being zero. The output never
+    contains ``None``.
+
     Args:
         f: Function to overload. May accept and return pytrees of tensors.
         mock_args: Mock input tensors (or pytrees of tensors) for tracing

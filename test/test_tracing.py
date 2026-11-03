@@ -17,13 +17,14 @@ such as inductor may not reproduce, whereas ``reshape`` copies when it must.
 """
 
 from pytest import mark, raises
-from torch import matmul, ops, rand, sin, zeros
+from torch import matmul, ops, rand, sin, zeros, zeros_like
 from torch.func import functionalize
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.nn import Linear
 from torch.testing import assert_close
 
-from jet.tracing import capture_graph
+from jet import jet
+from jet.tracing import capture_graph, freeze
 
 
 def _uses_squeeze_inplace(mod) -> bool:
@@ -92,3 +93,13 @@ def test_make_fx_supports_dict_arg_after_tuple_arg():
     args = ((rand(2),), {"x": rand(2), "y": rand(2)})
     expected = args[0][0] + args[1]["x"] + args[1]["y"]
     assert_close(graph(*args), expected)
+
+
+def test_freeze_fixes_symbolic_zero_leaves():
+    """A ``None`` leaf at trace time must stay ``None``; its value matches a zero."""
+    jet_f = jet(sin, (zeros(3),))
+    x, v = rand(3), rand(3)
+    frozen = freeze(jet_f, ((x, v, None),))
+    assert_close(frozen((x, v, None)), jet_f((x, v, zeros_like(x))))
+    with raises(ValueError, match="was None at trace time"):
+        frozen((x, v, zeros_like(x)))

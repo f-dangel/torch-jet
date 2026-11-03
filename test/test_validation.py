@@ -4,7 +4,7 @@ The validator is independent of the rest of the jet pipeline; these tests
 exercise it directly without going through jet().
 """
 
-from pytest import raises
+from pytest import mark, raises
 from torch import zeros
 
 from jet.validation import validate_input_jet
@@ -54,8 +54,26 @@ def test_validate_rejects_non_tensor_in_tuple():
     """Python scalars inside the tuple are rejected."""
     mock = (zeros(3),)
     args = ((zeros(3), 1.0),)
-    with raises(ValueError, match="every entry of a jet tuple must be a Tensor"):
+    with raises(ValueError, match="a tensor or None"):
         validate_input_jet(mock, args, collapsed=False)
+
+
+def test_validate_accepts_symbolic_zero_coefficients():
+    """``None`` above order one is accepted; ``K`` and ``R`` are still found."""
+    mock = (zeros(3),)
+    leaves, K, R = validate_input_jet(
+        mock, ((zeros(3), zeros(3), None),), collapsed=False
+    )
+    assert (K, R) == (2, None) and leaves[0][2] is None
+    args = ((zeros(3), zeros(4, 3), None, None),)
+    assert validate_input_jet(mock, args, collapsed=True)[1:] == (3, 4)
+
+
+@mark.parametrize("args", [(None, zeros(3)), (zeros(3), None, zeros(3))])
+def test_validate_rejects_none_primal_or_c1(args: tuple):
+    """The primal and ``c_1`` must be tensors."""
+    with raises(ValueError, match="a tensor or None"):
+        validate_input_jet((zeros(3),), (args,), collapsed=False)
 
 
 def test_validate_rejects_wrong_primal_shape():

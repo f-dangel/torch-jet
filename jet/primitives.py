@@ -1800,11 +1800,10 @@ def _defzero(prim: Callable) -> Callable:
     constant-output op has all coefficients zero, so only the primal carries
     information. ``prim`` is applied to the primal to produce the output value
     (which carries any ``dtype`` / ``device`` / ``layout`` kwargs the user
-    passed). ``c_1`` is a zero with the output's shape behind its input slot's
-    leading direction dims (``(R, *out)`` when collapsed and ``K > 1``), so
-    ``new_zeros`` with a size different from the input's works; the higher
-    coefficients are symbolic zeros (``None``). The output mode follows
-    ``self.collapsed``.
+    passed). ``c_1`` is a zero with the output's shape (not the input's:
+    ``new_zeros`` picks its own size) behind its input slot's leading direction
+    dims (``(R, *out)`` when collapsed and ``K > 1``); the higher coefficients
+    are symbolic zeros (``None``). The output mode follows ``self.collapsed``.
     """
 
     def rule(self: JetTuple, *args, **kwargs) -> JetTuple:

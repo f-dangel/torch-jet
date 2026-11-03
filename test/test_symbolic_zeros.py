@@ -33,8 +33,7 @@ def test_symbolic_zero_tail_matches_dense(
         lambda leaf: (*leaf[:2], *([None] * (K - 1))), args, is_leaf=_is_jet_leaf
     )
     jet_f = jet(f, mock_args, collapsed=collapsed)
-    want, got = jet_f(*dense), jet_f(*symbolic)
-    assert_close(got, want, **tolerances_for(device))
+    assert_close(jet_f(*symbolic), jet_f(*dense), **tolerances_for(device))
 
 
 def test_symbolic_zero_survives_linear_rules(collapsed: bool, device: str):

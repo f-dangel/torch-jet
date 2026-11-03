@@ -15,7 +15,7 @@ rule from the shared ``RULES`` registry (:mod:`jet._rules`).
 
 from typing import Any
 
-from torch import Tensor, zeros_like
+from torch import Tensor
 from torch.fx import GraphModule, Interpreter
 from torch.fx.node import Argument, Target
 from torch.utils._pytree import tree_leaves, tree_map
@@ -54,8 +54,7 @@ class JetInterpreter(Interpreter):
         """Initialize the JetInterpreter."""
         super().__init__(module)
         self.collapsed: bool = collapsed
-        #: ``K`` and ``R`` of the current run (set by :meth:`run`).
-        self._order: int = 0
+        #: ``R`` of the current run (set by :meth:`run`).
         self._directions: int | None = None
 
     def run(
@@ -72,7 +71,7 @@ class JetInterpreter(Interpreter):
         explicitly avoids re-deriving them from ``args[0]`` here. Used by
         :meth:`_normalize` to expand constant outputs to the right shapes.
         """
-        self._order, self._directions = derivative_order, collapsed_directions
+        self._directions = collapsed_directions
         result = super().run(*args, **kwargs)
         return self._normalize(result, derivative_order, collapsed_directions)
 
@@ -109,33 +108,28 @@ class JetInterpreter(Interpreter):
                 raise NotImplementedError(
                     f"No jet rule for {target}. Please file an issue."
                 )
-            if not getattr(rule, "symbolic_zeros", False) and _has_symbolic_zero(
-                (args, kwargs)
-            ):
-                args, kwargs = self._materialize((args, kwargs))
+            if not getattr(rule, "symbolic_zeros", False) and _has_symbolic_zero(args):
+                args = self._materialize(args)
             result = rule(*args, **kwargs)
             self._check_collapsed(result, target)
             return result
         return super().call_function(target, args, kwargs)
 
-    def _materialize(self, tree: PyTree[Any]) -> PyTree[Any]:
-        """Replace the ``None`` coefficients of every jet in ``tree`` by zeros.
+    def _materialize(self, args: tuple[Argument, ...]) -> tuple[Argument, ...]:
+        """Replace the ``None`` coefficients of every jet in ``args`` by zeros.
 
-        Each zero is a stride-0 view of one element in the slot's shape:
-        ``(R, *S)`` for a batched collapsed slot, ``S`` otherwise.
+        Each zero is a stride-0 view of one element in the slot's shape (see
+        :meth:`_slot_shape`).
         """
 
         def dense(jet: JetTuple) -> JetTuple:
             if not any(c is None for c in jet):
                 return jet
-            K, shape = len(jet) - 1, jet[0].shape
+            K = len(jet) - 1
             return JetTuple(
                 (
                     _zero_coeff(
-                        jet[0],
-                        (self._directions, *shape)
-                        if _is_batched(k, K, self.collapsed)
-                        else shape,
+                        jet[0], self._slot_shape(jet[0], k, K, self._directions)
                     )
                     if c is None
                     else c
@@ -146,7 +140,7 @@ class JetInterpreter(Interpreter):
 
         return tree_map(
             lambda x: dense(x) if isinstance(x, JetTuple) else x,
-            tree,
+            args,
             is_leaf=lambda x: isinstance(x, JetTuple),
         )
 
@@ -240,18 +234,32 @@ class JetInterpreter(Interpreter):
         """A dense zero for the order-``k`` coefficient of a leaf with ``primal``.
 
         Used for a constant leaf and for a symbolic-zero coefficient of a jet
-        leaf: shape ``(R, *S)`` for a collapsed ``c_1..c_{K-1}``, ``S``
-        otherwise.
+        leaf (see :meth:`_slot_shape`).
+        """
+        return primal.new_zeros(
+            self._slot_shape(primal, k, derivative_order, collapsed_directions)
+        )
+
+    def _slot_shape(
+        self,
+        primal: Tensor,
+        k: int,
+        derivative_order: int,
+        collapsed_directions: int | None,
+    ) -> tuple[int, ...]:
+        """Shape of the order-``k`` coefficient slot of a leaf with ``primal``.
+
+        ``(R, *S)`` for a collapsed ``c_1..c_{K-1}``, ``S`` otherwise.
 
         Raises:
-            ValueError: If ``self.collapsed`` and ``collapsed_directions`` is
+            ValueError: If the slot is batched and ``collapsed_directions`` is
                 ``None`` (see :meth:`_zero_coeffs`).
         """
-        if not self.collapsed or k == derivative_order:
-            return zeros_like(primal)
+        if not _is_batched(k, derivative_order, self.collapsed):
+            return tuple(primal.shape)
         if collapsed_directions is None:
             raise ValueError(
                 "Constant output in collapsed mode requires R; the caller "
                 "should have derived it from a jet tuple input."
             )
-        return primal.new_zeros(collapsed_directions, *primal.shape)
+        return (collapsed_directions, *primal.shape)

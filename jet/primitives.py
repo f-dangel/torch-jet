@@ -141,11 +141,6 @@ def _has_jet_arg(args: Sequence[object]) -> bool:
     return any(True for _ in _jet_args(args))
 
 
-def _has_symbolic_zero(args: Sequence[object]) -> bool:
-    """Whether any jet arg (see :func:`_jet_args`) has a ``None`` coefficient."""
-    return any(c is None for jet in _jet_args(args) for c in jet)
-
-
 def _jet_order(*args: Tensor) -> int:
     """Infer the Taylor-expansion order ``K`` from the ``JetTuple`` positional args.
 

@@ -49,6 +49,15 @@ class JetTuple(tuple):
     ``collapsed`` is ``False`` for standard Taylor mode and ``True`` for
     collapsed mode (where coefficients ``c_1..c_{K-1}`` carry a leading
     direction dim ``R`` and ``c_K`` is already summed over it).
+
+    A coefficient of order ``2`` or higher may be ``None``: a *symbolic zero*,
+    a coefficient known to vanish by construction (a declared zero input slot,
+    the output of a constant op). It is never inferred from tensor values. A
+    rule marked with :func:`_symbolic_zeros` handles ``None`` itself; the
+    interpreter materializes the ``None`` entries of a jet (as stride-0 zero
+    views) before calling any other rule, and as dense zeros at the output
+    boundary, so no rule sees ``None`` unless it opted in and no user ever
+    does. The primal and ``c_1`` are always tensors.
     """
 
     def __new__(cls, iterable=(), *, collapsed: bool) -> Self:
@@ -66,6 +75,33 @@ register_pytree_node(
     flatten_fn=lambda x: (list(x), x.collapsed),
     unflatten_fn=lambda values, collapsed: JetTuple(values, collapsed=collapsed),
 )
+
+
+def _symbolic_zeros(rule: Callable) -> Callable:
+    """Mark ``rule`` as handling symbolic-zero (``None``) coefficients itself.
+
+    The interpreter materializes the ``None`` coefficients of a jet argument
+    before calling any rule without this mark (see :class:`JetTuple`).
+
+    Args:
+        rule: The jet rule.
+
+    Returns:
+        ``rule``, marked.
+    """
+    rule.symbolic_zeros = True
+    return rule
+
+
+def _has_symbolic_zero(args: Sequence[object]) -> bool:
+    """Whether any jet in ``args`` (or in a list/tuple in it) has a ``None`` entry."""
+    for a in args:
+        if isinstance(a, JetTuple):
+            if any(c is None for c in a):
+                return True
+        elif isinstance(a, (list, tuple)) and _has_symbolic_zero(a):
+            return True
+    return False
 
 
 def _has_jet_arg(args: Sequence[object]) -> bool:

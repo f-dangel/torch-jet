@@ -21,7 +21,13 @@ from torch.fx.node import Argument, Target
 from torch.utils._pytree import tree_leaves, tree_map
 
 from jet._rules import RULES
-from jet.primitives import JetTuple, _has_jet_arg
+from jet.primitives import (
+    JetTuple,
+    _has_jet_arg,
+    _has_symbolic_zero,
+    _is_batched,
+    _zero_coeff,
+)
 from jet.utils import Jet, PyTree
 
 
@@ -48,6 +54,9 @@ class JetInterpreter(Interpreter):
         """Initialize the JetInterpreter."""
         super().__init__(module)
         self.collapsed: bool = collapsed
+        #: ``K`` and ``R`` of the current run (set by :meth:`run`).
+        self._order: int = 0
+        self._directions: int | None = None
 
     def run(
         self,
@@ -63,6 +72,7 @@ class JetInterpreter(Interpreter):
         explicitly avoids re-deriving them from ``args[0]`` here. Used by
         :meth:`_normalize` to expand constant outputs to the right shapes.
         """
+        self._order, self._directions = derivative_order, collapsed_directions
         result = super().run(*args, **kwargs)
         return self._normalize(result, derivative_order, collapsed_directions)
 
@@ -83,6 +93,10 @@ class JetInterpreter(Interpreter):
             args: Positional arguments of the node.
             kwargs: Keyword arguments of the node.
 
+        A rule that has not opted in to symbolic zeros (see
+        :class:`JetTuple`) receives its jet arguments with every ``None``
+        coefficient materialized.
+
         Returns:
             The result of the jet operation (a jet tuple) or the original op.
 
@@ -95,10 +109,46 @@ class JetInterpreter(Interpreter):
                 raise NotImplementedError(
                     f"No jet rule for {target}. Please file an issue."
                 )
+            if not getattr(rule, "symbolic_zeros", False) and _has_symbolic_zero(
+                (args, kwargs)
+            ):
+                args, kwargs = self._materialize((args, kwargs))
             result = rule(*args, **kwargs)
             self._check_collapsed(result, target)
             return result
         return super().call_function(target, args, kwargs)
+
+    def _materialize(self, tree: PyTree[Any]) -> PyTree[Any]:
+        """Replace the ``None`` coefficients of every jet in ``tree`` by zeros.
+
+        Each zero is a stride-0 view of one element in the slot's shape:
+        ``(R, *S)`` for a batched collapsed slot, ``S`` otherwise.
+        """
+
+        def dense(jet: JetTuple) -> JetTuple:
+            if not any(c is None for c in jet):
+                return jet
+            K, shape = len(jet) - 1, jet[0].shape
+            return JetTuple(
+                (
+                    _zero_coeff(
+                        jet[0],
+                        (self._directions, *shape)
+                        if _is_batched(k, K, self.collapsed)
+                        else shape,
+                    )
+                    if c is None
+                    else c
+                    for k, c in enumerate(jet)
+                ),
+                collapsed=jet.collapsed,
+            )
+
+        return tree_map(
+            lambda x: dense(x) if isinstance(x, JetTuple) else x,
+            tree,
+            is_leaf=lambda x: isinstance(x, JetTuple),
+        )
 
     def _check_collapsed(self, result: Any, target: Target) -> None:
         """Assert every ``JetTuple`` a rule returns matches the run's mode.
@@ -123,16 +173,27 @@ class JetInterpreter(Interpreter):
     ) -> PyTree[Jet]:
         """Convert the pytree-of-jets into a pytree of plain tuples.
 
-        Each ``JetTuple`` leaf becomes a plain ``(f_0, ..., f_K)`` tuple.
+        Each ``JetTuple`` leaf becomes a plain ``(f_0, ..., f_K)`` tuple; its
+        symbolic-zero (``None``) coefficients are materialized as dense zeros.
         Constant tensor leaves (outputs that do not depend on the inputs) are
-        expanded to zero-coefficient jets matching the mode's shape contract:
-        standard returns ``K`` zeros of the primal's shape; collapsed returns
-        ``K - 1`` zeros of shape ``(R, *S)`` plus one zero of ``S``.
+        expanded to zero-coefficient jets. Both follow the mode's shape
+        contract: standard returns ``K`` zeros of the primal's shape; collapsed
+        returns ``K - 1`` zeros of shape ``(R, *S)`` plus one zero of ``S``.
         """
 
         def _normalize_leaf(node: Any) -> Jet:
             if isinstance(node, JetTuple):
-                return tuple(node)
+                return (
+                    node[0],
+                    *(
+                        self._dense_zero(
+                            node[0], k, derivative_order, collapsed_directions
+                        )
+                        if c is None
+                        else c
+                        for k, c in enumerate(node[1:], start=1)
+                    ),
+                )
             return (
                 node,
                 *self._zero_coeffs(node, derivative_order, collapsed_directions),
@@ -164,14 +225,33 @@ class JetInterpreter(Interpreter):
                 API; an explicit raise (rather than ``assert``) keeps the
                 contract visible under ``python -O``.
         """
-        if not self.collapsed:
-            return [zeros_like(primal) for _ in range(derivative_order)]
+        return [
+            self._dense_zero(primal, k, derivative_order, collapsed_directions)
+            for k in range(1, derivative_order + 1)
+        ]
+
+    def _dense_zero(
+        self,
+        primal: Tensor,
+        k: int,
+        derivative_order: int,
+        collapsed_directions: int | None,
+    ) -> Tensor:
+        """A dense zero for the order-``k`` coefficient of a leaf with ``primal``.
+
+        Used for a constant leaf and for a symbolic-zero coefficient of a jet
+        leaf: shape ``(R, *S)`` for a collapsed ``c_1..c_{K-1}``, ``S``
+        otherwise.
+
+        Raises:
+            ValueError: If ``self.collapsed`` and ``collapsed_directions`` is
+                ``None`` (see :meth:`_zero_coeffs`).
+        """
+        if not self.collapsed or k == derivative_order:
+            return zeros_like(primal)
         if collapsed_directions is None:
             raise ValueError(
                 "Constant output in collapsed mode requires R; the caller "
                 "should have derived it from a jet tuple input."
             )
-        return [
-            primal.new_zeros(collapsed_directions, *primal.shape)
-            for _ in range(derivative_order - 1)
-        ] + [zeros_like(primal)]
+        return primal.new_zeros(collapsed_directions, *primal.shape)

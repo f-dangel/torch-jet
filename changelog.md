@@ -215,6 +215,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Symbolic zeros, step 1: a `JetTuple` coefficient of order 2 or higher may
+  be `None` (a zero known by construction, never inferred from values).
+  Rules opt in with `_symbolic_zeros`; the interpreter materializes the
+  `None` entries before any other rule and at the output, so nothing
+  observable changes yet. A new test module feeds every primitive case a
+  symbolic zero tail and compares against dense zeros
+  ([PR](https://github.com/f-dangel/torch-jet/pull/296)).
 - Build every zero Taylor coefficient through one `_zero_coeff` helper
   (a stride-0 expanded view); `_coeff` resolves an operand's coefficient
   for both `cat` and `_pair_linear`, replacing their per-rule copies, and

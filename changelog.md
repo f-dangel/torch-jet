@@ -11,8 +11,7 @@ Jets now run on torchvision's CNNs and on transformers (`nn.TransformerEncoder`,
 ViT, and Hugging Face's GPT-2, BERT, and LLaMA), through gradients (a jet of
 `torch.func.grad` or `vjp`), under `vmap`, `grad`, `vjp`, and `jvp`, and with
 `torch.compile` via `jet.freeze`; a Taylor coefficient known to be zero can be
-passed as `None`, which `laplacian` and `bilaplacian` use to skip the work for
-their zero coefficients.
+passed as `None`, which `laplacian` and `bilaplacian` use for efficiency.
 
 ### Added/New
 

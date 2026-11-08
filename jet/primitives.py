@@ -199,7 +199,9 @@ def _coeff(t: Tensor | JetTuple, k: int, batched: bool, R: int) -> Tensor:
 
 
 def _apply_linear(
-    self: JetTuple, op: Callable[[Tensor], Tensor | Sequence[Tensor]]
+    self: JetTuple,
+    op: Callable[[Tensor], Tensor | Sequence[Tensor]],
+    primal: Tensor | None = None,
 ) -> JetTuple | tuple[JetTuple, ...]:
     """Apply a linear ``op`` coefficient-wise to every entry of ``self``.
 
@@ -207,7 +209,8 @@ def _apply_linear(
     are just ``op`` applied to each input coefficient. Standard mode applies
     ``op`` to every entry; collapsed mode vmaps the batched coefficients
     ``c_1..c_{K-1}`` over the direction dim ``R`` and applies ``op`` directly to
-    the primal and the already-collapsed slot ``c_K``.
+    the primal and the already-collapsed slot ``c_K``. A symbolic zero stays
+    one (``op(0) == 0``).
 
     An ``op`` with a ``Tensor[]`` output (e.g. ``split``, ``unbind``) yields one
     jet per piece: the per-order piece lists are transposed into a plain
@@ -218,31 +221,14 @@ def _apply_linear(
         self: The primal and its Taylor coefficients.
         op: A linear function from a single coefficient tensor to a tensor, or
             to a list/tuple of tensors.
+        primal: The result's primal, if the caller computes it differently from
+            ``op(self[0])``, e.g. padded with a constant other than zero.
 
     Returns:
         The value and its Taylor coefficients, with ``op`` applied to each; one
         such jet per piece if ``op`` returns several tensors.
     """
-    out0, coeffs = op(self[0]), _apply_linear_coeffs(self, op)
-    if isinstance(out0, (tuple, list)):
-        # A symbolic zero splits into one symbolic zero per piece.
-        coeffs = tuple([None] * len(out0) if c is None else c for c in coeffs)
-        return tuple(JetTuple(p, collapsed=self.collapsed) for p in zip(out0, *coeffs))
-    return JetTuple((out0, *coeffs), collapsed=self.collapsed)
-
-
-def _apply_linear_coeffs(
-    self: JetTuple, op: Callable[[Tensor], Tensor]
-) -> tuple[Tensor | None, ...]:
-    """Apply a linear ``op`` to coefficients 1..K of ``self`` (skipping the primal).
-
-    Used by ops that handle the primal separately (e.g. the pooling and
-    nll-loss rules, which compute the primal's value and indices first).
-    Standard mode applies ``op`` to every coefficient; collapsed mode vmaps the
-    batched coefficients ``c_1..c_{K-1}`` over the direction dim ``R`` and
-    applies ``op`` directly to the already-collapsed slot ``c_K``. A symbolic
-    zero stays one (``op(0) == 0``).
-    """
+    out0 = op(self[0]) if primal is None else primal
     K = len(self) - 1
     vop = vmap(op)
 
@@ -252,7 +238,12 @@ def _apply_linear_coeffs(
             return None
         return vop(c) if _is_batched(k, K, self.collapsed) else op(c)
 
-    return tuple(apply(k) for k in range(1, K + 1))
+    coeffs = tuple(apply(k) for k in range(1, K + 1))
+    if isinstance(out0, (tuple, list)):
+        # A symbolic zero splits into one symbolic zero per piece.
+        coeffs = tuple([None] * len(out0) if c is None else c for c in coeffs)
+        return tuple(JetTuple(p, collapsed=self.collapsed) for p in zip(out0, *coeffs))
+    return JetTuple((out0, *coeffs), collapsed=self.collapsed)
 
 
 def _broadcast_coeffs(self: JetTuple, primal: Tensor) -> list[Tensor | None]:
@@ -1167,7 +1158,7 @@ def jet_max_pool2d_with_indices(
     Returns ``(values_jet, indices)`` mirroring the ATen op's two outputs; a
     downstream ``getitem`` selects the values jet. Max pooling is piecewise
     linear: the primal picks the arg-max ``indices``, and every coefficient is
-    gathered at those same positions. Mode-agnostic -- :func:`_apply_linear_coeffs`
+    gathered at those same positions. Mode-agnostic -- :func:`_apply_linear`
     follows ``input.collapsed``.
 
     Args:
@@ -1180,8 +1171,11 @@ def jet_max_pool2d_with_indices(
         A ``(values_jet, indices)`` tuple.
     """
     values0, indices = ops.aten.max_pool2d_with_indices.default(input[0], *pool_args)
-    coeffs = _apply_linear_coeffs(input, lambda c: _gather_at_indices(c, indices))
-    return JetTuple((values0, *coeffs), collapsed=input.collapsed), indices
+
+    def gather(c: Tensor) -> Tensor:
+        return _gather_at_indices(c, indices)
+
+    return _apply_linear(input, gather, primal=values0), indices
 
 
 def jet_max_pool2d(input: JetTuple, *pool_args: object) -> JetTuple:
@@ -1338,7 +1332,7 @@ def jet_constant_pad_nd(
 
     Affine in ``self``: the primal is padded with ``value``, every coefficient
     with ``0`` (the padding is constant, so its derivatives vanish). Negative
-    entries of ``pad`` crop. Mode-agnostic via :func:`_apply_linear_coeffs`.
+    entries of ``pad`` crop. Mode-agnostic via :func:`_apply_linear`.
 
     Args:
         self: The tensor to pad and its Taylor coefficients, or a constant.
@@ -1351,8 +1345,9 @@ def jet_constant_pad_nd(
     prim = ops.aten.constant_pad_nd.default
     if not isinstance(self, JetTuple):
         return prim(self, pad, value)
-    coeffs = _apply_linear_coeffs(self, lambda c: prim(c, pad, 0.0))
-    return JetTuple((prim(self[0], pad, value), *coeffs), collapsed=self.collapsed)
+    return _apply_linear(
+        self, lambda c: prim(c, pad, 0.0), primal=prim(self[0], pad, value)
+    )
 
 
 # --- Loss functions ---
@@ -1399,16 +1394,13 @@ def jet_nll_loss_forward(
             "weight; both must be constant tensors (the target is a class-index "
             "label)."
         )
-    output, total_weight = ops.aten.nll_loss_forward.default(
-        self[0], target, weight, reduction, ignore_index
-    )
-    coeffs = _apply_linear_coeffs(
-        self,
-        lambda c: ops.aten.nll_loss_forward.default(
-            c, target, weight, reduction, ignore_index
-        )[0],
-    )
-    return JetTuple((output, *coeffs), collapsed=self.collapsed), total_weight
+    prim = ops.aten.nll_loss_forward.default
+    output, total_weight = prim(self[0], target, weight, reduction, ignore_index)
+
+    def loss(c: Tensor) -> Tensor:
+        return prim(c, target, weight, reduction, ignore_index)[0]
+
+    return _apply_linear(self, loss, primal=output), total_weight
 
 
 def jet_nll_loss_backward(
@@ -1621,9 +1613,7 @@ def jet_as_strided(
         return _in_layout_of(c, x).as_strided(size, stride, offset)
 
     primal = ops.aten.as_strided.default(x, size, stride, storage_offset)
-    return JetTuple(
-        (primal, *_apply_linear_coeffs(self, view)), collapsed=self.collapsed
-    )
+    return _apply_linear(self, view, primal=primal)
 
 
 def jet_as_strided_scatter(

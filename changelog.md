@@ -13,9 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
-- `_partition_term` folds its product from a generator, so no powered factor
-  outlives its use; this trims one temporary of every elementwise rule at
-  orders two and up
+- Elementwise rules hold one temporary less at orders two and up
   ([PR](https://github.com/f-dangel/torch-jet/pull/312)).
 
 ## [1.1.0] - 2026-11-03

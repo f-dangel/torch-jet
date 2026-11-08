@@ -893,6 +893,43 @@ def _elementwise(
     return JetTuple((dn[0], *vs_out), collapsed=self.collapsed)
 
 
+def _sum_exp(self: JetTuple, shift: Tensor, dim: int) -> JetTuple:
+    """Taylor-mode arithmetic for ``sum(exp(self - shift), dim, keepdim=True)``.
+
+    The sum is linear, so it is pulled into Faà di Bruno's formula for ``exp``:
+    every term of the exp jet is reduced over ``dim`` as soon as it is formed,
+    and only the ``shift``-sized sums survive. ``exp(self[0] - shift)`` dies
+    with this call, so the caller's peak is not raised by it.
+
+    Args:
+        self: The primal and its Taylor coefficients.
+        shift: A constant to subtract before the exponential; it broadcasts
+            against the primal.
+        dim: The dimension to sum over.
+
+    Returns:
+        The sums and their Taylor coefficients, in the mode of ``self``.
+    """
+    K, collapsed = len(self) - 1, self.collapsed
+    exp = (self[0] - shift).exp()
+    dn = dict.fromkeys(range(K + 1), exp)  # every derivative of exp is exp
+    sums = [exp.sum(dim, keepdim=True)]
+    for k in range(1, K + 1):
+        total = None
+        for sigma in integer_partitions(k):
+            # In collapsed mode, a term over parts ``< K`` carries the direction
+            # dim ``R``; the collapsed ``K``-th coefficient sums it out.
+            batched = collapsed and sigma != (K,)
+            term = _partition_term(
+                self[1:], sigma, dn, sum_directions=batched and k == K
+            )
+            if term is not None:
+                term = term.sum(dim + int(batched and k < K), keepdim=True)
+                total = term if total is None else total + term
+        sums.append(total)
+    return JetTuple(tuple(sums), collapsed=collapsed)
+
+
 # --- Power ---
 
 

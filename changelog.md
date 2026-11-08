@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([PR](https://github.com/f-dangel/torch-jet/pull/311)).
 - Elementwise rules hold fewer temporary tensors
   ([PR](https://github.com/f-dangel/torch-jet/pull/312)).
+- `_apply_linear` takes an optional primal, replacing `_apply_linear_coeffs`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/314)).
 
 ## [1.1.0] - 2026-11-03
 

@@ -26,8 +26,10 @@ from jet.primitives import (
     _elementwise,
     _gelu_exact_derivatives,
     _has_jet_arg,
+    _partition_term,
     jet_mm,
 )
+from jet.utils import integer_partitions
 
 
 def _rule(op: Callable) -> Callable:
@@ -188,15 +190,54 @@ def mse_loss(
     return _reduce_loss(squared_error, reduction)
 
 
+def _sum_exp(self: JetTuple, shift: Tensor, dim: int) -> JetTuple:
+    """Taylor-mode arithmetic for ``sum(exp(self - shift), dim, keepdim=True)``.
+
+    The sum is linear, so it is pulled into Faà di Bruno's formula for ``exp``:
+    every term of the exp jet is reduced over ``dim`` as soon as it is formed,
+    and only the ``shift``-sized sums survive. ``exp(self[0] - shift)`` dies
+    with this call, so the caller's peak is not raised by it.
+
+    Args:
+        self: The primal and its Taylor coefficients.
+        shift: A constant to subtract before the exponential; it broadcasts
+            against the primal.
+        dim: The dimension to sum over.
+
+    Returns:
+        The sums and their Taylor coefficients, in the mode of ``self``.
+    """
+    K, collapsed = len(self) - 1, self.collapsed
+    exp = (self[0] - shift).exp()
+    dn = dict.fromkeys(range(K + 1), exp)  # every derivative of exp is exp
+    sums = [exp.sum(dim, keepdim=True)]
+    for k in range(1, K + 1):
+        total = None
+        for sigma in integer_partitions(k):
+            # In collapsed mode, a term over parts ``< K`` carries the direction
+            # dim ``R``; the collapsed ``K``-th coefficient sums it out.
+            batched = collapsed and sigma != (K,)
+            term = _partition_term(
+                self[1:], sigma, dn, sum_directions=batched and k == K
+            )
+            if term is not None:
+                term = term.sum(dim + int(batched and k < K), keepdim=True)
+                total = term if total is None else total + term
+        sums.append(total)
+    return JetTuple(tuple(sums), collapsed=collapsed)
+
+
 def log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTuple:
     """Taylor-mode arithmetic for ``aten._log_softmax(self, dim, half_to_float)``.
 
     Uses the shift-invariant identity
-    ``log_softmax(x) = (x - m) - log(sum(exp(x - m), dim))`` with
-    ``m = max(x, dim)`` a constant taken from the primal. ``exp`` and ``log``
-    reuse the elementwise machinery, the sum over ``dim`` is linear, and the
-    final subtraction broadcasts. This is the log-sum-exp trick, and it
-    stabilizes the whole jet -- not just the forward pass.
+    ``log_softmax(x) = x - (m + log(sum(exp(x - m), dim)))`` with
+    ``m = max(x, dim)`` a constant taken from the primal. This is the
+    log-sum-exp trick, and it stabilizes the whole jet -- not just the forward
+    pass. The sum of the exponentials is streamed by :func:`_sum_exp`, so the
+    peak memory is the input and the output jet. That matters for the cross
+    entropy of a language model, whose logits are the largest tensor of the
+    whole graph.
 
     Args:
         self: The logits and their Taylor coefficients.
@@ -209,16 +250,11 @@ def log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTup
     """
     if half_to_float:
         self = _apply_linear(self, lambda c: c.float())
-    sub = _rule(ops.aten.sub.Tensor)
-    exp = _rule(ops.aten.exp.default)
+    add, sub = _rule(ops.aten.add.Tensor), _rule(ops.aten.sub.Tensor)
     log = _rule(ops.aten.log.default)
-    sum = _rule(ops.aten.sum.dim_IntList)
+    dim = dim % self[0].ndim
     shift = self[0].amax(dim, keepdim=True)
-    shifted = sub(self, shift)
-    exp_jet = exp(shifted)
-    sum_exp = sum(exp_jet, dim, keepdim=True)
-    log_sum_exp = log(sum_exp)
-    return sub(shifted, log_sum_exp)
+    return sub(self, add(log(_sum_exp(self, shift, dim)), shift))
 
 
 def softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTuple:

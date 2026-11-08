@@ -1,19 +1,16 @@
 """Peak memory of the ``log_softmax`` rule, counted deterministically.
 
 The rule streams the exp jet through the row sums, so it allocates no more
-than its output jet, on logits of any size. The former rule composed ``sub``,
-``exp``, ``sum``, ``log``, ``sub``, and held the jets of every intermediate at
-once: the output jet plus a logits-sized tensor per order, and more.
+than its output jet, on logits of any size.
 """
 
 from weakref import finalize
 
 from pytest import mark
-from torch import Tensor, float32, ops, rand
+from torch import Tensor, rand
 from torch.utils._python_dispatch import TorchDispatchMode
 from torch.utils._pytree import tree_leaves
 
-from jet._rules import RULES
 from jet.compositions import log_softmax
 from jet.primitives import JetTuple
 from test.utils import make_jet_args
@@ -52,36 +49,22 @@ class StorageTracker(TorchDispatchMode):
         return out
 
 
-def composed_log_softmax(x: JetTuple, dim: int) -> JetTuple:
-    """The former rule: the jet of every intermediate exists at once."""
-    sub, exp = RULES[ops.aten.sub.Tensor], RULES[ops.aten.exp.default]
-    sum, log = RULES[ops.aten.sum.dim_IntList], RULES[ops.aten.log.default]
-    shifted = sub(x, x[0].amax(dim, keepdim=True))
-    return sub(shifted, log(sum(exp(shifted), dim, keepdim=True)))
-
-
 @mark.parametrize("K", [1, 2, 3, 4], ids=lambda k: f"K{k}")
 def test_log_softmax_peak_memory(K: int, collapsed: bool, device: str):
     """The rule allocates no more than its output jet.
 
-    The former composed rule held, on top of its output jet, at least one
-    more logits-sized tensor per order. No ATen call inside the rule sees fewer
-    rows than the input or a cut vocabulary, so the gain comes from lifetimes
-    alone, not from a loop over chunks.
+    No ATen call inside the rule sees fewer rows than the input or a cut
+    vocabulary, so the bound comes from lifetimes alone, not from a loop over
+    chunks.
     """
-    (x,) = make_jet_args(
-        (rand(ROWS, VOCAB, dtype=float32, device=device),), K, collapsed
-    )
+    (x,) = make_jet_args((rand(ROWS, VOCAB, device=device),), K, collapsed)
     x = JetTuple(x, collapsed=collapsed)
     logits = x[0].untyped_storage().nbytes()
     outputs = sum(c.untyped_storage().nbytes() for c in x)
     slack = logits // 64
 
-    with StorageTracker() as new:
+    with StorageTracker() as tracker:
         log_softmax(x, 1)
-    with StorageTracker() as old:
-        composed_log_softmax(x, 1)
 
-    assert new.peak <= outputs + slack
-    assert old.peak >= outputs + K * logits
-    assert new.arg_shapes <= {(ROWS, VOCAB), (ROWS, 1)}
+    assert tracker.peak <= outputs + slack
+    assert tracker.arg_shapes <= {(ROWS, VOCAB), (ROWS, 1)}

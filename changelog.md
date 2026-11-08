@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- `_partition_term` folds its product from a generator, so no powered factor
+  outlives its use; this trims one temporary of every elementwise rule at
+  orders two and up
+  ([PR](https://github.com/f-dangel/torch-jet/pull/TODO)).
+
 ## [1.1.0] - 2026-11-03
 
 Jets now run on torchvision's CNNs and on transformers, and are composable with

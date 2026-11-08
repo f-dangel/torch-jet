@@ -14,9 +14,9 @@ At each nonlinear collapsed op, the K-th output coefficient is computed as
 """
 
 from collections.abc import Iterator, Sequence
-from functools import partial
+from functools import partial, reduce
 from math import pi, sqrt
-from operator import add, sub
+from operator import add, mul, sub
 from typing import Callable, Self
 
 from scipy.special import comb, factorial, stirling2
@@ -490,12 +490,10 @@ def _partition_term(
     if dn[len(sigma)] is None or any(vs[i - 1] is None for i in sigma):
         return None
     vs_count = {i: sigma.count(i) for i in sigma}
-    vs_contract = [
-        vs[i - 1] ** count if count > 1 else vs[i - 1] for i, count in vs_count.items()
-    ]
-    term = vs_contract[0]
-    for v in vs_contract[1:]:
-        term = term * v
+    # Fold the product from a generator so no powered factor outlives its use.
+    term = reduce(
+        mul, (vs[i - 1] ** c if c > 1 else vs[i - 1] for i, c in vs_count.items())
+    )
     if sum_directions:
         # Sum the direction dim R out of the inner product *before* multiplying
         # by the outer derivative, which carries no R: the multiply then runs on

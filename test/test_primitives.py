@@ -1419,13 +1419,14 @@ def test_softmax_half_to_float(rule: Callable, collapsed: bool, device: str):
         assert_close(g, w, rtol=1e-3, atol=1e-3)
 
 
-def test_log_softmax_large_offset(collapsed: bool, device: str):
-    """Logits with a large offset keep their digits, like ATen's ``log_softmax``."""
+@mark.parametrize("fn", [softmax, log_softmax], ids=["softmax", "log_softmax"])
+def test_softmax_large_offset(fn: Callable, collapsed: bool, device: str):
+    """Logits with a large offset keep their digits, like the ATen ops."""
     manual_seed(0)
     x = rand(16, 64, device=device) + 1e6
     (x,) = make_jet_args((x,), 2, collapsed)
-    jet_f = jet(lambda x: log_softmax(x, 1), (x[0],), collapsed=collapsed)
-    assert_close(jet_f(x)[0], log_softmax(x[0], 1), atol=1e-5, rtol=0)
+    jet_f = jet(lambda x: fn(x, 1), (x[0],), collapsed=collapsed)
+    assert_close(jet_f(x)[0], fn(x[0], 1), atol=1e-5, rtol=0)
 
 
 @mark.parametrize("dtype", [float16, bfloat16], ids=["float16", "bfloat16"])

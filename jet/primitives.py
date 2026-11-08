@@ -295,6 +295,7 @@ def _pointwise(
     other: JetTuple,
     op: Callable[[Tensor, Tensor], Tensor],
     neg: Callable[[Tensor], Tensor],
+    primal: Tensor | None = None,
 ) -> JetTuple:
     """Apply pointwise ``op`` to two jets of equal order and mode.
 
@@ -305,11 +306,21 @@ def _pointwise(
     through ``neg`` when ``self``'s is the ``None`` one (``op(0, o)``); two
     ``None`` coefficients stay ``None``.
 
-    ``op`` must be elementwise (it broadcasts over leading dims); the product
-    rules use the Leibniz helpers instead (see :func:`_apply_bilinear`).
+    Args:
+        self: The first operand and its Taylor coefficients.
+        other: The second operand and its Taylor coefficients.
+        op: The elementwise operation, applied to the primals and to pairs of
+            coefficients. It must broadcast over leading dims; the product
+            rules use the Leibniz helpers instead (see :func:`_apply_bilinear`).
+        neg: The result of ``op(0, o)`` for a coefficient ``o`` of ``other``.
+        primal: The result's primal, if the caller has a better way to compute
+            it than ``op(self[0], other[0])``, e.g. a numerically stabler one.
+
+    Returns:
+        The value and its Taylor coefficients, in the mode of ``self``.
     """
     _jet_order(self, other)  # validates K-consistency, raises on mismatch
-    primal = op(self[0], other[0])
+    primal = op(self[0], other[0]) if primal is None else primal
     s_coeffs = _broadcast_coeffs(self, primal)
     o_coeffs = _broadcast_coeffs(other, primal)
 
@@ -891,6 +902,41 @@ def _elementwise(
     dn = deriv_fn(self[0], K)
     vs_out = _faa_di_bruno(self[1:], dn, collapsed=self.collapsed)
     return JetTuple((dn[0], *vs_out), collapsed=self.collapsed)
+
+
+def _sum_exp(self: JetTuple, shift: Tensor, dim: int) -> JetTuple:
+    """Taylor-mode arithmetic for ``sum(exp(self - shift), dim, keepdim=True)``.
+
+    Streams the exp jet through the sum: every Faà di Bruno term of ``exp`` is
+    summed over ``dim`` as soon as it is formed, so only the sums are kept.
+
+    Args:
+        self: The primal and its Taylor coefficients.
+        shift: A constant to subtract before the exponential; it broadcasts
+            against the primal.
+        dim: The dimension to sum over.
+
+    Returns:
+        The sums and their Taylor coefficients, in the mode of ``self``.
+    """
+    K, collapsed = len(self) - 1, self.collapsed
+    exp = (self[0] - shift).exp()
+    dn = dict.fromkeys(range(K + 1), exp)  # every derivative of exp is exp
+    sums = [exp.sum(dim, keepdim=True)]
+    for k in range(1, K + 1):
+        total = None
+        for sigma in integer_partitions(k):
+            # In collapsed mode, a term over parts ``< K`` carries the direction
+            # dim ``R``; the collapsed ``K``-th coefficient sums it out.
+            batched = collapsed and sigma != (K,)
+            sum_directions = batched and k == K
+            term = _partition_term(self[1:], sigma, dn, sum_directions)
+            if term is not None:
+                term_dim = dim + int(batched and not sum_directions)  # R leads
+                term = term.sum(term_dim, keepdim=True)
+                total = term if total is None else total + term
+        sums.append(total)
+    return JetTuple(tuple(sums), collapsed=collapsed)
 
 
 # --- Power ---

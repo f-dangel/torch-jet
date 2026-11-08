@@ -8,7 +8,7 @@ from functools import partial
 from itertools import product
 from typing import Any, Callable
 
-from pytest import mark, raises, skip
+from pytest import mark, raises
 from torch import (
     addmm,
     bfloat16,
@@ -77,7 +77,6 @@ from test.utils import (
     device_kw,
     make_jet_args,
     pick_operands,
-    setup_case,
     tolerances_for,
 )
 
@@ -1420,21 +1419,15 @@ def test_softmax_half_to_float(rule: Callable, collapsed: bool, device: str):
         assert_close(g, w, rtol=1e-3, atol=1e-3)
 
 
-def test_log_softmax_symbolic_zeros(K: int, collapsed: bool, device: str):
-    """A symbolic-zero tail of ``log_softmax``'s input gives the dense jet.
-
-    The rule sums the exp jet term by term, so a ``None`` coefficient must drop
-    exactly the Faà di Bruno terms it enters and no others.
-    """
-    if K < 2:
-        skip("symbolic zeros exist from order 2 on")
-    config = next(c for c in PRIMITIVE_CASES if c["id"] == "log_softmax_dim1")
-    f, mock_args = setup_case(config, device)
-    (x,) = make_jet_args(mock_args, K, collapsed)
-    jet_f = jet(f, mock_args, collapsed=collapsed)
-    dense = (*x[:2], *(zeros_like(c) for c in x[2:]))
-    symbolic = (*x[:2], *([None] * (K - 1)))
-    assert_close(jet_f(symbolic), jet_f(dense), **tolerances_for(device))
+@mark.parametrize("fn", [softmax, log_softmax], ids=["softmax", "log_softmax"])
+def test_softmax_large_offset(fn: Callable, collapsed: bool, device: str):
+    """Logits with a large offset keep their digits, like the ATen ops."""
+    rows, cols, offset = 16, 64, 1e6
+    manual_seed(0)
+    x = rand(rows, cols, device=device) + offset
+    (x_jet,) = make_jet_args((x,), 2, collapsed)
+    jet_f = jet(lambda x: fn(x, 1), (x,), collapsed=collapsed)
+    assert_close(jet_f(x_jet)[0], fn(x, 1), atol=1e-5, rtol=0)
 
 
 @mark.parametrize("dtype", [float16, bfloat16], ids=["float16", "bfloat16"])

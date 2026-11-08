@@ -15,13 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Test the improved memory consumption of the streamed `log_softmax` rule
   ([PR](https://github.com/f-dangel/torch-jet/pull/313)).
-- The `log_softmax` rule streams the exp jet through its row sums: every
-  Faà di Bruno term is reduced as soon as it is formed, so the rule allocates
-  no more than its output jet instead of the jets of every intermediate
+- The `log_softmax` rule streams the exp jet through its row sums, so it
+  holds no more than its output jet
   ([PR](https://github.com/f-dangel/torch-jet/pull/311)).
-- `_partition_term` folds its product from a generator, so no powered factor
-  outlives its use; this trims one temporary of every elementwise rule at
-  orders two and up
+- Elementwise rules hold fewer temporary tensors
   ([PR](https://github.com/f-dangel/torch-jet/pull/312)).
 
 ## [1.1.0] - 2026-11-03

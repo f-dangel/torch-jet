@@ -37,7 +37,7 @@ class StorageTracker(TorchDispatchMode):
     def __torch_dispatch__(self, func, types, args=(), kwargs=None):
         """Run ``func``, note its argument shapes, and track its new storages."""
         for t in tree_leaves((args, kwargs)):
-            if isinstance(t, Tensor) and t.ndim >= 2:
+            if isinstance(t, Tensor):
                 self.arg_shapes.add(tuple(t.shape[-2:]))
         out = func(*args, **(kwargs or {}))
         for t in tree_leaves(out):

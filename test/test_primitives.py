@@ -1422,8 +1422,9 @@ def test_softmax_half_to_float(rule: Callable, collapsed: bool, device: str):
 @mark.parametrize("fn", [softmax, log_softmax], ids=["softmax", "log_softmax"])
 def test_softmax_large_offset(fn: Callable, collapsed: bool, device: str):
     """Logits with a large offset keep their digits, like the ATen ops."""
+    rows, cols, offset = 16, 64, 1e6
     manual_seed(0)
-    x = rand(16, 64, device=device) + 1e6
+    x = rand(rows, cols, device=device) + offset
     (x,) = make_jet_args((x,), 2, collapsed)
     jet_f = jet(lambda x: fn(x, 1), (x[0],), collapsed=collapsed)
     assert_close(jet_f(x)[0], fn(x[0], 1), atol=1e-5, rtol=0)

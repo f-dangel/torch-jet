@@ -1344,9 +1344,11 @@ def jet_constant_pad_nd(
     prim = ops.aten.constant_pad_nd.default
     if not isinstance(self, JetTuple):
         return prim(self, pad, value)
-    return _apply_linear(
-        self, lambda c: prim(c, pad, 0.0), primal=prim(self[0], pad, value)
-    )
+
+    def pad_zero(c: Tensor) -> Tensor:
+        return prim(c, pad, 0.0)
+
+    return _apply_linear(self, pad_zero, primal=prim(self[0], pad, value))
 
 
 # --- Loss functions ---

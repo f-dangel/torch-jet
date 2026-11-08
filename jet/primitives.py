@@ -218,8 +218,7 @@ def _apply_linear(
             return a list/tuple of tensors (e.g. ``split``, ``unbind``); then
             the result is one jet per piece.
         primal: The result's primal, if the caller computes it differently from
-            ``op(self[0])``, e.g. padded with a constant other than zero. Not
-            for a multi-output ``op``.
+            ``op(self[0])``, e.g. padded with a constant other than zero.
 
     Returns:
         The value and its Taylor coefficients, in the mode of ``self``. For a

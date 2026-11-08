@@ -195,7 +195,7 @@ def log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTup
     """Taylor-mode arithmetic for ``aten._log_softmax(self, dim, half_to_float)``.
 
     Uses the shift-invariant identity
-    ``log_softmax(x) = x - (m + log(sum(exp(x - m), dim)))`` with
+    ``log_softmax(x) = (x - m) - log(sum(exp(x - m), dim))`` with
     ``m = max(x, dim)`` a constant taken from the primal. This is the
     log-sum-exp trick, and it stabilizes the whole jet -- not just the forward
     pass. The sum of the exponentials is streamed by :func:`_sum_exp`, so the

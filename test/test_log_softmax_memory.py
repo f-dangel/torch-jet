@@ -4,49 +4,14 @@ The rule streams the exp jet through the row sums, so it allocates no more
 than its output jet, on logits of any size.
 """
 
-from weakref import finalize
-
 from pytest import mark
-from torch import Tensor, rand
-from torch.utils._python_dispatch import TorchDispatchMode
-from torch.utils._pytree import tree_leaves
+from torch import rand
 
 from jet.compositions import log_softmax
 from jet.primitives import JetTuple
-from test.utils import make_jet_args
+from test.utils import StorageTracker, make_jet_args
 
 ROWS, VOCAB = 512, 4096
-
-
-class StorageTracker(TorchDispatchMode):
-    """Count the bytes every ATen call allocates and the running maximum.
-
-    Views (``t._base is not None``) share their storage and are not counted;
-    the bytes of a new storage are released when its tensor dies. Also records
-    the trailing two dims of every tensor argument an ATen call receives.
-    """
-
-    def __init__(self) -> None:
-        """Start with nothing allocated."""
-        super().__init__()
-        self.live, self.peak, self.arg_shapes = 0, 0, set()
-
-    def _release(self, nbytes: int) -> None:
-        self.live -= nbytes
-
-    def __torch_dispatch__(self, func, types, args=(), kwargs=None):
-        """Run ``func``, note its argument shapes, and track its new storages."""
-        for t in tree_leaves((args, kwargs)):
-            if isinstance(t, Tensor):
-                self.arg_shapes.add(tuple(t.shape[-2:]))
-        out = func(*args, **(kwargs or {}))
-        for t in tree_leaves(out):
-            if isinstance(t, Tensor) and t._base is None:
-                nbytes = t.untyped_storage().nbytes()
-                self.live += nbytes
-                self.peak = max(self.peak, self.live)
-                finalize(t, self._release, nbytes)
-        return out
 
 
 @mark.parametrize("K", [1, 2, 3, 4], ids=lambda k: f"K{k}")
@@ -67,4 +32,4 @@ def test_log_softmax_peak_memory(K: int, collapsed: bool, device: str):
         log_softmax(x, 1)
 
     assert tracker.peak <= outputs + slack
-    assert tracker.arg_shapes <= {(ROWS, VOCAB), (ROWS, 1)}
+    assert {s[-2:] for s in tracker.arg_shapes} <= {(ROWS, VOCAB), (ROWS, 1)}

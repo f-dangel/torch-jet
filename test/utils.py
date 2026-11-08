@@ -1,6 +1,7 @@
 """Utility functions for testing."""
 
 from typing import Any, Callable
+from weakref import finalize
 
 from pytest import raises
 from torch import (
@@ -31,7 +32,8 @@ from torch.nn.functional import (
 )
 from torch.overrides import TorchFunctionMode
 from torch.testing import assert_close
-from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
+from torch.utils._python_dispatch import TorchDispatchMode
+from torch.utils._pytree import tree_flatten, tree_leaves, tree_map, tree_unflatten
 
 from jet._jet import _rev_jet, jet
 from jet.utils import _is_jet_leaf
@@ -174,6 +176,38 @@ class DifferentiableSubstitutes(TorchFunctionMode):
         if func in self.SUBSTITUTES:
             return self.SUBSTITUTES[func](*args, **kwargs)
         return func(*args, **kwargs)
+
+
+class StorageTracker(TorchDispatchMode):
+    """Count the bytes every ATen call allocates and the running maximum.
+
+    Views (``t._base is not None``) share their storage and are not counted;
+    the bytes of a new storage are released when its tensor dies. Also records
+    the shape of every tensor argument an ATen call receives, so a test can
+    check what the rule under test computes on.
+    """
+
+    def __init__(self) -> None:
+        """Start with nothing allocated."""
+        super().__init__()
+        self.live, self.peak, self.arg_shapes = 0, 0, set()
+
+    def _release(self, nbytes: int) -> None:
+        self.live -= nbytes
+
+    def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+        """Run ``func``, note its argument shapes, and track its new storages."""
+        for t in tree_leaves((args, kwargs)):
+            if isinstance(t, Tensor):
+                self.arg_shapes.add(tuple(t.shape))
+        out = func(*args, **(kwargs or {}))
+        for t in tree_leaves(out):
+            if isinstance(t, Tensor) and t._base is None:
+                nbytes = t.untyped_storage().nbytes()
+                self.live += nbytes
+                self.peak = max(self.peak, self.live)
+                finalize(t, self._release, nbytes)
+        return out
 
 
 def pick_operands(args: tuple, codes: str, consts: tuple) -> list:

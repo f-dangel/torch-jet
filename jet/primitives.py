@@ -290,22 +290,30 @@ def _broadcast_coeffs(self: JetTuple, primal: Tensor) -> list[Tensor | None]:
     return out
 
 
-def _pointwise_coeffs(
+def _pointwise(
     self: JetTuple,
     other: JetTuple,
-    primal: Tensor,
     op: Callable[[Tensor, Tensor], Tensor],
     neg: Callable[[Tensor], Tensor],
-) -> Iterator[Tensor | None]:
-    """Yield the coefficients of pointwise ``op(self, other)`` with ``primal``.
+    primal: Tensor | None = None,
+) -> JetTuple:
+    """Apply pointwise ``op`` to two jets of equal order and mode.
 
-    Broadcasts both operands' coefficients up to ``primal``'s shape via
+    Broadcasts both operands' coefficients up to the result primal's shape via
     :func:`_broadcast_coeffs` before ``op``, so different-rank operands align
     over their primal dims (R-aware in collapsed mode). A symbolic-zero
     (``None``) coefficient leaves the other operand's coefficient as the result,
     through ``neg`` when ``self``'s is the ``None`` one (``op(0, o)``); two
     ``None`` coefficients stay ``None``.
+
+    ``op`` must be elementwise (it broadcasts over leading dims); the product
+    rules use the Leibniz helpers instead (see :func:`_apply_bilinear`).
+    A caller may pass the result ``primal`` when it has a better way to compute
+    it than ``op(self[0], other[0])``, e.g. a numerically stabler one.
     """
+    _jet_order(self, other)  # validates K-consistency, raises on mismatch
+    if primal is None:
+        primal = op(self[0], other[0])
     s_coeffs = _broadcast_coeffs(self, primal)
     o_coeffs = _broadcast_coeffs(other, primal)
 
@@ -314,24 +322,7 @@ def _pointwise_coeffs(
             return None if o is None else neg(o)
         return s if o is None else op(s, o)
 
-    return (combine(s, o) for s, o in zip(s_coeffs, o_coeffs))
-
-
-def _pointwise(
-    self: JetTuple,
-    other: JetTuple,
-    op: Callable[[Tensor, Tensor], Tensor],
-    neg: Callable[[Tensor], Tensor],
-) -> JetTuple:
-    """Apply pointwise ``op`` to two jets of equal order and mode.
-
-    ``op`` must be elementwise (it broadcasts over leading dims); the product
-    rules use the Leibniz helpers instead (see :func:`_apply_bilinear`). The
-    coefficients come from :func:`_pointwise_coeffs`.
-    """
-    _jet_order(self, other)  # validates K-consistency, raises on mismatch
-    primal = op(self[0], other[0])
-    coeffs = _pointwise_coeffs(self, other, primal, op, neg)
+    coeffs = (combine(s, o) for s, o in zip(s_coeffs, o_coeffs))
     return JetTuple((primal, *coeffs), collapsed=self.collapsed)
 
 

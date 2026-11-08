@@ -1437,6 +1437,15 @@ def test_log_softmax_symbolic_zeros(K: int, collapsed: bool, device: str):
     assert_close(jet_f(symbolic), jet_f(dense), **tolerances_for(device))
 
 
+def test_log_softmax_large_offset(collapsed: bool, device: str):
+    """Logits with a large offset keep their digits, like ATen's ``log_softmax``."""
+    manual_seed(0)
+    x = rand(16, 64, device=device) + 1e6
+    (x,) = make_jet_args((x,), 2, collapsed)
+    jet_f = jet(lambda x: log_softmax(x, 1), (x[0],), collapsed=collapsed)
+    assert_close(jet_f(x)[0], log_softmax(x[0], 1), atol=1e-5, rtol=0)
+
+
 @mark.parametrize("dtype", [float16, bfloat16], ids=["float16", "bfloat16"])
 def test_where_scalar_keeps_dtype(dtype: dtype_t, collapsed: bool, device: str):
     """A scalar operand of ``where``/``masked_fill`` does not upcast a half jet."""

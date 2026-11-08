@@ -9,6 +9,7 @@ the composition only encodes the algebraic identity (e.g.
 """
 
 from math import pi, sqrt
+from operator import neg, sub
 from typing import Callable
 
 from torch import Tensor, contiguous_format, finfo, ones, ops, uint8
@@ -26,6 +27,7 @@ from jet.primitives import (
     _elementwise,
     _gelu_exact_derivatives,
     _has_jet_arg,
+    _pointwise_coeffs,
     _sum_exp,
     jet_mm,
 )
@@ -212,11 +214,15 @@ def log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTup
     """
     if half_to_float:
         self = _apply_linear(self, lambda c: c.float())
-    add, sub = _rule(ops.aten.add.Tensor), _rule(ops.aten.sub.Tensor)
     log = _rule(ops.aten.log.default)
     dim = dim % self[0].ndim
     shift = self[0].amax(dim, keepdim=True)
-    return sub(self, add(log(_sum_exp(self, shift, dim)), shift))
+    log_sum = log(_sum_exp(self, shift, dim))
+    # Shift first and subtract the log-sum after, like ATen, so large logits
+    # keep their digits; the coefficients need no shift.
+    primal = (self[0] - shift) - log_sum[0]
+    coeffs = _pointwise_coeffs(self, log_sum, primal, sub, neg)
+    return JetTuple((primal, *coeffs), collapsed=self.collapsed)
 
 
 def softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTuple:

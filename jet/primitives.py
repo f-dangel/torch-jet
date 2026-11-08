@@ -290,26 +290,22 @@ def _broadcast_coeffs(self: JetTuple, primal: Tensor) -> list[Tensor | None]:
     return out
 
 
-def _pointwise(
+def _pointwise_coeffs(
     self: JetTuple,
     other: JetTuple,
+    primal: Tensor,
     op: Callable[[Tensor, Tensor], Tensor],
     neg: Callable[[Tensor], Tensor],
-) -> JetTuple:
-    """Apply pointwise ``op`` to two jets of equal order and mode.
+) -> Iterator[Tensor | None]:
+    """Yield the coefficients of pointwise ``op(self, other)`` with ``primal``.
 
-    Broadcasts both operands' coefficients up to the result primal's shape via
+    Broadcasts both operands' coefficients up to ``primal``'s shape via
     :func:`_broadcast_coeffs` before ``op``, so different-rank operands align
     over their primal dims (R-aware in collapsed mode). A symbolic-zero
     (``None``) coefficient leaves the other operand's coefficient as the result,
     through ``neg`` when ``self``'s is the ``None`` one (``op(0, o)``); two
     ``None`` coefficients stay ``None``.
-
-    ``op`` must be elementwise (it broadcasts over leading dims); the product
-    rules use the Leibniz helpers instead (see :func:`_apply_bilinear`).
     """
-    _jet_order(self, other)  # validates K-consistency, raises on mismatch
-    primal = op(self[0], other[0])
     s_coeffs = _broadcast_coeffs(self, primal)
     o_coeffs = _broadcast_coeffs(other, primal)
 
@@ -318,7 +314,24 @@ def _pointwise(
             return None if o is None else neg(o)
         return s if o is None else op(s, o)
 
-    coeffs = (combine(s, o) for s, o in zip(s_coeffs, o_coeffs))
+    return (combine(s, o) for s, o in zip(s_coeffs, o_coeffs))
+
+
+def _pointwise(
+    self: JetTuple,
+    other: JetTuple,
+    op: Callable[[Tensor, Tensor], Tensor],
+    neg: Callable[[Tensor], Tensor],
+) -> JetTuple:
+    """Apply pointwise ``op`` to two jets of equal order and mode.
+
+    ``op`` must be elementwise (it broadcasts over leading dims); the product
+    rules use the Leibniz helpers instead (see :func:`_apply_bilinear`). The
+    coefficients come from :func:`_pointwise_coeffs`.
+    """
+    _jet_order(self, other)  # validates K-consistency, raises on mismatch
+    primal = op(self[0], other[0])
+    coeffs = _pointwise_coeffs(self, other, primal, op, neg)
     return JetTuple((primal, *coeffs), collapsed=self.collapsed)
 
 
@@ -896,10 +909,8 @@ def _elementwise(
 def _sum_exp(self: JetTuple, shift: Tensor, dim: int) -> JetTuple:
     """Taylor-mode arithmetic for ``sum(exp(self - shift), dim, keepdim=True)``.
 
-    The sum is linear, so it is pulled into Faà di Bruno's formula for ``exp``:
-    every term of the exp jet is reduced over ``dim`` as soon as it is formed,
-    and only the ``shift``-sized sums survive. ``exp(self[0] - shift)`` dies
-    with this call, so the caller's peak is not raised by it.
+    Streams the exp jet through the sum: every Faà di Bruno term of ``exp`` is
+    summed over ``dim`` as soon as it is formed, so only the sums are kept.
 
     Args:
         self: The primal and its Taylor coefficients.
@@ -920,11 +931,11 @@ def _sum_exp(self: JetTuple, shift: Tensor, dim: int) -> JetTuple:
             # In collapsed mode, a term over parts ``< K`` carries the direction
             # dim ``R``; the collapsed ``K``-th coefficient sums it out.
             batched = collapsed and sigma != (K,)
-            term = _partition_term(
-                self[1:], sigma, dn, sum_directions=batched and k == K
-            )
+            sum_directions = batched and k == K
+            term = _partition_term(self[1:], sigma, dn, sum_directions)
             if term is not None:
-                term = term.sum(dim + int(batched and k < K), keepdim=True)
+                term_dim = dim + int(batched and not sum_directions)  # R leads
+                term = term.sum(term_dim, keepdim=True)
                 total = term if total is None else total + term
         sums.append(total)
     return JetTuple(tuple(sums), collapsed=collapsed)

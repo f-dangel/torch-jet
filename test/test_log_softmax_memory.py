@@ -26,7 +26,7 @@ def test_log_softmax_peak_memory(K: int, collapsed: bool, device: str):
     x = JetTuple(x, collapsed=collapsed)
     logits = x[0].untyped_storage().nbytes()
     outputs = sum(c.untyped_storage().nbytes() for c in x)
-    slack = logits // 64
+    slack = logits // 64  # room for the row-wise max, sums and logs
 
     with StorageTracker() as tracker:
         log_softmax(x, 1)

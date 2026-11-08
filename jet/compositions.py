@@ -217,8 +217,6 @@ def log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTup
     dim = dim % self[0].ndim
     shift = self[0].amax(dim, keepdim=True)
     log_sum = log(_sum_exp(self, shift, dim))
-    # Shift first and subtract the log-sum after, like ATen, so large logits
-    # keep their digits; the coefficients need no shift.
     primal = (self[0] - shift) - log_sum[0]
     return _pointwise(self, log_sum, sub, neg, primal=primal)
 

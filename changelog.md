@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- The `log_softmax` rule streams the exp jet through its row sums, so it
+  holds no more than its output jet
+  ([PR](https://github.com/f-dangel/torch-jet/pull/311)).
 - Elementwise rules hold fewer temporary tensors
   ([PR](https://github.com/f-dangel/torch-jet/pull/312)).
 

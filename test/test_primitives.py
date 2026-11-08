@@ -1419,6 +1419,17 @@ def test_softmax_half_to_float(rule: Callable, collapsed: bool, device: str):
         assert_close(g, w, rtol=1e-3, atol=1e-3)
 
 
+@mark.parametrize("fn", [softmax, log_softmax], ids=["softmax", "log_softmax"])
+def test_softmax_large_offset(fn: Callable, collapsed: bool, device: str):
+    """Logits with a large offset keep their digits, like the ATen ops."""
+    rows, cols, offset = 16, 64, 1e6
+    manual_seed(0)
+    x = rand(rows, cols, device=device) + offset
+    (x_jet,) = make_jet_args((x,), 2, collapsed)
+    jet_f = jet(lambda x: fn(x, 1), (x,), collapsed=collapsed)
+    assert_close(jet_f(x_jet)[0], fn(x, 1), atol=1e-5, rtol=0)
+
+
 @mark.parametrize("dtype", [float16, bfloat16], ids=["float16", "bfloat16"])
 def test_where_scalar_keeps_dtype(dtype: dtype_t, collapsed: bool, device: str):
     """A scalar operand of ``where``/``masked_fill`` does not upcast a half jet."""

@@ -9,6 +9,7 @@ the composition only encodes the algebraic identity (e.g.
 """
 
 from math import pi, sqrt
+from operator import neg, sub
 from typing import Callable
 
 from torch import Tensor, contiguous_format, finfo, ones, ops, uint8
@@ -26,6 +27,8 @@ from jet.primitives import (
     _elementwise,
     _gelu_exact_derivatives,
     _has_jet_arg,
+    _pointwise,
+    _sum_exp,
     jet_mm,
 )
 
@@ -193,10 +196,11 @@ def log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTup
 
     Uses the shift-invariant identity
     ``log_softmax(x) = (x - m) - log(sum(exp(x - m), dim))`` with
-    ``m = max(x, dim)`` a constant taken from the primal. ``exp`` and ``log``
-    reuse the elementwise machinery, the sum over ``dim`` is linear, and the
-    final subtraction broadcasts. This is the log-sum-exp trick, and it
-    stabilizes the whole jet -- not just the forward pass.
+    ``m = max(x, dim)`` a constant taken from the primal. This is the
+    log-sum-exp trick, and it stabilizes the whole jet -- not just the forward
+    pass. The sum of the exponentials is streamed by :func:`_sum_exp` to reduce
+    memory. That matters for the cross entropy of a language model, whose
+    logits are the largest tensor of the whole graph.
 
     Args:
         self: The logits and their Taylor coefficients.
@@ -209,16 +213,12 @@ def log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTup
     """
     if half_to_float:
         self = _apply_linear(self, lambda c: c.float())
-    sub = _rule(ops.aten.sub.Tensor)
-    exp = _rule(ops.aten.exp.default)
     log = _rule(ops.aten.log.default)
-    sum = _rule(ops.aten.sum.dim_IntList)
+    dim = dim % self[0].ndim
     shift = self[0].amax(dim, keepdim=True)
-    shifted = sub(self, shift)
-    exp_jet = exp(shifted)
-    sum_exp = sum(exp_jet, dim, keepdim=True)
-    log_sum_exp = log(sum_exp)
-    return sub(shifted, log_sum_exp)
+    log_sum = log(_sum_exp(self, shift, dim))
+    primal = (self[0] - shift) - log_sum[0]
+    return _pointwise(self, log_sum, sub, neg, primal=primal)
 
 
 def softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTuple:

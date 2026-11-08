@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
-- Elementwise rules hold one temporary less at orders two and up
+- Elementwise rules hold fewer temporary tensors
   ([PR](https://github.com/f-dangel/torch-jet/pull/312)).
 
 ## [1.1.0] - 2026-11-03

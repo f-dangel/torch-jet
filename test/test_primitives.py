@@ -1425,9 +1425,9 @@ def test_softmax_large_offset(fn: Callable, collapsed: bool, device: str):
     rows, cols, offset = 16, 64, 1e6
     manual_seed(0)
     x = rand(rows, cols, device=device) + offset
-    (x,) = make_jet_args((x,), 2, collapsed)
-    jet_f = jet(lambda x: fn(x, 1), (x[0],), collapsed=collapsed)
-    assert_close(jet_f(x)[0], fn(x[0], 1), atol=1e-5, rtol=0)
+    (x_jet,) = make_jet_args((x,), 2, collapsed)
+    jet_f = jet(lambda x: fn(x, 1), (x,), collapsed=collapsed)
+    assert_close(jet_f(x_jet)[0], fn(x, 1), atol=1e-5, rtol=0)
 
 
 @mark.parametrize("dtype", [float16, bfloat16], ids=["float16", "bfloat16"])

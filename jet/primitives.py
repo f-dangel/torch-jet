@@ -206,27 +206,26 @@ def _apply_linear(
     """Apply a linear ``op`` coefficient-wise to every entry of ``self``.
 
     Linear ops commute with the Taylor expansion, so the result's coefficients
-    are just ``op`` applied to each input coefficient. Standard mode applies
-    ``op`` to every entry; collapsed mode vmaps the batched coefficients
-    ``c_1..c_{K-1}`` over the direction dim ``R`` and applies ``op`` directly to
-    the primal and the already-collapsed slot ``c_K``. A symbolic zero stays
-    one (``op(0) == 0``).
-
-    An ``op`` with a ``Tensor[]`` output (e.g. ``split``, ``unbind``) yields one
-    jet per piece: the per-order piece lists are transposed into a plain
-    ``tuple`` of jets (not a ``JetTuple``), mirroring the op's output so a
-    downstream ``getitem`` falls through to the native op.
+    are just ``op`` applied to each input coefficient.
 
     Args:
-        self: The primal and its Taylor coefficients.
-        op: A linear function from a single coefficient tensor to a tensor, or
-            to a list/tuple of tensors.
+        self: The primal and its Taylor coefficients, standard or collapsed.
+        op: A linear function of one tensor. It is applied to the primal
+            (unless ``primal`` is given) and to every coefficient; in collapsed
+            mode the batched coefficients ``c_1..c_{K-1}`` are vmapped over the
+            direction dim ``R``, the already-collapsed slot ``c_K`` is not. A
+            symbolic zero (``None``) stays one, since ``op(0) == 0``. It may
+            return a list/tuple of tensors (e.g. ``split``, ``unbind``); then
+            the result is one jet per piece.
         primal: The result's primal, if the caller computes it differently from
-            ``op(self[0])``, e.g. padded with a constant other than zero.
+            ``op(self[0])``, e.g. padded with a constant other than zero. Not
+            for a multi-output ``op``.
 
     Returns:
-        The value and its Taylor coefficients, with ``op`` applied to each; one
-        such jet per piece if ``op`` returns several tensors.
+        The value and its Taylor coefficients, in the mode of ``self``. For a
+        multi-output ``op``, a plain ``tuple`` (not a ``JetTuple``) of one such
+        jet per piece, mirroring the op's output so a downstream ``getitem``
+        falls through to the native op.
     """
     out0 = op(self[0]) if primal is None else primal
     K = len(self) - 1

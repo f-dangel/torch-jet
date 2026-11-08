@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A deterministic test counts the bytes the `log_softmax` rule allocates
   under a dispatch mode, so its peak stays at the output jet and no loop
   over chunks can sneak in
-  ([PR](https://github.com/f-dangel/torch-jet/pull/TODO)).
+  ([PR](https://github.com/f-dangel/torch-jet/pull/313)).
 - The `log_softmax` rule streams the exp jet through its row sums: every
   Faà di Bruno term is reduced as soon as it is formed, so the rule allocates
   no more than its output jet instead of the jets of every intermediate

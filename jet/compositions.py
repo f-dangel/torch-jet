@@ -198,10 +198,9 @@ def log_softmax(self: JetTuple, dim: int, half_to_float: bool = False) -> JetTup
     ``log_softmax(x) = (x - m) - log(sum(exp(x - m), dim))`` with
     ``m = max(x, dim)`` a constant taken from the primal. This is the
     log-sum-exp trick, and it stabilizes the whole jet -- not just the forward
-    pass. The sum of the exponentials is streamed by :func:`_sum_exp`, so the
-    peak memory is the input and the output jet. That matters for the cross
-    entropy of a language model, whose logits are the largest tensor of the
-    whole graph.
+    pass. The sum of the exponentials is streamed by :func:`_sum_exp` to reduce
+    memory. That matters for the cross entropy of a language model, whose
+    logits are the largest tensor of the whole graph.
 
     Args:
         self: The logits and their Taylor coefficients.

@@ -306,10 +306,18 @@ def _pointwise(
     through ``neg`` when ``self``'s is the ``None`` one (``op(0, o)``); two
     ``None`` coefficients stay ``None``.
 
-    ``op`` must be elementwise (it broadcasts over leading dims); the product
-    rules use the Leibniz helpers instead (see :func:`_apply_bilinear`).
-    A caller may pass the result ``primal`` when it has a better way to compute
-    it than ``op(self[0], other[0])``, e.g. a numerically stabler one.
+    Args:
+        self: The first operand and its Taylor coefficients.
+        other: The second operand and its Taylor coefficients.
+        op: The elementwise operation, applied to the primals and to pairs of
+            coefficients. It must broadcast over leading dims; the product
+            rules use the Leibniz helpers instead (see :func:`_apply_bilinear`).
+        neg: The result of ``op(0, o)`` for a coefficient ``o`` of ``other``.
+        primal: The result's primal, if the caller has a better way to compute
+            it than ``op(self[0], other[0])``, e.g. a numerically stabler one.
+
+    Returns:
+        The value and its Taylor coefficients, in the mode of ``self``.
     """
     _jet_order(self, other)  # validates K-consistency, raises on mismatch
     if primal is None:

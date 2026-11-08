@@ -320,8 +320,7 @@ def _pointwise(
         The value and its Taylor coefficients, in the mode of ``self``.
     """
     _jet_order(self, other)  # validates K-consistency, raises on mismatch
-    if primal is None:
-        primal = op(self[0], other[0])
+    primal = op(self[0], other[0]) if primal is None else primal
     s_coeffs = _broadcast_coeffs(self, primal)
     o_coeffs = _broadcast_coeffs(other, primal)
 

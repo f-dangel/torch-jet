@@ -24,6 +24,7 @@ from torch import (
     Tensor,
     cat,
     cos,
+    einsum,
     erf,
     exp,
     log,
@@ -1123,12 +1124,18 @@ def jet_div(
     for k in range(1, K + 1):
         acc = a[k - 1]
         for j in range(1, k + 1):
-            if b[j - 1] is None or q[k - j] is None:
+            if (b_j := b[j - 1]) is None or (q_kj := q[k - j]) is None:
                 continue  # a symbolic-zero factor: the term vanishes
-            term = comb(k, j, exact=True) * b[j - 1] * q[k - j]
+            c = comb(k, j, exact=True)
             if k == K and _is_batched(j, K, collapsed):
-                term = term.sum(0)
-            acc = -term if acc is None else acc - term
+                # The sum over R is folded into the product: no (R, *S) term,
+                # and the binomial factor scales the reduced sum only.
+                term = einsum("r...,r...->...", b_j, q_kj)
+                acc = -c * term if acc is None else acc.sub(term, alpha=c)
+            elif acc is None:
+                acc = -c * (b_j * q_kj)
+            else:  # the product joins the sum in one op, never on its own
+                acc = acc.addcmul(b_j, q_kj, value=-c)
         q.append(None if acc is None else acc / other[0])
     return JetTuple(q, collapsed=collapsed)
 

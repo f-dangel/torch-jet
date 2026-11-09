@@ -8,8 +8,11 @@ from functools import partial
 from typing import Any, Callable
 
 from pytest import mark
-from torch import Tensor, cos, manual_seed, rand, randn, sin, tanh
+from torch import Tensor, cos, manual_seed, rand, randint, randn, sin, tanh
+from torch.func import functional_call
 from torch.nn import (
+    BatchNorm2d,
+    Conv2d,
     Hardsigmoid,
     Hardswish,
     Linear,
@@ -21,11 +24,15 @@ from torch.nn import (
 )
 from torch.nn.functional import cross_entropy
 
+from jet import jet
+from jet._jet import _uncollapsed_via_vmap
 from test.utils import (
+    StorageTracker,
     _stateless,
     assert_jet_matches_oracle,
     class_index_loss,
     device_kw,
+    make_jet_args,
     mlp,
 )
 
@@ -158,3 +165,37 @@ COMPOSITION_CASES = [
 def test_composition(config: dict[str, Any], K: int, collapsed: bool, device: str):
     """``jet(composition)`` matches its mode-specific oracle."""
     assert_jet_matches_oracle(config, K, collapsed, device)
+
+
+def test_cnn_peak_memory(device: str):
+    """The collapsed jet of a CNN holds less memory than the vmapped standard jet.
+
+    A regression guard, not a structural bound: eager collapsed mode once used
+    as much memory on CNNs as vmapping standard mode over the same directions,
+    because its batch-norm and Leibniz rules kept several direction-sized
+    copies of each activation. The jet is taken w.r.t. the parameters of two
+    conv-batchnorm(eval)-relu blocks on a tiny batch, through cross-entropy.
+    """
+    R, K = 4, 2
+    manual_seed(0)
+    kw = device_kw(device)
+    blocks = [(Conv2d(c, 8, 3, padding=1), BatchNorm2d(8), ReLU()) for c in (3, 8)]
+    net = Sequential(*blocks[0], *blocks[1]).to(**kw).eval()
+    x, target = randn(4, 3, 16, 16, **kw), randint(0, 8, (4,), device=device)
+    params = {n: p.detach() for n, p in net.named_parameters()}
+
+    def f(params: dict[str, Tensor]) -> Tensor:
+        logits = functional_call(net, params, (x,)).mean((2, 3))
+        return cross_entropy(logits, target)
+
+    (params_jet,) = make_jet_args((params,), K, True, R)
+    collapsed = jet(f, (params,), collapsed=True)  # trace outside the tracker
+    vmapped = _uncollapsed_via_vmap(f, (params,), None)
+
+    with StorageTracker() as tracker:
+        collapsed(params_jet)
+    collapsed_peak = tracker.peak
+
+    with StorageTracker() as tracker:
+        vmapped(params_jet)
+    assert collapsed_peak < tracker.peak

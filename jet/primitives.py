@@ -23,6 +23,8 @@ from scipy.special import comb, factorial, stirling2
 from torch import (
     Tensor,
     addcmul,
+    addmm,
+    baddbmm,
     cat,
     cos,
     erf,
@@ -323,6 +325,36 @@ def _pointwise(
     return JetTuple((primal, *coeffs), collapsed=self.collapsed)
 
 
+def _fused(
+    op: Callable, term: Tensor, a: Tensor, b: Tensor, c: int, dims: tuple
+) -> Tensor | None:
+    """``term + c * op(a, b)`` in one out-of-place call, or ``None`` if there is none.
+
+    Elementwise ``mul`` fuses into ``addcmul``, ``matmul`` of two matrices into
+    ``addmm`` and of two batches of them into ``baddbmm``; any other op or
+    broadcast returns ``None``. ``dims`` are the ``vmap`` in-dims of ``term``,
+    ``a``, ``b`` (``0`` for an ``R``-carrying operand). Only ``addcmul`` is
+    mapped over ``R`` with ``vmap``: the matrix ops' batching rules decompose
+    into a scaled copy of ``term`` plus the product, the very tensors the
+    fusion avoids, so an ``R``-carrying operand is folded into the matrix batch
+    instead, and an unbatched one broadcast over ``R`` by an ``expand`` view.
+    """
+    if op is mul:
+        fused = partial(addcmul, value=c)
+        plain = dims == (None,) * 3
+        return fused(term, a, b) if plain else vmap(fused, in_dims=dims)(term, a, b)
+    ranks = {x.ndim - (d == 0) for x, d in zip((a, b), dims[1:])}
+    if op is not matmul or ranks not in ({2}, {3}):
+        return None
+    if dims[0] is None:
+        return (addmm if a.ndim == 2 else baddbmm)(term, a, b, alpha=c)
+    (R, *_), (ndim,) = term.shape, ranks
+    flat = (
+        x.expand(R, *x.shape[-ndim:]).reshape(-1, *x.shape[-2:]) for x in (term, a, b)
+    )
+    return baddbmm(*flat, alpha=c).reshape(term.shape)
+
+
 def _leibniz(
     self: JetTuple, other: JetTuple, binary_op: Callable[[Tensor, Tensor], Tensor]
 ) -> tuple[Tensor, ...]:
@@ -366,7 +398,6 @@ def _leibniz(
         )
     K = len(self) - 1
     collapsed = self.collapsed
-    fused = binary_op is mul  # elementwise: a term can join the sum in one op
 
     def accumulate(term: Tensor | None, j: int, k: int) -> Tensor | None:
         """``term + C(k, j) * binary_op(self[j], other[k - j])``, ``R``-aware.
@@ -376,28 +407,27 @@ def _leibniz(
         ``vmap``; a plain call otherwise (all of standard mode, plus the
         collapsed linear terms). The collapsed K-th coefficient carries no R, so
         its batched (R-carrying) terms are reduced over the direction dim before
-        the scalar binomial factor, whose copy is then never R-sized. For
-        elementwise ``mul`` an unreduced term joins a running ``term`` in one
-        out-of-place ``addcmul``, so the product never exists on its own. A
-        symbolic-zero factor contributes nothing (``term`` is returned as is).
+        the scalar binomial factor, whose copy is then never R-sized. An
+        unreduced term of a fusable op joins a running ``term`` in one
+        out-of-place call (:func:`_fused`), so the product never exists on its
+        own. A symbolic-zero factor contributes nothing (``term`` is returned
+        as is).
         """
         a, b = self[j], other[k - j]
         if a is None or b is None:
             return term
         c = comb(k, j, exact=True)
         reduced = k == K and _is_batched(j, K, collapsed)
-        in_dims = tuple(0 if _is_batched(i, K, collapsed) else None for i in (j, k - j))
-        op, args = binary_op, (a, b)
-        if fused and term is not None and not reduced:
-            op, args = partial(addcmul, value=c), (term, a, b)
-            in_dims = (0 if _is_batched(k, K, collapsed) else None, *in_dims)
-        out = (
-            op(*args)
-            if in_dims == (None,) * len(args)
-            else vmap(op, in_dims=in_dims)(*args)
-        )
-        if op is not binary_op:
+        dims = tuple(0 if _is_batched(i, K, collapsed) else None for i in (k, j, k - j))
+        fusable = term is not None and not reduced
+        if fusable and (out := _fused(binary_op, term, a, b, c, dims)) is not None:
             return out
+        in_dims = dims[1:]
+        out = (
+            binary_op(a, b)
+            if in_dims == (None, None)
+            else vmap(binary_op, in_dims)(a, b)
+        )
         if reduced:
             out = out.sum(0)
         # Skip the multiply when the binomial factor is 1 (most terms, all but

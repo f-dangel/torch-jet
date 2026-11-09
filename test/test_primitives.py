@@ -23,6 +23,7 @@ from torch import (
     linspace,
     log,
     manual_seed,
+    matmul,
     ones_like,
     ops,
     rand,
@@ -1473,6 +1474,34 @@ def test_mul_peak_memory(device: str):
     upper, lower = 2 * RS + 3 * S, 4 * RS + S  # collapsed at most, vmapped at least
     collapsed = jet(mul, (x, y), collapsed=True)  # trace outside the tracker
     vmapped = _uncollapsed_via_vmap(mul, (x, y), None)
+
+    with StorageTracker() as tracker:
+        collapsed(a, b)
+    assert tracker.peak <= upper
+
+    with StorageTracker() as tracker:
+        vmapped(a, b)
+    assert tracker.peak >= lower
+
+
+def test_mm_peak_memory(device: str):
+    """The collapsed ``mm`` rule holds as few direction-sized tensors as ``mul``.
+
+    At ``K = 2`` over ``R`` directions, the collapsed rule peaks in the
+    reduced second-order coefficient: ``c_1`` and the ``(R, *S)`` product
+    ``a_1 b_1`` next to the ``S``-sized primal, ``a_0 b_2`` and the sum over
+    ``R``. The first-order coefficient ``a_0 b_1 + a_1 b_0`` holds only the
+    first product and the fused sum: the unbatched ``b_0`` is broadcast over
+    ``R`` by a view, so ``baddbmm`` forms no copy. The standard rule vmapped
+    over the directions peaks with at least four ``(R, *S)`` tensors.
+    """
+    R, K = 4, 2
+    x, y = rand(64, 64, device=device), rand(64, 64, device=device)
+    a, b = make_jet_args((x, y), K, True, R)
+    S, RS = (c.untyped_storage().nbytes() for c in a[:2])
+    upper, lower = 2 * RS + 3 * S, 4 * RS + S  # collapsed at most, vmapped at least
+    collapsed = jet(matmul, (x, y), collapsed=True)  # trace outside the tracker
+    vmapped = _uncollapsed_via_vmap(matmul, (x, y), None)
 
     with StorageTracker() as tracker:
         collapsed(a, b)

@@ -19,6 +19,7 @@ from torch import (
     finfo,
     float16,
     float32,
+    full,
     linspace,
     log,
     manual_seed,
@@ -1361,6 +1362,26 @@ def test_batch_norm_eval_without_running_stats_raises(collapsed: bool, device: s
     x = tup((rand(4, 3, 5, 5, **kw), rand(4, 3, 5, 5, **kw)))
     with raises(NotImplementedError, match="running statistics"):
         native_batch_norm(x, None, None, None, None, False, 0.1, 1e-5)
+
+
+def test_batch_norm_large_running_mean(collapsed: bool, device: str):
+    """Inputs close to a large running mean keep their digits in the primal.
+
+    Scaling before subtracting the mean (``x * scale - mean * scale``) would
+    cancel most of them; the rule subtracts the mean first.
+    """
+    C, mean, std, kw = 4, 1e4, 0.1, device_kw(device)
+    manual_seed(0)
+    running_mean, running_var = full((C,), mean, **kw), full((C,), std**2, **kw)
+    weight, bias = randn(C, **kw), randn(C, **kw)
+    x = running_mean.view(1, C, 1, 1) + std * randn(8, C, 5, 5, **kw)
+    bn = partial(batch_norm, training=False, eps=1e-5)
+    f = lambda x, w, b: bn(x, running_mean, running_var, w, b)  # noqa: E731
+    # float64 reference on the CPU (MPS has no float64)
+    ref = bn(*(t.cpu().double() for t in (x, running_mean, running_var, weight, bias)))
+    jet_f = jet(f, (x, weight, bias), collapsed=collapsed)
+    out = jet_f(*make_jet_args((x, weight, bias), 2, collapsed))[0]
+    assert_close(out.cpu().double(), ref, atol=1e-5, rtol=0)
 
 
 def test_nll_loss_taylor_expanded_target_raises(collapsed: bool, device: str):

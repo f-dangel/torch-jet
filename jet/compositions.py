@@ -356,10 +356,12 @@ def native_batch_norm(
 
     Eval-mode batch norm normalizes each channel with the frozen running
     statistics: ``(input - running_mean) / sqrt(running_var + eps) * weight +
-    bias``. This is one affine map ``input * scale + shift`` per channel with
-    ``scale = weight / sqrt(running_var + eps)`` and ``shift = bias -
-    running_mean * scale``, so the rule forms ``scale`` / ``shift`` on the
-    channel-sized tensors and passes over the activation jet only twice. Any
+    bias``. The rule folds ``weight`` into ``scale = weight / sqrt(running_var
+    + eps)`` on the channel-sized tensors, so the activation jet is scaled
+    once; ``running_mean`` is subtracted from the primal first (a constant,
+    so the coefficients pass through untouched), which keeps the digits of
+    inputs close to a large running mean (``input * scale - running_mean *
+    scale`` would cancel). Any
     of ``input`` / ``weight`` / ``bias`` may be a jet, a constant, or
     (``weight`` / ``bias``) ``None`` -- any input rank (1d/2d/3d batch norm) is
     supported. Training mode is deferred until PyTorch fixes its fused
@@ -388,6 +390,7 @@ def native_batch_norm(
             "statistics, which is not yet implemented."
         )
 
+    sub = _rule(ops.aten.sub.Tensor)
     mul = _rule(ops.aten.mul.Tensor)
     add = _rule(ops.aten.add.Tensor)
     view = _rule(ops.aten.view.default)
@@ -396,9 +399,8 @@ def native_batch_norm(
     shape = _bn_channel_view(primal)
     rstd = view((running_var + eps).rsqrt(), shape)
     scale = rstd if weight is None else mul(view(weight, shape), rstd)
-    shift = mul(scale, view(-running_mean, shape))
-    shift = shift if bias is None else add(shift, view(bias, shape))
-    out = add(mul(input, scale), shift)
+    out = mul(sub(input, view(running_mean, shape)), scale)
+    out = out if bias is None else add(out, view(bias, shape))
     empty = primal.new_empty(0)
     return out, empty, empty
 

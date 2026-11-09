@@ -13,9 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
-- The eval-mode batch norm rule folds the weight into a per-channel scale,
-  so the activation jet is scaled once, and subtracts the running mean from
-  the primal only
+- The eval-mode batch norm rule holds fewer temporary tensors: it scales the
+  activation jet once, by the weight folded into the per-channel scale,
+  instead of twice
   ([PR](https://github.com/f-dangel/torch-jet/pull/316)).
 - Test the improved memory consumption of the streamed `log_softmax` rule
   ([PR](https://github.com/f-dangel/torch-jet/pull/313)).

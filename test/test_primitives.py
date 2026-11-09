@@ -6,7 +6,7 @@ registered with :class:`JetInterpreter`.
 
 from functools import partial
 from itertools import product
-from operator import mul
+from operator import mul, truediv
 from typing import Any, Callable
 
 from pytest import mark, raises
@@ -1503,6 +1503,35 @@ def test_mul_peak_memory(device: str):
     upper, lower = 3 * RS + S, 4 * RS + S  # collapsed at most, vmapped at least
     collapsed = jet(mul, (x, y), collapsed=True)  # trace outside the tracker
     vmapped = _uncollapsed_via_vmap(mul, (x, y), None)
+
+    with StorageTracker() as tracker:
+        collapsed(a, b)
+    assert tracker.peak <= upper
+
+    with StorageTracker() as tracker:
+        vmapped(a, b)
+    assert tracker.peak >= lower
+
+
+def test_div_peak_memory(device: str):
+    """The collapsed ``div`` rule holds fewer direction-sized tensors than ``vmap``.
+
+    At ``K = 2`` over ``R`` directions, the collapsed rule peaks in the
+    first-order coefficient: the sum ``a_1 - b_1 q_0`` and the quotient
+    ``q_1`` it is divided into, two ``(R, *S)`` tensors, next to the
+    ``S``-sized primal. The reduced second-order coefficient holds ``q_1`` and
+    ``S``-sized terms only, since the product ``b_1 q_1`` is summed over ``R``
+    inside ``einsum`` and never formed. The standard rule vmapped over the
+    directions holds the two stacked second-order inputs it builds and its
+    three per-direction outputs, five ``(R, *S)`` tensors.
+    """
+    R, K = 4, 2
+    x, y = rand(64, 64, device=device), rand(64, 64, device=device)
+    a, b = make_jet_args((x, y), K, True, R)
+    S, RS = (c.untyped_storage().nbytes() for c in a[:2])
+    upper, lower = 2 * RS + S, 5 * RS  # collapsed at most, vmapped at least
+    collapsed = jet(truediv, (x, y), collapsed=True)  # trace outside the tracker
+    vmapped = _uncollapsed_via_vmap(truediv, (x, y), None)
 
     with StorageTracker() as tracker:
         collapsed(a, b)

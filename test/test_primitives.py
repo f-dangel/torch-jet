@@ -1382,7 +1382,14 @@ def test_batch_norm_large_running_mean(collapsed: bool, device: str):
     ref = bn(*(t.cpu().double() for t in (x, running_mean, running_var, weight, bias)))
     jet_f = jet(f, (x, weight, bias), collapsed=collapsed)
     out = jet_f(*make_jet_args((x, weight, bias), 2, collapsed))[0]
-    assert_close(out.cpu().double(), ref, atol=1e-5, rtol=0)
+    close = partial(assert_close, ref, atol=1e-5, rtol=0)
+    close(out.cpu().double())
+
+    # the tolerance tells the naive form apart
+    scale = (weight * (running_var + 1e-5).rsqrt()).view(1, C, 1, 1)
+    naive = x * scale + (bias.view(1, C, 1, 1) - running_mean.view(1, C, 1, 1) * scale)
+    with raises(AssertionError):
+        close(naive.cpu().double())
 
 
 def test_nll_loss_taylor_expanded_target_raises(collapsed: bool, device: str):

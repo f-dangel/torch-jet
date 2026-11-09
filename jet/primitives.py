@@ -399,8 +399,7 @@ def _leibniz(
             # Scale after the reduction, so the scaled copy is never R-sized, and
             # skip the multiply when the binomial factor is 1 (most terms, all
             # but the middle one at K=2): fewer graph nodes, same values.
-            c = comb(k, j, exact=True)
-            if c != 1:
+            if (c := comb(k, j, exact=True)) != 1:
                 term_j = c * term_j
             term = term_j if term is None else term + term_j
         coeffs += (term,)  # ``None`` iff every term vanished: a symbolic zero

@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Internal
 
 - Test that a collapsed CNN jet holds less memory than the vmapped standard
-  jet ([PR](https://github.com/f-dangel/torch-jet/pull/TBD)).
+  jet ([PR](https://github.com/f-dangel/torch-jet/pull/321)).
 - The eval-mode batch norm rule holds fewer temporary tensors: it scales the
   activation jet once, by the weight folded into the per-channel scale,
   instead of twice

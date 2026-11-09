@@ -355,12 +355,21 @@ def native_batch_norm(
     """Taylor-mode arithmetic for ``aten.native_batch_norm`` (eval mode).
 
     Eval-mode batch norm normalizes each channel with the frozen running
-    statistics: ``(input - running_mean) / sqrt(running_var + eps) * weight +
-    bias``. Any of ``input`` / ``weight`` / ``bias`` may be a jet, a constant, or
-    (``weight`` / ``bias``) ``None`` -- any input rank (1d/2d/3d batch norm) is
-    supported. Training mode is deferred until PyTorch fixes its fused
-    ``native_batch_norm``'s incorrect higher-order autograd in training
-    (pytorch/pytorch#186256), without which a training rule cannot be validated.
+    statistics, evaluated in this order:
+
+        ``((input - running_mean) * (weight / sqrt(running_var + eps))) + bias``
+
+    The scale ``weight / sqrt(running_var + eps)`` is formed on the
+    channel-sized tensors, so the activation jet is scaled once. The constant
+    ``running_mean`` is subtracted first, from the primal only (coefficients
+    pass through), which keeps the digits of inputs close to a large running
+    mean; ``input * scale - running_mean * scale`` would cancel them. Any of
+    ``input`` / ``weight`` / ``bias`` may be a jet, a constant, or (``weight``
+    / ``bias``) ``None`` -- any input rank
+    (1d/2d/3d batch norm) is supported. Training mode is deferred until PyTorch
+    fixes its fused ``native_batch_norm``'s incorrect higher-order autograd in
+    training (pytorch/pytorch#186256), without which a training rule cannot be
+    validated.
 
     Returns:
         The ATen op's ``(output, save_mean, save_invstd)`` triple. ``save_mean``
@@ -386,16 +395,15 @@ def native_batch_norm(
 
     sub = _rule(ops.aten.sub.Tensor)
     mul = _rule(ops.aten.mul.Tensor)
+    add = _rule(ops.aten.add.Tensor)
     view = _rule(ops.aten.view.default)
 
     primal = input[0] if isinstance(input, JetTuple) else input
     shape = _bn_channel_view(primal)
-    rstd = (running_var + eps).rsqrt()
-    out = sub(input, view(running_mean, shape))
-    out = mul(out, view(rstd, shape))
-    weight = None if weight is None else view(weight, shape)
-    bias = None if bias is None else view(bias, shape)
-    out = _affine(out, weight, bias)
+    rstd = view((running_var + eps).rsqrt(), shape)
+    scale = rstd if weight is None else mul(view(weight, shape), rstd)
+    out = mul(sub(input, view(running_mean, shape)), scale)
+    out = out if bias is None else add(out, view(bias, shape))
     empty = primal.new_empty(0)
     return out, empty, empty
 

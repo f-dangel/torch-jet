@@ -355,14 +355,17 @@ def native_batch_norm(
     """Taylor-mode arithmetic for ``aten.native_batch_norm`` (eval mode).
 
     Eval-mode batch norm normalizes each channel with the frozen running
-    statistics: ``(input - running_mean) / sqrt(running_var + eps) * weight +
-    bias``. The rule folds ``weight`` into ``scale = weight / sqrt(running_var
-    + eps)`` on the channel-sized tensors, so the activation jet is scaled
-    once; ``running_mean`` is subtracted from the primal first (a constant,
-    so the coefficients pass through untouched), which keeps the digits of
-    inputs close to a large running mean (``input * scale - running_mean *
-    scale`` would cancel). Any of ``input`` / ``weight`` / ``bias`` may be a
-    jet, a constant, or (``weight`` / ``bias``) ``None`` -- any input rank
+    statistics, evaluated in this order:
+
+        ``((input - running_mean) * (weight / sqrt(running_var + eps))) + bias``
+
+    The scale ``weight / sqrt(running_var + eps)`` is formed on the
+    channel-sized tensors, so the activation jet is scaled once. The constant
+    ``running_mean`` is subtracted first, from the primal only (coefficients
+    pass through), which keeps the digits of inputs close to a large running
+    mean; ``input * scale - running_mean * scale`` would cancel them. Any of
+    ``input`` / ``weight`` / ``bias`` may be a jet, a constant, or (``weight``
+    / ``bias``) ``None`` -- any input rank
     (1d/2d/3d batch norm) is supported. Training mode is deferred until PyTorch
     fixes its fused ``native_batch_norm``'s incorrect higher-order autograd in
     training (pytorch/pytorch#186256), without which a training rule cannot be

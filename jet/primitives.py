@@ -389,18 +389,19 @@ def _leibniz(
     for k in range(1, K + 1):
         term = None
         for j in range(k + 1):
-            # Skip the multiply when the binomial factor is 1 (most terms, all
-            # but the middle one at K=2): fewer graph nodes, same values.
-            c = comb(k, j, exact=True)
             term_j = product(j, k)
             if term_j is None:
                 continue
-            if c != 1:
-                term_j = c * term_j
             # The collapsed K-th coefficient carries no R, so reduce its batched
             # (R-carrying) terms over the direction dim; standard never enters.
             if k == K and _is_batched(j, K, collapsed):
                 term_j = term_j.sum(0)
+            # Scale after the reduction, so the scaled copy is never R-sized, and
+            # skip the multiply when the binomial factor is 1 (most terms, all
+            # but the middle one at K=2): fewer graph nodes, same values.
+            c = comb(k, j, exact=True)
+            if c != 1:
+                term_j = c * term_j
             term = term_j if term is None else term + term_j
         coeffs += (term,)  # ``None`` iff every term vanished: a symbolic zero
     return coeffs

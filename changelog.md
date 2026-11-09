@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- The eval-mode batch norm rule forms its per-channel scale and shift first
+  and applies one affine map, halving the passes over the activation jet
+  ([PR](https://github.com/f-dangel/torch-jet/pull/TBD)).
 - Test the improved memory consumption of the streamed `log_softmax` rule
   ([PR](https://github.com/f-dangel/torch-jet/pull/313)).
 - The `log_softmax` rule streams the exp jet through its row sums, so it

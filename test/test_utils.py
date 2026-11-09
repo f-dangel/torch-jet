@@ -4,9 +4,11 @@ from pathlib import Path
 
 from pytest import mark, raises
 from torch import rand
+from torch.func import vmap
 from torch.fx.experimental.proxy_tensor import make_fx
 
 from jet.utils import integer_partitions, visualize_graph
+from test.utils import StorageTracker
 
 
 def test_integer_partitions():
@@ -46,3 +48,14 @@ def test_visualize_graph_unsupported_format(tmp_path: Path):
     mod = make_fx(lambda x: x.sum())(rand(3))
     with raises(ValueError, match="Unsupported file format"):
         visualize_graph(mod, str(tmp_path / "graph.bmp"))
+
+
+def test_storage_tracker_under_vmap():
+    """A vmapped view allocates nothing; a vmapped ``mul`` allocates its output."""
+    x = rand(4, 3, 5)
+    with StorageTracker() as tracker:
+        vmap(lambda x: x.permute(1, 0))(x)
+    assert tracker.peak == 0
+    with StorageTracker() as tracker:
+        vmap(lambda x: x * 2)(x)
+    assert tracker.peak == x.untyped_storage().nbytes()

@@ -6,6 +6,7 @@ registered with :class:`JetInterpreter`.
 
 from functools import partial
 from itertools import product
+from operator import mul
 from typing import Any, Callable
 
 from pytest import mark, raises
@@ -69,6 +70,7 @@ from torch.nn.functional import (
 from torch.testing import assert_close
 
 from jet import compositions, jet, primitives
+from jet._jet import _uncollapsed_via_vmap
 from jet.compositions import native_batch_norm
 from jet.primitives import JetTuple, jet_nll_loss_forward
 from test.utils import (
@@ -1482,6 +1484,33 @@ def test_log_softmax_peak_memory(K: int, collapsed: bool, device: str):
 
     assert tracker.peak <= outputs + slack
     assert {s[-2:] for s in tracker.arg_shapes} <= {(rows, vocab), (rows, 1)}
+
+
+def test_mul_peak_memory(device: str):
+    """The collapsed ``mul`` rule holds fewer direction-sized tensors than ``vmap``.
+
+    At ``K = 2`` over ``R`` directions, the collapsed rule peaks in the
+    first-order coefficient ``a_0 b_1 + a_1 b_0``: both products and their sum,
+    three ``(R, *S)`` tensors, next to the ``S``-sized primal; the reduced
+    second-order coefficient holds ``c_1``, one ``(R, *S)`` product and
+    ``S``-sized terms only. The standard rule vmapped over the directions
+    peaks in the second-order coefficient with four ``(R, *S)`` tensors.
+    """
+    R, K = 4, 2
+    x, y = rand(64, 64, device=device), rand(64, 64, device=device)
+    a, b = make_jet_args((x, y), K, True, R)
+    S, RS = (c.untyped_storage().nbytes() for c in a[:2])
+    upper, lower = 3 * RS + S, 4 * RS + S  # collapsed at most, vmapped at least
+    collapsed = jet(mul, (x, y), collapsed=True)  # trace outside the tracker
+    vmapped = _uncollapsed_via_vmap(mul, (x, y), None)
+
+    with StorageTracker() as tracker:
+        collapsed(a, b)
+    assert tracker.peak <= upper
+
+    with StorageTracker() as tracker:
+        vmapped(a, b)
+    assert tracker.peak >= lower
 
 
 @mark.parametrize("dtype", [float16, bfloat16], ids=["float16", "bfloat16"])

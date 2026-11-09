@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- The eval-mode batch norm rule holds fewer temporary tensors: it scales the
+  activation jet once, by the weight folded into the per-channel scale,
+  instead of twice
+  ([PR](https://github.com/f-dangel/torch-jet/pull/316)).
 - Collapsed-mode products hold one direction-sized temporary tensor less:
   the Leibniz rule scales a term by its binomial factor after, not before,
   summing it over the directions

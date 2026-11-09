@@ -1463,7 +1463,8 @@ def test_mul_peak_memory(collapsed: bool, device: str):
     coefficient ``a_0 b_1 + a_1 b_0``: both products and their sum, three
     ``(R, *S)`` tensors, next to the ``S``-sized primal; the reduced
     second-order coefficient holds ``c_1``, one ``(R, *S)`` product and
-    ``S``-sized terms only.
+    ``S``-sized terms only. The output jet is alive when the rule returns, so
+    it bounds the peak from below.
     """
     R, K = 4, 2
     a, b = make_jet_args((rand(64, 64, device=device),) * 2, K, collapsed, R)
@@ -1473,7 +1474,8 @@ def test_mul_peak_memory(collapsed: bool, device: str):
     with StorageTracker() as tracker:
         primitives.jet_mul(tup(a), tup(b))
 
-    assert tracker.peak <= (3 * RS + S if collapsed else 5 * S)
+    output = RS + 2 * S if collapsed else 3 * S
+    assert output <= tracker.peak <= (3 * RS + S if collapsed else 5 * S)
 
 
 @mark.parametrize("dtype", [float16, bfloat16], ids=["float16", "bfloat16"])

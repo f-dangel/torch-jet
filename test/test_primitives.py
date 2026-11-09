@@ -1468,11 +1468,12 @@ def test_mul_peak_memory(device: str):
     R, K = 4, 2
     a, b = make_jet_args((rand(64, 64, device=device),) * 2, K, True, R)
     S, RS = (c.untyped_storage().nbytes() for c in a[:2])
+    upper, lower = 3 * RS + S, 4 * RS + S  # collapsed at most, vmapped at least
     tup = partial(JetTuple, collapsed=True)
 
     with StorageTracker() as tracker:
         primitives.jet_mul(tup(a), tup(b))
-    assert tracker.peak <= 3 * RS + S
+    assert tracker.peak <= upper
 
     def standard(a_1, a_2, b_1, b_2):
         tup = partial(JetTuple, collapsed=False)
@@ -1481,7 +1482,7 @@ def test_mul_peak_memory(device: str):
     coeffs = tuple(rand(R, 64, 64, device=device) for _ in range(4))
     with StorageTracker() as tracker:
         vmap(standard)(*coeffs)
-    assert tracker.peak >= 4 * RS + S
+    assert tracker.peak >= lower
 
 
 @mark.parametrize("dtype", [float16, bfloat16], ids=["float16", "bfloat16"])

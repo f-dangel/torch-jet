@@ -13,12 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
-- The Leibniz rule of elementwise `mul` adds a term to its running sum with one
-  out-of-place `addcmul`, so the product never exists on its own
+- Elementwise products hold one temporary tensor less per Leibniz term: a
+  product joins the running sum in one out-of-place `addcmul` instead of
+  being formed first
   ([PR](https://github.com/f-dangel/torch-jet/pull/318)).
-- The Leibniz rule scales a reduced collapsed term after its sum over the
-  directions, so the scaled copy is never direction-sized
+- Collapsed-mode products hold one direction-sized temporary tensor less:
+  the Leibniz rule scales a term by its binomial factor after, not before,
+  summing it over the directions
   ([PR](https://github.com/f-dangel/torch-jet/pull/317)).
+- `StorageTracker` tells views from new storages by storage identity, which
+  also holds under `vmap`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/315)).
 - Test the improved memory consumption of the streamed `log_softmax` rule
   ([PR](https://github.com/f-dangel/torch-jet/pull/313)).
 - The `log_softmax` rule streams the exp jet through its row sums, so it

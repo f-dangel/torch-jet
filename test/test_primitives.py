@@ -6,6 +6,7 @@ registered with :class:`JetInterpreter`.
 
 from functools import partial
 from itertools import product
+from operator import mul
 from typing import Any, Callable
 
 from pytest import mark, raises
@@ -68,6 +69,7 @@ from torch.nn.functional import (
 from torch.testing import assert_close
 
 from jet import compositions, jet, primitives
+from jet._jet import _uncollapsed_via_vmap
 from jet.compositions import native_batch_norm
 from jet.primitives import JetTuple, jet_nll_loss_forward
 from test.utils import (
@@ -1454,23 +1456,31 @@ def test_log_softmax_peak_memory(K: int, collapsed: bool, device: str):
     assert {s[-2:] for s in tracker.arg_shapes} <= {(rows, vocab), (rows, 1)}
 
 
-def test_mul_collapsed_peak_memory(device: str):
-    """The collapsed ``mul`` rule holds no more direction-carrying tensors than needed.
+def test_mul_peak_memory(device: str):
+    """The collapsed ``mul`` rule holds fewer direction-sized tensors than ``vmap``.
 
-    At ``K = 2`` the first-order coefficient ``a_0 b_1 + a_1 b_0`` holds two
-    ``(R, *S)`` tensors (the first product and the fused sum) next to the
-    ``S``-sized primal. The peak is the reduced second-order coefficient: it
-    holds ``c_1``, the ``(R, *S)`` product ``a_1 b_1`` and its sum over ``R``
-    next to the primal and the term ``a_0 b_2``.
+    At ``K = 2`` over ``R`` directions, the collapsed rule peaks in the
+    reduced second-order coefficient: ``c_1`` and the ``(R, *S)`` product
+    ``a_1 b_1`` next to the ``S``-sized primal, ``a_0 b_2`` and the sum over
+    ``R``. The first-order coefficient ``a_0 b_1 + a_1 b_0`` holds only the
+    first product and the fused sum. The standard rule vmapped over the
+    directions peaks with at least four ``(R, *S)`` tensors.
     """
     R, K = 4, 2
-    a, b = make_jet_args((rand(64, 64, device=device),) * 2, K, True, R)
+    x, y = rand(64, 64, device=device), rand(64, 64, device=device)
+    a, b = make_jet_args((x, y), K, True, R)
     S, RS = (c.untyped_storage().nbytes() for c in a[:2])
+    upper, lower = 2 * RS + 3 * S, 4 * RS + S  # collapsed at most, vmapped at least
+    collapsed = jet(mul, (x, y), collapsed=True)  # trace outside the tracker
+    vmapped = _uncollapsed_via_vmap(mul, (x, y), None)
 
     with StorageTracker() as tracker:
-        primitives.jet_mul(JetTuple(a, collapsed=True), JetTuple(b, collapsed=True))
+        collapsed(a, b)
+    assert tracker.peak <= upper
 
-    assert tracker.peak <= 2 * RS + 3 * S
+    with StorageTracker() as tracker:
+        vmapped(a, b)
+    assert tracker.peak >= lower
 
 
 @mark.parametrize("dtype", [float16, bfloat16], ids=["float16", "bfloat16"])

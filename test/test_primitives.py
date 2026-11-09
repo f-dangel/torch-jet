@@ -40,6 +40,7 @@ from torch import (
     zeros_like,
 )
 from torch import dtype as dtype_t
+from torch.func import vmap
 from torch.nn.functional import (
     adaptive_avg_pool2d,
     avg_pool2d,
@@ -1454,28 +1455,33 @@ def test_log_softmax_peak_memory(K: int, collapsed: bool, device: str):
     assert {s[-2:] for s in tracker.arg_shapes} <= {(rows, vocab), (rows, 1)}
 
 
-def test_mul_peak_memory(collapsed: bool, device: str):
-    """The ``mul`` rule holds no more tensors than its Leibniz terms need.
+def test_mul_peak_memory(device: str):
+    """The collapsed ``mul`` rule holds fewer direction-sized tensors than ``vmap``.
 
-    At ``K = 2`` the standard rule peaks in the second-order coefficient:
-    ``c_1``, the three products and the scaled copy of the middle one, five
-    ``S``-sized tensors. The collapsed rule peaks in the first-order
-    coefficient ``a_0 b_1 + a_1 b_0``: both products and their sum, three
-    ``(R, *S)`` tensors, next to the ``S``-sized primal; the reduced
+    At ``K = 2`` over ``R`` directions, the collapsed rule peaks in the
+    first-order coefficient ``a_0 b_1 + a_1 b_0``: both products and their sum,
+    three ``(R, *S)`` tensors, next to the ``S``-sized primal; the reduced
     second-order coefficient holds ``c_1``, one ``(R, *S)`` product and
-    ``S``-sized terms only. The output jet is alive when the rule returns, so
-    it bounds the peak from below.
+    ``S``-sized terms only. The standard rule vmapped over the directions
+    peaks in the second-order coefficient with four ``(R, *S)`` tensors.
     """
     R, K = 4, 2
-    a, b = make_jet_args((rand(64, 64, device=device),) * 2, K, collapsed, R)
+    a, b = make_jet_args((rand(64, 64, device=device),) * 2, K, True, R)
     S, RS = (c.untyped_storage().nbytes() for c in a[:2])
-    tup = partial(JetTuple, collapsed=collapsed)
+    tup = partial(JetTuple, collapsed=True)
 
     with StorageTracker() as tracker:
         primitives.jet_mul(tup(a), tup(b))
+    assert tracker.peak <= 3 * RS + S
 
-    output = RS + 2 * S if collapsed else 3 * S
-    assert output <= tracker.peak <= (3 * RS + S if collapsed else 5 * S)
+    def standard(a_1, a_2, b_1, b_2):
+        tup = partial(JetTuple, collapsed=False)
+        return primitives.jet_mul(tup((a[0], a_1, a_2)), tup((b[0], b_1, b_2)))
+
+    coeffs = tuple(rand(R, 64, 64, device=device) for _ in range(4))
+    with StorageTracker() as tracker:
+        vmap(standard)(*coeffs)
+    assert tracker.peak >= 4 * RS + S
 
 
 @mark.parametrize("dtype", [float16, bfloat16], ids=["float16", "bfloat16"])

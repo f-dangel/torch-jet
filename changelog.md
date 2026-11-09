@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Leibniz rule scales a reduced collapsed term after its sum over the
   directions, so the scaled copy is never direction-sized
   ([PR](https://github.com/f-dangel/torch-jet/pull/317)).
+- `StorageTracker` tells views from new storages by storage identity, which
+  also holds under `vmap`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/315)).
 - Test the improved memory consumption of the streamed `log_softmax` rule
   ([PR](https://github.com/f-dangel/torch-jet/pull/313)).
 - The `log_softmax` rule streams the exp jet through its row sums, so it

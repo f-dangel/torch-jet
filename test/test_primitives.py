@@ -1530,6 +1530,7 @@ def test_div_peak_memory(device: str):
     a, b = make_jet_args((x, y), K, True, R)
     S, RS = (c.untyped_storage().nbytes() for c in a[:2])
     upper, lower = 2 * RS + S, 5 * RS  # collapsed at most, vmapped at least
+    assert upper < lower  # the two modes cannot pass with the same peak
     collapsed = jet(truediv, (x, y), collapsed=True)  # trace outside the tracker
     vmapped = _uncollapsed_via_vmap(truediv, (x, y), None)
 

@@ -6,6 +6,7 @@ registered with :class:`JetInterpreter`.
 
 from functools import partial
 from itertools import product
+from operator import mul
 from typing import Any, Callable
 
 from pytest import mark, raises
@@ -40,7 +41,6 @@ from torch import (
     zeros_like,
 )
 from torch import dtype as dtype_t
-from torch.func import vmap
 from torch.nn.functional import (
     adaptive_avg_pool2d,
     avg_pool2d,
@@ -69,6 +69,7 @@ from torch.nn.functional import (
 from torch.testing import assert_close
 
 from jet import compositions, jet, primitives
+from jet._jet import _uncollapsed_via_vmap
 from jet.compositions import native_batch_norm
 from jet.primitives import JetTuple, jet_nll_loss_forward
 from test.utils import (
@@ -1466,22 +1467,17 @@ def test_mul_peak_memory(device: str):
     peaks in the second-order coefficient with four ``(R, *S)`` tensors.
     """
     R, K = 4, 2
-    a, b = make_jet_args((rand(64, 64, device=device),) * 2, K, True, R)
+    x, y = rand(64, 64, device=device), rand(64, 64, device=device)
+    a, b = make_jet_args((x, y), K, True, R)
     S, RS = (c.untyped_storage().nbytes() for c in a[:2])
     upper, lower = 3 * RS + S, 4 * RS + S  # collapsed at most, vmapped at least
-    tup = partial(JetTuple, collapsed=True)
 
     with StorageTracker() as tracker:
-        primitives.jet_mul(tup(a), tup(b))
+        jet(mul, (x, y), collapsed=True)(a, b)
     assert tracker.peak <= upper
 
-    def standard(a_1, a_2, b_1, b_2):
-        tup = partial(JetTuple, collapsed=False)
-        return primitives.jet_mul(tup((a[0], a_1, a_2)), tup((b[0], b_1, b_2)))
-
-    coeffs = tuple(rand(R, 64, 64, device=device) for _ in range(4))
     with StorageTracker() as tracker:
-        vmap(standard)(*coeffs)
+        _uncollapsed_via_vmap(mul, (x, y), None)(a, b)
     assert tracker.peak >= lower
 
 

@@ -1368,9 +1368,10 @@ def test_batch_norm_large_running_mean(collapsed: bool, device: str):
     """Inputs close to a large running mean keep their digits in the primal.
 
     Scaling before subtracting the mean (``x * scale - mean * scale``) would
-    cancel most of them; the rule subtracts the mean first.
+    cancel most of them; the rule subtracts the mean first. Runs in float32 on
+    every device, where the cancellation would show.
     """
-    C, mean, std, kw = 4, 1e4, 0.1, device_kw(device)
+    C, mean, std, kw = 4, 1e4, 0.1, {"dtype": float32, "device": device}
     manual_seed(0)
     running_mean, running_var = full((C,), mean, **kw), full((C,), std**2, **kw)
     weight, bias = randn(C, **kw), randn(C, **kw)

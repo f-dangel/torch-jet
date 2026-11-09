@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- Matrix products hold one temporary tensor less per Leibniz term: a `matmul`
+  term joins the running sum in one out-of-place `addmm`/`baddbmm`, with a
+  direction-batched operand folded into the matrix batch instead of `vmap`ped
+  ([PR](https://github.com/f-dangel/torch-jet/pull/320)).
 - Elementwise products hold one temporary tensor less per Leibniz term: a
   product joins the running sum in one out-of-place `addcmul` instead of
   being formed first

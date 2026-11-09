@@ -1454,22 +1454,26 @@ def test_log_softmax_peak_memory(K: int, collapsed: bool, device: str):
     assert {s[-2:] for s in tracker.arg_shapes} <= {(rows, vocab), (rows, 1)}
 
 
-def test_mul_collapsed_peak_memory(device: str):
-    """The collapsed ``mul`` rule holds no more direction-carrying tensors than needed.
+def test_mul_peak_memory(collapsed: bool, device: str):
+    """The ``mul`` rule holds no more tensors than its Leibniz terms need.
 
-    At ``K = 2`` the first-order coefficient ``a_0 b_1 + a_1 b_0`` holds three
-    ``(R, *S)`` tensors (both products and their sum) next to the ``S``-sized
-    primal, and that is the peak: the reduced second-order coefficient holds
-    ``c_1``, one ``(R, *S)`` product and ``S``-sized terms only.
+    At ``K = 2`` the standard rule peaks in the second-order coefficient:
+    ``c_1``, the three products and the scaled copy of the middle one, five
+    ``S``-sized tensors. The collapsed rule peaks in the first-order
+    coefficient ``a_0 b_1 + a_1 b_0``: both products and their sum, three
+    ``(R, *S)`` tensors, next to the ``S``-sized primal; the reduced
+    second-order coefficient holds ``c_1``, one ``(R, *S)`` product and
+    ``S``-sized terms only.
     """
     R, K = 4, 2
-    a, b = make_jet_args((rand(64, 64, device=device),) * 2, K, True, R)
+    a, b = make_jet_args((rand(64, 64, device=device),) * 2, K, collapsed, R)
     S, RS = (c.untyped_storage().nbytes() for c in a[:2])
+    tup = partial(JetTuple, collapsed=collapsed)
 
     with StorageTracker() as tracker:
-        primitives.jet_mul(JetTuple(a, collapsed=True), JetTuple(b, collapsed=True))
+        primitives.jet_mul(tup(a), tup(b))
 
-    assert tracker.peak <= 3 * RS + S
+    assert tracker.peak <= (3 * RS + S if collapsed else 5 * S)
 
 
 @mark.parametrize("dtype", [float16, bfloat16], ids=["float16", "bfloat16"])

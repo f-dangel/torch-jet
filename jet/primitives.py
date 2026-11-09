@@ -368,49 +368,46 @@ def _leibniz(
     collapsed = self.collapsed
     fused = binary_op is mul  # elementwise: a term can join the sum in one op
 
-    def accumulate(term: Tensor | None, j: int, k: int) -> Tensor | None:
-        """``term + C(k, j) * binary_op(self[j], other[k - j])``, ``R``-aware.
+    def in_dims(*orders: int) -> tuple[int | None, ...]:
+        """``0`` for each coefficient order that carries ``R``, else ``None``."""
+        return tuple(0 if _is_batched(i, K, collapsed) else None for i in orders)
 
-        ``binary_op`` may be an op (``conv``) that cannot broadcast over a leading
-        batch dim, so a batched operand is mapped explicitly per direction with
-        ``vmap``; a plain call otherwise (all of standard mode, plus the
-        collapsed linear terms). The collapsed K-th coefficient carries no R, so
-        its batched (R-carrying) terms are reduced over the direction dim before
-        the scalar binomial factor, whose copy is then never R-sized. For
-        elementwise ``mul`` an unreduced term joins a running ``term`` in one
-        out-of-place ``addcmul``, so the product never exists on its own. A
-        symbolic-zero factor contributes nothing (``term`` is returned as is).
+    def apply(op: Callable[..., Tensor], dims: tuple[int | None, ...], *args):
+        """Apply ``op``, vmapped over ``R`` if any argument carries it.
+
+        ``op`` may be one (``conv``) that cannot broadcast over a leading batch
+        dim, so ``R`` is mapped explicitly per direction. When no argument is
+        batched (all of standard mode, plus the collapsed linear terms) it is a
+        plain call.
         """
-        a, b = self[j], other[k - j]
-        if a is None or b is None:
-            return term
-        c = comb(k, j, exact=True)
-        reduced = k == K and _is_batched(j, K, collapsed)
-        in_dims = tuple(0 if _is_batched(i, K, collapsed) else None for i in (j, k - j))
-        op, args = binary_op, (a, b)
-        if fused and term is not None and not reduced:
-            op, args = partial(addcmul, value=c), (term, a, b)
-            in_dims = (0 if _is_batched(k, K, collapsed) else None, *in_dims)
-        out = (
-            op(*args)
-            if in_dims == (None,) * len(args)
-            else vmap(op, in_dims=in_dims)(*args)
-        )
-        if op is not binary_op:
-            return out
-        if reduced:
-            out = out.sum(0)
-        # Skip the multiply when the binomial factor is 1 (most terms, all but
-        # the middle one at K=2): fewer graph nodes, same values.
-        if c != 1:
-            out = c * out
-        return out if term is None else term + out
+        return op(*args) if set(dims) == {None} else vmap(op, in_dims=dims)(*args)
 
     coeffs = ()
     for k in range(1, K + 1):
         term = None
         for j in range(k + 1):
-            term = accumulate(term, j, k)
+            a, b = self[j], other[k - j]
+            if a is None or b is None:
+                continue  # a symbolic-zero factor: the term vanishes
+            c = comb(k, j, exact=True)
+            # The collapsed K-th coefficient carries no R, so reduce its batched
+            # (R-carrying) terms over the direction dim; standard never enters.
+            reduced = k == K and _is_batched(j, K, collapsed)
+            if fused and term is not None and not reduced:
+                # The term joins the sum in one out-of-place op, so the product
+                # never exists on its own.
+                op = partial(addcmul, value=c)
+                term = apply(op, in_dims(k, j, k - j), term, a, b)
+                continue
+            term_j = apply(binary_op, in_dims(j, k - j), a, b)
+            if reduced:
+                term_j = term_j.sum(0)
+            # Scale after the reduction, so the scaled copy is never R-sized, and
+            # skip the multiply when the binomial factor is 1 (most terms, all
+            # but the middle one at K=2): fewer graph nodes, same values.
+            if c != 1:
+                term_j = c * term_j
+            term = term_j if term is None else term + term_j
         coeffs += (term,)  # ``None`` iff every term vanished: a symbolic zero
     return coeffs
 

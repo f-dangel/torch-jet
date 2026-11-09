@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Collapsed-mode division holds two direction-sized temporary tensors less:
   the reduced term's product is summed over the directions inside one
   `einsum`, and an unreduced term joins the running sum in one `addcmul`
-  ([PR](https://github.com/f-dangel/torch-jet/pull/TBD)).
+  ([PR](https://github.com/f-dangel/torch-jet/pull/319)).
 - The eval-mode batch norm rule holds fewer temporary tensors: it scales the
   activation jet once, by the weight folded into the per-channel scale,
   instead of twice

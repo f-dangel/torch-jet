@@ -1457,10 +1457,11 @@ def test_log_softmax_peak_memory(K: int, collapsed: bool, device: str):
 def test_mul_collapsed_peak_memory(device: str):
     """The collapsed ``mul`` rule holds no more direction-carrying tensors than needed.
 
-    At ``K = 2`` the first-order coefficient ``a_0 b_1 + a_1 b_0`` holds three
-    ``(R, *S)`` tensors (both products and their sum) next to the ``S``-sized
-    primal, and that is the peak: the reduced second-order coefficient holds
-    ``c_1``, one ``(R, *S)`` product and ``S``-sized terms only.
+    At ``K = 2`` the first-order coefficient ``a_0 b_1 + a_1 b_0`` holds two
+    ``(R, *S)`` tensors (the first product and the fused sum) next to the
+    ``S``-sized primal. The peak is the reduced second-order coefficient: it
+    holds ``c_1``, the ``(R, *S)`` product ``a_1 b_1`` and its sum over ``R``
+    next to the primal and the term ``a_0 b_2``.
     """
     R, K = 4, 2
     a, b = make_jet_args((rand(64, 64, device=device),) * 2, K, True, R)
@@ -1469,7 +1470,7 @@ def test_mul_collapsed_peak_memory(device: str):
     with StorageTracker() as tracker:
         primitives.jet_mul(JetTuple(a, collapsed=True), JetTuple(b, collapsed=True))
 
-    assert tracker.peak <= 3 * RS + S
+    assert tracker.peak <= 2 * RS + 3 * S
 
 
 @mark.parametrize("dtype", [float16, bfloat16], ids=["float16", "bfloat16"])

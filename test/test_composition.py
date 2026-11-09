@@ -8,7 +8,7 @@ from functools import partial
 from typing import Any, Callable
 
 from pytest import mark
-from torch import Tensor, cos, manual_seed, rand, randn, sin, tanh
+from torch import Tensor, addcmul, cos, manual_seed, rand, randn, sin, tanh
 from torch.nn import (
     Hardsigmoid,
     Hardswish,
@@ -70,6 +70,11 @@ COMPOSITION_CASES = [
         "id": "scalar_Rn_to_R",
         "f": _stateless(lambda x: (sin(x) * x).sum(0)),
         "args_fn": lambda: (rand(5),),
+    },
+    {
+        "id": "addcmul",
+        "f": _stateless(lambda x, y, z: addcmul(x, y, z, value=0.5)),
+        "args_fn": lambda: (rand(3, 4), rand(3, 1), rand(4)),
     },
     {"id": "mlp", "f": mlp, "args_fn": lambda: (rand(5),)},
     {"id": "mlp_batched", "f": mlp, "args_fn": lambda: (rand(10, 5),)},

@@ -1513,6 +1513,35 @@ def test_mul_peak_memory(device: str):
     assert tracker.peak >= lower
 
 
+def test_pointwise_peak_memory(device: str):
+    """The collapsed ``exp`` rule holds fewer direction-sized tensors than ``vmap``.
+
+    At ``K = 3`` over ``R`` directions, the collapsed rule peaks in the reduced
+    third-order coefficient: the first two coefficients and the ``(R, *S)``
+    cube ``c_1 ** 3`` next to the ``S``-sized ``exp(x)``, the summed and
+    scaled ``c_1 c_2`` term and the sum of the cube over ``R``. The
+    second-order coefficient ``(c_1 ** 2 + c_2) exp(x)`` holds only the first
+    coefficient, the square and the term it scales to, or the fused sum. The
+    standard rule vmapped over the directions peaks with at least six
+    ``(R, *S)`` tensors.
+    """
+    R, K = 4, 3
+    x = rand(64, 64, device=device)
+    (a,) = make_jet_args((x,), K, True, R)
+    S, RS = (c.untyped_storage().nbytes() for c in a[:2])
+    upper, lower = 3 * RS + 3 * S, 6 * RS + S  # collapsed at most, vmapped at least
+    collapsed = jet(exp, (x,), collapsed=True)  # trace outside the tracker
+    vmapped = _uncollapsed_via_vmap(exp, (x,), None)
+
+    with StorageTracker() as tracker:
+        collapsed(a)
+    assert tracker.peak <= upper
+
+    with StorageTracker() as tracker:
+        vmapped(a)
+    assert tracker.peak >= lower
+
+
 @mark.parametrize("dtype", [float16, bfloat16], ids=["float16", "bfloat16"])
 def test_where_scalar_keeps_dtype(dtype: dtype_t, collapsed: bool, device: str):
     """A scalar operand of ``where``/``masked_fill`` does not upcast a half jet."""

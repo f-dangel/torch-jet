@@ -22,6 +22,7 @@ from typing import Callable, Self
 from scipy.special import comb, factorial, stirling2
 from torch import (
     Tensor,
+    addcmul,
     cat,
     cos,
     erf,
@@ -456,6 +457,7 @@ def _partition_term(
     sigma: tuple[int, ...],
     dn: dict[int, Tensor],
     sum_directions: bool = False,
+    result: Tensor | None = None,
 ) -> Tensor | None:
     r"""Compute one term of the Faà di Bruno sum for a given partition.
 
@@ -480,15 +482,19 @@ def _partition_term(
             dim ``R`` (collapsed mode's ``c_1..c_{K-1}``) that is summed out of
             their product before the multiply by the ``R``-free outer derivative.
             Default: ``False``.
+        result: The sum of the previous partitions' terms, which this term joins
+            in one out-of-place ``addcmul``: the product scaled by the outer
+            derivative then never exists on its own. Default: ``None``, for
+            the first term.
 
     Returns:
-        The partition's contribution to the Faà di Bruno sum, or ``None`` when
-        the required outer derivative ``dn[len(sigma)]`` or one of the inner
-        coefficients the partition uses is ``None`` (a structurally vanishing
-        term that callers skip).
+        ``result`` plus the partition's contribution to the Faà di Bruno sum, or
+        ``result`` as is (``None`` for the first term) when the required outer
+        derivative ``dn[len(sigma)]`` or one of the inner coefficients the
+        partition uses is ``None`` (a structurally vanishing term).
     """
     if dn[len(sigma)] is None or any(vs[i - 1] is None for i in sigma):
-        return None
+        return result
     vs_count = {i: sigma.count(i) for i in sigma}
     # Fold the product from a generator so no powered factor outlives its use.
     term = reduce(
@@ -500,45 +506,13 @@ def _partition_term(
         # (and autograd saves for its backward) the summed ``S``-shaped product
         # rather than the batched ``(R, *S)`` one.
         term = term.sum(0)
-    term = term * dn[len(sigma)]
-    nu = multiplicity(sigma)
-    return nu * term if nu != 1.0 else term
-
-
-def _collapsed_highest_order(vs: tuple[Tensor, ...], dn: dict[int, Tensor]) -> Tensor:
-    """Compute the collapsed (summed) highest-order Faà di Bruno coefficient.
-
-    Separates the linear contribution (which multiplies the collapsed input)
-    from the nonlinear contributions (which are summed over the direction
-    dimension *R*).
-
-    Args:
-        vs: The incoming Taylor coefficients (length ``K``).
-        dn: A dictionary mapping the degree to the function's derivative.
-
-    Returns:
-        The collapsed highest-order coefficient.
-    """
-    K = len(vs)
-    linear_term = (
-        dn[1] * vs[K - 1] if dn[1] is not None and vs[K - 1] is not None else None
-    )
-    nonlinear_term = None
-    for sigma in integer_partitions(K):
-        if sigma == (K,):
-            continue
-        # Every part of ``sigma`` is < K here, so its factors are all batched
-        # coefficients; the term is summed over R inside ``_partition_term`` so
-        # the accumulator (and the tensors flowing through the traced graph)
-        # stay small.
-        term = _partition_term(vs, sigma, dn, sum_directions=True)
-        if term is not None:
-            nonlinear_term = term if nonlinear_term is None else nonlinear_term + term
-    if nonlinear_term is not None and linear_term is not None:
-        return linear_term + nonlinear_term
-    elif nonlinear_term is not None:
-        return nonlinear_term
-    return linear_term  # ``None`` iff every term vanished: a symbolic zero
+    nu, d = multiplicity(sigma), dn[len(sigma)]
+    # A constant factor (``pow``'s top derivative, ``gelu``'s inner polynomial)
+    # is a Python scalar, which ``addcmul`` does not take.
+    if result is not None and isinstance(term, Tensor) and isinstance(d, Tensor):
+        return addcmul(result, term, d, value=nu)
+    term = term * d if nu == 1.0 else nu * (term * d)
+    return term if result is None else result + term
 
 
 def _faa_di_bruno(
@@ -557,24 +531,26 @@ def _faa_di_bruno(
             summed over *R*).
 
     Returns:
-        The outgoing Taylor coefficients.
+        The outgoing Taylor coefficients. ``None`` where every Faà di Bruno term
+        vanished structurally (all required outer derivatives or inner
+        coefficients are ``None``, e.g. a constant outer function like
+        ``x ** 0``): a symbolic zero.
     """
     K = len(vs)
     vs_out = []
-    for k in range(K):
-        order = k + 1
-        if order == K and collapsed:
-            vs_out.append(_collapsed_highest_order(vs, dn))
-        else:
-            result = None
-            for sigma in integer_partitions(order):
-                term = _partition_term(vs, sigma, dn)
-                if term is not None:
-                    result = term if result is None else result + term
-            # ``None`` iff every Faà di Bruno term vanished structurally (all
-            # required outer derivatives or inner coefficients are ``None``,
-            # e.g. a constant outer function like ``x ** 0``): a symbolic zero.
-            vs_out.append(result)
+    for order in range(1, K + 1):
+        # The single-block partition ``(order,)`` is the one term without a
+        # product temporary, so it joins last and the running sum peaks with
+        # one tensor less. In the collapsed K-th coefficient it is the linear
+        # term in the collapsed ``vs[-1]``, which carries no R; every other
+        # partition's parts are < K, so its batched factors are summed over R
+        # inside ``_partition_term``.
+        linear, *nonlinear = integer_partitions(order)
+        result = None
+        for sigma in (*nonlinear, linear):
+            reduced = collapsed and order == K and sigma != linear
+            result = _partition_term(vs, sigma, dn, reduced, result)
+        vs_out.append(result)
     return vs_out
 
 

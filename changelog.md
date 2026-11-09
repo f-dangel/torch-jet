@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   partition's product joins the running sum, scaled by the outer derivative,
   in one out-of-place `addcmul` (which gets a jet rule, so nested jets trace
   it), and the product-free single-block term joins last
-  ([PR](https://github.com/f-dangel/torch-jet/pull/PRNUM)).
+  ([PR](https://github.com/f-dangel/torch-jet/pull/322)).
 - The eval-mode batch norm rule holds fewer temporary tensors: it scales the
   activation jet once, by the weight folded into the per-channel scale,
   instead of twice

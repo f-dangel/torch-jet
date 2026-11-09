@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The Leibniz rule of elementwise `mul` adds a term to its running sum with one
   out-of-place `addcmul`, so the product never exists on its own
-  ([PR](https://github.com/f-dangel/torch-jet/pull/TBD)).
+  ([PR](https://github.com/f-dangel/torch-jet/pull/318)).
 - The Leibniz rule scales a reduced collapsed term after its sum over the
   directions, so the scaled copy is never direction-sized
   ([PR](https://github.com/f-dangel/torch-jet/pull/317)).

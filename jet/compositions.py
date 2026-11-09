@@ -361,12 +361,12 @@ def native_batch_norm(
     once; ``running_mean`` is subtracted from the primal first (a constant,
     so the coefficients pass through untouched), which keeps the digits of
     inputs close to a large running mean (``input * scale - running_mean *
-    scale`` would cancel). Any
-    of ``input`` / ``weight`` / ``bias`` may be a jet, a constant, or
-    (``weight`` / ``bias``) ``None`` -- any input rank (1d/2d/3d batch norm) is
-    supported. Training mode is deferred until PyTorch fixes its fused
-    ``native_batch_norm``'s incorrect higher-order autograd in training
-    (pytorch/pytorch#186256), without which a training rule cannot be validated.
+    scale`` would cancel). Any of ``input`` / ``weight`` / ``bias`` may be a
+    jet, a constant, or (``weight`` / ``bias``) ``None`` -- any input rank
+    (1d/2d/3d batch norm) is supported. Training mode is deferred until PyTorch
+    fixes its fused ``native_batch_norm``'s incorrect higher-order autograd in
+    training (pytorch/pytorch#186256), without which a training rule cannot be
+    validated.
 
     Returns:
         The ATen op's ``(output, save_mean, save_invstd)`` triple. ``save_mean``

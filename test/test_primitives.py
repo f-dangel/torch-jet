@@ -1471,13 +1471,15 @@ def test_mul_peak_memory(device: str):
     a, b = make_jet_args((x, y), K, True, R)
     S, RS = (c.untyped_storage().nbytes() for c in a[:2])
     upper, lower = 3 * RS + S, 4 * RS + S  # collapsed at most, vmapped at least
+    collapsed = jet(mul, (x, y), collapsed=True)  # trace outside the tracker
+    vmapped = _uncollapsed_via_vmap(mul, (x, y), None)
 
     with StorageTracker() as tracker:
-        jet(mul, (x, y), collapsed=True)(a, b)
+        collapsed(a, b)
     assert tracker.peak <= upper
 
     with StorageTracker() as tracker:
-        _uncollapsed_via_vmap(mul, (x, y), None)(a, b)
+        vmapped(a, b)
     assert tracker.peak >= lower
 
 

@@ -1371,12 +1371,13 @@ def test_batch_norm_large_running_mean(collapsed: bool, device: str):
     cancel most of them; the rule subtracts the mean first. Runs in float32 on
     every device, where the cancellation would show.
     """
-    C, mean, std, kw = 4, 1e4, 0.1, {"dtype": float32, "device": device}
+    C, mean, std, eps = 4, 1e4, 0.1, 1e-5
+    kw = {"dtype": float32, "device": device}
     manual_seed(0)
     running_mean, running_var = full((C,), mean, **kw), full((C,), std**2, **kw)
     weight, bias = randn(C, **kw), randn(C, **kw)
     x = running_mean.view(1, C, 1, 1) + std * randn(8, C, 5, 5, **kw)
-    bn = partial(batch_norm, training=False, eps=1e-5)
+    bn = partial(batch_norm, training=False, eps=eps)
     f = lambda x, w, b: bn(x, running_mean, running_var, w, b)  # noqa: E731
     # float64 reference on the CPU (MPS has no float64)
     ref = bn(*(t.cpu().double() for t in (x, running_mean, running_var, weight, bias)))
@@ -1386,7 +1387,7 @@ def test_batch_norm_large_running_mean(collapsed: bool, device: str):
     close(out.cpu().double())
 
     # the tolerance tells the naive form apart
-    scale = (weight * (running_var + 1e-5).rsqrt()).view(1, C, 1, 1)
+    scale = (weight * (running_var + eps).rsqrt()).view(1, C, 1, 1)
     naive = x * scale + (bias.view(1, C, 1, 1) - running_mean.view(1, C, 1, 1) * scale)
     with raises(AssertionError):
         close(naive.cpu().double())

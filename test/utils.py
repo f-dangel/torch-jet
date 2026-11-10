@@ -449,11 +449,9 @@ def make_jet_args(
 
 
 def rev_collapsed_jet(f: Callable[..., Any], detach: bool = True) -> Callable[..., Any]:
-    """Reference implementation for collapsed Taylor mode via :func:`jet._rev_jet`.
+    """Reference implementation for collapsed Taylor mode via ``_rev_jet``.
 
-    ``detach`` is passed on to :func:`jet._rev_jet`.
-
-    Built on :func:`jet._rev_jet` (nested reverse-mode AD), so independent of
+    Built on :func:`jet._jet._rev_jet` (nested reverse-mode AD), so independent of
     the FX-trace and interpreter machinery. See :func:`jet.jet` for the
     collapsed-mode shape contract.
 
@@ -462,7 +460,7 @@ def rev_collapsed_jet(f: Callable[..., Any], detach: bool = True) -> Callable[..
     combine: orders 1..K-1 stack across ``R``, order K sums. (``_rev_jet``
     uses :func:`torch.autograd.grad` which does not compose with
     :func:`torch.func.vmap`, hence the explicit Python loop over ``R``.)
-    ``detach`` is passed on to :func:`jet._rev_jet`.
+    ``detach`` is passed on to ``_rev_jet``.
     """
     std_jet = _rev_jet(f, detach)
 
@@ -508,7 +506,7 @@ def assert_jet_matches_oracle(
 ) -> None:
     """Assert ``jet(f, mock_args, collapsed)`` matches its mode-specific oracle.
 
-    The oracle is :func:`jet._rev_jet` (standard) or :func:`rev_collapsed_jet`
+    The oracle is :func:`jet._jet._rev_jet` (standard) or :func:`rev_collapsed_jet`
     (collapsed). Both are built on nested reverse-mode AD and are independent
     of the FX-trace + interpreter machinery under test.
 

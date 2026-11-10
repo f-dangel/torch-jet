@@ -1,7 +1,7 @@
 """Per-primitive correctness tests for Taylor mode.
 
-Each row in ``PRIMITIVE_CASES`` exercises one dispatch branch of a primitive
-registered with :class:`JetInterpreter`.
+Each row in ``PRIMITIVE_CASES`` exercises one dispatch branch of a rule in the
+``RULES`` registry.
 """
 
 from functools import partial
@@ -122,7 +122,7 @@ def _div_tensor_const(device):
 
 def _const_over_jet(device):
     # Frozen constant numerator over a jet divisor (kept off zero via ``+ 2``);
-    # exercises the reciprocal-of-a-jet path with a non-jet numerator.
+    # exercises division by a jet with a non-jet numerator.
     manual_seed(3)
     c = rand(3, 4, **device_kw(device)) + 0.5
     return lambda x: c / (x + 2.0)
@@ -1078,7 +1078,7 @@ PRIMITIVE_CASES = [
         "f": _stateless(_mha_sdpa),
         "args_fn": lambda: (rand(3, 2, 8),),
     },
-    # ---- Loss functions --------------------------------------------------
+    # ---- Loss functions (linear in the input) ----------------------------
     # ``nll_loss`` is linear in the (log-prob) input given a frozen integer
     # target, so the same op applies to every coefficient. It returns
     # ``(output, total_weight)``; cover all three reductions and the
@@ -1149,12 +1149,12 @@ PRIMITIVE_CASES = [
         "f": _div_tensor_const,
         "args_fn": lambda: (rand(3, 4),),
     },
-    # ``div.Tensor`` with a Taylor-expanded divisor: ``a / b == a * b**(-1)``,
-    # so the composite reciprocates ``b`` via ``pow`` and multiplies. Covers a
-    # jet divisor (``div_JJ``), broadcasting of a lower-rank jet divisor through
-    # ``mul`` (``div_JJ_bcast``), and a constant numerator over a jet divisor
-    # (``div_const_J``). Divisors are kept off zero so the reciprocal is
-    # well-conditioned.
+    # ---- Division by a jet (not linear) ----------------------------------
+    # ``div.Tensor`` with a Taylor-expanded divisor uses the division
+    # recurrence. Covers a jet divisor (``div_JJ``), broadcasting of a
+    # lower-rank jet divisor (``div_JJ_bcast``), and a constant numerator over
+    # a jet divisor (``div_const_J``). Divisors are kept off zero so the
+    # quotient is well-conditioned.
     {
         "id": "div_JJ",
         "f": _stateless(lambda a, b: a / b),

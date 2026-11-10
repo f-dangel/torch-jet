@@ -157,7 +157,7 @@ def test_randomized_laplacian_functions_converge(
             used that has diagonal elements that are increments of 1 starting from 1.
         device: Device to run the test on.
         max_num_chunks: Maximum number of chunks to accumulate. Default: `128`.
-        chunk_size: Number of samples per chunk. Default: `64`.
+        chunk_size: Number of samples per chunk. Default: `128`.
         target_rel_error: Target relative error for convergence. Default: `5e-2`.
     """
     f, (X,) = setup_case(config, device)

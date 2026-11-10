@@ -162,7 +162,7 @@ else:
 #
 #### Without `for` Loop
 #
-# To get rid of the `for` loop, we can use `torch.vmap`, which is composable with out `jet`
+# To get rid of the `for` loop, we can use `torch.vmap`, which is composable with our `jet`
 # implementation, and compute the $D$ jets in parallel:
 
 

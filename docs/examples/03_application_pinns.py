@@ -229,7 +229,7 @@ def compute_loss(return_residual: bool = False) -> Tensor | tuple[Tensor, Tensor
         residual. The loss has shape `[1]`, the residual `[N_interior + N_boundary]`.
     """
     boundary_residual = f(X_boundary) / sqrt(N_boundary)
-    interior_residual = (lap_f(X_interior) + rhs(X_interior)) / sqrt(N_interior)
+    interior_residual = (lap_f(X_interior) + rhs_interior) / sqrt(N_interior)
     residual = cat([interior_residual, boundary_residual])
     loss = 0.5 * (residual**2).sum()
     return (loss, residual) if return_residual else loss

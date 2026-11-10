@@ -103,7 +103,7 @@ def _has_jet_arg(args: Sequence[object]) -> bool:
     return any(True for _ in _jet_args(args))
 
 
-def _jet_order(*args: Tensor) -> int:
+def _jet_order(*args: object) -> int:
     """Infer the Taylor-expansion order ``K`` from the ``JetTuple`` positional args.
 
     A jet is exactly ``(primal, c_1, ..., c_K)``, so ``K = len(jet) - 1``.
@@ -335,11 +335,10 @@ def _leibniz(
     The k-th coefficient of ``binary_op(self, other)`` (treated as functions of
     ``t``) is ``sum_{j=0}^{k} C(k, j) * binary_op(self[j], other[k - j])``. This
     helper returns only **coefficients 1..K**; the caller handles the order-0
-    coefficient (the primal) explicitly. For ``mul``/``mm`` that's just
-    ``binary_op(self[0], other[0])``; for ``addmm`` it's
-    ``addmm(bias, mat1[0], mat2[0])`` — skipping the k=0 term inside the helper
-    avoids tracing a wasted ``binary_op(self[0], other[0])`` node into the
-    captured FX graph.
+    coefficient (the primal) explicitly, for example as
+    ``binary_op(self[0], other[0])`` for ``mul``/``mm``. Skipping the k=0 term
+    inside the helper avoids tracing a wasted ``binary_op(self[0], other[0])``
+    node into the captured FX graph.
 
     Mode-aware: in collapsed mode the batched coefficients (orders ``1..K-1``)
     carry a leading direction dim ``R``, so a product touching one is mapped per
@@ -587,7 +586,7 @@ def _faa_di_bruno(
     return vs_out
 
 
-# --- Derivative helpers (shared with collapsed mode) ---
+# --- Derivative helpers ---
 
 
 def _sin_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:

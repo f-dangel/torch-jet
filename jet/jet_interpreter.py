@@ -58,6 +58,7 @@ class JetInterpreter(Interpreter):
         outputs to the right shapes.
         """
         result = super().run(*args, **kwargs)
+        self.env = {}  # else the output stays alive until the next run
         return self._normalize(result, K, R)
 
     def placeholder(

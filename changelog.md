@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Leibniz rule emits since [PR 318](https://github.com/f-dangel/torch-jet/pull/318)
   has a rule of its own, a composition of `mul` and `add`
   ([PR](https://github.com/f-dangel/torch-jet/pull/324)).
+- A function returned by `jet` no longer keeps the jet it last returned
+  alive until its next call
+  ([PR](https://github.com/f-dangel/torch-jet/pull/328)).
 ### Internal
 
 - Elementwise rules hold one temporary tensor less per Faà di Bruno term: a

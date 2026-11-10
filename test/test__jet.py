@@ -1,5 +1,7 @@
 """Tests for jet/_jet.py (the jet() / _rev_jet transforms)."""
 
+from weakref import ref
+
 from pytest import mark, raises
 from torch import manual_seed, rand, sin, zeros
 from torch.testing import assert_close
@@ -63,3 +65,13 @@ def test_jet_rejects_unsupported_tuple_dict_signature():
     jet(lambda d: d["a"] * 2, (d,))  # single dict arg
     jet(lambda d, x: d["a"] + x, (d, t))  # dict first
     jet(lambda x, y, d: x + y + d["a"], (t, t, d))  # three args, trailing dict
+
+
+def test_jet_releases_its_outputs(collapsed: bool):
+    """A jet function holds no reference to the jet it returned."""
+    x = rand(3)
+    f = jet(sin, (x,), collapsed=collapsed)
+    out = f(*make_jet_args((x,), 2, collapsed))
+    released = [ref(c) for c in out]
+    del out
+    assert [r() for r in released] == [None] * 3

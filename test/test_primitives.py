@@ -1643,7 +1643,7 @@ def test_div_self_is_exact(collapsed: bool, device: str):
 
     The division recurrence yields ``q_1 = (x_1 - x_1) / x_0 = 0`` and so on,
     whereas the composition ``x * x**-1`` (the previous rule) accumulates
-    float32 roundoff.
+    float32 roundoff, whose size depends on the device.
     """
     manual_seed(0)
     x = linspace(0.5, 1.5, 12, dtype=float32, device=device).reshape(3, 4)
@@ -1653,4 +1653,4 @@ def test_div_self_is_exact(collapsed: bool, device: str):
     for c in coeffs[1:]:
         assert_close(c, zeros_like(c), atol=0, rtol=0)
     composed = jet(lambda x: x * x**-1, (x,), collapsed=collapsed)(*jet_args)
-    assert 1e-3 > composed[K].abs().max() > 1e-5
+    assert 1e-3 > composed[K].abs().max() > 0

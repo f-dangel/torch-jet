@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   temporary tensor less per order: it scales and shifts through the fused
   `addcmul` rule, on one code path with batch norm
   ([PR](https://github.com/f-dangel/torch-jet/pull/333)).
+- `test_div_self_is_exact` passes on CUDA again: it only requires the
+  composition `x * x**-1` to be inexact, as its roundoff there fell below the
+  former lower bound
+  ([PR](https://github.com/f-dangel/torch-jet/pull/334)).
 - `addcmul` of three jets, and with it the affine part of batch norm with
   Taylor-expanded parameters, holds one coefficient-sized temporary tensor
   less per order: the summand starts each Leibniz sum, so the product's jet

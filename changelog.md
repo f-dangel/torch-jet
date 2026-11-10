@@ -11,13 +11,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
+- A jet of a jet of a product works again: the fused `addcmul` that the
+  Leibniz rule emits since [PR 318](https://github.com/f-dangel/torch-jet/pull/318)
+  has a rule of its own, a composition of `mul` and `add`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/324)).
 ### Internal
 
 - Elementwise rules hold one temporary tensor less per Faà di Bruno term: a
   partition's product joins the running sum, scaled by the outer derivative,
-  in one out-of-place `addcmul` (which gets a jet rule, so nested jets trace
-  it), and the product-free single-block term joins last
+  in one out-of-place `addcmul`, and the product-free single-block term joins
+  last
   ([PR](https://github.com/f-dangel/torch-jet/pull/322)).
+- The peak-memory tests share one `assert_peak_memory` helper and one case
+  table, and their lower bounds on the vmapped reference equal its measured
+  peak
+  ([PR](https://github.com/f-dangel/torch-jet/pull/325)).
+- Collapsed-mode division holds two direction-sized temporary tensors less:
+  the reduced term's product is summed over the directions inside one
+  `einsum`, and an unreduced term joins the running sum in one `addcmul`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/319)).
+- Elementwise products hold one temporary tensor less per Leibniz term: a
+  product joins the running sum in one out-of-place `addcmul` instead of
+  being formed first
+  ([PR](https://github.com/f-dangel/torch-jet/pull/318)).
 - The eval-mode batch norm rule holds fewer temporary tensors: it scales the
   activation jet once, by the weight folded into the per-channel scale,
   instead of twice

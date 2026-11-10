@@ -390,32 +390,29 @@ def assert_peak_memory(
     args: tuple[Tensor, ...],
     K: int,
     R: int,
-    upper: Callable[[int, int], int],
-    lower: Callable[[int, int], int],
+    mode: str,
+    peak: Callable[[int, int, int], int],
 ) -> None:
-    """Bound the peak memory of the collapsed jet of ``f`` and of its reference.
-
-    The collapsed jet allocates at most ``upper(S, RS)`` bytes at its peak and
-    the standard jet vmapped over the directions (``_uncollapsed_via_vmap``)
-    at least ``lower(S, RS)``, where ``S`` / ``RS`` are the bytes of one
-    coefficient without / with the leading direction dim. ``upper`` must lie
-    below ``lower``, so the two modes cannot both pass with the same peak.
-    Both peaks come from :func:`peak_memory`.
+    """Check that the jet of ``f`` allocates exactly ``peak`` bytes at its peak.
 
     Args:
         f: The function to jet; every argument is Taylor-expanded.
         args: Its positional mock arguments.
         K: The derivative order.
-        R: The number of directions.
-        upper: ``(S, RS) -> bytes``, the collapsed jet's peak at most.
-        lower: ``(S, RS) -> bytes``, the vmapped standard jet's peak at least.
+        R: The number of directions; ignored in ``"standard"`` mode.
+        mode: ``"standard"``, ``"collapsed"``, or ``"vmapped"``: the standard
+            jet vmapped over the directions (``_uncollapsed_via_vmap``).
+        peak: ``(S, RS, K) -> bytes``, with ``S`` / ``RS`` the bytes of one
+            coefficient without / with the leading direction dim.
     """
-    jet_args = make_jet_args(args, K, True, R)
-    S, RS = (c.untyped_storage().nbytes() for c in jet_args[0][:2])
-    upper, lower = upper(S, RS), lower(S, RS)
-    assert upper < lower
-    assert peak_memory(lambda: jet(f, args, collapsed=True), *jet_args) <= upper
-    assert peak_memory(lambda: _uncollapsed_via_vmap(f, args, None), *jet_args) >= lower
+    make = {
+        "standard": lambda: jet(f, args),
+        "collapsed": lambda: jet(f, args, collapsed=True),
+        "vmapped": lambda: _uncollapsed_via_vmap(f, args, None),
+    }[mode]
+    jet_args = make_jet_args(args, K, mode != "standard", R)
+    S = args[0].untyped_storage().nbytes()
+    assert peak_memory(make, *jet_args) == peak(S, R * S, K)
 
 
 def make_jet_args(

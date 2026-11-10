@@ -24,6 +24,7 @@ from torch import (
     linspace,
     log,
     manual_seed,
+    matmul,
     ones_like,
     ops,
     rand,
@@ -1500,6 +1501,15 @@ PEAK_MEMORY_CASES = {
                 {2: 2, 3: 3, 4: 5, 5: 6}[K] * RS + (3 if K == 3 else 2) * S
             ),
             "vmapped": lambda S, RS, K: (K + 3 - (K == 2)) * RS + S,
+        },
+    ),
+    "matmul": (
+        lambda x, w: matmul(x, w[:COLS]),
+        2,
+        {
+            "standard": lambda S, RS, K: (K + 3) * S,
+            "collapsed": lambda S, RS, K: (K + 1) * RS + S if K > 2 else 2 * RS + 3 * S,
+            "vmapped": lambda S, RS, K: (K + 4) * RS + S,
         },
     ),
     "log_softmax": (

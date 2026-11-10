@@ -408,6 +408,7 @@ def _leibniz(
             if c != 1:
                 term_j = c * term_j
             term = term_j if term is None else term + term_j
+            del term_j  # else it outlives its term, until the next unfused one
         coeffs += (term,)  # ``None`` iff every term vanished: a symbolic zero
     return coeffs
 

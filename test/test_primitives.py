@@ -6,6 +6,7 @@ registered with :class:`JetInterpreter`.
 
 from functools import partial
 from itertools import product
+from math import prod
 from operator import mul, truediv
 from typing import Any, Callable
 
@@ -1467,13 +1468,13 @@ def test_softmax_large_offset(fn: Callable, collapsed: bool, device: str):
 def test_log_softmax_peak_memory(K: int, collapsed: bool, device: str):
     """The streamed rule allocates no more than its output jet.
 
-    No ATen call inside the rule sees fewer rows than the input or a cut
-    vocabulary, so the bound comes from lifetimes alone, not from a loop over
-    chunks.
+    Every operand of an ATen call inside the rule holds all logits or is a
+    (direction-batched) row statistic, so the bound comes from lifetimes
+    alone, not from a loop over chunks.
     """
-    rows, vocab = 512, 4096
+    rows, vocab, R = 512, 4096, 2
     x = rand(rows, vocab, device=device)
-    (x_jet,) = make_jet_args((x,), K, collapsed)
+    (x_jet,) = make_jet_args((x,), K, collapsed, R)
     jet_f = jet(lambda x: log_softmax(x, 1), (x,), collapsed=collapsed)
     logits = x.untyped_storage().nbytes()
     outputs = sum(c.untyped_storage().nbytes() for c in x_jet)
@@ -1483,7 +1484,9 @@ def test_log_softmax_peak_memory(K: int, collapsed: bool, device: str):
         jet_f(x_jet)
 
     assert tracker.peak <= outputs + slack
-    assert {s[-2:] for s in tracker.arg_shapes} <= {(rows, vocab), (rows, 1)}
+    assert all(
+        prod(s) >= rows * vocab or prod(s) <= R * rows for s in tracker.arg_shapes
+    )
 
 
 # ``(f, n_args, K, upper, lower)``: at ``K`` over ``R`` directions the collapsed
@@ -1501,10 +1504,14 @@ PEAK_MEMORY_CASES = {
     # (the reduced c_2 sums b_1 q_1 over R inside einsum and never forms it);
     # vmapped, in c_2: the primal, q_1 and two successive running sums
     "div": (truediv, 2, 2, lambda S, RS: 2 * RS + S, lambda S, RS: 5 * RS + S),
-    # collapsed, in the reduced c_3: the primal, c_1, c_2, the summed and scaled
-    # c_1 c_2 term, the (R, *S) cube c_1 ** 3 and its sum over R; vmapped, in
-    # c_3: the primal, c_1, c_2, the cube and two successive running sums
-    "exp": (exp, 1, 3, lambda S, RS: 3 * RS + 3 * S, lambda S, RS: 6 * RS + S),
+    # collapsed, in the reduced c_2: the primal, c_1, the contraction of c_1 with
+    # itself over R and the term it scales to (the (R, *S) square never exists);
+    # vmapped, in c_2: the primal, c_1, the square and the term it scales to
+    "exp_K2": (exp, 1, 2, lambda S, RS: RS + 3 * S, lambda S, RS: 4 * RS + S),
+    # collapsed, in the reduced c_3: the primal, c_1, c_2, the contracted and
+    # scaled c_1 c_2 term, the (R, *S) cube c_1 ** 3 and its sum over R; vmapped,
+    # in c_3: the primal, c_1, c_2, the cube and two successive running sums
+    "exp_K3": (exp, 1, 3, lambda S, RS: 3 * RS + 3 * S, lambda S, RS: 6 * RS + S),
 }
 
 

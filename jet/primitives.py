@@ -486,8 +486,8 @@ def _partition_term(
             that degree.
         sum_directions: Whether the inner coefficients carry a leading direction
             dim ``R`` (collapsed mode's ``c_1..c_{K-1}``) that is summed out of
-            their product before the multiply by the ``R``-free outer derivative.
-            Default: ``False``.
+            their product by an ``einsum`` contraction, before the multiply by the
+            ``R``-free outer derivative. Default: ``False``.
         result: The sum of the previous partitions' terms, which this term joins
             in one out-of-place ``addcmul``: the product scaled by the outer
             derivative then never exists on its own. Default: ``None``, for
@@ -501,17 +501,20 @@ def _partition_term(
     """
     if dn[len(sigma)] is None or any(vs[i - 1] is None for i in sigma):
         return result
-    vs_count = {i: sigma.count(i) for i in sigma}
-    # Fold the product from a generator so no powered factor outlives its use.
-    term = reduce(
-        mul, (vs[i - 1] ** c if c > 1 else vs[i - 1] for i, c in vs_count.items())
-    )
     if sum_directions:
-        # Sum the direction dim R out of the inner product *before* multiplying
-        # by the outer derivative, which carries no R: the multiply then runs on
-        # (and autograd saves for its backward) the summed ``S``-shaped product
-        # rather than the batched ``(R, *S)`` one.
-        term = term.sum(0)
+        # Contract the direction dim R out of the inner product before the
+        # multiply by the outer derivative, which carries no R: ``einsum``
+        # multiplies pairwise from the left, so two factors never form their
+        # ``(R, *S)`` product, and the multiply (and what autograd saves for its
+        # backward) runs on the ``S``-shaped contraction.
+        factors = [vs[i - 1] for i in sigma]
+        term = einsum(",".join("r..." for _ in factors) + "->...", *factors)
+    else:
+        vs_count = {i: sigma.count(i) for i in sigma}
+        # Fold the product from a generator so no powered factor outlives its use.
+        term = reduce(
+            mul, (vs[i - 1] ** c if c > 1 else vs[i - 1] for i, c in vs_count.items())
+        )
     nu, d = multiplicity(sigma), dn[len(sigma)]
     # A constant factor (``pow``'s top derivative, ``gelu``'s inner polynomial)
     # is a Python scalar, which ``addcmul`` does not take.

@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([PR](https://github.com/f-dangel/torch-jet/pull/324)).
 ### Internal
 
+- Collapsed-mode elementwise rules contract the direction dim out of each
+  reduced Faà di Bruno term with one `einsum`, so a two-factor term never
+  forms its direction-sized product
+  ([PR](https://github.com/f-dangel/torch-jet/pull/323)).
 - Elementwise rules hold one temporary tensor less per Faà di Bruno term: a
   partition's product joins the running sum, scaled by the outer derivative,
   in one out-of-place `addcmul`, and the product-free single-block term joins

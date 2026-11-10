@@ -29,6 +29,7 @@ from jet.primitives import (
     _has_jet_arg,
     _pointwise,
     _sum_exp,
+    jet_addcmul,
     jet_mm,
 )
 
@@ -87,7 +88,8 @@ def addcmul(
 
     ``addcmul(self, tensor1, tensor2, value) == self + value * tensor1 * tensor2``,
     so the rule composes the bilinear ``mul`` rule with the affine addition. Any
-    operand may be Taylor-expanded. A nested jet meets this op in the fused
+    operand may be Taylor-expanded; three jets with ``value == 1`` take the fused
+    :func:`jet.primitives.jet_addcmul`. A nested jet meets this op in the fused
     joins of the Faà di Bruno terms (:func:`jet.primitives._partition_term`).
 
     Args:
@@ -99,6 +101,8 @@ def addcmul(
     Returns:
         The value and its Taylor coefficients.
     """
+    if value == 1 and all(isinstance(t, JetTuple) for t in (self, tensor1, tensor2)):
+        return jet_addcmul(self, tensor1, tensor2)
     add, mul = _rule(ops.aten.add.Tensor), _rule(ops.aten.mul.Tensor)
     product = mul(tensor1, tensor2)
     return add(self, product if value == 1 else mul(product, value))
@@ -422,15 +426,17 @@ def native_batch_norm(
 
     sub = _rule(ops.aten.sub.Tensor)
     mul = _rule(ops.aten.mul.Tensor)
-    add = _rule(ops.aten.add.Tensor)
     view = _rule(ops.aten.view.default)
 
     primal = input[0] if isinstance(input, JetTuple) else input
     shape = _bn_channel_view(primal)
     rstd = view((running_var + eps).rsqrt(), shape)
     scale = rstd if weight is None else mul(view(weight, shape), rstd)
-    out = mul(sub(input, view(running_mean, shape)), scale)
-    out = out if bias is None else add(out, view(bias, shape))
+    centered = sub(input, view(running_mean, shape))
+    if bias is None:
+        out = mul(centered, scale)
+    else:
+        out = addcmul(view(bias, shape), centered, scale)
     empty = primal.new_empty(0)
     return out, empty, empty
 

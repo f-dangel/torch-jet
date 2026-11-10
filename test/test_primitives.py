@@ -81,6 +81,7 @@ from test.utils import (
     class_index_loss,
     device_kw,
     make_jet_args,
+    peak_memory,
     pick_operands,
     tolerances_for,
 )
@@ -1545,6 +1546,21 @@ def test_peak_memory(
     """The jet of ``f`` allocates exactly the tabulated bytes at its peak."""
     args = tuple(rand(ROWS, COLS, device=device) for _ in range(n_args))
     assert_peak_memory(f, args, K, R, mode, peaks[mode])
+
+
+@mark.parametrize("K", [2, 3, 4, 5], ids=lambda k: f"K{k}")
+def test_affine_peak_memory(K: int, collapsed: bool, device: str):
+    """The scale-and-shift of the norms never holds the jet of the product."""
+    args = tuple(rand(ROWS, COLS, device=device) for _ in range(3))
+    S = args[0].untyped_storage().nbytes()
+
+    def affine(*jets: tuple) -> JetTuple:
+        out, weight, bias = (JetTuple(j, collapsed=collapsed) for j in jets)
+        return compositions._affine(out, weight, bias)
+
+    # as ``addcmul`` in ``PEAK_MEMORY_CASES``
+    peak = K * R * S + 3 * S if collapsed else (K + 2) * S
+    assert peak_memory(lambda: affine, *make_jet_args(args, K, collapsed, R)) == peak
 
 
 @mark.parametrize("dtype", [float16, bfloat16], ids=["float16", "bfloat16"])

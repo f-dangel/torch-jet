@@ -77,6 +77,33 @@ def addmm(
     return add(self, mm(mat1, mat2))
 
 
+def addcmul(
+    self: Tensor | JetTuple,
+    tensor1: Tensor | JetTuple,
+    tensor2: Tensor | JetTuple,
+    value: float | int = 1,
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.addcmul(self, tensor1, tensor2, value)``.
+
+    ``addcmul(self, tensor1, tensor2, value) == self + value * tensor1 * tensor2``,
+    so the rule composes the bilinear ``mul`` rule with the affine addition. Any
+    operand may be Taylor-expanded. A nested jet meets this op in the fused
+    joins of the Faà di Bruno terms (:func:`jet.primitives._partition_term`).
+
+    Args:
+        self: The summand; a jet or a constant ``Tensor``.
+        tensor1: The first factor; a jet or a constant ``Tensor``.
+        tensor2: The second factor; a jet or a constant ``Tensor``.
+        value: The scalar that scales the product. Default: ``1``.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    add, mul = _rule(ops.aten.add.Tensor), _rule(ops.aten.mul.Tensor)
+    product = mul(tensor1, tensor2)
+    return add(self, product if value == 1 else mul(product, value))
+
+
 def stack(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.stack(tensors, dim)``.
 

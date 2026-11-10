@@ -80,6 +80,7 @@ RULES: dict[Callable, Rule] = {
     # Composites -- one mode-agnostic body that pulls its sub-rules from this
     # registry (see :mod:`jet.compositions`).
     ops.aten.addmm.default: compositions.addmm,
+    ops.aten.addcmul.default: compositions.addcmul,
     # ``stack(tensors, dim) == cat([unsqueeze(t, dim) for t in tensors], dim)``;
     # decomposed into the registered ``unsqueeze`` and ``cat`` rules.
     ops.aten.stack.default: compositions.stack,

@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed/Removed
 
+- A jet of a jet of a product works again: the fused `addcmul` that the
+  Leibniz rule emits since [PR 318](https://github.com/f-dangel/torch-jet/pull/318)
+  has a rule of its own, a composition of `mul` and `add`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/324)).
 ### Internal
 
 - Collapsed-mode division holds two direction-sized temporary tensors less:

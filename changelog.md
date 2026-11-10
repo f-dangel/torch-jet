@@ -19,8 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The reduced term of collapsed-mode division sums its product over the
   directions with `mul` and `sum` again instead of an `einsum` contraction,
-  which on CUDA copies both operands into a batched-matmul layout and so costs
-  one direction-sized tensor more, not less, and runs slower
+  which on CUDA copies an operand into a batched-matmul layout and so costs a
+  direction-sized tensor instead of saving one
   ([PR](https://github.com/f-dangel/torch-jet/pull/326)).
 - Elementwise rules hold one temporary tensor less per Faà di Bruno term: a
   partition's product joins the running sum, scaled by the outer derivative,

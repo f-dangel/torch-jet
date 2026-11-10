@@ -23,6 +23,7 @@ from scipy.special import comb, factorial, stirling2
 from torch import (
     Tensor,
     addcmul,
+    addmm,
     cat,
     cos,
     erf,
@@ -373,6 +374,7 @@ def _leibniz(
     K = len(self) - 1
     collapsed = self.collapsed
     fused = binary_op is mul  # elementwise: a term can join the sum in one op
+    mm = binary_op is matmul  # so can a matrix product, with ``addmm``
 
     def in_dims(*orders: int) -> tuple[int | None, ...]:
         """``0`` for each coefficient order that carries ``R``, else ``None``."""
@@ -399,11 +401,16 @@ def _leibniz(
             # The collapsed K-th coefficient carries no R, so reduce its batched
             # (R-carrying) terms over the direction dim; standard never enters.
             reduced = k == K and _is_batched(j, K, collapsed)
-            if fused and term is not None and not reduced:
+            dims = in_dims(k, j, k - j)  # of the sum and the two factors
+            # One matrix ``b`` serves all directions of a batched sum (``c == 1``).
+            shared = mm and dims == (0, 0, None) and b.ndim == 2
+            if term is not None and not reduced and (fused or shared):
                 # The term joins the sum in one out-of-place op, so the product
                 # never exists on its own.
                 op = partial(addcmul, value=c)
-                term = apply(op, in_dims(k, j, k - j), term, a, b)
+                term = (
+                    _addmm_rows(term, a, b) if shared else apply(op, dims, term, a, b)
+                )
                 continue
             term_j = apply(binary_op, in_dims(j, k - j), a, b)
             if reduced:
@@ -416,6 +423,21 @@ def _leibniz(
             term = term_j if term is None else term + term_j
         coeffs += (term,)  # ``None`` iff every term vanished: a symbolic zero
     return coeffs
+
+
+def _addmm_rows(self: Tensor, mat1: Tensor, mat2: Tensor) -> Tensor:
+    """Return ``self + mat1 @ mat2`` in one ``addmm`` over the rows of all directions.
+
+    Args:
+        self: The summand, of the product's shape.
+        mat1: The first factor, whose leading dims all index rows.
+        mat2: The second factor, a matrix.
+
+    Returns:
+        The sum, of the shape of ``self``.
+    """
+    rows = addmm(self.flatten(0, -2), mat1.flatten(0, -2), mat2)
+    return rows.view_as(self)
 
 
 def _apply_bilinear(

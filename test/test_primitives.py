@@ -25,6 +25,7 @@ from torch import (
     linspace,
     log,
     manual_seed,
+    matmul,
     ones_like,
     ops,
     rand,
@@ -1513,6 +1514,15 @@ PEAK_MEMORY_CASES = {
             "vmapped": lambda S, RS, K: (K + 3 - (K == 2)) * RS + S,
         },
     ),
+    "matmul": (
+        lambda x, w: matmul(x, w[:COLS]),
+        2,
+        {
+            "standard": lambda S, RS, K: (K + 3) * S,
+            "collapsed": lambda S, RS, K: (K + 1) * RS + S if K > 2 else 2 * RS + 3 * S,
+            "vmapped": lambda S, RS, K: (K + 4) * RS + S,
+        },
+    ),
     "log_softmax": (
         lambda x: log_softmax(x, 1),
         1,
@@ -1544,7 +1554,7 @@ def test_affine_peak_memory(K: int, collapsed: bool, device: str):
     args = tuple(rand(ROWS, COLS, device=device) for _ in range(3))
     S = args[0].untyped_storage().nbytes()
 
-    def affine(*jets: tuple[Tensor, ...]) -> JetTuple:
+    def affine(*jets: tuple) -> JetTuple:
         out, weight, bias = (JetTuple(j, collapsed=collapsed) for j in jets)
         return compositions._affine(out, weight, bias)
 

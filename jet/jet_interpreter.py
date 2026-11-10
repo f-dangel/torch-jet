@@ -29,7 +29,7 @@ class JetInterpreter(Interpreter):
     """Interpreter that swaps in jet operations during execution.
 
     For each ``call_function`` node, the interpreter checks whether any
-    positional argument is a jet tuple (a Taylor-expanded value). If so, it
+    argument is a jet tuple (a Taylor-expanded value). If so, it
     dispatches to the corresponding jet operation from the configured mapping;
     otherwise it falls through to the original ATen operation. The Taylor-
     expansion order ``K`` is inferred inside each jet op from its arguments (a
@@ -83,7 +83,7 @@ class JetInterpreter(Interpreter):
         Raises:
             NotImplementedError: If a Taylor-dependent op has no jet rule.
         """
-        if _has_jet_arg(args):
+        if _has_jet_arg((*args, *kwargs.values())):
             rule = RULES.get(target)
             if rule is None:
                 raise NotImplementedError(
@@ -123,37 +123,26 @@ class JetInterpreter(Interpreter):
         """
 
         def _normalize_leaf(node: Any) -> Jet:
-            if isinstance(node, JetTuple):
-                return (
-                    node[0],
-                    *(
-                        self._dense_zero(node[0], k, K, R) if c is None else c
-                        for k, c in enumerate(node[1:], start=1)
-                    ),
-                )
-            return (node, *self._zero_coeffs(node, K, R))
+            # a constant is a jet whose coefficients are all symbolic zeros
+            constant = not isinstance(node, JetTuple)
+            primal, *coeffs = (node, *[None] * K) if constant else node
+            return (
+                primal,
+                *(
+                    self._dense_zero(primal, k, K, R) if c is None else c
+                    for k, c in enumerate(coeffs, start=1)
+                ),
+            )
 
         return tree_map(
             _normalize_leaf, result, is_leaf=lambda x: isinstance(x, (JetTuple, Tensor))
         )
 
-    def _zero_coeffs(self, primal: Tensor, K: int, R: int | None) -> list[Tensor]:
-        """Build ``K`` zero coefficients for a constant output leaf.
-
-        Each returned tensor is a distinct allocation; sharing one
-        ``zeros_like`` across coefficient slots would make in-place mutation
-        of one slot mutate all the others.
-
-        Raises:
-            ValueError: If ``self.collapsed`` and ``R`` is ``None`` (see
-                :func:`_slot_shape`).
-        """
-        return [self._dense_zero(primal, k, K, R) for k in range(1, K + 1)]
-
     def _dense_zero(self, primal: Tensor, k: int, K: int, R: int | None) -> Tensor:
         """A dense zero for the order-``k`` coefficient of a leaf with ``primal``.
 
         Used for a constant leaf and for a symbolic-zero coefficient of a jet
-        leaf (see :func:`_slot_shape`).
+        leaf (see :func:`_slot_shape`). Every slot gets its own allocation, so
+        mutating one coefficient in place never changes another.
         """
         return primal.new_zeros(_slot_shape(primal, k, K, self.collapsed, R))

@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([PR](https://github.com/f-dangel/torch-jet/pull/324)).
 ### Internal
 
+- The interpreter looks for jets among keyword arguments too, so an op without
+  a rule that receives a jet by keyword raises the "No jet rule" error instead
+  of a type error from PyTorch. Constant and jet outputs share one code path
+  when they are turned into plain tuples, and one pass over the traced graph
+  replaces in-place ops and `view`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/PRNUM)).
 - Layer norm with Taylor-expanded weight and bias holds one coefficient-sized
   temporary tensor less per order: it scales and shifts through the fused
   `addcmul` rule, on one code path with batch norm

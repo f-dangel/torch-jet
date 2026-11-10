@@ -80,6 +80,7 @@ from test.utils import (
     class_index_loss,
     device_kw,
     make_jet_args,
+    peak_memory,
     pick_operands,
     tolerances_for,
 )
@@ -1473,14 +1474,6 @@ ROWS, COLS, R = 128, 64, 4
 # per row.
 # ``"vmapped"`` is the standard jet vmapped over the directions, which the
 # collapsed jet must stay below.
-# Layer norm's peak moves between its steps as ``K`` grows, so it has no closed
-# form: ``K -> (coefficients, rows)`` in bytes ``S`` / ``S // COLS``, at ``R = 4``.
-LAYER_NORM_PEAKS = {
-    "standard": {2: (8, 6), 3: (11, 4), 4: (14, 5), 5: (16, 6)},
-    "collapsed": {2: (17, 12), 3: (27, 20), 4: (36, 14), 5: (48, 18)},
-    "vmapped": {2: (38, 18), 3: (47, 13), 4: (59, 17), 5: (67, 21)},
-}
-
 PEAK_MEMORY_CASES = {
     "mul": (
         mul,
@@ -1520,17 +1513,6 @@ PEAK_MEMORY_CASES = {
             "vmapped": lambda S, RS, K: (K + 3 - (K == 2)) * RS + S,
         },
     ),
-    # weight and bias are Taylor-expanded, too: the first row of an operand
-    "layer_norm": (
-        lambda x, w, b: layer_norm(x, (COLS,), w[0], b[0]),
-        3,
-        {
-            mode: lambda S, RS, K, peaks=peaks: (
-                peaks[K][0] * S + peaks[K][1] * S // COLS
-            )
-            for mode, peaks in LAYER_NORM_PEAKS.items()
-        },
-    ),
     "log_softmax": (
         lambda x: log_softmax(x, 1),
         1,
@@ -1554,6 +1536,21 @@ def test_peak_memory(
     """The jet of ``f`` allocates exactly the tabulated bytes at its peak."""
     args = tuple(rand(ROWS, COLS, device=device) for _ in range(n_args))
     assert_peak_memory(f, args, K, R, mode, peaks[mode])
+
+
+@mark.parametrize("K", [2, 3, 4, 5], ids=lambda k: f"K{k}")
+def test_affine_peak_memory(K: int, collapsed: bool, device: str):
+    """The scale-and-shift of the norms never holds the jet of the product."""
+    args = tuple(rand(ROWS, COLS, device=device) for _ in range(3))
+    S = args[0].untyped_storage().nbytes()
+
+    def affine(*jets: tuple[Tensor, ...]) -> JetTuple:
+        out, weight, bias = (JetTuple(j, collapsed=collapsed) for j in jets)
+        return compositions._affine(out, weight, bias)
+
+    # as ``addcmul`` in ``PEAK_MEMORY_CASES``
+    peak = K * R * S + 3 * S if collapsed else (K + 2) * S
+    assert peak_memory(lambda: affine, *make_jet_args(args, K, collapsed, R)) == peak
 
 
 @mark.parametrize("dtype", [float16, bfloat16], ids=["float16", "bfloat16"])

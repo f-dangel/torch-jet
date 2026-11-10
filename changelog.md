@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in one out-of-place `addcmul`, and the product-free single-block term joins
   last
   ([PR](https://github.com/f-dangel/torch-jet/pull/322)).
+- The product rule holds one temporary tensor less: it drops its reference to
+  a term that joined the running sum, and the collapsed `K`-th coefficient
+  sums its direction-reduced terms first, while no running sum is live
+  ([PR](https://github.com/f-dangel/torch-jet/pull/330)).
 - The peak-memory tests share one `assert_peak_memory` helper and case table,
   measure with the device's allocator, which also sees the copies a kernel
   makes of its operands, and assert the exact peak for every mode and order

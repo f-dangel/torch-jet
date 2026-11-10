@@ -33,7 +33,7 @@ Mathematical expression ↔ Code function mapping
 
     generate_restricted_multi_indices(i_vec)    → {m ∈ ℕ^P, 0 < |m| ≤ |i|}       : Enumerate all admissible m used in the summation (0 < |m| ≤ |i|).
 
-    compute_gamma_for_j(i_vec, j_vec)           → γ_{i,j}                        : Compaute γ_{i,j} for fixed i and j.
+    compute_gamma_for_j(i_vec, j_vec)           → γ_{i,j}                        : Compute γ_{i,j} for fixed i and j.
 
     compute_all_gammas(i_vec)                   → {γ_{i,j}, j ∈ ℕ^P, |j| = |i|}  : Compute all γ_{i,j} for multi-indices j of length P with |j| = |i|.
 
@@ -50,48 +50,27 @@ from itertools import product
 MultiIndex = tuple[int, ...]
 
 
-def generate_multi_indices(
-    P: int,
-    derivative_order: int,
-    position: int = 0,
-    remainder: int | None = None,
-    current: list[int] | None = None,
-) -> list[MultiIndex]:
-    """Recursively generate all multi-indices j ∈ ℕ^P with sum(j) == derivative_order.
+def generate_multi_indices(P: int, derivative_order: int) -> list[MultiIndex]:
+    """Generate all multi-indices j ∈ ℕ^P with sum(j) == derivative_order.
 
-    The method explores all combinations of nonnegative integers (j_1, ..., j_P)
-    such that ∑_p j_p = derivative_order. Each recursion step iterates through all
-    possible values based on the selected values of the previous recursion steps.
-    In every iteration the selected component is added to the current multi-index
-    and the remaining total is passed to the next recursion. At the last position
-    the remainder dictates the only possible value and the multi-index is returned.
+    The first component takes every value from 0 to ``derivative_order``; the
+    remaining ``P - 1`` components distribute what is left, by recursion. A
+    single component must take the whole order.
 
     Args:
         P: Length of the multi-index.
         derivative_order: Total derivative order (∑ jₚ).
-        position: Current recursion depth (index of the coordinate being filled).
-        remainder: Remaining value to distribute among remaining coordinates.
-        current: Partial multi-index under construction.
 
     Returns:
         A list of all multi-indices j ∈ ℕ^P with ∑ jₚ = derivative_order.
     """
-    remainder = derivative_order if remainder is None else remainder
-    current = [] if current is None else current
-
-    # Base case - last coordinate
-    if position == P - 1:
-        return [tuple(current + [remainder])]
-
-    results: list[MultiIndex] = []
-    for v in range(remainder + 1):
-        # flatten the returned lists
-        results.extend(
-            generate_multi_indices(
-                P, derivative_order, position + 1, remainder - v, current + [v]
-            )
-        )
-    return results
+    if P == 1:
+        return [(derivative_order,)]
+    return [
+        (v, *rest)
+        for v in range(derivative_order + 1)
+        for rest in generate_multi_indices(P - 1, derivative_order - v)
+    ]
 
 
 def generate_restricted_multi_indices(i_vec: MultiIndex) -> list[MultiIndex]:
@@ -104,9 +83,7 @@ def generate_restricted_multi_indices(i_vec: MultiIndex) -> list[MultiIndex]:
        All m with 0 <= m_p <= i_p for each p, and 0 < sum(m) <= sum(i).
     """
     return [
-        m_vec
-        for m_vec in product(*[range(int(i_p) + 1) for i_p in i_vec])
-        if sum(m_vec) > 0
+        m_vec for m_vec in product(*[range(i_p + 1) for i_p in i_vec]) if sum(m_vec) > 0
     ]
 
 
@@ -122,8 +99,6 @@ def binomi(a: Fraction, b: int) -> Fraction:
         a choose b
     """
     res = Fraction(1)
-    if b == 0:
-        return res
     for i in range(1, b + 1):
         res *= Fraction(a - (i - 1), i)
     return res
@@ -157,8 +132,6 @@ def compute_gamma_for_j(i_vec: MultiIndex, j_vec: MultiIndex) -> Fraction:
 
     for m_vec in m_vec_list:
         norm_m = sum(m_vec)
-        if norm_m == 0:
-            continue
 
         # sign = (-1)^{‖i‖₁ − ‖m‖₁}
         sign = Fraction(-1) if (norm_i - norm_m) % 2 == 1 else Fraction(1)

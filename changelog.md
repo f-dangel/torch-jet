@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([PR](https://github.com/f-dangel/torch-jet/pull/324)).
 ### Internal
 
+- `generate_multi_indices` is a two-argument recursion, the Bi-Laplacian
+  computes the weights of its three direction sets once instead of on every
+  call, and the reverse-mode reference `_rev_jet` builds its Taylor path
+  without intermediate lists
+  ([PR](https://github.com/f-dangel/torch-jet/pull/336)).
 - Layer norm with Taylor-expanded weight and bias holds one coefficient-sized
   temporary tensor less per order: it scales and shifts through the fused
   `addcmul` rule, on one code path with batch norm

@@ -79,7 +79,6 @@ from test.utils import (
     class_index_loss,
     device_kw,
     make_jet_args,
-    peak_memory,
     pick_operands,
     tolerances_for,
 )
@@ -1463,51 +1462,69 @@ def test_softmax_large_offset(fn: Callable, collapsed: bool, device: str):
     assert_close(jet_f(x_jet)[0], fn(x, 1), atol=1e-5, rtol=0)
 
 
-@mark.parametrize("K", [2, 3, 4], ids=lambda k: f"K{k}")
-def test_log_softmax_peak_memory(K: int, collapsed: bool, device: str):
-    """The streamed rule allocates no more than its output jet."""
-    rows, vocab = 512, 4096
-    x = rand(rows, vocab, device=device)
-    (x_jet,) = make_jet_args((x,), K, collapsed)
-    make = partial(jet, lambda x: log_softmax(x, 1), (x,), collapsed=collapsed)
-    logits = x.untyped_storage().nbytes()
-    outputs = sum(c.untyped_storage().nbytes() for c in x_jet)
-    slack = logits // 64  # room for the row-wise max, sums and logs
+# Shape of the operands and number of directions in the peak-memory test.
+ROWS, COLS, R = 128, 64, 4
 
-    assert peak_memory(make, x_jet) <= outputs + slack
-
-
-# ``(f, n_args, K, upper, lower)``: at ``K`` over ``R`` directions the collapsed
-# jet of ``f`` over ``n_args`` operands peaks at most at ``upper(S, RS)`` bytes,
-# the standard jet vmapped over the directions at least at ``lower(S, RS)``,
-# with ``S`` / ``RS`` the bytes of one coefficient without / with the direction
-# dim. The comments list the live tensors at each peak; the vmapped reference
-# always holds the stacked ``K``-th input it builds per operand.
+# ``(f, n_args, peaks)``: at order ``K`` the jet of ``f`` over ``n_args``
+# operands of shape ``(ROWS, COLS)`` peaks at exactly ``peaks[mode](S, RS, K)``
+# bytes, with ``S`` / ``RS`` the bytes of one coefficient without / with the
+# direction dim, so ``S // COLS`` / ``RS // COLS`` are the bytes of one value
+# per row.
+# ``"vmapped"`` is the standard jet vmapped over the directions, which the
+# collapsed jet must stay below.
 PEAK_MEMORY_CASES = {
-    # collapsed, in the reduced c_2: the primal, c_1, a_0 b_2, the (R, *S)
-    # product a_1 b_1 and its sum over R; vmapped, in c_2: the primal, c_1, the
-    # first product and two successive running sums
-    "mul": (mul, 2, 2, lambda S, RS: 2 * RS + 3 * S, lambda S, RS: 6 * RS + S),
-    # collapsed, in the reduced c_2: the primal, q_1, the (R, *S) product b_1 q_1
-    # and its sum over R; vmapped, in c_2: the primal, q_1 and two successive
-    # running sums
-    "div": (truediv, 2, 2, lambda S, RS: 2 * RS + 2 * S, lambda S, RS: 5 * RS + S),
-    # collapsed, in the reduced c_3: the primal, c_1, c_2, the summed and scaled
-    # c_1 c_2 term, the (R, *S) cube c_1 ** 3 and its sum over R; vmapped, in
-    # c_3: the primal, c_1, c_2, the cube and two successive running sums
-    "exp": (exp, 1, 3, lambda S, RS: 3 * RS + 3 * S, lambda S, RS: 6 * RS + S),
+    "mul": (
+        mul,
+        2,
+        {
+            "standard": lambda S, RS, K: (K + 3) * S,
+            "collapsed": lambda S, RS, K: (K + 1) * RS + S if K > 2 else 2 * RS + 3 * S,
+            "vmapped": lambda S, RS, K: (K + 4) * RS + S,
+        },
+    ),
+    "div": (
+        truediv,
+        2,
+        {
+            "standard": lambda S, RS, K: (K + 2) * S,
+            "collapsed": lambda S, RS, K: K * RS + (4 if K > 2 else 2) * S,
+            "vmapped": lambda S, RS, K: (K + 3) * RS + S,
+        },
+    ),
+    "exp": (
+        exp,
+        1,
+        {
+            "standard": lambda S, RS, K: (K + 3 - (K == 2)) * S,
+            "collapsed": lambda S, RS, K: (
+                {2: 2, 3: 3, 4: 5, 5: 6}[K] * RS + (3 if K == 3 else 2) * S
+            ),
+            "vmapped": lambda S, RS, K: (K + 3 - (K == 2)) * RS + S,
+        },
+    ),
+    "log_softmax": (
+        lambda x: log_softmax(x, 1),
+        1,
+        {
+            "standard": lambda S, RS, K: (K + 1) * S + (K + 2) * S // COLS,
+            "collapsed": lambda S, RS, K: (
+                (K - 1) * (RS + RS // COLS) + 2 * S + 3 * S // COLS
+            ),
+            "vmapped": lambda S, RS, K: (K + 1) * RS + 2 * S,
+        },
+    ),
 }
 
 
-@mark.parametrize(
-    "f, n_args, K, upper, lower", PEAK_MEMORY_CASES.values(), ids=PEAK_MEMORY_CASES
-)
+@mark.parametrize("K", [2, 3, 4, 5], ids=lambda k: f"K{k}")
+@mark.parametrize("mode", ["standard", "collapsed", "vmapped"])
+@mark.parametrize("f, n_args, peaks", PEAK_MEMORY_CASES.values(), ids=PEAK_MEMORY_CASES)
 def test_peak_memory(
-    f: Callable, n_args: int, K: int, upper: Callable, lower: Callable, device: str
+    f: Callable, n_args: int, peaks: dict[str, Callable], mode: str, K: int, device: str
 ):
-    """The collapsed rule holds fewer direction-sized tensors than ``vmap``."""
-    args = tuple(rand(64, 64, device=device) for _ in range(n_args))
-    assert_peak_memory(f, args, K, 4, upper, lower)
+    """The jet of ``f`` allocates exactly the tabulated bytes at its peak."""
+    args = tuple(rand(ROWS, COLS, device=device) for _ in range(n_args))
+    assert_peak_memory(f, args, K, R, mode, peaks[mode])
 
 
 @mark.parametrize("dtype", [float16, bfloat16], ids=["float16", "bfloat16"])

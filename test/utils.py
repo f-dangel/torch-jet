@@ -180,34 +180,16 @@ class DifferentiableSubstitutes(TorchFunctionMode):
         return func(*args, **kwargs)
 
 
-def peak_memory(make: Callable[[], Callable], *args: Any) -> int:
-    """Measure the bytes ``make()(*args)`` allocates at its peak.
+def _cuda_peak(f: Callable, *args: Any) -> int:
+    """Measure the peak of ``f(*args)`` with the CUDA allocator's peak counter."""
+    reset_peak_memory_stats()
+    before = memory_allocated()
+    f(*args)
+    return max_memory_allocated() - before
 
-    Counts what the device's allocator hands out beyond what is live before
-    the call, so copies a kernel makes of its operands are included. A first
-    instance from ``make`` is called once and thrown away: persistent
-    workspaces (e.g. cuBLAS) then exist, and nothing that instance retains is
-    live. A second, never-called instance is measured.
 
-    Args:
-        make: Builds the function to measure, e.g. traces a jet.
-        *args: The function's arguments; their first tensor sets the device.
-
-    Returns:
-        The peak in bytes: on CUDA from the allocator's peak counter, on CPU
-        from the profiler's allocation events.
-    """
-    (device,) = {t.device.type for t in tree_leaves(args) if isinstance(t, Tensor)}
-    if device not in {"cpu", "cuda"}:
-        skip(f"No allocator peak on {device}.")
-    make()(*args)
-    f = make()
-    collect()
-    if device == "cuda":
-        reset_peak_memory_stats()
-        before = memory_allocated()
-        f(*args)
-        return max_memory_allocated() - before
+def _cpu_peak(f: Callable, *args: Any) -> int:
+    """Measure the peak of ``f(*args)`` from the profiler's allocation events."""
     with profile(activities=[ProfilerActivity.CPU], profile_memory=True) as prof:
         f(*args)
     events, nodes = [], list(prof.profiler.kineto_results.experimental_event_tree())
@@ -225,6 +207,31 @@ def peak_memory(make: Callable[[], Callable], *args: Any) -> int:
         live += size
         peak = max(peak, live)
     return peak
+
+
+def peak_memory(make: Callable[[], Callable], *args: Any) -> int:
+    """Measure the bytes ``make()(*args)`` allocates at its peak.
+
+    Counts what the device's allocator hands out beyond what is live before
+    the call, so copies a kernel makes of its operands are included. A first
+    instance from ``make`` is called once and thrown away: persistent
+    workspaces (e.g. cuBLAS) then exist, and nothing that instance retains is
+    live. A second, never-called instance is measured.
+
+    Args:
+        make: Builds the function to measure, e.g. traces a jet.
+        *args: The function's arguments; their tensors share one device.
+
+    Returns:
+        The peak in bytes.
+    """
+    (device,) = {t.device.type for t in tree_leaves(args) if isinstance(t, Tensor)}
+    if device not in {"cpu", "cuda"}:
+        skip(f"No allocator peak on {device}.")
+    make()(*args)
+    f = make()
+    collect()
+    return {"cpu": _cpu_peak, "cuda": _cuda_peak}[device](f, *args)
 
 
 def pick_operands(args: tuple, codes: str, consts: tuple) -> list:

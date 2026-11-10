@@ -366,6 +366,8 @@ def _affine(
     bias: Tensor | JetTuple | None,
 ) -> Tensor | JetTuple:
     """``out * weight + bias`` for optional (``None`` = absent) broadcastable params."""
+    if weight is not None and bias is not None:
+        return addcmul(bias, out, weight)
     if weight is not None:
         out = _rule(ops.aten.mul.Tensor)(out, weight)
     if bias is not None:
@@ -432,11 +434,8 @@ def native_batch_norm(
     shape = _bn_channel_view(primal)
     rstd = view((running_var + eps).rsqrt(), shape)
     scale = rstd if weight is None else mul(view(weight, shape), rstd)
-    centered = sub(input, view(running_mean, shape))
-    if bias is None:
-        out = mul(centered, scale)
-    else:
-        out = addcmul(view(bias, shape), centered, scale)
+    shift = None if bias is None else view(bias, shape)
+    out = _affine(sub(input, view(running_mean, shape)), scale, shift)
     empty = primal.new_empty(0)
     return out, empty, empty
 

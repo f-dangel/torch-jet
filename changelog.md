@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   less per order: the summand starts each Leibniz sum, so the product's jet
   never exists on its own
   ([PR](https://github.com/f-dangel/torch-jet/pull/332)).
+- A collapsed matrix product whose matrix is shared by all directions holds
+  one direction-sized temporary tensor less: the product joins the running
+  sum in one out-of-place `addmm`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/331)).
 - Elementwise rules hold one temporary tensor less per Faà di Bruno term: a
   partition's product joins the running sum, scaled by the outer derivative,
   in one out-of-place `addcmul`, and the product-free single-block term joins

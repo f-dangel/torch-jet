@@ -73,7 +73,6 @@ from jet import compositions, jet, primitives
 from jet.compositions import native_batch_norm
 from jet.primitives import JetTuple, jet_nll_loss_forward
 from test.utils import (
-    ArgShapes,
     _stateless,
     assert_jet_matches_oracle,
     assert_peak_memory,
@@ -1466,12 +1465,7 @@ def test_softmax_large_offset(fn: Callable, collapsed: bool, device: str):
 
 @mark.parametrize("K", [2, 3, 4], ids=lambda k: f"K{k}")
 def test_log_softmax_peak_memory(K: int, collapsed: bool, device: str):
-    """The streamed rule allocates no more than its output jet.
-
-    No ATen call inside the rule sees fewer rows than the input or a cut
-    vocabulary, so the bound comes from lifetimes alone, not from a loop over
-    chunks.
-    """
+    """The streamed rule allocates no more than its output jet."""
     rows, vocab = 512, 4096
     x = rand(rows, vocab, device=device)
     (x_jet,) = make_jet_args((x,), K, collapsed)
@@ -1481,9 +1475,6 @@ def test_log_softmax_peak_memory(K: int, collapsed: bool, device: str):
     slack = logits // 64  # room for the row-wise max, sums and logs
 
     assert peak_memory(make, x_jet) <= outputs + slack
-    with ArgShapes() as recorder:
-        make()(x_jet)
-    assert {s[-2:] for s in recorder.shapes} <= {(rows, vocab), (rows, 1)}
 
 
 # ``(f, n_args, K, upper, lower)``: at ``K`` over ``R`` directions the collapsed

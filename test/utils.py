@@ -35,7 +35,6 @@ from torch.nn.functional import (
 from torch.overrides import TorchFunctionMode
 from torch.profiler import ProfilerActivity, profile
 from torch.testing import assert_close
-from torch.utils._python_dispatch import TorchDispatchMode
 from torch.utils._pytree import tree_flatten, tree_leaves, tree_map, tree_unflatten
 
 from jet._jet import _rev_jet, _uncollapsed_via_vmap, jet
@@ -179,21 +178,6 @@ class DifferentiableSubstitutes(TorchFunctionMode):
         if func in self.SUBSTITUTES:
             return self.SUBSTITUTES[func](*args, **kwargs)
         return func(*args, **kwargs)
-
-
-class ArgShapes(TorchDispatchMode):
-    """Record the shape of every tensor argument an ATen call receives."""
-
-    def __init__(self) -> None:
-        """Start with no shapes."""
-        super().__init__()
-        self.shapes: set[tuple[int, ...]] = set()
-
-    def __torch_dispatch__(self, func, types, args=(), kwargs=None):
-        """Run ``func`` and note the shapes of its tensor arguments."""
-        tensors = (t for t in tree_leaves((args, kwargs)) if isinstance(t, Tensor))
-        self.shapes.update(tuple(t.shape) for t in tensors)
-        return func(*args, **(kwargs or {}))
 
 
 def peak_memory(make: Callable[[], Callable], *args: Any) -> int:

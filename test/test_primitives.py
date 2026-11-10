@@ -1486,33 +1486,37 @@ def test_log_softmax_peak_memory(K: int, collapsed: bool, device: str):
     assert {s[-2:] for s in tracker.arg_shapes} <= {(rows, vocab), (rows, 1)}
 
 
-# ``(f, K, upper, lower)``: at ``K`` over ``R`` directions the collapsed jet of
-# ``f`` peaks at most at ``upper(S, RS)`` bytes, the standard jet vmapped over
-# the directions at least at ``lower(S, RS)``, with ``S`` / ``RS`` the bytes of
-# one coefficient without / with the direction dim. The comments list the live
-# tensors at each peak; the vmapped reference always holds the two stacked
-# ``K``-th inputs it builds.
+# ``(f, n_args, K, upper, lower)``: at ``K`` over ``R`` directions the collapsed
+# jet of ``f`` over ``n_args`` operands peaks at most at ``upper(S, RS)`` bytes,
+# the standard jet vmapped over the directions at least at ``lower(S, RS)``,
+# with ``S`` / ``RS`` the bytes of one coefficient without / with the direction
+# dim. The comments list the live tensors at each peak; the vmapped reference
+# always holds the stacked ``K``-th input it builds per operand.
 PEAK_MEMORY_CASES = {
     # collapsed, in the reduced c_2: the primal, c_1, a_0 b_2, the (R, *S)
     # product a_1 b_1 and its sum over R; vmapped, in c_2: the primal, c_1, the
     # first product and two successive running sums
-    "mul": (mul, 2, lambda S, RS: 2 * RS + 3 * S, lambda S, RS: 6 * RS + S),
+    "mul": (mul, 2, 2, lambda S, RS: 2 * RS + 3 * S, lambda S, RS: 6 * RS + S),
     # collapsed, in c_1: the primal, the sum a_1 - b_1 q_0 and the quotient q_1
     # (the reduced c_2 sums b_1 q_1 over R inside einsum and never forms it);
     # vmapped, in c_2: the primal, q_1 and two successive running sums
-    "div": (truediv, 2, lambda S, RS: 2 * RS + S, lambda S, RS: 5 * RS + S),
+    "div": (truediv, 2, 2, lambda S, RS: 2 * RS + S, lambda S, RS: 5 * RS + S),
+    # collapsed, in the reduced c_3: the primal, c_1, c_2, the summed and scaled
+    # c_1 c_2 term, the (R, *S) cube c_1 ** 3 and its sum over R; vmapped, in
+    # c_3: the primal, c_1, c_2, the cube and two successive running sums
+    "exp": (exp, 1, 3, lambda S, RS: 3 * RS + 3 * S, lambda S, RS: 6 * RS + S),
 }
 
 
 @mark.parametrize(
-    "f, K, upper, lower", PEAK_MEMORY_CASES.values(), ids=PEAK_MEMORY_CASES
+    "f, n_args, K, upper, lower", PEAK_MEMORY_CASES.values(), ids=PEAK_MEMORY_CASES
 )
 def test_peak_memory(
-    f: Callable, K: int, upper: Callable, lower: Callable, device: str
+    f: Callable, n_args: int, K: int, upper: Callable, lower: Callable, device: str
 ):
     """The collapsed rule holds fewer direction-sized tensors than ``vmap``."""
-    x, y = rand(64, 64, device=device), rand(64, 64, device=device)
-    assert_peak_memory(f, (x, y), K, 4, upper, lower)
+    args = tuple(rand(64, 64, device=device) for _ in range(n_args))
+    assert_peak_memory(f, args, K, 4, upper, lower)
 
 
 @mark.parametrize("dtype", [float16, bfloat16], ids=["float16", "bfloat16"])

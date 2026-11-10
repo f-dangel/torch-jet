@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   directions with `mul` and `sum` again instead of an `einsum` contraction,
   which on CUDA copies both operands into a batched-matmul layout and so costs
   one direction-sized tensor more, not less, and runs slower
-  ([PR](https://github.com/f-dangel/torch-jet/pull/PRNUM)).
+  ([PR](https://github.com/f-dangel/torch-jet/pull/326)).
 - Elementwise rules hold one temporary tensor less per Faà di Bruno term: a
   partition's product joins the running sum, scaled by the outer derivative,
   in one out-of-place `addcmul`, and the product-free single-block term joins

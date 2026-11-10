@@ -17,20 +17,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([PR](https://github.com/f-dangel/torch-jet/pull/324)).
 ### Internal
 
-- The peak-memory tests measure with the device's allocator (the profiler's
-  allocation events on CPU, the peak counter on CUDA) instead of counting the
-  tensors each ATen call returns, so they also see the copies a kernel makes
-  of its operands, such as the batched-matmul copies of an `einsum` on CUDA
-  ([PR](https://github.com/f-dangel/torch-jet/pull/327)).
 - Elementwise rules hold one temporary tensor less per Faà di Bruno term: a
   partition's product joins the running sum, scaled by the outer derivative,
   in one out-of-place `addcmul`, and the product-free single-block term joins
   last
   ([PR](https://github.com/f-dangel/torch-jet/pull/322)).
 - The peak-memory tests share one `assert_peak_memory` helper and one case
-  table, and their lower bounds on the vmapped reference equal its measured
-  peak
-  ([PR](https://github.com/f-dangel/torch-jet/pull/325)).
+  table, their lower bounds on the vmapped reference equal its measured
+  peak, and they measure with the device's allocator (the profiler's
+  allocation events on CPU, the peak counter on CUDA), which also sees the
+  copies a kernel makes of its operands, such as the batched-matmul copies of
+  an `einsum` on CUDA
+  ([PR](https://github.com/f-dangel/torch-jet/pull/315),
+  [PR](https://github.com/f-dangel/torch-jet/pull/325),
+  [PR](https://github.com/f-dangel/torch-jet/pull/327)).
 - Collapsed-mode division holds two direction-sized temporary tensors less:
   the binomial factor scales the reduced term after its sum over the
   directions, and an unreduced term joins the running sum in one `addcmul`
@@ -48,9 +48,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the Leibniz rule scales a term by its binomial factor after, not before,
   summing it over the directions
   ([PR](https://github.com/f-dangel/torch-jet/pull/317)).
-- `StorageTracker` tells views from new storages by storage identity, which
-  also holds under `vmap`
-  ([PR](https://github.com/f-dangel/torch-jet/pull/315)).
 - Test the improved memory consumption of the streamed `log_softmax` rule
   ([PR](https://github.com/f-dangel/torch-jet/pull/313)).
 - The `log_softmax` rule streams the exp jet through its row sums, so it

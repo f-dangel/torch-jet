@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([PR](https://github.com/f-dangel/torch-jet/pull/324)).
 ### Internal
 
+- The peak-memory tests share one `assert_peak_memory` helper and one case
+  table, and their lower bounds on the vmapped reference equal its measured
+  peak
+  ([PR](https://github.com/f-dangel/torch-jet/pull/325)).
 - Collapsed-mode division holds two direction-sized temporary tensors less:
   the reduced term's product is summed over the directions inside one
   `einsum`, and an unreduced term joins the running sum in one `addcmul`

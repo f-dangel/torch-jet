@@ -22,6 +22,7 @@ from typing import Callable, Self
 from scipy.special import comb, factorial, stirling2
 from torch import (
     Tensor,
+    addcmul,
     cat,
     cos,
     einsum,
@@ -366,41 +367,46 @@ def _leibniz(
         )
     K = len(self) - 1
     collapsed = self.collapsed
+    fused = binary_op is mul  # elementwise: a term can join the sum in one op
 
-    def product(j: int, k: int) -> Tensor | None:
-        """``binary_op(self[j], other[k - j])``, vmapped over ``R`` if batched.
+    def in_dims(*orders: int) -> tuple[int | None, ...]:
+        """``0`` for each coefficient order that carries ``R``, else ``None``."""
+        return tuple(0 if _is_batched(i, K, collapsed) else None for i in orders)
 
-        ``binary_op`` may be an op (``conv``) that cannot broadcast over a leading
-        batch dim, so ``R`` is mapped explicitly per direction. When neither
-        operand is batched (all of standard mode, plus the collapsed linear
-        terms) it is a plain call. A symbolic-zero factor makes the term
-        ``None`` (dropped by the caller).
+    def apply(op: Callable[..., Tensor], dims: tuple[int | None, ...], *args):
+        """Apply ``op``, vmapped over ``R`` if any argument carries it.
+
+        ``op`` may be one (``conv``) that cannot broadcast over a leading batch
+        dim, so ``R`` is mapped explicitly per direction. When no argument is
+        batched (all of standard mode, plus the collapsed linear terms) it is a
+        plain call.
         """
-        a, b = self[j], other[k - j]
-        if a is None or b is None:
-            return None
-        a_batched = _is_batched(j, K, collapsed)
-        b_batched = _is_batched(k - j, K, collapsed)
-        if not (a_batched or b_batched):
-            return binary_op(a, b)
-        in_dims = (0 if a_batched else None, 0 if b_batched else None)
-        return vmap(binary_op, in_dims=in_dims)(a, b)
+        return op(*args) if set(dims) == {None} else vmap(op, in_dims=dims)(*args)
 
     coeffs = ()
     for k in range(1, K + 1):
         term = None
         for j in range(k + 1):
-            term_j = product(j, k)
-            if term_j is None:
-                continue
+            a, b = self[j], other[k - j]
+            if a is None or b is None:
+                continue  # a symbolic-zero factor: the term vanishes
+            c = comb(k, j, exact=True)
             # The collapsed K-th coefficient carries no R, so reduce its batched
             # (R-carrying) terms over the direction dim; standard never enters.
-            if k == K and _is_batched(j, K, collapsed):
+            reduced = k == K and _is_batched(j, K, collapsed)
+            if fused and term is not None and not reduced:
+                # The term joins the sum in one out-of-place op, so the product
+                # never exists on its own.
+                op = partial(addcmul, value=c)
+                term = apply(op, in_dims(k, j, k - j), term, a, b)
+                continue
+            term_j = apply(binary_op, in_dims(j, k - j), a, b)
+            if reduced:
                 term_j = term_j.sum(0)
             # Scale after the reduction, so the scaled copy is never R-sized, and
             # skip the multiply when the binomial factor is 1 (most terms, all
             # but the middle one at K=2): fewer graph nodes, same values.
-            if (c := comb(k, j, exact=True)) != 1:
+            if c != 1:
                 term_j = c * term_j
             term = term_j if term is None else term + term_j
         coeffs += (term,)  # ``None`` iff every term vanished: a symbolic zero
@@ -1088,7 +1094,7 @@ def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
     Returns:
         The value and its Taylor coefficients.
     """
-    return _apply_bilinear(lambda a, b: a * b, self, other)
+    return _apply_bilinear(mul, self, other)
 
 
 def jet_div(

@@ -70,13 +70,13 @@ from torch.nn.functional import (
 from torch.testing import assert_close
 
 from jet import compositions, jet, primitives
-from jet._jet import _uncollapsed_via_vmap
 from jet.compositions import native_batch_norm
 from jet.primitives import JetTuple, jet_nll_loss_forward
 from test.utils import (
     StorageTracker,
     _stateless,
     assert_jet_matches_oracle,
+    assert_peak_memory,
     class_index_loss,
     device_kw,
     make_jet_args,
@@ -1486,62 +1486,33 @@ def test_log_softmax_peak_memory(K: int, collapsed: bool, device: str):
     assert {s[-2:] for s in tracker.arg_shapes} <= {(rows, vocab), (rows, 1)}
 
 
-def test_mul_peak_memory(device: str):
-    """The collapsed ``mul`` rule holds fewer direction-sized tensors than ``vmap``.
+# ``(f, K, upper, lower)``: at ``K`` over ``R`` directions the collapsed jet of
+# ``f`` peaks at most at ``upper(S, RS)`` bytes, the standard jet vmapped over
+# the directions at least at ``lower(S, RS)``, with ``S`` / ``RS`` the bytes of
+# one coefficient without / with the direction dim. The comments list the live
+# tensors at each peak; the vmapped reference always holds the two stacked
+# ``K``-th inputs it builds.
+PEAK_MEMORY_CASES = {
+    # collapsed, in the reduced c_2: the primal, c_1, a_0 b_2, the (R, *S)
+    # product a_1 b_1 and its sum over R; vmapped, in c_2: the primal, c_1, the
+    # first product and two successive running sums
+    "mul": (mul, 2, lambda S, RS: 2 * RS + 3 * S, lambda S, RS: 6 * RS + S),
+    # collapsed, in c_1: the primal, the sum a_1 - b_1 q_0 and the quotient q_1
+    # (the reduced c_2 sums b_1 q_1 over R inside einsum and never forms it);
+    # vmapped, in c_2: the primal, q_1 and two successive running sums
+    "div": (truediv, 2, lambda S, RS: 2 * RS + S, lambda S, RS: 5 * RS + S),
+}
 
-    At ``K = 2`` over ``R`` directions, the collapsed rule peaks in the
-    reduced second-order coefficient: ``c_1`` and the ``(R, *S)`` product
-    ``a_1 b_1`` next to the ``S``-sized primal, ``a_0 b_2`` and the sum over
-    ``R``. The first-order coefficient ``a_0 b_1 + a_1 b_0`` holds only the
-    first product and the fused sum. The standard rule vmapped over the
-    directions peaks with at least four ``(R, *S)`` tensors.
-    """
-    R, K = 4, 2
+
+@mark.parametrize(
+    "f, K, upper, lower", PEAK_MEMORY_CASES.values(), ids=PEAK_MEMORY_CASES
+)
+def test_peak_memory(
+    f: Callable, K: int, upper: Callable, lower: Callable, device: str
+):
+    """The collapsed rule holds fewer direction-sized tensors than ``vmap``."""
     x, y = rand(64, 64, device=device), rand(64, 64, device=device)
-    a, b = make_jet_args((x, y), K, True, R)
-    S, RS = (c.untyped_storage().nbytes() for c in a[:2])
-    upper, lower = 2 * RS + 3 * S, 4 * RS + S  # collapsed at most, vmapped at least
-    assert upper < lower  # the two modes cannot pass with the same peak
-    collapsed = jet(mul, (x, y), collapsed=True)  # trace outside the tracker
-    vmapped = _uncollapsed_via_vmap(mul, (x, y), None)
-
-    with StorageTracker() as tracker:
-        collapsed(a, b)
-    assert tracker.peak <= upper
-
-    with StorageTracker() as tracker:
-        vmapped(a, b)
-    assert tracker.peak >= lower
-
-
-def test_div_peak_memory(device: str):
-    """The collapsed ``div`` rule holds fewer direction-sized tensors than ``vmap``.
-
-    At ``K = 2`` over ``R`` directions, the collapsed rule peaks in the
-    first-order coefficient: the sum ``a_1 - b_1 q_0`` and the quotient
-    ``q_1`` it is divided into, two ``(R, *S)`` tensors, next to the
-    ``S``-sized primal. The reduced second-order coefficient holds ``q_1`` and
-    ``S``-sized terms only, since the product ``b_1 q_1`` is summed over ``R``
-    inside ``einsum`` and never formed. The standard rule vmapped over the
-    directions holds the two stacked second-order inputs it builds and its
-    three per-direction outputs, five ``(R, *S)`` tensors.
-    """
-    R, K = 4, 2
-    x, y = rand(64, 64, device=device), rand(64, 64, device=device)
-    a, b = make_jet_args((x, y), K, True, R)
-    S, RS = (c.untyped_storage().nbytes() for c in a[:2])
-    upper, lower = 2 * RS + S, 5 * RS  # collapsed at most, vmapped at least
-    assert upper < lower  # the two modes cannot pass with the same peak
-    collapsed = jet(truediv, (x, y), collapsed=True)  # trace outside the tracker
-    vmapped = _uncollapsed_via_vmap(truediv, (x, y), None)
-
-    with StorageTracker() as tracker:
-        collapsed(a, b)
-    assert tracker.peak <= upper
-
-    with StorageTracker() as tracker:
-        vmapped(a, b)
-    assert tracker.peak >= lower
+    assert_peak_memory(f, (x, y), K, 4, upper, lower)
 
 
 @mark.parametrize("dtype", [float16, bfloat16], ids=["float16", "bfloat16"])

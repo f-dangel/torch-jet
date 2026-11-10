@@ -35,7 +35,7 @@ from torch.testing import assert_close
 from torch.utils._python_dispatch import TorchDispatchMode
 from torch.utils._pytree import tree_flatten, tree_leaves, tree_map, tree_unflatten
 
-from jet._jet import _rev_jet, jet
+from jet._jet import _rev_jet, _uncollapsed_via_vmap, jet
 from jet.utils import _is_jet_leaf
 
 
@@ -368,6 +368,48 @@ def vjp_case(config: dict[str, Any]) -> dict[str, Any]:
         return (*args, tree_map(rand_like, f(*args)))
 
     return {**config, "f": build, "args_fn": args_fn}
+
+
+def assert_peak_memory(
+    f: Callable[..., Tensor],
+    args: tuple[Tensor, ...],
+    K: int,
+    R: int,
+    upper: Callable[[int, int], int],
+    lower: Callable[[int, int], int],
+) -> None:
+    """Bound the peak memory of the collapsed jet of ``f`` and of its reference.
+
+    The collapsed jet allocates at most ``upper(S, RS)`` bytes at its peak and
+    the standard jet vmapped over the directions (``_uncollapsed_via_vmap``)
+    at least ``lower(S, RS)``, where ``S`` / ``RS`` are the bytes of one
+    coefficient without / with the leading direction dim. ``upper`` must lie
+    below ``lower``, so the two modes cannot both pass with the same peak.
+    Both jets are traced before tracking starts, as tracing cannot run under
+    the tracker.
+
+    Args:
+        f: The function to jet; every argument is Taylor-expanded.
+        args: Its positional mock arguments.
+        K: The derivative order.
+        R: The number of directions.
+        upper: ``(S, RS) -> bytes``, the collapsed jet's peak at most.
+        lower: ``(S, RS) -> bytes``, the vmapped standard jet's peak at least.
+    """
+    jet_args = make_jet_args(args, K, True, R)
+    S, RS = (c.untyped_storage().nbytes() for c in jet_args[0][:2])
+    upper, lower = upper(S, RS), lower(S, RS)
+    assert upper < lower
+    collapsed = jet(f, args, collapsed=True)
+    vmapped = _uncollapsed_via_vmap(f, args, None)
+
+    with StorageTracker() as tracker:
+        collapsed(*jet_args)
+    assert tracker.peak <= upper
+
+    with StorageTracker() as tracker:
+        vmapped(*jet_args)
+    assert tracker.peak >= lower
 
 
 def make_jet_args(

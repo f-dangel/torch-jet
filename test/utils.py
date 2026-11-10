@@ -16,6 +16,7 @@ from torch import (
     rand_like,
     randint,
     sigmoid,
+    sin,
     softmax,
     stack,
     where,
@@ -308,6 +309,12 @@ SCALAR_OUTPUT_CASES = [
         "f": _stateless(lambda x: sigmoid(sigmoid(x))),
         "args_fn": lambda: (rand(3),),
         "id": "sigmoid-sigmoid",
+    },
+    # a product: its nested jet meets the fused ``addcmul`` of the Leibniz rule
+    {
+        "f": _stateless(lambda x: x * sin(x)),
+        "args_fn": lambda: (rand(3),),
+        "id": "x-sin-x",
     },
 ]
 

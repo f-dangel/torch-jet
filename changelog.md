@@ -27,9 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   peak
   ([PR](https://github.com/f-dangel/torch-jet/pull/325)).
 - Collapsed-mode division holds two direction-sized temporary tensors less:
-  the reduced term's product is summed over the directions inside one
-  `einsum`, and an unreduced term joins the running sum in one `addcmul`
-  ([PR](https://github.com/f-dangel/torch-jet/pull/319)).
+  the binomial factor scales the reduced term after its sum over the
+  directions, and an unreduced term joins the running sum in one `addcmul`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/319),
+  [PR](https://github.com/f-dangel/torch-jet/pull/326)).
 - Elementwise products hold one temporary tensor less per Leibniz term: a
   product joins the running sum in one out-of-place `addcmul` instead of
   being formed first

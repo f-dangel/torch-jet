@@ -25,7 +25,6 @@ from torch import (
     addcmul,
     cat,
     cos,
-    einsum,
     erf,
     exp,
     log,
@@ -1109,9 +1108,10 @@ def jet_div(
                 continue  # a symbolic-zero factor: the term vanishes
             c = comb(k, j, exact=True)
             if k == K and _is_batched(j, K, collapsed):
-                # The sum over R is folded into the product: no (R, *S) term,
-                # and the binomial factor scales the reduced sum only.
-                term = einsum("r...,r...->...", b_j, q_kj)
+                # Sum the product over R first: the binomial factor scales the
+                # reduced sum only. (An ``einsum`` contraction instead copies
+                # both operands into a batched-matmul layout on CUDA.)
+                term = (b_j * q_kj).sum(0)
                 acc = -c * term if acc is None else acc.sub(term, alpha=c)
             elif acc is None:
                 acc = -c * (b_j * q_kj)

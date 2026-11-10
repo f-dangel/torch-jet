@@ -1497,10 +1497,10 @@ PEAK_MEMORY_CASES = {
     # product a_1 b_1 and its sum over R; vmapped, in c_2: the primal, c_1, the
     # first product and two successive running sums
     "mul": (mul, 2, 2, lambda S, RS: 2 * RS + 3 * S, lambda S, RS: 6 * RS + S),
-    # collapsed, in c_1: the primal, the sum a_1 - b_1 q_0 and the quotient q_1
-    # (the reduced c_2 sums b_1 q_1 over R inside einsum and never forms it);
-    # vmapped, in c_2: the primal, q_1 and two successive running sums
-    "div": (truediv, 2, 2, lambda S, RS: 2 * RS + S, lambda S, RS: 5 * RS + S),
+    # collapsed, in the reduced c_2: the primal, q_1, the (R, *S) product b_1 q_1
+    # and its sum over R; vmapped, in c_2: the primal, q_1 and two successive
+    # running sums
+    "div": (truediv, 2, 2, lambda S, RS: 2 * RS + 2 * S, lambda S, RS: 5 * RS + S),
     # collapsed, in the reduced c_3: the primal, c_1, c_2, the summed and scaled
     # c_1 c_2 term, the (R, *S) cube c_1 ** 3 and its sum over R; vmapped, in
     # c_3: the primal, c_1, c_2, the cube and two successive running sums

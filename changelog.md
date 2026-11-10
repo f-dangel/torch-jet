@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([PR](https://github.com/f-dangel/torch-jet/pull/324)).
 ### Internal
 
+- The primitive tests draw the primals of their jet operands with one
+  `rand_jet_args` helper instead of five hand-written copies, an unused test
+  helper is gone, and the validation tests' `_ones_args`, which builds zeros,
+  is called `_zero_jet`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/338)).
 - Layer norm with Taylor-expanded weight and bias holds one coefficient-sized
   temporary tensor less per order: it scales and shifts through the fused
   `addcmul` rule, on one code path with batch norm

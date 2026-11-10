@@ -1,7 +1,7 @@
 """Utility functions for testing."""
 
 from gc import collect
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 from pytest import raises, skip
 from torch import (
@@ -251,6 +251,19 @@ def pick_operands(args: tuple, codes: str, consts: tuple) -> list:
         next(it) if code == "J" else (const if code == "C" else None)
         for code, const in zip(codes, consts)
     ]
+
+
+def rand_jet_args(codes: str, shapes: Sequence[tuple[int, ...]]) -> tuple[Tensor, ...]:
+    """Draw a random tensor for every operand that ``codes`` marks as a jet.
+
+    Args:
+        codes: One letter per operand, as in :func:`pick_operands`.
+        shapes: The operands' shapes, one per operand.
+
+    Returns:
+        The primals of the ``"J"`` operands, in operand order.
+    """
+    return tuple(rand(*shape) for code, shape in zip(codes, shapes) if code == "J")
 
 
 def _stateless(f: Callable) -> Callable[[str], Callable]:

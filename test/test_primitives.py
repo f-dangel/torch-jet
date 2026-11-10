@@ -1502,7 +1502,6 @@ PEAK_MEMORY_CASES = {
             "vmapped": lambda S, RS, K: (K + 3 - (K == 2)) * RS + S,
         },
     ),
-    # streamed: beyond the output jet only row-sized maxima, sums and logs
     "log_softmax": (
         lambda x: log_softmax(x, 1),
         1,

@@ -1473,6 +1473,14 @@ ROWS, COLS, R = 128, 64, 4
 # per row.
 # ``"vmapped"`` is the standard jet vmapped over the directions, which the
 # collapsed jet must stay below.
+# Layer norm's peak moves between its steps as ``K`` grows, so it has no closed
+# form: ``K -> (coefficients, rows)`` in bytes ``S`` / ``S // COLS``, at ``R = 4``.
+LAYER_NORM_PEAKS = {
+    "standard": {2: (8, 6), 3: (11, 4), 4: (14, 5), 5: (16, 6)},
+    "collapsed": {2: (17, 12), 3: (27, 20), 4: (36, 14), 5: (48, 18)},
+    "vmapped": {2: (38, 18), 3: (47, 13), 4: (59, 17), 5: (67, 21)},
+}
+
 PEAK_MEMORY_CASES = {
     "mul": (
         mul,
@@ -1510,6 +1518,17 @@ PEAK_MEMORY_CASES = {
                 {2: 2, 3: 3, 4: 5, 5: 6}[K] * RS + (3 if K == 3 else 2) * S
             ),
             "vmapped": lambda S, RS, K: (K + 3 - (K == 2)) * RS + S,
+        },
+    ),
+    # weight and bias are Taylor-expanded, too: the first row of an operand
+    "layer_norm": (
+        lambda x, w, b: layer_norm(x, (COLS,), w[0], b[0]),
+        3,
+        {
+            mode: lambda S, RS, K, peaks=peaks: (
+                peaks[K][0] * S + peaks[K][1] * S // COLS
+            )
+            for mode, peaks in LAYER_NORM_PEAKS.items()
         },
     ),
     "log_softmax": (

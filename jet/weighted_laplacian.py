@@ -101,7 +101,7 @@ def get_weighting(
         apply_weighting = partial(apply_S_func_diagonal_increments, fx_info=fx_info)
         return apply_weighting, rank_weighting
 
-    elif weights is None:
+    if weights is None:
         return None
 
     raise ValueError(f"Unknown weights option {weights=}.")

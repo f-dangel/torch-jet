@@ -324,7 +324,10 @@ def _pointwise(
 
 
 def _leibniz(
-    self: JetTuple, other: JetTuple, binary_op: Callable[[Tensor, Tensor], Tensor]
+    self: JetTuple,
+    other: JetTuple,
+    binary_op: Callable[[Tensor, Tensor], Tensor],
+    summand: JetTuple | None = None,
 ) -> tuple[Tensor, ...]:
     """Apply the Leibniz product rule for a bilinear ``binary_op`` (orders 1..K).
 
@@ -352,6 +355,9 @@ def _leibniz(
         other: The second operand jet (same length as ``self``).
         binary_op: A bilinear function from two coefficient tensors to a tensor
             (e.g. elementwise ``*``, or ``torch.matmul``).
+        summand: A jet to add to the product, of the same order. Its
+            coefficients start the sums, so the product's never exist on their
+            own. Default: ``None``.
 
     Returns:
         The Taylor coefficients of orders 1..K (a tuple of length ``K``).
@@ -384,7 +390,7 @@ def _leibniz(
 
     coeffs = ()
     for k in range(1, K + 1):
-        term = None
+        term = None if summand is None else summand[k]
         for j in range(k + 1):
             a, b = self[j], other[k - j]
             if a is None or b is None:
@@ -1069,6 +1075,25 @@ def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
         The value and its Taylor coefficients.
     """
     return _apply_bilinear(mul, self, other)
+
+
+def jet_addcmul(self: JetTuple, tensor1: JetTuple, tensor2: JetTuple) -> JetTuple:
+    """Taylor-mode arithmetic for ``self + tensor1 * tensor2`` on three jets.
+
+    The summand starts each Leibniz sum (:func:`_leibniz`), so the jet of the
+    product never exists on its own.
+
+    Args:
+        self: The summand and its Taylor coefficients.
+        tensor1: The first factor and its Taylor coefficients.
+        tensor2: The second factor and its Taylor coefficients.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    primal = addcmul(self[0], tensor1[0], tensor2[0])
+    coeffs = _leibniz(tensor1, tensor2, mul, summand=self)
+    return JetTuple((primal, *coeffs), collapsed=self.collapsed)
 
 
 def jet_div(

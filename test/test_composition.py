@@ -76,6 +76,11 @@ COMPOSITION_CASES = [
         "f": _stateless(lambda x, y, z: addcmul(x, y, z, value=0.5)),
         "args_fn": lambda: (rand(3, 4), rand(3, 1), rand(4)),
     },
+    {
+        "id": "addcmul_fused",
+        "f": _stateless(addcmul),
+        "args_fn": lambda: (rand(3, 4), rand(3, 1), rand(4)),
+    },
     {"id": "mlp", "f": mlp, "args_fn": lambda: (rand(5),)},
     {"id": "mlp_batched", "f": mlp, "args_fn": lambda: (rand(10, 5),)},
     {

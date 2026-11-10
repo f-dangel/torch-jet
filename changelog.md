@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([PR](https://github.com/f-dangel/torch-jet/pull/324)).
 ### Internal
 
+- `addcmul` of three jets, and with it the affine part of batch norm with
+  Taylor-expanded parameters, holds one coefficient-sized temporary tensor
+  less per order: the summand starts each Leibniz sum, so the product's jet
+  never exists on its own
+  ([PR](https://github.com/f-dangel/torch-jet/pull/332)).
 - Elementwise rules hold one temporary tensor less per Faà di Bruno term: a
   partition's product joins the running sum, scaled by the outer derivative,
   in one out-of-place `addcmul`, and the product-free single-block term joins

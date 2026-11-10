@@ -1462,8 +1462,7 @@ def test_softmax_large_offset(fn: Callable, collapsed: bool, device: str):
     assert_close(jet_f(x_jet)[0], fn(x, 1), atol=1e-5, rtol=0)
 
 
-# Shape of the operands and number of directions in the peak-memory test. With
-# 128 rows, one float32 value per row is a whole block of the CUDA allocator.
+# Shape of the operands and number of directions in the peak-memory test.
 ROWS, COLS, R = 128, 64, 4
 
 # ``(f, n_args, peaks)``: at order ``K`` the jet of ``f`` over ``n_args``

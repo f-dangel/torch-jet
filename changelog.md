@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A jet of a jet of a product works again: the fused `addcmul` the Leibniz
   rule now emits has a rule of its own, a composition of `mul` and `add`
-  ([PR](https://github.com/f-dangel/torch-jet/pull/PLACEHOLDER)).
+  ([PR](https://github.com/f-dangel/torch-jet/pull/324)).
 ### Internal
 
 - Elementwise products hold one temporary tensor less per Leibniz term: a

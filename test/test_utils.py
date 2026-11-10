@@ -52,8 +52,10 @@ def test_visualize_graph_unsupported_format(tmp_path: Path):
 
 def test_peak_memory(device: str):
     """``peak_memory`` matches peaks that can be stated by hand."""
-    a, b, c = (rand(4, 64, 64, device=device) for _ in range(3))
-    RS, S = a.untyped_storage().nbytes(), a.untyped_storage().nbytes() // 4
+    R, shape = 4, (64, 64)
+    a, b, c = (rand(R, *shape, device=device) for _ in range(3))
+    RS = a.untyped_storage().nbytes()
+    S = RS // R
     known = {
         lambda a, b, c: a.transpose(0, 1): 0,  # a view
         lambda a, b, c: 2 * a: RS,  # the wrapped scalar does not count

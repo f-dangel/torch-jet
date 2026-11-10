@@ -22,12 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in one out-of-place `addcmul`, and the product-free single-block term joins
   last
   ([PR](https://github.com/f-dangel/torch-jet/pull/322)).
-- The peak-memory tests share one `assert_peak_memory` helper and one case
-  table, their lower bounds on the vmapped reference equal its measured
-  peak, and they measure with the device's allocator (the profiler's
-  allocation events on CPU, the peak counter on CUDA), which also sees the
-  copies a kernel makes of its operands, such as the batched-matmul copies of
-  an `einsum` on CUDA
+- The peak-memory tests share one `assert_peak_memory` helper and case table
+  and measure with the device's allocator, which also sees the copies a
+  kernel makes of its operands
   ([PR](https://github.com/f-dangel/torch-jet/pull/315),
   [PR](https://github.com/f-dangel/torch-jet/pull/325),
   [PR](https://github.com/f-dangel/torch-jet/pull/327)).

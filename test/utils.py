@@ -197,7 +197,7 @@ def peak_memory(make: Callable[[], Callable], *args: Any) -> int:
         The peak in bytes: on CUDA from the allocator's peak counter, on CPU
         from the profiler's allocation events.
     """
-    device = next(t for t in tree_leaves(args) if isinstance(t, Tensor)).device.type
+    (device,) = {t.device.type for t in tree_leaves(args) if isinstance(t, Tensor)}
     if device not in {"cpu", "cuda"}:
         skip(f"No allocator peak on {device}.")
     make()(*args)

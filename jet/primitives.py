@@ -385,14 +385,16 @@ def _leibniz(
     coeffs = ()
     for k in range(1, K + 1):
         term = None
-        for j in range(k + 1):
+        # The collapsed K-th coefficient carries no R, so reduce its batched
+        # (R-carrying) terms over the direction dim; standard never enters. They
+        # go first: no running sum is live while the first (R, *S) product is.
+        reduces = [k == K and _is_batched(j, K, collapsed) for j in range(k + 1)]
+        for j in sorted(range(k + 1), key=reduces.__getitem__, reverse=True):
             a, b = self[j], other[k - j]
             if a is None or b is None:
                 continue  # a symbolic-zero factor: the term vanishes
             c = comb(k, j, exact=True)
-            # The collapsed K-th coefficient carries no R, so reduce its batched
-            # (R-carrying) terms over the direction dim; standard never enters.
-            reduced = k == K and _is_batched(j, K, collapsed)
+            reduced = reduces[j]
             if fused and term is not None and not reduced:
                 # The term joins the sum in one out-of-place op, so the product
                 # never exists on its own.

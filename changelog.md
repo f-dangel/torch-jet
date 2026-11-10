@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([PR](https://github.com/f-dangel/torch-jet/pull/324)).
 ### Internal
 
+- `test_div_self_is_exact` passes on CUDA again: it only requires the
+  composition `x * x**-1` to be inexact, as its roundoff there fell below the
+  former lower bound
+  ([PR](https://github.com/f-dangel/torch-jet/pull/334)).
 - Elementwise rules hold one temporary tensor less per Faà di Bruno term: a
   partition's product joins the running sum, scaled by the outer derivative,
   in one out-of-place `addcmul`, and the product-free single-block term joins

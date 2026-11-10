@@ -1462,10 +1462,15 @@ def test_softmax_large_offset(fn: Callable, collapsed: bool, device: str):
     assert_close(jet_f(x_jet)[0], fn(x, 1), atol=1e-5, rtol=0)
 
 
+# Shape of the operands and number of directions in the peak-memory test. With
+# 128 rows, one float32 value per row is a whole block of the CUDA allocator.
+ROWS, COLS, R = 128, 64, 4
+
 # ``(f, n_args, peaks)``: at order ``K`` the jet of ``f`` over ``n_args``
-# operands of shape ``(128, 64)`` peaks at exactly ``peaks[mode](S, RS, K)``
+# operands of shape ``(ROWS, COLS)`` peaks at exactly ``peaks[mode](S, RS, K)``
 # bytes, with ``S`` / ``RS`` the bytes of one coefficient without / with the
-# direction dim, so ``S // 64`` / ``RS // 64`` are the bytes of one value per row.
+# direction dim, so ``S // COLS`` / ``RS // COLS`` are the bytes of one value
+# per row.
 # ``"vmapped"`` is the standard jet vmapped over the directions, which the
 # collapsed jet must stay below.
 PEAK_MEMORY_CASES = {
@@ -1503,9 +1508,9 @@ PEAK_MEMORY_CASES = {
         lambda x: log_softmax(x, 1),
         1,
         {
-            "standard": lambda S, RS, K: (K + 1) * S + (K + 2) * S // 64,
+            "standard": lambda S, RS, K: (K + 1) * S + (K + 2) * S // COLS,
             "collapsed": lambda S, RS, K: (
-                (K - 1) * (RS + RS // 64) + 2 * S + 3 * S // 64
+                (K - 1) * (RS + RS // COLS) + 2 * S + 3 * S // COLS
             ),
             "vmapped": lambda S, RS, K: (K + 1) * RS + 2 * S,
         },
@@ -1520,8 +1525,8 @@ def test_peak_memory(
     f: Callable, n_args: int, peaks: dict[str, Callable], mode: str, K: int, device: str
 ):
     """The jet of ``f`` allocates exactly the tabulated bytes at its peak."""
-    args = tuple(rand(128, 64, device=device) for _ in range(n_args))
-    assert_peak_memory(f, args, K, 4, mode, peaks[mode])
+    args = tuple(rand(ROWS, COLS, device=device) for _ in range(n_args))
+    assert_peak_memory(f, args, K, R, mode, peaks[mode])
 
 
 @mark.parametrize("dtype", [float16, bfloat16], ids=["float16", "bfloat16"])

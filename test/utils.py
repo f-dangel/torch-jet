@@ -1,9 +1,9 @@
 """Utility functions for testing."""
 
+from gc import collect
 from typing import Any, Callable
-from weakref import finalize
 
-from pytest import raises
+from pytest import raises, skip
 from torch import (
     Tensor,
     arange,
@@ -22,6 +22,7 @@ from torch import (
     where,
     zeros_like,
 )
+from torch.cuda import max_memory_allocated, memory_allocated, reset_peak_memory_stats
 from torch.func import vjp
 from torch.nn import Linear, Sequential, Tanh, functional
 from torch.nn.functional import (
@@ -32,8 +33,8 @@ from torch.nn.functional import (
     scaled_dot_product_attention,
 )
 from torch.overrides import TorchFunctionMode
+from torch.profiler import ProfilerActivity, profile
 from torch.testing import assert_close
-from torch.utils._python_dispatch import TorchDispatchMode
 from torch.utils._pytree import tree_flatten, tree_leaves, tree_map, tree_unflatten
 
 from jet._jet import _rev_jet, _uncollapsed_via_vmap, jet
@@ -179,51 +180,58 @@ class DifferentiableSubstitutes(TorchFunctionMode):
         return func(*args, **kwargs)
 
 
-class StorageTracker(TorchDispatchMode):
-    """Count the bytes every ATen call allocates and the running maximum.
+def _cuda_peak(f: Callable, *args: Any) -> int:
+    """Measure the peak of ``f(*args)`` with the CUDA allocator's peak counter."""
+    reset_peak_memory_stats()
+    before = memory_allocated()
+    f(*args)
+    return max_memory_allocated() - before
 
-    An output is a new storage if its storage is neither one of the call's
-    inputs nor already tracked (views are detected by storage identity, since
-    ``_base`` is ``None`` under ``vmap``); its bytes are released once every
-    tracked tensor on it has died. Also records the shape of every tensor
-    argument an ATen call receives, so a test can check what the rule under
-    test computes on.
+
+def _cpu_peak(f: Callable, *args: Any) -> int:
+    """Measure the peak of ``f(*args)`` from the profiler's allocation events."""
+    with profile(activities=[ProfilerActivity.CPU], profile_memory=True) as prof:
+        f(*args)
+    events, nodes = [], list(prof.profiler.kineto_results.experimental_event_tree())
+    while nodes:
+        nodes.extend((node := nodes.pop()).children)
+        # at most 16 bytes is a Python scalar wrapped into a one-element tensor
+        if "Allocation" in str(node.tag) and abs(node.extra_fields.alloc_size) > 16:
+            events.append(node)
+    live, peak, owned = 0, 0, set()
+    for event in sorted(events, key=lambda node: node.start_time_ns):
+        ptr, size = event.extra_fields.ptr, event.extra_fields.alloc_size
+        if size < 0 and ptr not in owned:
+            continue  # frees a block that was live before the call
+        owned ^= {ptr}
+        live += size
+        peak = max(peak, live)
+    return peak
+
+
+def peak_memory(make: Callable[[], Callable], *args: Any) -> int:
+    """Measure the bytes ``make()(*args)`` allocates at its peak.
+
+    Counts what the device's allocator hands out beyond what is live before
+    the call, so copies a kernel makes of its operands are included. A first
+    instance from ``make`` is called once and thrown away: persistent
+    workspaces (e.g. cuBLAS) then exist, and nothing that instance retains is
+    live. A second, never-called instance is measured.
+
+    Args:
+        make: Builds the function to measure, e.g. traces a jet.
+        *args: The function's arguments; their tensors share one device.
+
+    Returns:
+        The peak in bytes.
     """
-
-    def __init__(self) -> None:
-        """Start with nothing allocated."""
-        super().__init__()
-        self.live, self.peak, self.arg_shapes = 0, 0, set()
-        self.refs: dict[int, int] = {}  # data pointer -> live tracked tensors
-
-    def _release(self, ptr: int, nbytes: int) -> None:
-        self.refs[ptr] -= 1
-        if self.refs[ptr] == 0:
-            del self.refs[ptr]
-            self.live -= nbytes
-
-    def __torch_dispatch__(self, func, types, args=(), kwargs=None):
-        """Run ``func``, note its argument shapes, and track its new storages."""
-        inputs = set()
-        for t in tree_leaves((args, kwargs)):
-            if isinstance(t, Tensor):
-                self.arg_shapes.add(tuple(t.shape))
-                inputs.add(t.untyped_storage().data_ptr())
-        out = func(*args, **(kwargs or {}))
-        for t in tree_leaves(out):
-            if not isinstance(t, Tensor):
-                continue
-            ptr, nbytes = t.untyped_storage().data_ptr(), t.untyped_storage().nbytes()
-            if ptr in self.refs:
-                self.refs[ptr] += 1
-            elif ptr not in inputs:
-                self.refs[ptr] = 1
-                self.live += nbytes
-                self.peak = max(self.peak, self.live)
-            else:
-                continue
-            finalize(t, self._release, ptr, nbytes)
-        return out
+    (device,) = {t.device.type for t in tree_leaves(args) if isinstance(t, Tensor)}
+    if device not in {"cpu", "cuda"}:
+        skip(f"No allocator peak on {device}.")
+    make()(*args)
+    f = make()
+    collect()
+    return {"cpu": _cpu_peak, "cuda": _cuda_peak}[device](f, *args)
 
 
 def pick_operands(args: tuple, codes: str, consts: tuple) -> list:
@@ -392,8 +400,7 @@ def assert_peak_memory(
     at least ``lower(S, RS)``, where ``S`` / ``RS`` are the bytes of one
     coefficient without / with the leading direction dim. ``upper`` must lie
     below ``lower``, so the two modes cannot both pass with the same peak.
-    Both jets are traced before tracking starts, as tracing cannot run under
-    the tracker.
+    Both peaks come from :func:`peak_memory`.
 
     Args:
         f: The function to jet; every argument is Taylor-expanded.
@@ -407,16 +414,8 @@ def assert_peak_memory(
     S, RS = (c.untyped_storage().nbytes() for c in jet_args[0][:2])
     upper, lower = upper(S, RS), lower(S, RS)
     assert upper < lower
-    collapsed = jet(f, args, collapsed=True)
-    vmapped = _uncollapsed_via_vmap(f, args, None)
-
-    with StorageTracker() as tracker:
-        collapsed(*jet_args)
-    assert tracker.peak <= upper
-
-    with StorageTracker() as tracker:
-        vmapped(*jet_args)
-    assert tracker.peak >= lower
+    assert peak_memory(lambda: jet(f, args, collapsed=True), *jet_args) <= upper
+    assert peak_memory(lambda: _uncollapsed_via_vmap(f, args, None), *jet_args) >= lower
 
 
 def make_jet_args(

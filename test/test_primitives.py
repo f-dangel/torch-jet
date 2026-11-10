@@ -11,6 +11,7 @@ from typing import Any, Callable
 
 from pytest import mark, raises
 from torch import (
+    addcmul,
     addmm,
     bfloat16,
     cat,
@@ -1480,6 +1481,15 @@ PEAK_MEMORY_CASES = {
         {
             "standard": lambda S, RS, K: (K + 3) * S,
             "collapsed": lambda S, RS, K: (K + 1) * RS + S if K > 2 else 2 * RS + 3 * S,
+            "vmapped": lambda S, RS, K: (K + 4) * RS + S,
+        },
+    ),
+    "addcmul": (
+        addcmul,
+        3,
+        {
+            "standard": lambda S, RS, K: (K + 2) * S,
+            "collapsed": lambda S, RS, K: K * RS + 3 * S,
             "vmapped": lambda S, RS, K: (K + 4) * RS + S,
         },
     ),

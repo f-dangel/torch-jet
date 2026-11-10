@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   composition `x * x**-1` to be inexact, as its roundoff there fell below the
   former lower bound
   ([PR](https://github.com/f-dangel/torch-jet/pull/334)).
+- `addcmul` of three jets, and with it the affine part of batch norm with
+  Taylor-expanded parameters, holds one coefficient-sized temporary tensor
+  less per order: the summand starts each Leibniz sum, so the product's jet
+  never exists on its own
+  ([PR](https://github.com/f-dangel/torch-jet/pull/332)).
 - A collapsed matrix product whose matrix is shared by all directions holds
   one direction-sized temporary tensor less: the product joins the running
   sum in one out-of-place `addmm`

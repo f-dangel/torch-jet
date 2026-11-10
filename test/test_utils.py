@@ -8,7 +8,7 @@ from torch.func import vmap
 from torch.fx.experimental.proxy_tensor import make_fx
 
 from jet.utils import integer_partitions, visualize_graph
-from test.utils import StorageTracker
+from test.utils import peak_memory
 
 
 def test_integer_partitions():
@@ -50,12 +50,17 @@ def test_visualize_graph_unsupported_format(tmp_path: Path):
         visualize_graph(mod, str(tmp_path / "graph.bmp"))
 
 
-def test_storage_tracker_under_vmap():
-    """A vmapped view allocates nothing; a vmapped ``mul`` allocates its output."""
-    x = rand(4, 3, 5)
-    with StorageTracker() as tracker:
-        vmap(lambda x: x.permute(1, 0))(x)
-    assert tracker.peak == 0
-    with StorageTracker() as tracker:
-        vmap(lambda x: x * 2)(x)
-    assert tracker.peak == x.untyped_storage().nbytes()
+def test_peak_memory(device: str):
+    """``peak_memory`` matches peaks that can be stated by hand."""
+    a, b, c = (rand(4, 64, 64, device=device) for _ in range(3))
+    RS, S = a.untyped_storage().nbytes(), a.untyped_storage().nbytes() // 4
+    known = {
+        lambda a, b, c: a.transpose(0, 1): 0,  # a view
+        lambda a, b, c: 2 * a: RS,  # the wrapped scalar does not count
+        lambda a, b, c: a * b * c: 2 * RS,  # the first product and the result
+        lambda a, b, c: (a * b).sum(0): RS + S,
+        lambda a, b, c: vmap(lambda a, b: a.T * b.T)(a, b): RS,
+        lambda a, b, c: a.transpose(0, 1).contiguous(): RS,  # a copy
+    }
+    for f, peak in known.items():
+        assert peak_memory(lambda f=f: f, a, b, c) == peak

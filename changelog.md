@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([PR](https://github.com/f-dangel/torch-jet/pull/324)).
 ### Internal
 
+- The peak-memory tests measure with the device's allocator (the profiler's
+  allocation events on CPU, the peak counter on CUDA) instead of counting the
+  tensors each ATen call returns, so they also see the copies a kernel makes
+  of its operands, such as the batched-matmul copies of an `einsum` on CUDA
+  ([PR](https://github.com/f-dangel/torch-jet/pull/327)).
 - Elementwise rules hold one temporary tensor less per Faà di Bruno term: a
   partition's product joins the running sum, scaled by the outer derivative,
   in one out-of-place `addcmul`, and the product-free single-block term joins

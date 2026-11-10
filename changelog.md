@@ -22,12 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in one out-of-place `addcmul`, and the product-free single-block term joins
   last
   ([PR](https://github.com/f-dangel/torch-jet/pull/322)).
-- The peak-memory tests share one `assert_peak_memory` helper and case table
-  and measure with the device's allocator, which also sees the copies a
-  kernel makes of its operands
+- The peak-memory tests share one `assert_peak_memory` helper and case table,
+  measure with the device's allocator, which also sees the copies a kernel
+  makes of its operands, and assert the exact peak for every mode and order
   ([PR](https://github.com/f-dangel/torch-jet/pull/315),
   [PR](https://github.com/f-dangel/torch-jet/pull/325),
-  [PR](https://github.com/f-dangel/torch-jet/pull/327)).
+  [PR](https://github.com/f-dangel/torch-jet/pull/327),
+  [PR](https://github.com/f-dangel/torch-jet/pull/329)).
 - Collapsed-mode division holds two direction-sized temporary tensors less:
   the binomial factor scales the reduced term after its sum over the
   directions, and an unreduced term joins the running sum in one `addcmul`

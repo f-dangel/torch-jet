@@ -4,13 +4,13 @@ This module defines the `JetInterpreter`, which extends `torch.fx.Interpreter`
 to execute a traced PyTorch computation graph while substituting ATen operations
 with their Taylor mode (jet) equivalents on-the-fly. Unlike the graph-rewriting
 approach of a `Transformer`, the interpreter propagates real values (or proxy
-tensors under `make_fx`) and uses `isinstance` against the chosen jet type to
+tensors under `make_fx`) and uses `isinstance` against ``JetTuple`` to
 distinguish Taylor-expanded arguments from constants.
 
 The same interpreter handles both standard and collapsed Taylor mode via the
 ``collapsed`` constructor flag, which wraps placeholders as
-``JetTuple(..., collapsed=...)`` and, per op, selects the standard or collapsed
-rule from the shared ``RULES`` registry (:mod:`jet._rules`).
+``JetTuple(..., collapsed=...)``. Each op has one rule in the shared ``RULES``
+registry (:mod:`jet._rules`), which reads the mode off its jet arguments.
 """
 
 from typing import Any
@@ -37,11 +37,10 @@ class JetInterpreter(Interpreter):
 
     Args:
         module: The traced computation graph module to interpret.
-        collapsed: If ``True``, propagate collapsed ``JetTuple`` values and
-            dispatch to each op's collapsed rule (collapsed Taylor mode, where
-            the highest-order coefficient is already summed over directions).
-            If ``False`` (default), propagate standard ``JetTuple`` values and
-            dispatch to each op's standard rule.
+        collapsed: If ``True``, propagate collapsed ``JetTuple`` values
+            (collapsed Taylor mode, where the highest-order coefficient is
+            already summed over directions). If ``False`` (default), propagate
+            standard ``JetTuple`` values.
     """
 
     def __init__(self, module: GraphModule, collapsed: bool = False) -> None:

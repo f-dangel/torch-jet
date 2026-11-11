@@ -108,7 +108,7 @@ _ = manual_seed(0)  # make deterministic
 ### Scalar-to-scalar Function
 #
 # Let's make computing higher-order derivatives with Taylor mode concrete, sticking to
-# the scalar case from a above with a function $f : \mathbb{R} \to \mathbb{R}$.
+# the scalar case from above with a function $f : \mathbb{R} \to \mathbb{R}$.
 # We will illustrate how to compute the second-order derivative $f''(x)$, and hence
 # use the 2-jet of $f$, whose propagation is (re-stated from above)
 # $$
@@ -163,7 +163,7 @@ else:
 #
 ### Vector-to-scalar Function
 #
-# Next, let's consider a vector to-scalar-function $f : \mathbb{R}^D \to \mathbb{R}$,
+# Next, let's consider a vector-to-scalar function $f : \mathbb{R}^D \to \mathbb{R}$,
 # $\mathbf{x} \mapsto f(\mathbf{x})$ (for the most general, please see the paper).
 # We can do the exact derivation as above to obtain the output jets
 # $$

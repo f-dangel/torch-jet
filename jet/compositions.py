@@ -396,8 +396,8 @@ def native_batch_norm(
     pass through), which keeps the digits of inputs close to a large running
     mean; ``input * scale - running_mean * scale`` would cancel them. Any of
     ``input`` / ``weight`` / ``bias`` may be a jet, a constant, or (``weight``
-    / ``bias``) ``None`` -- any input rank
-    (1d/2d/3d batch norm) is supported. Training mode is deferred until PyTorch
+    / ``bias``) ``None``; any input rank (1d/2d/3d batch norm) is supported.
+    Training mode is deferred until PyTorch
     fixes its fused ``native_batch_norm``'s incorrect higher-order autograd in
     training (pytorch/pytorch#186256), without which a training rule cannot be
     validated.

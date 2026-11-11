@@ -23,7 +23,7 @@ def _defelementwise(deriv_fn: Callable[[Tensor, int], dict[int, Tensor]]) -> Rul
 
 #: Maps an ``aten`` op overload to its jet rule.
 RULES: dict[Callable, Rule] = {
-    # Elementwise unary (both modes from the shared derivative table)
+    # Elementwise unary (from a table of derivatives)
     ops.aten.sin.default: _defelementwise(primitives._sin_derivatives),
     ops.aten.cos.default: _defelementwise(primitives._cos_derivatives),
     ops.aten.tanh.default: _defelementwise(primitives._tanh_derivatives),
@@ -44,7 +44,7 @@ RULES: dict[Callable, Rule] = {
     ops.aten.threshold.default: primitives.jet_threshold,
     # Hardsigmoid's bounds are fixed, so it is an ordinary elementwise table.
     ops.aten.hardsigmoid.default: _defelementwise(primitives._hardsigmoid_derivatives),
-    # Mode-agnostic primitives (one body reading ``self.collapsed``)
+    # Arithmetic and other primitives
     ops.aten.add.Tensor: primitives.jet_add,
     ops.aten.add.Scalar: primitives.jet_add,
     ops.aten.sub.Tensor: primitives.jet_sub,

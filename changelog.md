@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([PR](https://github.com/f-dangel/torch-jet/pull/324)).
 ### Internal
 
+- Comments and docstrings that no longer matched the code are corrected
+  ([PR](https://github.com/f-dangel/torch-jet/pull/339)).
 - The primitive tests draw the primals of their jet operands with one
   `rand_jet_args` helper instead of five hand-written copies, an unused test
   helper is gone, and the validation tests' `_ones_args`, which builds zeros,

@@ -12,11 +12,14 @@ from torch.utils._pytree import TreeSpec, tree_flatten, tree_unflatten
 
 from jet.utils import PyTree
 
-# Map in-place ATen ops to their out-of-place equivalents.
-_INPLACE_TO_FUNCTIONAL = {
+# Ops the tracer leaves behind, mapped to the op each is replaced by: in-place
+# ops to their out-of-place equivalents, and ``view`` to ``reshape`` (same
+# result, never fails).
+_REPLACEMENTS = {
     ops.aten.squeeze_.dim: ops.aten.squeeze.dim,
     ops.aten.as_strided_.default: ops.aten.as_strided.default,
     ops.aten.add_.Scalar: ops.aten.add.Scalar,
+    ops.aten.view.default: ops.aten.reshape.default,
 }
 
 
@@ -133,8 +136,7 @@ def capture_graph(
         return f(*tree_unflatten(list(flat_tensors), in_spec))
 
     mod = _make_fx(functionalize(flat_f))(*flat_mocks)
-    _replace_inplace_ops(mod)
-    _replace_views(mod)
+    _replace_ops(mod)
     mod.graph.eliminate_dead_code()
     mod.recompile()
     return mod, in_spec
@@ -244,23 +246,12 @@ def _assert_traceable_signature(args: tuple[Any, ...]) -> None:
         )
 
 
-def _replace_inplace_ops(mod: GraphModule) -> None:
-    """Replace in-place operations with their out-of-place equivalents.
+def _replace_ops(mod: GraphModule) -> None:
+    """Retarget every node whose op is a key of ``_REPLACEMENTS``.
 
     Args:
         mod: The graph module to modify in place.
     """
     for node in mod.graph.nodes:
-        if node.op == "call_function" and node.target in _INPLACE_TO_FUNCTIONAL:
-            node.target = _INPLACE_TO_FUNCTIONAL[node.target]
-
-
-def _replace_views(mod: GraphModule) -> None:
-    """Replace ``aten.view`` with ``aten.reshape`` (same result, never fails).
-
-    Args:
-        mod: The graph module to modify in place.
-    """
-    for node in mod.graph.nodes:
-        if node.op == "call_function" and node.target is ops.aten.view.default:
-            node.target = ops.aten.reshape.default
+        if node.op == "call_function" and node.target in _REPLACEMENTS:
+            node.target = _REPLACEMENTS[node.target]

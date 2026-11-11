@@ -83,6 +83,7 @@ from test.utils import (
     make_jet_args,
     peak_memory,
     pick_operands,
+    rand_jet_args,
     tolerances_for,
 )
 
@@ -148,32 +149,23 @@ def _matmul_case(
     the 3-D operands instead (bias must be ``"N"``); ``m1 @ m2`` then lowers to
     ``bmm`` and the id prefix is ``bmm``.
     """
-    mat1_jet, mat2_jet = mat1 == "J", mat2 == "J"
     L, R = ("L3", "R3") if batched else ("L", "R")
-    shapes = ((2, 3, 4), (2, 4, 5)) if batched else ((3, 4), (4, 5))
+    mat_shapes = ((2, 3, 4), (2, 4, 5)) if batched else ((3, 4), (4, 5))
+    codes, shapes = bias + mat1 + mat2, (_BIAS_SHAPES[bias_shape], *mat_shapes)
 
     def builder(device):
         cs = _consts(device)
 
         def f(*args: Any):
-            b, m1, m2 = pick_operands(args, bias + mat1 + mat2, (cs["B"], cs[L], cs[R]))
+            b, m1, m2 = pick_operands(args, codes, (cs["B"], cs[L], cs[R]))
             return m1 @ m2 if b is None else addmm(b, m1, m2)
 
         return f
 
-    def args_fn():
-        out = []
-        if bias == "J":
-            out.append(rand(*_BIAS_SHAPES[bias_shape]))
-        if mat1_jet:
-            out.append(rand(*shapes[0]))
-        if mat2_jet:
-            out.append(rand(*shapes[1]))
-        return tuple(out)
-
     op = ("bmm" if batched else "mm") if bias == "N" else "addmm"
     sig = f"{mat1}{mat2}" if bias == "N" else f"{bias}{mat1}{mat2}"
     suffix = "_bcast" if bias_shape == "bcast" else ""
+    args_fn = partial(rand_jet_args, codes, shapes)
     return {"id": f"{op}_{sig}{suffix}", "f": builder, "args_fn": args_fn}
 
 
@@ -261,33 +253,22 @@ def _conv_case(input: str, weight: str, bias: str, variant: str = "") -> dict[st
     is ``conv2d_<input><weight><bias>`` plus the variant (the absent-bias letter
     is dropped, so a bias-free conv reads ``conv2d_JC``).
     """
-    input_jet, weight_jet, bias_jet = input == "J", weight == "J", bias == "J"
     conv, weight_key, kwargs = _CONV_VARIANTS[variant]
+    codes = input + weight + bias
+    shapes = [_CONV_SHAPES[key] for key in ("x", weight_key, "b")]
 
     def builder(device):
         c = _conv_consts(device)
 
         def f(*args: Any):
-            x, w, b = pick_operands(
-                args, input + weight + bias, (c["x"], c[weight_key], c["b"])
-            )
+            x, w, b = pick_operands(args, codes, (c["x"], c[weight_key], c["b"]))
             return conv(x, w, b, **kwargs)
 
         return f
 
-    def args_fn():
-        out = []
-        if input_jet:
-            out.append(rand(*_CONV_SHAPES["x"]))
-        if weight_jet:
-            out.append(rand(*_CONV_SHAPES[weight_key]))
-        if bias_jet:
-            out.append(rand(*_CONV_SHAPES["b"]))
-        return tuple(out)
-
     sig = f"{input}{weight}" + ("" if bias == "N" else bias)
     id = f"conv2d_{sig}_{variant}".rstrip("_")
-    return {"id": id, "f": builder, "args_fn": args_fn}
+    return {"id": id, "f": builder, "args_fn": partial(rand_jet_args, codes, shapes)}
 
 
 def _conv2d_grouped_jet(device):
@@ -346,14 +327,7 @@ def _norm_primals(shape, param_shape, inp: str, weight: str, bias: str):
     # parameters have ``param_shape``. Seeded apart from the captured constants
     # so the values differ; ``setup_case`` migrates these to the device/dtype.
     manual_seed(1)
-    out = []
-    if inp == "J":
-        out.append(rand(*shape))
-    if weight == "J":
-        out.append(rand(*param_shape))
-    if bias == "J":
-        out.append(rand(*param_shape))
-    return tuple(out)
+    return rand_jet_args(inp + weight + bias, (shape, param_shape, param_shape))
 
 
 def _norm_case(
@@ -701,11 +675,7 @@ def _index_put_case(cid: str, jets: str, accumulate: bool) -> dict[str, Any]:
 
         return f
 
-    return {
-        "id": cid,
-        "f": build,
-        "args_fn": lambda: tuple(rand(*s) for s, j in zip(shapes, jets) if j == "J"),
-    }
+    return {"id": cid, "f": build, "args_fn": partial(rand_jet_args, jets, shapes)}
 
 
 def _sdpa_case(
@@ -740,11 +710,7 @@ def _sdpa_case(
 
         return f
 
-    return {
-        "id": cid,
-        "f": build,
-        "args_fn": lambda: tuple(rand(*s) for s, j in zip(shapes, jets) if j == "J"),
-    }
+    return {"id": cid, "f": build, "args_fn": partial(rand_jet_args, jets, shapes)}
 
 
 def _mha_sdpa(x):

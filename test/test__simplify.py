@@ -2,7 +2,7 @@
 
 import torch
 from torch import Tensor, arange
-from torch.fx import Graph, Node
+from torch.fx import Graph
 from torch.testing import assert_close
 
 from jet import common_subexpression_elimination
@@ -20,25 +20,6 @@ def count_nodes(graph: Graph, predicate) -> int:
         The number of matching nodes.
     """
     return len([n for n in graph.nodes if predicate(n)])
-
-
-def get_output_args(graph: Graph) -> tuple[Node, ...]:
-    """Get the direct parent nodes of the output node.
-
-    For graphs returning a tuple (e.g., jet functions returning (F0, F1, F2)),
-    this returns the individual tensor nodes that form the output tuple.
-
-    Args:
-        graph: The FX graph to inspect.
-
-    Returns:
-        Tuple of nodes that are the direct arguments of the output node.
-    """
-    output_node = next(n for n in graph.nodes if n.op == "output")
-    args = output_node.args[0]
-    if isinstance(args, (tuple, list)):
-        return tuple(args)
-    return (args,)
 
 
 def test_common_subexpression_elimination():

@@ -123,9 +123,9 @@ class JetInterpreter(Interpreter):
         """
 
         def _normalize_leaf(node: Any) -> Jet:
-            # a constant is a jet whose coefficients are all symbolic zeros
-            constant = not isinstance(node, JetTuple)
-            primal, *coeffs = (node, *[None] * K) if constant else node
+            if not isinstance(node, JetTuple):
+                node = (node, *[None] * K)  # give a constant K symbolic zeros
+            primal, *coeffs = node
             return (
                 primal,
                 *(

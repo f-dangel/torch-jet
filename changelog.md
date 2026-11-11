@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([PR](https://github.com/f-dangel/torch-jet/pull/324)).
 ### Internal
 
+- The primitive tests draw the primals of their jet operands with one
+  `rand_jet_args` helper instead of five hand-written copies, an unused test
+  helper is gone, and the validation tests' `_ones_args`, which builds zeros,
+  is called `_zero_jet`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/338)).
 - `generate_multi_indices` is a two-argument recursion, the Bi-Laplacian
   computes the weights of its three direction sets once instead of on every
   call, and the reverse-mode reference `_rev_jet` builds its Taylor path

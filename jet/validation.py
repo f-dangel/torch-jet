@@ -55,8 +55,8 @@ def validate_input_jet(
         # capture_graph happily traces a zero-tensor-input function (e.g.
         # `f({}) -> tensor(1.0)` produces a 0-placeholder graph emitting a
         # constant), but a jet over such a function is meaningless: K and R
-        # would stay None and downstream code (e.g. ``range(K)`` inside
-        # ``_zero_coeffs``) would crash with TypeError. Reject up front.
+        # would stay None and downstream code (e.g. ``[None] * K`` inside
+        # ``_normalize``) would crash with TypeError. Reject up front.
         raise ValueError("No jet leaves found; mock_args has no tensors.")
     # flatten_up_to raises Node type/arity mismatch if args' pytree structure
     # diverges from mock's; at each tensor leaf in mock it takes the entire

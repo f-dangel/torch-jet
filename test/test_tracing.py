@@ -4,8 +4,8 @@
 functional equivalents, but fails to do so for ``squeeze_.dim`` (e.g. when
 tracing ``Linear(3, 1)`` with a 1-d input). The first test documents this
 PyTorch limitation and acts as a regression detector -- if PyTorch fixes this
-upstream, the test will fail, signaling that ``_replace_inplace_ops`` in
-``jet/tracing.py`` may no longer be needed.
+upstream, the test will fail, signaling that the in-place entries of
+``_REPLACEMENTS`` in ``jet/tracing.py`` may no longer be needed.
 
 The second test verifies that ``capture_graph`` works around this limitation by
 explicitly replacing ``squeeze_.dim`` after tracing, ensuring the resulting

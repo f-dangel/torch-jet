@@ -17,10 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([PR](https://github.com/f-dangel/torch-jet/pull/324)).
 ### Internal
 
-- Comments and docstrings that no longer matched the code are corrected, for
-  example the interpreter's description of per-mode rules, references to a
-  non-existent `jet._rev_jet`, and the tests' description of division. The
-  PINN example reuses its precomputed right-hand side
+- Comments and docstrings that no longer matched the code are corrected
   ([PR](https://github.com/f-dangel/torch-jet/pull/339)).
 - Layer norm with Taylor-expanded weight and bias holds one coefficient-sized
   temporary tensor less per order: it scales and shifts through the fused

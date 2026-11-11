@@ -103,6 +103,11 @@ def _has_jet_arg(args: Sequence[object]) -> bool:
     return any(True for _ in _jet_args(args))
 
 
+def _primal(x: Tensor | JetTuple) -> Tensor:
+    """Return the primal of a jet, or a constant itself."""
+    return x[0] if isinstance(x, JetTuple) else x
+
+
 def _jet_order(*args: Tensor) -> int:
     """Infer the Taylor-expansion order ``K`` from the ``JetTuple`` positional args.
 
@@ -196,7 +201,7 @@ def _coeff(t: Tensor | JetTuple, k: int, batched: bool, R: int) -> Tensor:
     c = t[k] if is_jet else (t if k == 0 else None)
     if c is not None:
         return c
-    like = t[0] if is_jet else t
+    like = _primal(t)
     return _zero_coeff(like, (R, *like.shape) if batched else like.shape)
 
 
@@ -630,9 +635,8 @@ def _tanh_derivatives(x0: Tensor, K: int) -> dict[int, Tensor]:
         tanh_inc = tanh_x0 + 1
         tanh_dec = tanh_x0 - 1
         tanh_dec_powers = {1: tanh_dec}
-        if K >= 2:
-            for k in range(2, K + 1):
-                tanh_dec_powers[k] = tanh_dec**k
+        for k in range(2, K + 1):
+            tanh_dec_powers[k] = tanh_dec**k
         # Equations (3.3) and (3.4) from the above paper
         for m in range(1, K + 1):
             term = None
@@ -1144,7 +1148,7 @@ def jet_div(
     if self_is_jet:
         _jet_order(self, other)  # validates K-consistency, raises on mismatch
     K, collapsed = len(other) - 1, other.collapsed
-    primal = (self[0] if self_is_jet else self) / other[0]
+    primal = _primal(self) / other[0]
     a = _broadcast_coeffs(self, primal) if self_is_jet else [None] * K
     b = _broadcast_coeffs(other, primal)
     q = [primal]
@@ -1188,27 +1192,6 @@ def jet_mm(self: Tensor | JetTuple, mat2: Tensor | JetTuple) -> JetTuple:
         The value and its Taylor coefficients.
     """
     return _apply_bilinear(matmul, self, mat2)
-
-
-def _align_conv_bias(bias: Tensor | JetTuple, ndim: int) -> Tensor | JetTuple:
-    """Reshape a 1-D conv bias to broadcast over the output's batch/spatial dims.
-
-    The bias indexes the channel dim (dim 1 of an ``ndim``-D conv output);
-    appending ``ndim - 2`` trailing size-1 dims lets ``add`` broadcast it over
-    the batch and spatial dims. A jet bias is reshaped coefficient-wise (the
-    ``Tensor`` check separates a constant bias).
-
-    Args:
-        bias: The 1-D bias; a jet or a constant ``Tensor``.
-        ndim: The convolution output's rank.
-
-    Returns:
-        The bias reshaped to ``(C_out, 1, ...)``.
-    """
-    tail = (1,) * (ndim - 2)
-    if isinstance(bias, Tensor):
-        return bias.reshape(*bias.shape, *tail)
-    return _apply_linear(bias, lambda b: b.reshape(*b.shape, *tail))
 
 
 def _gather_at_indices(c: Tensor, indices: Tensor) -> Tensor:
@@ -1299,7 +1282,7 @@ def jet_max_pool2d_backward(
     Returns:
         The gradient w.r.t. ``input`` and its Taylor coefficients.
     """
-    x0 = input[0] if isinstance(input, JetTuple) else input
+    x0 = _primal(input)
     pool_args = (kernel_size, list(stride), padding, dilation, ceil_mode)
     _, indices = ops.aten.max_pool2d_with_indices.default(x0, *pool_args)
     return _deflinear(ops.aten.max_pool2d_with_indices_backward.default)(
@@ -1526,7 +1509,7 @@ def jet_nll_loss_backward(
             "jet_nll_loss_backward does not support a Taylor-expanded target, "
             "weight, or total_weight; all three must be constant tensors."
         )
-    primal = self[0] if isinstance(self, JetTuple) else self
+    primal = _primal(self)
 
     def op(g: Tensor) -> Tensor:
         return ops.aten.nll_loss_backward.default(
@@ -1536,23 +1519,7 @@ def jet_nll_loss_backward(
     return _deflinear(op)(grad_output)
 
 
-# --- Batch norm ---
-
-
-def _bn_channel_view(primal: Tensor) -> tuple[int, ...]:
-    """Per-channel broadcast view ``(1, C, 1, ...)`` for an ndim-D batch-norm input.
-
-    Reshaping a per-channel ``weight`` / ``bias`` / scale / shift to this view
-    lets it broadcast over the batch and spatial dims of an ``input`` of any rank
-    (1d/2d/3d batch norm). A pure-tensor helper shared with the collapsed rule.
-    """
-    return (1, primal.shape[1]) + (1,) * (primal.dim() - 2)
-
-
-# --- Rule-building factories (registered in :mod:`jet._rules`) ---
-#
-# These build the rule for a category of op; registration into the single
-# ``RULES`` registry lives in :mod:`jet._rules`.
+# --- Embedding, indexing and storage ---
 
 
 def jet_embedding(
@@ -1627,7 +1594,7 @@ def jet_copy(
     """
     if not isinstance(src, JetTuple):
         raise NotImplementedError("jet_copy: a jet self with a constant src")
-    self = self[0] if isinstance(self, JetTuple) else self
+    self = _primal(self)
     return _apply_linear(src, lambda c: ops.aten.copy.default(self, c, non_blocking))
 
 
@@ -1713,7 +1680,7 @@ def jet_as_strided_scatter(
     from the native op: the copy has storage offset 0, but the native output
     keeps the input's, which a later ``as_strided`` node was traced with.
     """
-    x = self[0] if isinstance(self, JetTuple) else self
+    x = _primal(self)
     offset = _check_view(x, size, stride, storage_offset)
 
     def prim(a: Tensor, b: Tensor) -> Tensor:
@@ -1725,6 +1692,12 @@ def jet_as_strided_scatter(
         return ops.aten.as_strided_scatter.default(a, b, size, stride, storage_offset)
 
     return _pair_linear(prim, primal)(self, src)
+
+
+# --- Rule-building factories (registered in :mod:`jet._rules`) ---
+#
+# These build the rule for a category of op; registration into the single
+# ``RULES`` registry lives in :mod:`jet._rules`.
 
 
 def _deflinear(prim: Callable) -> Callable:
@@ -1759,7 +1732,7 @@ def _deflinear_first(prim: Callable) -> Callable:
     """
 
     def rule(self, *args, **kwargs):
-        args = tuple(a[0] if isinstance(a, JetTuple) else a for a in args)
+        args = tuple(_primal(a) for a in args)
         return _deflinear(prim)(self, *args, **kwargs)
 
     return rule

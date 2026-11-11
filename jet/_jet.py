@@ -135,41 +135,28 @@ def _rev_jet(
         leaves, in_spec = tree_flatten(args, is_leaf=_is_jet_leaf)
         K = len(leaves[0]) - 1
 
-        primals = [leaf[0] for leaf in leaves]
-        taylor_coeffs_by_order = [
-            [leaf[order + 1] for leaf in leaves] for order in range(K)
-        ]
-        ref_tensor = primals[0]
-
         def path(t: Tensor) -> tuple[PyTree[Tensor], ...]:
             """Construct the Taylor path
             x_0 + t * x_1 + t^2 / 2 * x_2 + ... + t^k / k! x_k.
             It tracks ``f``'s dependence on the primal values and Taylor coefficients.
             """  # noqa: D205
             taylor_series = [
-                primal
-                + sum(
-                    t**order / factorial(order) * taylor_coeffs_by_order[order - 1][i]
-                    for order in range(1, K + 1)
-                )
-                for i, primal in enumerate(primals)
+                leaf[0] + sum(t**k / factorial(k) * leaf[k] for k in range(1, K + 1))
+                for leaf in leaves
             ]
             return tree_unflatten(taylor_series, in_spec)
 
-        t = tensor(
-            0.0, requires_grad=True, dtype=ref_tensor.dtype, device=ref_tensor.device
-        )
+        x0 = leaves[0][0]
+        t = tensor(0.0, requires_grad=True, dtype=x0.dtype, device=x0.device)
         f_paths = f(*path(t))
 
         f_paths, out_spec = tree_flatten(f_paths)
-        num_output_paths = len(f_paths)
 
         flat_taylor_coeffs_out = [
             [zeros_like(f_path).flatten() for f_path in f_paths] for _ in range(K)
         ]
 
-        for path_idx in range(num_output_paths):
-            f_path = f_paths[path_idx]
+        for path_idx, f_path in enumerate(f_paths):
             for i, path_node in enumerate(f_path.flatten()):
                 dnf_dt = path_node
                 for order in range(K):

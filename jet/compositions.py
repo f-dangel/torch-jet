@@ -19,15 +19,14 @@ from torch import dtype as torch_dtype
 import jet._rules
 from jet.primitives import (
     JetTuple,
-    _align_conv_bias,
     _apply_bilinear,
     _apply_linear,
-    _bn_channel_view,
     _deflinear,
     _elementwise,
     _gelu_exact_derivatives,
     _has_jet_arg,
     _pointwise,
+    _primal,
     _sum_exp,
     jet_addcmul,
     jet_mm,
@@ -165,11 +164,11 @@ def convolution(
     product = _apply_bilinear(cv, input, weight)
     if bias is None:
         return product
-    # Reshape the 1-D bias to broadcast over the output's batch and spatial dims
-    # (channel is dim 1) and defer the add to ``add``. Conv preserves rank, so
-    # the output ndim is the input ndim.
-    ndim = (input[0] if isinstance(input, JetTuple) else input).ndim
-    return add(_align_conv_bias(bias, ndim), product)
+    # Reshape the 1-D bias to ``(C_out, 1, ...)``, so that ``add`` broadcasts it
+    # over the output's batch and spatial dims (channel is dim 1). Conv
+    # preserves rank, so the output ndim is the input ndim.
+    reshape = _rule(ops.aten.reshape.default)
+    return add(reshape(bias, (-1, *(1,) * (_primal(input).ndim - 2))), product)
 
 
 def _reduce_loss(loss: JetTuple, reduction: int) -> JetTuple:
@@ -327,14 +326,13 @@ def gelu(self: JetTuple, approximate: str = "none") -> JetTuple:
     """
     if approximate == "none":
         return _elementwise(self, _gelu_exact_derivatives)
+    if approximate != "tanh":
+        raise NotImplementedError(f"gelu: unsupported approximate={approximate!r}")
     mul = _rule(ops.aten.mul.Tensor)
     add = _rule(ops.aten.add.Tensor)
-    if approximate == "tanh":
-        pow = _rule(ops.aten.pow.Tensor_Scalar)
-        cubic = add(self, mul(pow(self, 3), 0.044715))
-        inner = _rule(ops.aten.tanh.default)(mul(cubic, sqrt(2 / pi)))
-    else:
-        raise NotImplementedError(f"gelu: unsupported approximate={approximate!r}")
+    pow = _rule(ops.aten.pow.Tensor_Scalar)
+    cubic = add(self, mul(pow(self, 3), 0.044715))
+    inner = _rule(ops.aten.tanh.default)(mul(cubic, sqrt(2 / pi)))
     return mul(mul(self, 0.5), add(inner, 1.0))
 
 
@@ -430,8 +428,9 @@ def native_batch_norm(
     mul = _rule(ops.aten.mul.Tensor)
     view = _rule(ops.aten.view.default)
 
-    primal = input[0] if isinstance(input, JetTuple) else input
-    shape = _bn_channel_view(primal)
+    primal = _primal(input)
+    # ``(1, C, 1, ...)``: broadcasts a per-channel tensor over batch and space
+    shape = (1, primal.shape[1], *(1,) * (primal.ndim - 2))
     rstd = view((running_var + eps).rsqrt(), shape)
     scale = rstd if weight is None else mul(view(weight, shape), rstd)
     shift = None if bias is None else view(bias, shape)
@@ -497,7 +496,7 @@ def _fused_rms_norm(
     mean = _rule(ops.aten.mean.dim)
     rsqrt = _rule(ops.aten.rsqrt.default)
     if eps is None:
-        eps = finfo((input[0] if isinstance(input, JetTuple) else input).dtype).eps
+        eps = finfo(_primal(input).dtype).eps
     dims = list(range(-len(normalized_shape), 0))
     rstd = rsqrt(add(mean(pow(input, 2), dims, keepdim=True), eps))
     return _affine(mul(input, rstd), weight, None), rstd
@@ -582,7 +581,7 @@ def _scaled_dot_product_attention_math_for_mps(
         )
     mul = _rule(ops.aten.mul.Tensor)
     transpose = _rule(ops.aten.transpose.int)
-    q, k = (x[0] if isinstance(x, JetTuple) else x for x in (query, key))
+    q, k = _primal(query), _primal(key)
     if q.shape[-3] != k.shape[-3]:
         repeat = _deflinear(ops.aten.repeat_interleave.self_int)
         groups = q.shape[-3] // k.shape[-3]
@@ -665,7 +664,7 @@ def convolution_backward(
         ``output_mask`` is ``False``.
     """
     *conv_args, output_mask = conv_args
-    x, w = (t[0] if isinstance(t, JetTuple) else t for t in (input, weight))
+    x, w = _primal(input), _primal(weight)
 
     def piece(index: int) -> Callable[[Tensor, Tensor, Tensor], Tensor]:
         """``convolution_backward`` restricted to output ``index``."""

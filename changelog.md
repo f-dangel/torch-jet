@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([PR](https://github.com/f-dangel/torch-jet/pull/324)).
 ### Internal
 
+- Rules read the primal of a jet-or-constant operand through one `_primal`
+  helper. The convolution bias is reshaped by the `reshape` rule and batch
+  norm builds its channel view inline, which removes two single-caller
+  helpers; `gelu` rejects an unknown `approximate` before it builds anything
+  ([PR](https://github.com/f-dangel/torch-jet/pull/337)).
 - Layer norm with Taylor-expanded weight and bias holds one coefficient-sized
   temporary tensor less per order: it scales and shifts through the fused
   `addcmul` rule, on one code path with batch norm

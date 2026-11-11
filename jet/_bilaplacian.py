@@ -120,6 +120,12 @@ def bilaplacian(
         else _uncollapsed_via_vmap(f, mock_args, randomization)
     )
 
+    # weights of the 4th coefficients along the three sets of directions
+    gammas = compute_all_gammas((2, 2))
+    gamma_4_4 = float(compute_all_gammas((4,))[(4,)])
+    w1 = (gamma_4_4 + 2 * (in_dim - 1) * float(gammas[(4, 0)])) / 24
+    w2, w3 = 2 * float(gammas[(3, 1)]) / 24, 2 * float(gammas[(2, 2)]) / 24
+
     def _eval_4jet(x: Tensor, X1: Tensor) -> Tensor:
         """Evaluate the 4-jet for directions X1 and return the 4th coefficient.
 
@@ -138,9 +144,7 @@ def bilaplacian(
             z = Z = None
         else:
             z, Z = _zero_coeff(x, in_shape), _zero_coeff(x, (X1.shape[0], *in_shape))
-        result = require_single_tensor_output(cjet_f((x, X1, Z, Z, z)), "bilaplacian")
-        _, _, _, _, F4 = result
-        return F4
+        return require_single_tensor_output(cjet_f((x, X1, Z, Z, z)), "bilaplacian")[4]
 
     def bilap_f(*args: PyTree[Tensor]) -> Tensor:
         """Compute the Bi-Laplacian of the function at the input tensor.
@@ -166,26 +170,9 @@ def bilaplacian(
             return F4 / (3 * num_samples)
 
         C1, C2, C3 = _set_up_taylor_coefficients(x)
-        D = in_dim
-
-        gamma_4_4 = float(compute_all_gammas((4,))[(4,)])
-        gammas = compute_all_gammas((2, 2))
-        gamma_4_0 = float(gammas[(4, 0)])
-        F4_1 = _eval_4jet(x, C1)
-        factor1 = (gamma_4_4 + 2 * (D - 1) * gamma_4_0) / 24
-        term1 = factor1 * F4_1
-
-        if D == 1:
+        term1 = w1 * _eval_4jet(x, C1)
+        if in_dim == 1:
             return term1
-
-        gamma_3_1 = float(gammas[(3, 1)])
-        F4_2 = _eval_4jet(x, C2)
-        term2 = 2 * gamma_3_1 / 24 * F4_2
-
-        gamma_2_2 = float(gammas[(2, 2)])
-        F4_3 = _eval_4jet(x, C3)
-        term3 = 2 * gamma_2_2 / 24 * F4_3
-
-        return term1 + term2 + term3
+        return term1 + w2 * _eval_4jet(x, C2) + w3 * _eval_4jet(x, C3)
 
     return bilap_f

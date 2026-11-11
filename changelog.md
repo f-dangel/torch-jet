@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([PR](https://github.com/f-dangel/torch-jet/pull/324)).
 ### Internal
 
+- `generate_multi_indices` is a two-argument recursion, the Bi-Laplacian
+  computes the weights of its three direction sets once instead of on every
+  call, and the reverse-mode reference `_rev_jet` builds its Taylor path
+  without intermediate lists
+  ([PR](https://github.com/f-dangel/torch-jet/pull/336)).
 - The interpreter looks for jets among keyword arguments too, so an op without
   a rule that receives a jet by keyword raises the "No jet rule" error instead
   of a type error from PyTorch. Constant and jet outputs share one code path

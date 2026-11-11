@@ -1,7 +1,7 @@
 """Tests for jet/_jet.py (the jet() / _rev_jet transforms)."""
 
 from pytest import mark, raises
-from torch import manual_seed, rand, sin, zeros
+from torch import manual_seed, rand, searchsorted, sin, tensor, zeros, zeros_like
 from torch.testing import assert_close
 
 from jet import jet
@@ -43,6 +43,16 @@ def test_collapsed_jet_rejects_order_below_2():
     for jet_tuple in [(x, x), (x,)]:
         with raises(ValueError, match="collapsed mode requires K >= 2"):
             cjet_f(jet_tuple)
+
+
+def test_jet_by_keyword_without_rule_raises():
+    """A jet that reaches an op only by keyword still needs a rule for that op."""
+    sequence, values = tensor([3.0, 1.0, 2.0]), tensor([1.5, 2.5])
+    order = sequence.argsort()
+    jet_f = jet(lambda sorter: searchsorted(sequence, values, sorter=sorter), (order,))
+
+    with raises(NotImplementedError, match="No jet rule"):
+        jet_f((order, zeros_like(order)))
 
 
 def test_jet_rejects_unsupported_tuple_dict_signature():

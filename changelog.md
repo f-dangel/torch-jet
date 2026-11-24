@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `add` and `sub` rules take `alpha` (`x.add(y, alpha=a)` computes
   `x + a * y`): the second operand is scaled by the `mul` rule
   ([PR](https://github.com/f-dangel/torch-jet/pull/342)).
+- Add a rule for `aten.sqrt.default`, from the power rule's derivative table
+  ([PR](https://github.com/f-dangel/torch-jet/pull/344)).
 
 ### Fixed/Removed
 

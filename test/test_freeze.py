@@ -1,7 +1,7 @@
 """Test `jet.freeze`: a jet function traced once on fixed arguments."""
 
 from pytest import mark, raises
-from torch import rand
+from torch import rand, zeros_like
 from torch.testing import assert_close
 
 from jet import freeze, jet
@@ -30,3 +30,13 @@ def test_freeze_rejects_other_arguments():
         frozen(*make_jet_args(args, K=2))
     with raises(ValueError, match="shape"):
         frozen(*make_jet_args((rand(6, dtype=args[0].dtype),), K=1))
+
+
+def test_freeze_with_one_tensor_as_two_coefficients():
+    """Two coefficients traced on one tensor stay two separate inputs."""
+    f, args = setup_case(SCALAR_OUTPUT_CASES[0])
+    jet_fn = jet(f, args)
+    zero = zeros_like(args[0])
+    frozen = freeze(jet_fn, ((args[0], zero, zero),))
+    jet_args = make_jet_args(args, K=2)
+    assert_close(frozen(*jet_args), jet_fn(*jet_args))

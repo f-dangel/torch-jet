@@ -103,7 +103,8 @@ def capture_graph(
         f: Callable to trace (plain function, ``nn.Module``, ``GraphModule``,
             etc.). May accept pytrees of tensors as positional args.
         mock_args: Mock inputs (pytrees of tensors) matching ``f``'s positional
-            args, provided as a tuple. Only shapes and dtypes matter.
+            args, provided as a tuple. Only shapes and dtypes matter, so the
+            same tensor may be passed for several arguments.
 
     Returns:
         A pair ``(mod, in_spec)`` where ``mod`` is a ``GraphModule`` whose
@@ -135,7 +136,7 @@ def capture_graph(
     def flat_f(*flat_tensors: Tensor) -> PyTree[Tensor]:
         return f(*tree_unflatten(list(flat_tensors), in_spec))
 
-    mod = _make_fx(functionalize(flat_f))(*flat_mocks)
+    mod = _make_fx(functionalize(flat_f))(*_distinct(flat_mocks))
     _replace_ops(mod)
     mod.graph.eliminate_dead_code()
     mod.recompile()
@@ -213,6 +214,28 @@ def freeze(
         return mod(*new_leaves)
 
     return frozen
+
+
+def _distinct(leaves: list[Any]) -> list[Any]:
+    """Replace every repeated tensor object by a view of itself.
+
+    ``make_fx`` tells its inputs apart by object identity: a tensor passed
+    twice would be traced as one input. A view is a new object on the same
+    memory, so nothing is copied.
+
+    Args:
+        leaves: The flat leaves to trace on (tensors or ``None``).
+
+    Returns:
+        The leaves, with pairwise distinct tensor objects.
+    """
+    seen, out = set(), []
+    for m in leaves:
+        if isinstance(m, Tensor) and id(m) in seen:
+            m = m.view_as(m)
+        seen.add(id(m))
+        out.append(m)
+    return out
 
 
 def _assert_traceable_signature(args: tuple[Any, ...]) -> None:

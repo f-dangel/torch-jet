@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Leibniz rule emits since [PR 318](https://github.com/f-dangel/torch-jet/pull/318)
   has a rule of its own, a composition of `mul` and `add`
   ([PR](https://github.com/f-dangel/torch-jet/pull/324)).
+- `jet`, `capture_graph` and `freeze` are correct when the same tensor is
+  passed for several mock arguments or coefficients: the trace used to merge
+  them into one input, which gave wrong results without an error
+  ([PR](https://github.com/f-dangel/torch-jet/pull/340)).
 ### Internal
 
 - Comments and docstrings that no longer matched the code are corrected

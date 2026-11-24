@@ -5,10 +5,22 @@ Not primitive coverage -- see ``test_primitives.py`` for that.
 """
 
 from functools import partial
+from itertools import product
 from typing import Any, Callable
 
 from pytest import mark
-from torch import Tensor, addcmul, cos, lerp, manual_seed, rand, randn, sin, tanh
+from torch import (
+    Tensor,
+    addcdiv,
+    addcmul,
+    cos,
+    lerp,
+    manual_seed,
+    rand,
+    randn,
+    sin,
+    tanh,
+)
 from torch.nn import (
     Hardsigmoid,
     Hardswish,
@@ -33,6 +45,8 @@ from test.utils import (
 
 #: Shapes of the operands in the three-operand cases, and a number as ``lerp`` weight.
 TERNARY_SHAPES, LERP_WEIGHT = [(3, 4), (4,), (3, 1)], 0.3
+#: ``addcdiv``'s ``value`` (default and scaled) and the shift of its divisor off zero.
+ADDCDIV_VALUES, ADDCDIV_SHIFT = {"addcdiv": 1, "addcdiv_value": 0.5}, 1.0
 
 
 def _deep_pytree_f(x: Tensor, params: list) -> tuple[Tensor, dict[str, Tensor]]:
@@ -75,6 +89,11 @@ def _lerp(start: Tensor, end: Tensor, weight: Tensor | None) -> Tensor:
     return lerp(start, end, LERP_WEIGHT if weight is None else weight)
 
 
+def _addcdiv(self: Tensor, tensor1: Tensor, tensor2: Tensor, value: float) -> Tensor:
+    """``addcdiv`` with a divisor off zero, so the quotient is well-conditioned."""
+    return addcdiv(self, tensor1, tensor2 + ADDCDIV_SHIFT, value=value)
+
+
 def _ternary_case(name: str, op: Callable, codes: str) -> dict[str, Any]:
     """``op`` on three operands: jets (``J``), constants (``C``) or ``None`` (``N``)."""
 
@@ -110,6 +129,13 @@ COMPOSITION_CASES = [
         for ends in ("JJ", "JC", "CJ")
     ),
     _ternary_case("lerp", _lerp, "CCJ"),
+    # ``addcdiv``: every mix of jet and constant operands with at least one jet.
+    *(
+        _ternary_case(name, partial(_addcdiv, value=value), "".join(codes))
+        for name, value in ADDCDIV_VALUES.items()
+        for codes in product("JC", repeat=3)
+        if "J" in codes
+    ),
     {"id": "mlp", "f": mlp, "args_fn": lambda: (rand(5),)},
     {"id": "mlp_batched", "f": mlp, "args_fn": lambda: (rand(10, 5),)},
     {

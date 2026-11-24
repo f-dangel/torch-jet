@@ -82,6 +82,7 @@ RULES: dict[Callable, Rule] = {
     # registry (see :mod:`jet.compositions`).
     ops.aten.addmm.default: compositions.addmm,
     ops.aten.addcmul.default: compositions.addcmul,
+    ops.aten.addcdiv.default: compositions.addcdiv,
     ops.aten.lerp.Scalar: compositions.lerp,
     ops.aten.lerp.Tensor: compositions.lerp,
     # ``stack(tensors, dim) == cat([unsqueeze(t, dim) for t in tensors], dim)``;

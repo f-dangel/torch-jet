@@ -73,3 +73,13 @@ def test_jet_rejects_unsupported_tuple_dict_signature():
     jet(lambda d: d["a"] * 2, (d,))  # single dict arg
     jet(lambda d, x: d["a"] + x, (d, t))  # dict first
     jet(lambda x, y, d: x + y + d["a"], (t, t, d))  # three args, trailing dict
+
+
+def test_jet_returns_plain_containers(collapsed: bool):
+    """A jet returns ``dict`` and ``list``, so its output is a valid argument."""
+    mock = {"a": [zeros(3), zeros(3)]}
+    f = lambda d: {"a": [d["a"][1].sin(), d["a"][0]]}  # noqa: E731
+    jet_f = jet(f, (mock,), collapsed=collapsed)
+    (jet_arg,) = make_jet_args((mock,), K=2, collapsed=collapsed)
+    out = jet_f(jet_f(jet_arg))  # round trip: the output is passed back in
+    assert type(out) is dict and type(out["a"]) is list

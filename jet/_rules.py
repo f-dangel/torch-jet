@@ -33,6 +33,7 @@ RULES: dict[Callable, Rule] = {
     ops.aten.exp.default: _defelementwise(primitives._exp_derivatives),
     ops.aten.log.default: _defelementwise(primitives._log_derivatives),
     ops.aten.rsqrt.default: _defelementwise(primitives._rsqrt_derivatives),
+    ops.aten.sqrt.default: _defelementwise(primitives._sqrt_derivatives),
     ops.aten.hardswish.default: _defelementwise(primitives._hardswish_derivatives),
     ops.aten.silu.default: _defelementwise(primitives._silu_derivatives),
     # Power (also elementwise, but the exponent is a call-time arg, so it carries

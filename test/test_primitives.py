@@ -37,6 +37,7 @@ from torch import (
     rsub,
     sigmoid,
     sin,
+    sqrt,
     stack,
     tanh,
     tensor,
@@ -513,6 +514,7 @@ _UNARY_POINTWISE = {
     "gelu_tanh": (lambda x: gelu(x, approximate="tanh"), randn),
     "log": (log, lambda *d: rand(*d) + 0.5),  # ``1 / x0**k`` derivatives
     "rsqrt": (rsqrt, lambda *d: rand(*d) + 0.5),
+    "sqrt": (sqrt, lambda *d: rand(*d) + 0.5),
     # Called directly: ``x + 0.5`` and functionalized ``add_`` trace to ``add.Tensor``.
     "add_scalar": (lambda x: ops.aten.add.Scalar(x, 0.5), rand),
 }

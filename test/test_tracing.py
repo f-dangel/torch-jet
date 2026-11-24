@@ -17,14 +17,15 @@ such as inductor may not reproduce, whereas ``reshape`` copies when it must.
 """
 
 from pytest import mark, raises
-from torch import matmul, ops, rand, sin, zeros, zeros_like
+from torch import matmul, ops, rand, sin, sub, zeros, zeros_like
 from torch.func import functionalize
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.nn import Linear
 from torch.testing import assert_close
 
 from jet import jet
-from jet.tracing import capture_graph, freeze
+from jet.tracing import _distinct, capture_graph, freeze
+from test.utils import make_jet_args
 
 
 def _uses_squeeze_inplace(mod) -> bool:
@@ -106,3 +107,18 @@ def test_freeze_fixes_symbolic_zero_leaves():
     frozen = freeze(jet_f, ((x, v, zeros_like(x)),))
     with raises(ValueError, match="was a tensor at trace time"):
         frozen((x, v, None))
+
+
+def test_jet_with_one_tensor_as_both_mocks():
+    """Two arguments traced on one mock tensor stay two separate inputs."""
+    mock = zeros(3)
+    a, b = make_jet_args((rand(3), rand(3)), K=2)
+    assert_close(jet(sub, (mock, mock))(a, b), tuple(map(sub, a, b)))
+
+
+def test_distinct_views_a_repeated_tensor():
+    """A repeated tensor becomes a new object on the same memory: no copy."""
+    x = rand(3)
+    first, none, second = _distinct([x, None, x])
+    assert first is x and none is None
+    assert second is not x and second.data_ptr() == x.data_ptr()

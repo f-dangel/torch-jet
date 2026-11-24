@@ -8,7 +8,7 @@ from functools import partial
 from typing import Any, Callable
 
 from pytest import mark
-from torch import Tensor, addcmul, cos, manual_seed, rand, randn, sin, tanh
+from torch import Tensor, addcmul, cos, lerp, manual_seed, rand, randn, sin, tanh
 from torch.nn import (
     Hardsigmoid,
     Hardswish,
@@ -27,7 +27,12 @@ from test.utils import (
     class_index_loss,
     device_kw,
     mlp,
+    pick_operands,
+    rand_jet_args,
 )
+
+#: Shapes of the operands in the three-operand cases, and a number as ``lerp`` weight.
+TERNARY_SHAPES, LERP_WEIGHT = [(3, 4), (4,), (3, 1)], 0.3
 
 
 def _deep_pytree_f(x: Tensor, params: list) -> tuple[Tensor, dict[str, Tensor]]:
@@ -65,6 +70,23 @@ def _channel_shuffle(x: Tensor, groups: int = 2) -> Tensor:
     return x.view(N, C, H, W)
 
 
+def _lerp(start: Tensor, end: Tensor, weight: Tensor | None) -> Tensor:
+    """``lerp``; an absent weight is the number ``LERP_WEIGHT``."""
+    return lerp(start, end, LERP_WEIGHT if weight is None else weight)
+
+
+def _ternary_case(name: str, op: Callable, codes: str) -> dict[str, Any]:
+    """``op`` on three operands: jets (``J``), constants (``C``) or ``None`` (``N``)."""
+
+    def build(device: str) -> Callable:
+        manual_seed(3)
+        consts = [rand(*shape, **device_kw(device)) for shape in TERNARY_SHAPES]
+        return lambda *args: op(*pick_operands(args, codes, consts))
+
+    args_fn = partial(rand_jet_args, codes, TERNARY_SHAPES)
+    return {"id": f"{name}_{codes}", "f": build, "args_fn": args_fn}
+
+
 COMPOSITION_CASES = [
     {
         "id": "scalar_Rn_to_R",
@@ -81,6 +103,13 @@ COMPOSITION_CASES = [
         "f": _stateless(addcmul),
         "args_fn": lambda: (rand(3, 4), rand(3, 1), rand(4)),
     },
+    # ``lerp``: the weight is a number, a constant tensor, or a jet.
+    *(
+        _ternary_case("lerp", _lerp, ends + weight)
+        for weight in "NCJ"
+        for ends in ("JJ", "JC", "CJ")
+    ),
+    _ternary_case("lerp", _lerp, "CCJ"),
     {"id": "mlp", "f": mlp, "args_fn": lambda: (rand(5),)},
     {"id": "mlp_batched", "f": mlp, "args_fn": lambda: (rand(10, 5),)},
     {

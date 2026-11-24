@@ -107,6 +107,27 @@ def addcmul(
     return add(self, product if value == 1 else mul(product, value))
 
 
+def lerp(
+    self: Tensor | JetTuple, end: Tensor | JetTuple, weight: Tensor | JetTuple | float
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.lerp(self, end, weight)``.
+
+    ``lerp(self, end, weight) == self + weight * (end - self)``, so the rule
+    composes the linear ``sub`` and ``add`` rules with the bilinear ``mul`` rule.
+    Any operand may be Taylor-expanded.
+
+    Args:
+        self: The start point; a jet or a constant ``Tensor``.
+        end: The end point; a jet or a constant ``Tensor``.
+        weight: The interpolation weight; a jet, a constant ``Tensor``, or a number.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    add, mul = _rule(ops.aten.add.Tensor), _rule(ops.aten.mul.Tensor)
+    return add(self, mul(_rule(ops.aten.sub.Tensor)(end, self), weight))
+
+
 def stack(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.stack(tensors, dim)``.
 

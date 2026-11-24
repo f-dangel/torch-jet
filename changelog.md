@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([PR](https://github.com/f-dangel/torch-jet/pull/342)).
 - Add a rule for `aten.sqrt.default`, from the power rule's derivative table
   ([PR](https://github.com/f-dangel/torch-jet/pull/344)).
+- Add a rule for `lerp` (`aten.lerp.Scalar` and `aten.lerp.Tensor`), a
+  composition of `sub`, `mul` and `add`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/345)).
 
 ### Fixed/Removed
 

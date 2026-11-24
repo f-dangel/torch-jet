@@ -1007,6 +1007,7 @@ def _addsub(
     other: Tensor | JetTuple | float | int,
     op: Callable[[Tensor, Tensor], Tensor],
     neg: Callable[[Tensor], Tensor],
+    alpha: float | int = 1,
 ) -> Tensor | JetTuple | float | int:
     """Shared body for the additive rules ``add`` and ``sub``.
 
@@ -1015,8 +1016,11 @@ def _addsub(
     the coefficients when the jet is the *second* operand of a subtraction
     (``self - other`` differentiates ``other`` with a minus); it is the identity
     for ``add``. Mode-agnostic: the broadcast helper and constructor follow the
-    jet operand's ``collapsed`` flag.
+    jet operand's ``collapsed`` flag. ``alpha`` scales ``other`` through the
+    ``mul`` rule first (``self ± alpha * other``).
     """
+    if alpha != 1:
+        other = jet_mul(other, alpha)
     self_is = isinstance(self, JetTuple)
     other_is = isinstance(other, JetTuple)
     if self_is and other_is:
@@ -1035,35 +1039,41 @@ def _addsub(
 
 
 def jet_add(
-    self: Tensor | JetTuple | float | int, other: Tensor | JetTuple | float | int
+    self: Tensor | JetTuple | float | int,
+    other: Tensor | JetTuple | float | int,
+    alpha: float | int = 1,
 ) -> Tensor | JetTuple | float | int:
     """Taylor-mode arithmetic for ``aten.add(self, other)`` (standard or collapsed).
 
     Args:
         self: The first operand and its Taylor coefficients, or a constant.
         other: The second operand and its Taylor coefficients, or a constant.
+        alpha: Multiplier of ``other``.
 
     Returns:
         The value and its Taylor coefficients, or a plain constant when both
         operands are constants.
     """
-    return _addsub(self, other, add, lambda c: c)
+    return _addsub(self, other, add, lambda c: c, alpha)
 
 
 def jet_sub(
-    self: Tensor | JetTuple | float | int, other: Tensor | JetTuple | float | int
+    self: Tensor | JetTuple | float | int,
+    other: Tensor | JetTuple | float | int,
+    alpha: float | int = 1,
 ) -> Tensor | JetTuple | float | int:
     """Taylor-mode arithmetic for ``aten.sub(self, other)`` (standard or collapsed).
 
     Args:
         self: The first operand and its Taylor coefficients, or a constant.
         other: The second operand and its Taylor coefficients, or a constant.
+        alpha: Multiplier of ``other``.
 
     Returns:
         The value and its Taylor coefficients, or a plain constant when both
         operands are constants.
     """
-    return _addsub(self, other, sub, lambda c: -c)
+    return _addsub(self, other, sub, lambda c: -c, alpha)
 
 
 def jet_rsub(
@@ -1083,7 +1093,7 @@ def jet_rsub(
     Returns:
         The value and its Taylor coefficients.
     """
-    return jet_sub(other, self if alpha == 1 else jet_mul(self, alpha))
+    return jet_sub(other, self, alpha)
 
 
 def jet_mul(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:

@@ -540,6 +540,9 @@ _BROADCAST_BINOPS = {
     "add": lambda x, y: x + y,
     "sub": lambda x, y: x - y,
     "mul": lambda x, y: x * y,
+    # ``alpha`` scales the second operand
+    "add_alpha": lambda x, y: x.add(y, alpha=0.5),
+    "sub_alpha": lambda x, y: x.sub(y, alpha=0.5),
 }
 _BROADCAST_PAIRS = [
     ((1, 4), (3, 1)),  # same rank, mutual broadcast

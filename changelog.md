@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   passed for several mock arguments or coefficients: the trace used to merge
   them into one input, which gave wrong results without an error
   ([PR](https://github.com/f-dangel/torch-jet/pull/340)).
+- A jet returns plain `list` and `dict` containers instead of `torch.fx`'s
+  immutable ones, so its output can be modified and passed back in as an
+  argument
+  ([PR](https://github.com/f-dangel/torch-jet/pull/341)).
 ### Internal
 
 - Comments and docstrings that no longer matched the code are corrected

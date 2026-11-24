@@ -119,9 +119,15 @@ class JetInterpreter(Interpreter):
         expanded to zero-coefficient jets. Both follow the mode's shape
         contract: standard returns ``K`` zeros of the primal's shape; collapsed
         returns ``K - 1`` zeros of shape ``(R, *S)`` plus one zero of ``S``.
+        Lists and dicts, which the interpreter hands back as fx's immutable
+        variants, are rebuilt as plain ``list`` and ``dict``.
         """
 
-        def _normalize_leaf(node: Any) -> Jet:
+        def _normalize_leaf(node: Any) -> Jet | list | dict:
+            if isinstance(node, list):
+                return [self._normalize(n, K, R) for n in node]
+            if isinstance(node, dict):
+                return {key: self._normalize(n, K, R) for key, n in node.items()}
             if not isinstance(node, JetTuple):
                 node = (node, *[None] * K)  # give a constant K symbolic zeros
             primal, *coeffs = node
@@ -133,8 +139,9 @@ class JetInterpreter(Interpreter):
                 ),
             )
 
+        leaf_types = (JetTuple, Tensor, list, dict)
         return tree_map(
-            _normalize_leaf, result, is_leaf=lambda x: isinstance(x, (JetTuple, Tensor))
+            _normalize_leaf, result, is_leaf=lambda x: isinstance(x, leaf_types)
         )
 
     def _dense_zero(self, primal: Tensor, k: int, K: int, R: int | None) -> Tensor:

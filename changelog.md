@@ -37,6 +37,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([PR](https://github.com/f-dangel/torch-jet/pull/341)).
 ### Internal
 
+- Tests take jets through a training loop with PyTorch's functional Adam and
+  AdamW kernels `torch.optim.adam.adam` and `torch.optim.adamw.adamw` (weight
+  decay, maximize)
+  ([PR](https://github.com/f-dangel/torch-jet/pull/347)).
 - Tests take jets through a training loop with PyTorch's functional SGD kernel
   `torch.optim.sgd.sgd` (momentum, dampening, weight decay, Nesterov,
   maximize) and pin that lazily initialized (`None`) momentum buffers raise

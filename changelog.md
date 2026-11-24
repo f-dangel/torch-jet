@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add a rule for `lerp` (`aten.lerp.Scalar` and `aten.lerp.Tensor`), a
   composition of `sub`, `mul` and `add`
   ([PR](https://github.com/f-dangel/torch-jet/pull/345)).
+- Add a rule for `aten.addcdiv.default`, a composition of `div`, `mul` and
+  `add`
+  ([PR](https://github.com/f-dangel/torch-jet/pull/346)).
 
 ### Fixed/Removed
 

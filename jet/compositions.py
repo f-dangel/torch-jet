@@ -107,6 +107,32 @@ def addcmul(
     return add(self, product if value == 1 else mul(product, value))
 
 
+def addcdiv(
+    self: Tensor | JetTuple,
+    tensor1: Tensor | JetTuple,
+    tensor2: Tensor | JetTuple,
+    value: float | int = 1,
+) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.addcdiv(self, tensor1, tensor2, value)``.
+
+    ``addcdiv(self, tensor1, tensor2, value) == self + value * tensor1 / tensor2``,
+    so the rule composes the ``div`` rule with the affine addition. Any operand
+    may be Taylor-expanded.
+
+    Args:
+        self: The summand; a jet or a constant ``Tensor``.
+        tensor1: The numerator; a jet or a constant ``Tensor``.
+        tensor2: The denominator; a jet or a constant ``Tensor``.
+        value: The scalar that scales the quotient. Default: ``1``.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    add, mul = _rule(ops.aten.add.Tensor), _rule(ops.aten.mul.Tensor)
+    quotient = _rule(ops.aten.div.Tensor)(tensor1, tensor2)
+    return add(self, quotient if value == 1 else mul(quotient, value))
+
+
 def lerp(
     self: Tensor | JetTuple, end: Tensor | JetTuple, weight: Tensor | JetTuple | float
 ) -> JetTuple:

@@ -11,7 +11,7 @@ from functools import partial
 from typing import Any, Callable
 
 from pytest import mark, raises, skip
-from torch import Tensor, manual_seed, rand, tanh, tensor, zeros_like
+from torch import Tensor, manual_seed, maximum, rand, tanh, tensor, zeros_like
 from torch.func import grad
 from torch.optim.adam import adam
 from torch.optim.adamw import adamw
@@ -38,11 +38,14 @@ SGD_CASES = {
     | dict(momentum=0.9, nesterov=True, weight_decay=0.1, maximize=True),
 }
 #: Plain Adam in the kernels' hyper-parameters; the cases override some of them.
-ADAM = dict(lr=0.01, beta1=0.9, beta2=0.999, eps=1e-8, weight_decay=0, maximize=False)
+ADAM = dict(lr=0.01, beta1=0.9, beta2=0.999, eps=1e-8)
+ADAM |= dict(weight_decay=0, maximize=False, amsgrad=False)
 ADAM_CASES = {
     "plain": ADAM,
     "weight_decay": ADAM | dict(weight_decay=0.1),
     "maximize": ADAM | dict(maximize=True),
+    # With a small ``beta2``, old and new second moments both win the maximum.
+    "amsgrad": ADAM | dict(amsgrad=True, beta2=0.5),
 }
 
 
@@ -86,25 +89,26 @@ def _train_ref(params, batches, weight_decay, momentum, dampening, nesterov, max
 
 
 def _train_adam(params: list[Tensor], batches: list, kernel: Callable, **hyper: Any):
-    """Train with an Adam kernel; return the parameters and both moment estimates."""
+    """Train with an Adam kernel; return the parameters and the moment estimates."""
     params = [p.clone() for p in params]
     # The kernel needs moments made from the traced parameters and untraced counts.
-    m, v = ([zeros_like(p) for p in params] for _ in range(2))
+    m, v, v_max = ([zeros_like(p) for p in params] for _ in range(3))
     steps = [tensor(0.0) for _ in params]
+    max_v = v_max if hyper["amsgrad"] else []  # only amsgrad takes the maxima
     for x, y in batches:
         grads = grad(_loss)(params, x, y)
-        kernel(params, grads, m, v, [], steps, foreach=False, amsgrad=False, **hyper)
-    return params, m, v
+        kernel(params, grads, m, v, max_v, steps, foreach=False, **hyper)
+    return params, m, v, v_max
 
 
 def _train_adam_ref(
-    params, batches, kernel, lr, beta1, beta2, eps, weight_decay, maximize
+    params, batches, kernel, lr, beta1, beta2, eps, weight_decay, maximize, amsgrad
 ):
     """The loop of :func:`_train_adam` out of place, written by hand."""
-    m, v = ([zeros_like(p) for p in params] for _ in range(2))
+    m, v, v_max = ([zeros_like(p) for p in params] for _ in range(3))
     for t, (x, y) in enumerate(batches, start=1):
-        new = []
-        for p, g, m_p, v_p in zip(params, grad(_loss)(params, x, y), m, v):
+        new, grads = [], grad(_loss)(params, x, y)
+        for p, g, m_p, v_p, v_max_p in zip(params, grads, m, v, v_max):
             g = -g if maximize else g
             if kernel is adamw:  # decoupled weight decay
                 p = p * (1 - lr * weight_decay)
@@ -112,10 +116,11 @@ def _train_adam_ref(
                 g = g + weight_decay * p
             m_p = beta1 * m_p + (1 - beta1) * g
             v_p = beta2 * v_p + (1 - beta2) * g * g
-            denom = v_p.sqrt() / (1 - beta2**t) ** 0.5 + eps
-            new.append((p - lr / (1 - beta1**t) * m_p / denom, m_p, v_p))
-        params, m, v = (list(state) for state in zip(*new))
-    return params, m, v
+            v_max_p = maximum(v_max_p, v_p) if amsgrad else v_max_p
+            denom = (v_max_p if amsgrad else v_p).sqrt() / (1 - beta2**t) ** 0.5 + eps
+            new.append((p - lr / (1 - beta1**t) * m_p / denom, m_p, v_p, v_max_p))
+        params, m, v, v_max = (list(state) for state in zip(*new))
+    return params, m, v, v_max
 
 
 def _assert_jet_matches(

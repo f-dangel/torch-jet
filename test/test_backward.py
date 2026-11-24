@@ -20,7 +20,8 @@ from test.test_primitives import PRIMITIVE_CASES
 from test.utils import assert_jet_matches_oracle, device_kw, make_jet_args, vjp_case
 
 #: Prefixes of the case ids whose VJP needs a backward op without a jet rule.
-UNSUPPORTED: tuple[str, ...] = ()
+#: The VJP of ``maximum`` compares its operands (``aten.eq.Tensor``).
+UNSUPPORTED: tuple[str, ...] = ("maximum",)
 
 
 @mark.parametrize("config", map(vjp_case, PRIMITIVE_CASES), ids=lambda c: c["id"])

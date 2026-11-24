@@ -85,6 +85,7 @@ RULES: dict[Callable, Rule] = {
     ops.aten.addcdiv.default: compositions.addcdiv,
     ops.aten.lerp.Scalar: compositions.lerp,
     ops.aten.lerp.Tensor: compositions.lerp,
+    ops.aten.maximum.default: compositions.maximum,
     # ``stack(tensors, dim) == cat([unsqueeze(t, dim) for t in tensors], dim)``;
     # decomposed into the registered ``unsqueeze`` and ``cat`` rules.
     ops.aten.stack.default: compositions.stack,

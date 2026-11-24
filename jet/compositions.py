@@ -154,6 +154,29 @@ def lerp(
     return add(self, mul(_rule(ops.aten.sub.Tensor)(end, self), weight))
 
 
+def maximum(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
+    """Taylor-mode arithmetic for ``aten.maximum(self, other)``.
+
+    Piecewise linear: every coefficient comes from the operand with the larger
+    primal. Where the primals are equal, it is the average of the two operands'
+    coefficients, like the tangent of ``torch.func.jvp``. A constant operand's
+    coefficients are zero.
+
+    Args:
+        self: The first operand; a jet or a constant ``Tensor``.
+        other: The second operand; a jet or a constant ``Tensor``.
+
+    Returns:
+        The value and its Taylor coefficients.
+    """
+    add, mul = _rule(ops.aten.add.Tensor), _rule(ops.aten.mul.Tensor)
+    where = _rule(ops.aten.where.self)
+    a, b = _primal(self), _primal(other)
+    out = where(a > b, self, where(a < b, other, mul(add(self, other), 0.5)))
+    # The average of two equal primals may round, so take the primal from the op.
+    return JetTuple((ops.aten.maximum.default(a, b), *out[1:]), collapsed=out.collapsed)
+
+
 def stack(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.stack(tensors, dim)``.
 

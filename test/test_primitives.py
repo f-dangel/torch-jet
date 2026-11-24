@@ -26,6 +26,7 @@ from torch import (
     log,
     manual_seed,
     matmul,
+    maximum,
     ones_like,
     ops,
     rand,
@@ -45,6 +46,7 @@ from torch import (
     zeros_like,
 )
 from torch import dtype as dtype_t
+from torch.func import jvp
 from torch.nn.functional import (
     adaptive_avg_pool2d,
     avg_pool2d,
@@ -545,6 +547,7 @@ _BROADCAST_BINOPS = {
     # ``alpha`` scales the second operand
     "add_alpha": lambda x, y: x.add(y, alpha=0.5),
     "sub_alpha": lambda x, y: x.sub(y, alpha=0.5),
+    "maximum": maximum,
 }
 _BROADCAST_PAIRS = [
     ((1, 4), (3, 1)),  # same rank, mutual broadcast
@@ -1625,3 +1628,31 @@ def test_div_self_is_exact(collapsed: bool, device: str):
         assert_close(c, zeros_like(c), atol=0, rtol=0)
     composed = jet(lambda x: x * x**-1, (x,), collapsed=collapsed)(*jet_args)
     assert 1e-3 > composed[K].abs().max() > 0
+
+
+@mark.parametrize("const", [False, True], ids=["JJ", "JC"])
+def test_maximum_ties(const: bool, collapsed: bool, device: str):
+    """Where the primals are equal, ``maximum`` averages the coefficients.
+
+    That is the tangent of ``torch.func.jvp``. A constant operand counts as a
+    jet whose coefficients are zero.
+    """
+    manual_seed(0)
+    K, rows, kw = 3, 3, device_kw(device)
+    offsets = tensor([0.0, 0.0, 1.0, -1.0], **kw)  # of ``y`` from ``x``; 0 is a tie
+    # The average of two of the largest float overflows: the primal must not.
+    largest = full((1, len(offsets)), finfo(kw["dtype"]).max, **kw)
+    x = cat([largest, rand(rows, len(offsets), **kw)])
+    y = x + offsets
+    f, args = (lambda x: maximum(x, y), (x,)) if const else (maximum, (x, y))
+
+    jets = make_jet_args(args, 1)
+    assert_close(jet(f, args)(*jets), jvp(f, args, tuple(j[1] for j in jets)))
+
+    jets = make_jet_args(args, K, collapsed)
+    out = jet(f, args, collapsed=collapsed)(*jets)
+    assert_close(out[0], maximum(x, y), rtol=0, atol=0)
+    x_coeffs = jets[0][1:]
+    y_coeffs = [zeros_like(c) for c in x_coeffs] if const else jets[1][1:]
+    for c, a, b in zip(out[1:], x_coeffs, y_coeffs):
+        assert_close(c, where(x > y, a, where(x < y, b, (a + b) / 2)))

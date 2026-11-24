@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add a rule for `aten.addcdiv.default`, a composition of `div`, `mul` and
   `add`
   ([PR](https://github.com/f-dangel/torch-jet/pull/346)).
+- Add a rule for `aten.maximum.default`: every coefficient comes from the
+  operand with the larger primal and, where the primals are equal, is the
+  average of both operands' coefficients, like the tangent of `torch.func.jvp`.
+  The Adam and AdamW tests gain amsgrad cases
+  ([PR](https://github.com/f-dangel/torch-jet/pull/348)).
 
 ### Fixed/Removed
 

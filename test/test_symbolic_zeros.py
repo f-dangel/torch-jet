@@ -11,6 +11,7 @@ from jet import jet
 from jet._rules import RULES
 from jet.primitives import JetTuple, jet_add, jet_cat
 from jet.utils import _is_jet_leaf
+from test.test_backward import UNSUPPORTED
 from test.test_composition import COMPOSITION_CASES
 from test.test_primitives import PRIMITIVE_CASES
 from test.utils import make_jet_args, setup_case, tolerances_for, vjp_case
@@ -20,7 +21,11 @@ from test.utils import make_jet_args, setup_case, tolerances_for, vjp_case
 CASES = (
     PRIMITIVE_CASES
     + COMPOSITION_CASES
-    + [{**vjp_case(c), "id": f"{c['id']}-vjp"} for c in PRIMITIVE_CASES]
+    + [
+        {**vjp_case(c), "id": f"{c['id']}-vjp"}
+        for c in PRIMITIVE_CASES
+        if not c["id"].startswith(UNSUPPORTED)
+    ]
 )
 
 

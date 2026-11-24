@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added/New
 
+- The `add` and `sub` rules take `alpha` (`x.add(y, alpha=a)` computes
+  `x + a * y`): the second operand is scaled by the `mul` rule
+  ([PR](https://github.com/f-dangel/torch-jet/pull/342)).
+
 ### Fixed/Removed
 
 - A jet of a jet of a product works again: the fused `addcmul` that the

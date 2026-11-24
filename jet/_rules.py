@@ -180,6 +180,22 @@ for _prim in (
 ):
     RULES[_prim] = _deflinear_first(_prim)
 
+# The ``_foreach_*`` ops of PyTorch's functional optimizer kernels: the rule of
+# the per-tensor op on every entry of the tensor lists.
+for _prim, _per_tensor in (
+    (ops.aten._foreach_add.List, ops.aten.add.Tensor),
+    (ops.aten._foreach_add.Scalar, ops.aten.add.Tensor),
+    (ops.aten._foreach_addcdiv.ScalarList, ops.aten.addcdiv.default),
+    (ops.aten._foreach_addcmul.Scalar, ops.aten.addcmul.default),
+    (ops.aten._foreach_div.ScalarList, ops.aten.div.Tensor),
+    (ops.aten._foreach_lerp.Scalar, ops.aten.lerp.Scalar),
+    (ops.aten._foreach_maximum.List, ops.aten.maximum.default),
+    (ops.aten._foreach_mul.Scalar, ops.aten.mul.Tensor),
+    (ops.aten._foreach_neg.default, ops.aten.neg.default),
+    (ops.aten._foreach_sqrt.default, ops.aten.sqrt.default),
+):
+    RULES[_prim] = compositions.foreach(_per_tensor)
+
 # Constant-output ops: primal carries the value, coefficients are zero.
 for _prim in (
     ops.aten.zeros_like.default,

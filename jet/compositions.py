@@ -189,6 +189,37 @@ def maximum(self: Tensor | JetTuple, other: Tensor | JetTuple) -> JetTuple:
     return JetTuple((ops.aten.maximum.default(a, b), *out[1:]), collapsed=out.collapsed)
 
 
+def foreach(op: Callable) -> Callable[..., tuple]:
+    """Build the rule of a ``_foreach_*`` op that applies ``op`` to every list entry.
+
+    Entry ``i`` of the output is ``op``'s rule on entry ``i`` of each list
+    argument and on the other arguments as they are.
+
+    Args:
+        op: The per-tensor op, e.g. ``aten.neg`` for ``aten._foreach_neg``.
+
+    Returns:
+        The rule. It raises a ``ValueError`` if its list arguments differ in length.
+    """
+    rule = _rule(op)
+
+    def run(*args: object, **kwargs: object) -> tuple[Tensor | JetTuple, ...]:
+        lengths = {len(a) for a in (*args, *kwargs.values()) if isinstance(a, list)}
+        if len(lengths) != 1:
+            raise ValueError(f"Expected lists of one length, got {sorted(lengths)}.")
+
+        def entry(i: int) -> Tensor | JetTuple:
+            def pick(a: object) -> object:
+                return a[i] if isinstance(a, list) else a
+
+            return rule(*map(pick, args), **{k: pick(v) for k, v in kwargs.items()})
+
+        # A tuple, not a list: the ``getitem`` that follows must run natively.
+        return tuple(map(entry, range(*lengths)))
+
+    return run
+
+
 def stack(tensors: list[Tensor | JetTuple], dim: int = 0) -> JetTuple:
     """Taylor-mode arithmetic for ``aten.stack(tensors, dim)``.
 

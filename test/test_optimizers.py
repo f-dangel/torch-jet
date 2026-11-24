@@ -10,7 +10,7 @@ place by hand, in the nested reverse-mode oracle. The optimizer classes
 from functools import partial
 from typing import Any, Callable
 
-from pytest import mark, raises, skip
+from pytest import FixtureRequest, fixture, mark, raises, skip
 from torch import Tensor, arange, manual_seed, maximum, rand, tanh, tensor, zeros_like
 from torch.func import grad
 from torch.optim.adam import adam
@@ -51,6 +51,12 @@ ADAM_CASES = {
 MPS_SKIP, DEAD = "Adam is ill-conditioned in float32, the only float type on MPS.", 0
 
 
+@fixture(params=[False, True], ids=["single", "foreach"])
+def foreach(request: FixtureRequest) -> bool:
+    """Run the test on the kernel's single-tensor and multi-tensor (foreach) path."""
+    return request.param
+
+
 def _setup(device: str) -> tuple[list[Tensor], list[list[Tensor]]]:
     """Draw the initial parameters and one batch per training step."""
     manual_seed(0)
@@ -70,7 +76,7 @@ def _train(params: list[Tensor], batches: list, zero_bufs: bool = True, **hyper:
     params = [p.clone() for p in params]
     bufs = [zeros_like(p) if zero_bufs else None for p in params]
     for x, y in batches:
-        sgd(params, grad(_loss)(params, x, y), bufs, foreach=False, lr=LR, **hyper)
+        sgd(params, grad(_loss)(params, x, y), bufs, lr=LR, **hyper)
     return params, bufs
 
 
@@ -99,7 +105,7 @@ def _train_adam(params: list[Tensor], batches: list, kernel: Callable, **hyper: 
     max_v = v_max if hyper["amsgrad"] else []  # only amsgrad takes the maxima
     for x, y in batches:
         grads = grad(_loss)(params, x, y)
-        kernel(params, grads, m, v, max_v, steps, foreach=False, **hyper)
+        kernel(params, grads, m, v, max_v, steps, **hyper)
     return params, m, v, v_max
 
 
@@ -143,9 +149,9 @@ def _assert_jet_matches(
 
 @mark.parametrize("hyper", SGD_CASES.values(), ids=SGD_CASES)
 @mark.parametrize("K, collapsed", ORDERS, ids=ORDER_IDS)
-def test_sgd(hyper: dict[str, Any], K: int, collapsed: bool, device: str):
+def test_sgd(hyper: dict, foreach: bool, K: int, collapsed: bool, device: str):
     """The jet of the kernel's training loop matches the hand-written loop's."""
-    train, ref = partial(_train, **hyper), partial(_train_ref, **hyper)
+    train, ref = partial(_train, foreach=foreach, **hyper), partial(_train_ref, **hyper)
     _assert_jet_matches(train, ref, K, collapsed, device)
 
 
@@ -153,19 +159,21 @@ def test_sgd(hyper: dict[str, Any], K: int, collapsed: bool, device: str):
 @mark.parametrize("hyper", ADAM_CASES.values(), ids=ADAM_CASES)
 @mark.parametrize("K, collapsed", ORDERS, ids=ORDER_IDS)
 def test_adam(
-    kernel: Callable, hyper: dict[str, Any], K: int, collapsed: bool, device: str
+    kernel: Callable, hyper: dict, foreach: bool, K: int, collapsed: bool, device: str
 ):
     """The jet of an Adam kernel's training loop matches the hand-written loop's."""
     if device == "mps":
         skip(MPS_SKIP)
-    train = partial(_train_adam, kernel=kernel, **hyper)
+    train = partial(_train_adam, kernel=kernel, foreach=foreach, **hyper)
     ref = partial(_train_adam_ref, kernel=kernel, **hyper)
     _assert_jet_matches(train, ref, K, collapsed, device)
 
 
 @mark.parametrize("case", ["plain", "amsgrad"])
 @mark.parametrize("K, collapsed", ORDERS, ids=ORDER_IDS)
-def test_adam_zero_gradient(case: str, K: int, collapsed: bool, device: str):
+def test_adam_zero_gradient(
+    case: str, foreach: bool, K: int, collapsed: bool, device: str
+):
     """An entry whose gradient jet is exactly zero stays where it is, without NaN.
 
     A zero input feature gives its column of ``W1`` such a gradient: there Adam
@@ -177,7 +185,8 @@ def test_adam_zero_gradient(case: str, K: int, collapsed: bool, device: str):
     params, batches = _setup(device)
     live = arange(params[0].shape[1], device=device) != DEAD
     hyper = dict(kernel=adam, **ADAM_CASES[case])
-    train = partial(_train_adam, batches=[[x * live, y] for x, y in batches], **hyper)
+    dead_batches = [[x * live, y] for x, y in batches]
+    train = partial(_train_adam, batches=dead_batches, foreach=foreach, **hyper)
 
     def ref(params: list[Tensor]):
         (W1, *rest), live_batches = params, [[x[:, live], y] for x, y in batches]
@@ -194,9 +203,10 @@ def test_adam_zero_gradient(case: str, K: int, collapsed: bool, device: str):
     assert all((c[..., ~live] == 0).all() for moment in moments for c in moment)
 
 
-def test_sgd_lazy_momentum_buffers_raise():
+def test_sgd_lazy_momentum_buffers_raise(foreach: bool):
     """``None`` buffers are seeded with ``grad.detach()``, which has no rule."""
     params, batches = _setup("cpu")
-    train = partial(_train, batches=batches, zero_bufs=False, **SGD_CASES["momentum"])
+    hyper = dict(zero_bufs=False, foreach=foreach, **SGD_CASES["momentum"])
+    train = partial(_train, batches=batches, **hyper)
     with raises(NotImplementedError, match="detach"):
         jet(train, (params,))(*make_jet_args((params,), K=1))

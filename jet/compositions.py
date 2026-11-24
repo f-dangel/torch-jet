@@ -119,6 +119,11 @@ def addcdiv(
     so the rule composes the ``div`` rule with the affine addition. Any operand
     may be Taylor-expanded.
 
+    Where the numerator's whole jet is zero (its primal and every coefficient),
+    the quotient's coefficients are zero, whatever the denominator's. Adam needs
+    that at an entry whose gradient jet is zero: its denominator is the square
+    root of a zero second moment, whose coefficients are NaN.
+
     Args:
         self: The summand; a jet or a constant ``Tensor``.
         tensor1: The numerator; a jet or a constant ``Tensor``.
@@ -130,6 +135,13 @@ def addcdiv(
     """
     add, mul = _rule(ops.aten.add.Tensor), _rule(ops.aten.mul.Tensor)
     quotient = _rule(ops.aten.div.Tensor)(tensor1, tensor2)
+    if isinstance(quotient, JetTuple):
+        zero = _primal(tensor1) == 0
+        for c in tensor1[1:] if isinstance(tensor1, JetTuple) else ():
+            if c is not None:  # with a leading direction axis: zero in every direction
+                zero = zero & (c == 0 if c.ndim == zero.ndim else (c == 0).all(0))
+        coeffs = (None if c is None else c.masked_fill(zero, 0.0) for c in quotient[1:])
+        quotient = JetTuple((quotient[0], *coeffs), collapsed=quotient.collapsed)
     return add(self, quotient if value == 1 else mul(quotient, value))
 
 

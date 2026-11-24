@@ -40,6 +40,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   immutable ones, so its output can be modified and passed back in as an
   argument
   ([PR](https://github.com/f-dangel/torch-jet/pull/341)).
+- A jet through Adam is no longer NaN when the gradient jet of a parameter
+  entry is exactly zero (e.g. a weight of an input that is always zero): where
+  the numerator's whole jet is zero, the `addcdiv` rule returns zero quotient
+  coefficients, whatever the denominator's
+  ([PR](https://github.com/f-dangel/torch-jet/pull/349)).
 ### Internal
 
 - Tests take jets through a training loop with PyTorch's functional Adam and

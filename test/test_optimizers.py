@@ -11,7 +11,7 @@ from functools import partial
 from typing import Any, Callable
 
 from pytest import mark, raises, skip
-from torch import Tensor, manual_seed, maximum, rand, tanh, tensor, zeros_like
+from torch import Tensor, arange, manual_seed, maximum, rand, tanh, tensor, zeros_like
 from torch.func import grad
 from torch.optim.adam import adam
 from torch.optim.adamw import adamw
@@ -47,6 +47,8 @@ ADAM_CASES = {
     # With a small ``beta2``, old and new second moments both win the maximum.
     "amsgrad": ADAM | dict(amsgrad=True, beta2=0.5),
 }
+#: Why the Adam tests skip MPS; the input feature that the zero-gradient test zeroes.
+MPS_SKIP, DEAD = "Adam is ill-conditioned in float32, the only float type on MPS.", 0
 
 
 def _setup(device: str) -> tuple[list[Tensor], list[list[Tensor]]]:
@@ -123,16 +125,20 @@ def _train_adam_ref(
     return params, m, v, v_max
 
 
+def _jets(train: Callable, ref: Callable, params: list, K: int, collapsed: bool):
+    """Evaluate the jets of the kernel's loop ``train`` and the hand-written ``ref``."""
+    jet_args = make_jet_args((params,), K, collapsed)
+    oracle = rev_collapsed_jet if collapsed else _rev_jet
+    return jet(train, (params,), collapsed=collapsed)(*jet_args), oracle(ref)(*jet_args)
+
+
 def _assert_jet_matches(
     train: Callable, ref: Callable, K: int, collapsed: bool, device: str
 ):
     """The jet of the kernel's loop ``train`` matches the hand-written ``ref``'s."""
     params, batches = _setup(device)
-    jet_args = make_jet_args((params,), K, collapsed)
-    oracle = rev_collapsed_jet if collapsed else _rev_jet
-    expected = oracle(partial(ref, batches=batches))(*jet_args)
-    jet_train = jet(partial(train, batches=batches), (params,), collapsed=collapsed)
-    assert_close(jet_train(*jet_args), expected, **tolerances_for(device))
+    train, ref = partial(train, batches=batches), partial(ref, batches=batches)
+    assert_close(*_jets(train, ref, params, K, collapsed), **tolerances_for(device))
 
 
 @mark.parametrize("hyper", SGD_CASES.values(), ids=SGD_CASES)
@@ -151,10 +157,41 @@ def test_adam(
 ):
     """The jet of an Adam kernel's training loop matches the hand-written loop's."""
     if device == "mps":
-        skip("Adam is ill-conditioned in float32, the only float type on MPS.")
+        skip(MPS_SKIP)
     train = partial(_train_adam, kernel=kernel, **hyper)
     ref = partial(_train_adam_ref, kernel=kernel, **hyper)
     _assert_jet_matches(train, ref, K, collapsed, device)
+
+
+@mark.parametrize("case", ["plain", "amsgrad"])
+@mark.parametrize("K, collapsed", ORDERS, ids=ORDER_IDS)
+def test_adam_zero_gradient(case: str, K: int, collapsed: bool, device: str):
+    """An entry whose gradient jet is exactly zero stays where it is, without NaN.
+
+    A zero input feature gives its column of ``W1`` such a gradient: there Adam
+    divides zero by the square root of zero, which has no derivatives. The other
+    entries train as if the feature did not exist, which is the reference.
+    """
+    if device == "mps":
+        skip(MPS_SKIP)
+    params, batches = _setup(device)
+    live = arange(params[0].shape[1], device=device) != DEAD
+    hyper = dict(kernel=adam, **ADAM_CASES[case])
+    train = partial(_train_adam, batches=[[x * live, y] for x, y in batches], **hyper)
+
+    def ref(params: list[Tensor]):
+        (W1, *rest), live_batches = params, [[x[:, live], y] for x, y in batches]
+        return _train_adam_ref([W1[:, live], *rest], live_batches, **hyper)
+
+    actual, expected = _jets(train, ref, params, K, collapsed)
+    for got, want in zip(actual, expected):  # the parameters and each moment estimate
+        assert_close([tuple(c[..., live] for c in got[0]), *got[1:]], want)
+    # At the dead entries, the parameter keeps its jet and the moments are zero.
+    (old,) = make_jet_args((params,), K, collapsed)
+    new_W1, *moments = (state[0] for state in actual)
+    for c, c_old in zip(new_W1, old[0]):
+        assert_close(c[..., ~live], c_old[..., ~live], rtol=0, atol=0)
+    assert all((c[..., ~live] == 0).all() for moment in moments for c in moment)
 
 
 def test_sgd_lazy_momentum_buffers_raise():

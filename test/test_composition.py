@@ -13,6 +13,7 @@ from torch import (
     Tensor,
     addcdiv,
     addcmul,
+    arange,
     cos,
     lerp,
     manual_seed,
@@ -32,15 +33,21 @@ from torch.nn import (
     SiLU,
 )
 from torch.nn.functional import cross_entropy
+from torch.testing import assert_close
 
+from jet import jet
+from jet._jet import _rev_jet
 from test.utils import (
     _stateless,
     assert_jet_matches_oracle,
     class_index_loss,
     device_kw,
+    make_jet_args,
     mlp,
     pick_operands,
     rand_jet_args,
+    rev_collapsed_jet,
+    tolerances_for,
 )
 
 #: Shapes of the operands in the three-operand cases, and a number as ``lerp`` weight.
@@ -223,3 +230,27 @@ COMPOSITION_CASES = [
 def test_composition(config: dict[str, Any], K: int, collapsed: bool, device: str):
     """``jet(composition)`` matches its mode-specific oracle."""
     assert_jet_matches_oracle(config, K, collapsed, device)
+
+
+@mark.parametrize("const", [False, True], ids=["jet", "constant"])
+def test_addcdiv_zero_numerator(const: bool, collapsed: bool, device: str):
+    """Where the numerator's whole jet is zero, ``addcdiv`` returns its summand's jet.
+
+    The denominator's coefficients are NaN there (the square root of a zero
+    jet). The other entries match the function without the zero entry.
+    """
+    manual_seed(0)
+    K, size = 3, 4
+    x, den, num = rand(3, size, **device_kw(device)) + ADDCDIV_SHIFT
+    live = arange(size, device=device) > 0  # entry 0 is the zero entry
+
+    def f(x: Tensor, den: Tensor, num: Tensor = num, mask: Tensor | bool = live):
+        return addcdiv(x, num * mask, (den * mask).sqrt() + ADDCDIV_SHIFT)
+
+    args = (x, den) if const else (x, den, num)
+    jets = make_jet_args(args, K, collapsed)
+    oracle = rev_collapsed_jet if collapsed else _rev_jet
+    out, expected = jet(f, args, collapsed=collapsed), oracle(partial(f, mask=True))
+    for c, c_ref, c_x in zip(out(*jets), expected(*jets), jets[0]):
+        assert_close(c[..., live], c_ref[..., live], **tolerances_for(device))
+        assert_close(c[..., ~live], c_x[..., ~live], rtol=0, atol=0)

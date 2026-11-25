@@ -35,9 +35,9 @@ def test_validate_standard_K_mismatch():
 
 
 def test_validate_rejects_non_tuple_leaf():
-    """A bare tensor where a jet tuple is expected is rejected."""
+    """A leaf that is neither a jet tuple nor a tensor (a constant) is rejected."""
     mock = (zeros(3),)
-    args = (zeros(3),)  # bare tensor instead of jet tuple
+    args = ([zeros(3)],)  # a list instead of a jet tuple
     with raises(ValueError, match="expected a jet tuple"):
         validate_input_jet(mock, args, collapsed=False)
 

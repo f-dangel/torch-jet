@@ -4,7 +4,8 @@ A jet transform built via :func:`jet.jet` (in either standard or collapsed mode)
 constructed against ``mock_args`` -- a pytree of tensors that describes the
 expected leaf positions and shapes. At call time, the user passes ``args``
 that mirror ``mock_args``'s structure but with every tensor leaf replaced by a
-jet tuple ``(primal, c_1, ..., c_K)``. This module checks the user's ``args``
+jet tuple ``(primal, c_1, ..., c_K)`` or kept as a plain tensor (a constant; at
+least one leaf must be a jet). This module checks the user's ``args``
 against ``mock_args``'s structure and the per-mode shape rules:
 
 - **standard** (``collapsed=False``): every ``c_k`` has shape ``S = mock.shape``.
@@ -29,18 +30,21 @@ from jet.utils import Jet, PyTree, _is_jet_leaf
 
 
 def validate_input_jet(
-    mock: tuple[PyTree[Tensor], ...], args: tuple[PyTree[Jet], ...], *, collapsed: bool
-) -> tuple[list[Jet], int, int | None]:
+    mock: tuple[PyTree[Tensor], ...],
+    args: tuple[PyTree[Jet | Tensor], ...],
+    *,
+    collapsed: bool,
+) -> tuple[list[Jet | Tensor], int, int | None]:
     """Validate ``args`` against ``mock``'s structure and shapes.
 
     Args:
         mock: Pytree of tensors describing the expected leaf positions and shapes.
         args: Pytree mirroring ``mock`` with each tensor leaf replaced by a jet
-            tuple ``(primal, c_1, ..., c_K)`` of tensors.
+            tuple ``(primal, c_1, ..., c_K)`` of tensors, or kept: a constant.
         collapsed: Whether to apply the collapsed-mode shape rules.
 
     Returns:
-        ``(jet_leaves, K, R)`` where ``jet_leaves`` is a flat list of jet
+        ``(leaves, K, R)`` where ``leaves`` is a flat list of constants and jet
         tuples in mock-traversal order, ``K`` is the inferred derivative order
         (consistent across all leaves), and ``R`` is the inferred direction
         dimension for collapsed mode (``None`` in standard mode).
@@ -48,7 +52,7 @@ def validate_input_jet(
     Raises:
         ValueError: If ``args``' pytree structure differs from ``mock``'s
             (raised by ``flatten_up_to``), if arity (``K``) is inconsistent
-            across leaves, or if any coefficient has the wrong shape.
+            across leaves, if any shape is wrong, or if no leaf is a jet.
     """
     mock_leaves, in_spec = tree_flatten(mock)
     if not mock_leaves:
@@ -66,21 +70,27 @@ def validate_input_jet(
     R_seen: int | None = None
     for mock_t, arg in zip(mock_leaves, arg_leaves):
         K_seen, R_seen = _validate_jet_leaf(mock_t, arg, collapsed, K_seen, R_seen)
-    if K_seen is None:
-        # Unreachable: mock_leaves is non-empty (checked above), so the
-        # for-loop ran at least once and _validate_jet_leaf set K_seen.
-        # Explicit raise (not assert) so the contract survives ``python -O``.
-        raise RuntimeError("internal: K_seen is None after validation loop.")
+    if K_seen is None:  # every leaf is a constant
+        raise ValueError("at least one leaf must be a jet (primal, c_1, ..., c_K).")
     return arg_leaves, K_seen, R_seen
+
+
+def _check_shape(kind: str, tensor: Tensor, mock: Tensor) -> None:
+    """Raise if a primal or a constant (``kind``) does not have ``mock``'s shape."""
+    if tensor.shape != mock.shape:
+        raise ValueError(
+            f"{kind} shape {tuple(tensor.shape)} does not match mock shape "
+            f"{tuple(mock.shape)}."
+        )
 
 
 def _validate_jet_leaf(
     mock: Tensor, arg: Any, collapsed: bool, K_seen: int | None, R_seen: int | None
-) -> tuple[int, int | None]:
+) -> tuple[int | None, int | None]:
     """Check that ``arg`` is a valid jet tuple matching ``mock``'s shape.
 
     ``K_seen`` and ``R_seen`` carry the values observed at earlier leaves
-    (``None`` on the first call).
+    (``None`` on the first call). A constant (a plain tensor) leaves them as is.
 
     Args:
         mock: The expected primal shape (one tensor leaf of ``mock_args``).
@@ -104,6 +114,9 @@ def _validate_jet_leaf(
     """
     if not isinstance(mock, Tensor):
         raise ValueError(f"mock_args leaf must be a Tensor, got {type(mock).__name__}.")
+    if isinstance(arg, Tensor):  # a constant has no order and no directions
+        _check_shape("constant", arg, mock)
+        return K_seen, R_seen
     if not isinstance(arg, tuple):
         raise ValueError(
             f"expected a jet tuple (primal, c_1, ..., c_K), got {type(arg).__name__}."
@@ -132,11 +145,7 @@ def _validate_jet_leaf(
         )
 
     primal, *coeffs = arg
-    if primal.shape != mock.shape:
-        raise ValueError(
-            f"primal shape {tuple(primal.shape)} does not match mock shape "
-            f"{tuple(mock.shape)}."
-        )
+    _check_shape("primal", primal, mock)
     R = _check_coeffs(coeffs, mock, collapsed)
     # Cross-leaf R consistency. R is None in standard mode (no batched coeffs)
     # and in collapsed mode it is always non-None given K >= 2 (enforced above)

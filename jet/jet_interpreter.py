@@ -62,8 +62,10 @@ class JetInterpreter(Interpreter):
     def placeholder(
         self, target: Target, args: tuple[Argument, ...], kwargs: dict[str, Any]
     ) -> Any:
-        """Wrap each placeholder value in a ``JetTuple``."""
+        """Wrap a jet in a ``JetTuple``; a plain tensor stays a constant."""
         value = super().placeholder(target, args, kwargs)
+        if isinstance(value, Tensor):
+            return value
         return JetTuple(value, collapsed=self.collapsed)
 
     def call_function(

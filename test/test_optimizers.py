@@ -131,6 +131,16 @@ def _train_adam_ref(
     return params, m, v, v_max
 
 
+def _adam_step(params: list, state: dict, t: Tensor, x: Tensor, y: Tensor, **hyper):
+    """One Adam step after ``t`` steps: the new parameters and moment estimates."""
+    m, v = state["exp_avg"], state["exp_avg_sq"]
+    params, m, v = ([p.clone() for p in ps] for ps in (params, m, v))
+    steps = [t.clone() for _ in params]
+    adam(params, grad(_loss)(params, x, y), m, v, [], steps, **hyper)
+    # No step count in the output: fed back it is a jet, whose ``item()`` has no rule.
+    return params, {"exp_avg": m, "exp_avg_sq": v}
+
+
 def _jets(train: Callable, ref: Callable, params: list, K: int, collapsed: bool):
     """Evaluate the jets of the kernel's loop ``train`` and the hand-written ``ref``."""
     jet_args = make_jet_args((params,), K, collapsed)
@@ -201,6 +211,26 @@ def test_adam_zero_gradient(
     for c, c_old in zip(new_W1, old[0]):
         assert_close(c[..., ~live], c_old[..., ~live], rtol=0, atol=0)
     assert all((c[..., ~live] == 0).all() for moment in moments for c in moment)
+
+
+@mark.parametrize("K, collapsed", ORDERS, ids=ORDER_IDS)
+def test_adam_stepwise(foreach: bool, K: int, collapsed: bool, device: str):
+    """A step traced once and called on its own outputs matches the whole loop."""
+    if device == "mps":
+        skip(MPS_SKIP)
+    (params, batches), hyper = _setup(device), dict(foreach=foreach, **ADAM)
+    # The initial state, the number of steps done and the batch are constants.
+    state = {key: [zeros_like(p) for p in params] for key in ("exp_avg", "exp_avg_sq")}
+    mock = (params, state, tensor(0.0), *batches[0])
+    jet_step = jet(partial(_adam_step, **hyper), mock, collapsed=collapsed)
+    jet_args = make_jet_args((params,), K, collapsed)
+    (jet_params,) = jet_args
+    for t, (x, y) in enumerate(batches):
+        jet_params, state = jet_step(jet_params, state, tensor(float(t)), x, y)
+    train = partial(_train_adam, batches=batches, kernel=adam, **hyper)
+    *expected, _ = jet(train, (params,), collapsed=collapsed)(*jet_args)
+    actual = [jet_params, state["exp_avg"], state["exp_avg_sq"]]
+    assert_close(actual, expected, **tolerances_for(device))
 
 
 def test_sgd_lazy_momentum_buffers_raise(foreach: bool):

@@ -53,6 +53,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ([PR](https://github.com/f-dangel/torch-jet/pull/349)).
 ### Internal
 
+- A test traces one Adam step and calls its jet once per training step, with
+  the optimizer state passed in and out; it matches the jet of the whole loop
+  ([PR](https://github.com/f-dangel/torch-jet/pull/352)).
 - Tests take jets through a training loop with PyTorch's functional Adam and
   AdamW kernels `torch.optim.adam.adam` and `torch.optim.adamw.adamw` (weight
   decay, maximize)

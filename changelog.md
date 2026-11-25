@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   average of both operands' coefficients, like the tangent of `torch.func.jvp`.
   The Adam and AdamW tests gain amsgrad cases
   ([PR](https://github.com/f-dangel/torch-jet/pull/348)).
+- Add rules for the ten `_foreach_*` ops that PyTorch's functional SGD, Adam
+  and AdamW kernels use with `foreach=True`: each applies the per-tensor rule
+  to every entry of its tensor lists
+  ([PR](https://github.com/f-dangel/torch-jet/pull/350)).
 
 ### Fixed/Removed
 

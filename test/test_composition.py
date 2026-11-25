@@ -8,15 +8,18 @@ from functools import partial
 from itertools import product
 from typing import Any, Callable
 
-from pytest import mark
+from pytest import mark, raises
 from torch import (
     Tensor,
+    _foreach_add,
+    _foreach_exp,
     addcdiv,
     addcmul,
     arange,
     cos,
     lerp,
     manual_seed,
+    ops,
     rand,
     randn,
     sin,
@@ -37,6 +40,7 @@ from torch.testing import assert_close
 
 from jet import jet
 from jet._jet import _rev_jet
+from jet._rules import RULES
 from test.utils import (
     _stateless,
     assert_jet_matches_oracle,
@@ -143,6 +147,8 @@ COMPOSITION_CASES = [
         for codes in product("JC", repeat=3)
         if "J" in codes
     ),
+    # A foreach op whose second list entry holds only constants (the native op).
+    _ternary_case("foreach_add", lambda a, b, c: _foreach_add([a, b], [c, c]), "JCC"),
     {"id": "mlp", "f": mlp, "args_fn": lambda: (rand(5),)},
     {"id": "mlp_batched", "f": mlp, "args_fn": lambda: (rand(10, 5),)},
     {
@@ -254,3 +260,12 @@ def test_addcdiv_zero_numerator(const: bool, collapsed: bool, device: str):
     for c, c_ref, c_x in zip(out(*jets), expected(*jets), jets[0]):
         assert_close(c[..., live], c_ref[..., live], **tolerances_for(device))
         assert_close(c[..., ~live], c_x[..., ~live], rtol=0, atol=0)
+
+
+def test_foreach_raises():
+    """A foreach op without a rule raises, and so do lists of unequal length."""
+    x = rand(3)
+    with raises(NotImplementedError, match="No jet rule for aten._foreach_exp"):
+        jet(lambda x: _foreach_exp([x]), (x,))(*make_jet_args((x,), K=1))
+    with raises(ValueError, match="lists of one length"):
+        RULES[ops.aten._foreach_add.List]([x, x], [x])

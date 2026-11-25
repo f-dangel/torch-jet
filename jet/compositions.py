@@ -142,7 +142,10 @@ def addcdiv(
                 zero = zero & (c == 0 if c.ndim == zero.ndim else (c == 0).all(0))
         coeffs = (None if c is None else c.masked_fill(zero, 0.0) for c in quotient[1:])
         quotient = JetTuple((quotient[0], *coeffs), collapsed=quotient.collapsed)
-    return add(self, quotient if value == 1 else mul(quotient, value))
+    # Only a literal 1 skips the product: a symbolic ``value`` (Adam's step size when
+    # the step count is a traced input) cannot be compared.
+    one = isinstance(value, (int, float)) and value == 1
+    return add(self, quotient if one else mul(quotient, value))
 
 
 def lerp(

@@ -17,8 +17,9 @@ from torch.optim.adam import adam
 from torch.optim.adamw import adamw
 from torch.optim.sgd import sgd
 from torch.testing import assert_close
+from torch.utils._pytree import tree_map
 
-from jet import jet
+from jet import freeze, jet
 from jet._jet import _rev_jet
 from test.test_torchvision import ORDER_IDS, ORDERS
 from test.utils import device_kw, make_jet_args, rev_collapsed_jet, tolerances_for
@@ -213,8 +214,11 @@ def test_adam_zero_gradient(
     assert all((c[..., ~live] == 0).all() for moment in moments for c in moment)
 
 
+@mark.parametrize("frozen", [False, True], ids=["jet", "frozen"])
 @mark.parametrize("K, collapsed", ORDERS, ids=ORDER_IDS)
-def test_adam_stepwise(foreach: bool, K: int, collapsed: bool, device: str):
+def test_adam_stepwise(
+    frozen: bool, foreach: bool, K: int, collapsed: bool, device: str
+):
     """A step traced once and called on its own outputs matches the whole loop."""
     if device == "mps":
         skip(MPS_SKIP)
@@ -225,6 +229,11 @@ def test_adam_stepwise(foreach: bool, K: int, collapsed: bool, device: str):
     jet_step = jet(partial(_adam_step, **hyper), mock, collapsed=collapsed)
     jet_args = make_jet_args((params,), K, collapsed)
     (jet_params,) = jet_args
+    if frozen:  # ``freeze`` fixes the structure: the state is a zero jet from the start
+        (state,) = tree_map(zeros_like, make_jet_args((state,), K, collapsed))
+        jet_step = freeze(jet_step, (jet_params, state, *mock[2:]))
+    # The frozen step is traced after 0 steps and also called after 1: a step count
+    # baked into the trace would be silently wrong there.
     for t, (x, y) in enumerate(batches):
         jet_params, state = jet_step(jet_params, state, tensor(float(t)), x, y)
     train = partial(_train_adam, batches=batches, kernel=adam, **hyper)

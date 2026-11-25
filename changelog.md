@@ -51,6 +51,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the numerator's whole jet is zero, the `addcdiv` rule returns zero quotient
   coefficients, whatever the denominator's
   ([PR](https://github.com/f-dangel/torch-jet/pull/349)).
+- `freeze` works on the jet of an Adam step whose step count is an input: the
+  `addcdiv` rule no longer compares the then symbolic step size with 1
+  ([PR](https://github.com/f-dangel/torch-jet/pull/353)).
 ### Internal
 
 - A test traces one Adam step and calls its jet once per training step, with

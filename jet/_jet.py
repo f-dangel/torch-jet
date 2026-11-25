@@ -19,7 +19,7 @@ def jet(
     f: Callable[[*tuple[PyTree[Tensor], ...]], PyTree[Tensor]],
     mock_args: tuple[PyTree[Tensor], ...],
     collapsed: bool = False,
-) -> Callable[[*tuple[PyTree[Jet], ...]], PyTree[Jet]]:
+) -> Callable[[*tuple[PyTree[Jet | Tensor], ...]], PyTree[Jet]]:
     """Overload a function with its Taylor-mode equivalent.
 
     The returned function is K-polymorphic: the derivative order is inferred
@@ -44,6 +44,10 @@ def jet(
     coefficient of a Laplacian's input jet, say). The rules skip every term it
     would contribute instead of computing it on zeros. The output never
     contains ``None``.
+
+    An input leaf may also be a plain tensor: a constant (a data batch, say),
+    the same as a jet with zero coefficients. At least one leaf must be a jet.
+    An output that depends only on constants is a jet with zero coefficients.
 
     Args:
         f: Function to overload. May accept and return pytrees of tensors.
@@ -79,6 +83,7 @@ def jet(
         >>> x, y = Tensor([0.1, 0.2, 0.3]), Tensor([0.4, 0.5, 0.6])
         >>> vx, vy = Tensor([1.0, 0.0, 0.0]), Tensor([0.0, 1.0, 0.0])
         >>> f0, f1 = jet_f((x, vx), (y, vy))
+        >>> g0, g1 = jet_f((x, vx), y)  # constant y: same as (y, zeros(3))
 
         **Symbolic zero** (a higher coefficient known to vanish, e.g. along a
         straight line ``x0 + t * x1``; the output is still dense)
@@ -96,7 +101,7 @@ def jet(
         mod, _ = capture_graph(f, mock_args)
     interp = JetInterpreter(mod, collapsed=collapsed)
 
-    def transformed(*args: PyTree[Jet]) -> PyTree[Jet]:
+    def transformed(*args: PyTree[Jet | Tensor]) -> PyTree[Jet]:
         leaves, K, R = validate_input_jet(mock_args, args, collapsed=collapsed)
         return interp.run(K, R, *leaves)
 
@@ -133,6 +138,8 @@ def _rev_jet(
     def jet_f(*args: PyTree[Jet]) -> PyTree[Jet]:
         """Compute the function and its Taylor coefficients."""
         leaves, in_spec = tree_flatten(args, is_leaf=_is_jet_leaf)
+        if not all(map(_is_jet_leaf, leaves)):
+            raise NotImplementedError("Constants (plain tensors) are not supported.")
         K = len(leaves[0]) - 1
 
         def path(t: Tensor) -> tuple[PyTree[Tensor], ...]:
@@ -206,6 +213,8 @@ def _uncollapsed_via_vmap(
 
     def cjet_f(*args: PyTree[Jet]) -> PyTree[Jet]:
         leaves, K, R = validate_input_jet(mock_args, args, collapsed=True)
+        if any(isinstance(leaf, Tensor) for leaf in leaves):
+            raise NotImplementedError("Constants (plain tensors) are not supported.")
         primals = [leaf[0] for leaf in leaves]
 
         # The order-K output is linear in c_K, so feed the full (un-batched)

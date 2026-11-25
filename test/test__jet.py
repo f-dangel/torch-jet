@@ -4,8 +4,8 @@ from pytest import mark, raises
 from torch import manual_seed, rand, searchsorted, sin, tensor, zeros, zeros_like
 from torch.testing import assert_close
 
-from jet import jet
-from jet._jet import _uncollapsed_via_vmap
+from jet import freeze, jet
+from jet._jet import _rev_jet, _uncollapsed_via_vmap
 from test.utils import make_jet_args, rev_collapsed_jet
 
 
@@ -83,3 +83,27 @@ def test_jet_returns_plain_containers(collapsed: bool):
     (jet_arg,) = make_jet_args((mock,), K=2, collapsed=collapsed)
     out = jet_f(jet_f(jet_arg))  # round trip: the output is passed back in
     assert type(out) is dict and type(out["a"]) is list
+
+
+def test_jet_with_constant_inputs(collapsed: bool):
+    """A plain tensor input equals a jet with zero coefficients, frozen or not."""
+    manual_seed(0)
+    mock = (rand(3), rand(3), {"w": rand(3)})
+    jet_f = jet(lambda x, c, d: sin(x * c) + d["w"] * x, mock, collapsed=collapsed)
+    x, c, d = make_jet_args(mock, K=3, collapsed=collapsed)
+    zero_c, zero_w = ((leaf[0], *map(zeros_like, leaf[1:])) for leaf in (c, d["w"]))
+    consts, expected = (x, c[0], {"w": d["w"][0]}), jet_f(x, zero_c, {"w": zero_w})
+    assert_close(jet_f(*consts), expected)
+    assert_close(freeze(jet_f, consts)(*consts), expected)
+    with raises(ValueError, match="at least one leaf must be a jet"):
+        jet_f(x[0], *consts[1:])
+    with raises(ValueError, match="constant shape"):
+        jet_f(x, c[0][:2], consts[2])
+
+
+def test_references_reject_constant_inputs():
+    """The reference implementations take jets only."""
+    x, f = zeros(3), lambda a, b: a * b  # noqa: E731
+    for reference in (_rev_jet(f), _uncollapsed_via_vmap(f, (x, x), None)):
+        with raises(NotImplementedError, match="Constants"):
+            reference((x, zeros(2, 3), x), x)

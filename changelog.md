@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and AdamW kernels use with `foreach=True`: each applies the per-tensor rule
   to every entry of its tensor lists
   ([PR](https://github.com/f-dangel/torch-jet/pull/350)).
+- An input leaf of a jet function may be a plain tensor: a constant
+  ([PR](https://github.com/f-dangel/torch-jet/pull/351)).
 
 ### Fixed/Removed
 
